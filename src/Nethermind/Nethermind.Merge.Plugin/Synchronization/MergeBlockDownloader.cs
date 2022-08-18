@@ -84,11 +84,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
-        public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
-            CancellationToken cancellation)
+        public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            {
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
+            }
 
             if (bestPeer == null)
             {
@@ -104,26 +105,20 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+                if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
                 headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
                 if (headers == null || headers.Length <= 1)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace("Chain level helper got no headers suggestion");
+                    if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
                     return false;
                 }
 
@@ -136,9 +131,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 Block[]? blocks = null;
                 TxReceipt[]?[]? receipts = null;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
+                if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
 
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
@@ -149,7 +142,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (downloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested)
+                    {
                         return blocksSynced; // check before every heavy operation
+                    }
+
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
@@ -165,8 +161,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (!(blocks?.Length > 0))
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace("Break early due to no blocks.");
+                    if (_logger.IsTrace) _logger.Trace("Break early due to no blocks.");
                     break;
                 }
 
@@ -222,9 +217,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
+                    if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
 
                     if (isKnownBeaconBlock)
                     {
@@ -301,8 +294,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
         {
-            return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) &&
-                   _poSSwitcher.HasEverReachedTerminalBlock() == false;
+            return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0)
+                   && _poSSwitcher.HasEverReachedTerminalBlock() == false;
         }
     }
 }

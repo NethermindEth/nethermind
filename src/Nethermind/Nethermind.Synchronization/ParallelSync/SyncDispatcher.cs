@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -50,7 +51,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private TaskCompletionSource<object?>? _dormantStateTask = new();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
-        
+
         public async Task Start(CancellationToken cancellationToken)
         {
             cancellationToken.Register(() =>
@@ -102,7 +103,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         SyncPeerAllocation allocation = await Allocate(request);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                        if (allocatedPeer != null)
+                        if (allocatedPeer is null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
@@ -143,7 +144,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         }
                         else
                         {
-                            Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
+                            if (Logger.IsDebug) Logger.Debug($"DISPATCHER - {GetType().Name}: peer NOT allocated");
                             SyncResponseHandlingResult result = Feed.HandleResponse(request);
                             ReactToHandlingResult(request, result, null);
                         }
@@ -168,7 +169,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
+            IPeerAllocationStrategy peerAllocationStrategy = PeerAllocationStrategyFactory.Create(request);
+            if (Logger.IsTrace) Logger.Trace($"Using allocation strategy {peerAllocationStrategy}");
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(peerAllocationStrategy, Feed.Contexts, 1000);
             return allocation;
         }
 

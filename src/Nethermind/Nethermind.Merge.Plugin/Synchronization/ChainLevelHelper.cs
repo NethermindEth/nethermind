@@ -58,8 +58,7 @@ public class ChainLevelHelper : IChainLevelHelper
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
+            if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
             return null;
         }
 
@@ -74,13 +73,11 @@ public class ChainLevelHelper : IChainLevelHelper
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
             if (level == null || beaconMainChainBlock == null)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
+                if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
             }
 
-            BlockHeader? newHeader =
-                _blockTree.FindHeader(beaconMainChainBlock.BlockHash, BlockTreeLookupOptions.None);
+            BlockHeader? newHeader = _blockTree.FindHeader(beaconMainChainBlock.BlockHash, BlockTreeLookupOptions.None);
 
             if (newHeader == null)
             {
@@ -97,15 +94,14 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
-            if (beaconMainChainBlock.IsBeaconInfo)
-                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
+            if (beaconMainChainBlock.IsBeaconInfo) newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
+            if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
             headers.Add(newHeader);
             ++i;
             if (i >= maxCount)
+            {
                 break;
+            }
 
             ++startingPoint;
         }
@@ -170,9 +166,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
             BlockInfo parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
             foundBeaconBlock = parentBlockInfo.IsBeaconInfo;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
+            if (_logger.IsTrace) _logger.Trace($"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
 
             // Note: the starting point, points to the non-beacon info block.
             // MergeBlockDownloader does not download the first header so this is deliberate
