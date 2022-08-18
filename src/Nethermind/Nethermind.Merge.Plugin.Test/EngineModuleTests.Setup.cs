@@ -70,6 +70,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.BlockTree,
                 blockCacheService,
                 new TestErrorLogManager());
+            invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
@@ -87,6 +88,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockProcessingQueue,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.SpecProvider,
                     chain.LogManager,
                     newPayloadTimeout),
                 new ForkchoiceUpdatedV1Handler(
@@ -98,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Test
                     blockCacheService,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.BeaconPivot,
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
@@ -185,7 +188,6 @@ namespace Nethermind.Merge.Plugin.Test
                 PayloadPreparationService ??= new PayloadPreparationService(
                     postMergeBlockProducer,
                     new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
-                    SealEngine,
                     TimerFactory.Default,
                     LogManager,
                     TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));

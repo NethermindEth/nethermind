@@ -37,6 +37,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -261,7 +262,8 @@ namespace Nethermind.Runner.Test
         [TestCase("spaceneth", true)]
         [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten ^goerli", false)]
+        [TestCase("mainnet", true)]
+        [TestCase("^spaceneth ^baseline ^ropsten ^goerli ^mainnet", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -300,8 +302,8 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^ropsten ^sepolia ^goerli", false)]
-        [TestCase("aura ^archive ropsten sepolia goerli", true)]
+        [TestCase("^aura ^ropsten ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("aura ^archive ropsten sepolia goerli mainnet", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
             Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);

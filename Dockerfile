@@ -8,10 +8,8 @@ ARG BUILDPLATFORM
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then git submodule update --init src/rocksdb-sharp && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
-    else git submodule update --init src/rocksdb-sharp && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
+    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
+    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-jammy

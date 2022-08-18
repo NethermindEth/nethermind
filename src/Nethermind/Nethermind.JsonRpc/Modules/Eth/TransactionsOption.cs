@@ -13,9 +13,7 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -25,20 +23,15 @@ public class TransactionsOption : IJsonRpcParam
 {
     public bool IncludeTransactions { get; set; }
         
-    public void FromJson(JsonSerializer serializer, string jsonValue)
+    public void ReadJson(JsonSerializer serializer, string jsonValue)
     {
         JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
         IncludeTransactions = GetIncludeTransactions(jObject["includeTransactions"]);
     }
-    
-    private static bool GetIncludeTransactions(JToken? token)
+
+    private static bool GetIncludeTransactions(JToken? token) => token switch
     {
-        switch (token)
-        {
-            case null:
-                return false;
-            default:
-                return token.ToObject<bool>();
-        }
-    }
+        null => false,
+        _ => token.ToObject<bool>(),
+    };
 }

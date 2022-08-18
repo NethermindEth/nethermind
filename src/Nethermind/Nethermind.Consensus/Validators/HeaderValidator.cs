@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -67,9 +67,9 @@ namespace Nethermind.Consensus.Validators
             {
                 return false;
             }
-            
+
             bool hashAsExpected = ValidateHash(header);
-            
+
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
@@ -90,18 +90,16 @@ namespace Nethermind.Consensus.Validators
                     return isGenesisValid;
                 }
 
-                if (_logger.IsDebug)
-                    _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
+                if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
                 return false;
             }
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
-            
+
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
-                 if (_logger.IsWarn)
-                    _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect"); 
+                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
@@ -114,18 +112,15 @@ namespace Nethermind.Consensus.Validators
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
 
-            bool timestampMoreThanAtParent = ValidateTimestamp(parent, header);
+            bool timestampValid = ValidateTimestamp(parent, header);
 
             bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
+            if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool eip1559Valid = true;
             bool isEip1559Enabled = spec.IsEip1559Enabled;
@@ -133,7 +128,7 @@ namespace Nethermind.Consensus.Validators
             {
                 UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
                 eip1559Valid = expectedBaseFee == header.BaseFeePerGas;
-                
+
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
@@ -147,7 +142,7 @@ namespace Nethermind.Consensus.Validators
                 gasLimitInRange &&
                 sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-                timestampMoreThanAtParent &&  
+                timestampValid &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
@@ -164,13 +159,13 @@ namespace Nethermind.Consensus.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block number is negative {blockHeader.Number}");
                 return false;
             }
-            
+
             if (blockHeader.GasLimit < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasLimit is negative {blockHeader.GasLimit}");
                 return false;
             }
-            
+
             if (blockHeader.GasUsed < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasUsed is negative {blockHeader.GasUsed}");
@@ -179,7 +174,7 @@ namespace Nethermind.Consensus.Validators
 
             return true;
         }
-        
+
         protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
             bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
@@ -241,7 +236,7 @@ namespace Nethermind.Consensus.Validators
             }
             return timestampMoreThanAtParent;
         }
-        
+
         protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
             bool totalDifficultyCorrect = true;

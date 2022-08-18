@@ -19,9 +19,6 @@ using System;
 
 namespace Nethermind.Blockchain;
 
-/// <summary>
-/// This class has been introduced for performance reasons only (in order to minimize expensive DB lookups where not necessary).
-/// </summary>
 [Flags]
 public enum BlockTreeLookupOptions
 {
@@ -29,11 +26,12 @@ public enum BlockTreeLookupOptions
     TotalDifficultyNotNeeded = 1,
     RequireCanonical = 2,
     DoNotCalculateTotalDifficulty = 4,
-    All = 7
+    AllowInvalid = 8,
+    All = 15
 }
 
 [Flags]
-public enum BlockTreeInsertOptions
+public enum BlockTreeInsertHeaderOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
@@ -44,6 +42,14 @@ public enum BlockTreeInsertOptions
 
     BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
     BeaconHeaderInsert = BeaconHeaderMetadata | MoveToBeaconMainChain | NotOnMainChain
+}
+
+[Flags]
+public enum BlockTreeInsertBlockOptions
+{
+    None = 0,
+    SaveHeader = 1,
+    SkipCanAcceptNewBlocks = 2  // If we have an invalid block, we're blocking the block tree. However, if we have old bodies/old receipts sync at the same time, we need this option. Otherwise, old bodies sync won't insert block, and we fail old receipts sync later
 }
 
 [Flags]
