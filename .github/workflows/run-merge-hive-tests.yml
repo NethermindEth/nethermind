@@ -48,8 +48,7 @@ on:
         type: string 
       loglevel:
         description: 'Log level'
-        required: false
-        default: '' 
+        required: true        
         type: choice
         options:
         -
