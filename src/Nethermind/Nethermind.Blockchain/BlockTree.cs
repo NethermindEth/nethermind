@@ -704,7 +704,7 @@ namespace Nethermind.Blockchain
             bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
                              !options.ContainsFlag(BlockTreeSuggestOptions.ForceDontSetAsMain) && !shouldProcess;
 
-            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
+            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}{Environment.NewLine}{Environment.StackTrace}");
 
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
