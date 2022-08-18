@@ -42,16 +42,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
             set
             {
                 _currentBeaconPivot = value;
-                if (value != null)
+                if (value is not null)
                 {
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
-                        Rlp.Encode(value.GetOrCalculateHash()).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
-                        Rlp.Encode(value.Number).Bytes);
-                } else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
+                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash, Rlp.Encode(value.GetOrCalculateHash()).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(value.Number).Bytes);
+                }
+                else
+                {
+                    _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
+                    _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotNumber);
+                }
             }
         }
-
 
         public BeaconPivot(
             ISyncConfig syncConfig,
@@ -85,7 +87,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            if (blockHeader != null)
+            if (blockHeader is not null)
             {
                 if (beaconPivotExists && updateOnlyIfNull)
                 {
@@ -105,8 +107,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 // BeaconHeaderSync actually starts from the parent of the pivot. So we need to to manually insert
                 // the pivot itself here.
-                _blockTree.Insert(blockHeader,
-                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+                _blockTree.Insert(blockHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
@@ -125,12 +126,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
             {
-                Keccak? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
-                    .AsRlpStream().DecodeKeccak();
-                if (pivotHash != null)
+                Keccak? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?.AsRlpStream().DecodeKeccak();
+                if (pivotHash is not null)
                 {
-                    _currentBeaconPivot =
-                        _blockTree.FindHeader(pivotHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    _currentBeaconPivot = _blockTree.FindHeader(pivotHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 }
             }
 

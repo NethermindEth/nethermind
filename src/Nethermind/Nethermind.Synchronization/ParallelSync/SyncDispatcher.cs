@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -95,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         SyncPeerAllocation allocation = await Allocate(request);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                        if (allocatedPeer != null)
+                        if (allocatedPeer is null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
@@ -142,7 +143,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         }
                         else
                         {
-                            Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
+                            if (Logger.IsDebug) Logger.Debug($"DISPATCHER - {GetType().Name}: peer NOT allocated");
                             SyncResponseHandlingResult result = Feed.HandleResponse(request);
                             ReactToHandlingResult(request, result, null);
                         }
@@ -167,7 +168,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
+            IPeerAllocationStrategy peerAllocationStrategy = PeerAllocationStrategyFactory.Create(request);
+            if (Logger.IsTrace) Logger.Trace($"Using allocation strategy {peerAllocationStrategy}");
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(peerAllocationStrategy, Feed.Contexts, 1000);
             return allocation;
         }
 

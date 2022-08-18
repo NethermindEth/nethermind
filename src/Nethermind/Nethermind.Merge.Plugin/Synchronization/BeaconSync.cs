@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
@@ -78,24 +79,47 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool notInBeaconModeControl = !_isInBeaconModeControl;
             bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
 
-            if (_logger.IsTrace) _logger.Trace($"ShouldBeInBeaconHeaders: NotInBeaconModeControl: {notInBeaconModeControl}, BeaconPivotExists: {beaconPivotExists}, NotFinishedBeaconHeaderSync: {notFinishedBeaconHeaderSync} LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            if (_logger.IsTrace)
+            {
+                ISyncModeSelector.LogDetailedSyncModeChecks(_logger, "BEACONHEADERS",
+                    (nameof(beaconPivotExists), beaconPivotExists),
+                    (nameof(notInBeaconModeControl), notInBeaconModeControl),
+                    (nameof(notFinishedBeaconHeaderSync), notFinishedBeaconHeaderSync));
+
+                    _logger.Trace($"ShouldBeInBeaconHeaders: NotInBeaconModeControl: {notInBeaconModeControl}, BeaconPivotExists: {beaconPivotExists}, NotFinishedBeaconHeaderSync: {notFinishedBeaconHeaderSync} LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            }
+
             return beaconPivotExists &&
                    notInBeaconModeControl &&
                    notFinishedBeaconHeaderSync;
         }
 
-        public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
+        public bool ShouldBeInBeaconModeControl()
+        {
+            if (_logger.IsTrace) ISyncModeSelector.LogDetailedSyncModeChecks(_logger, "BEACONCONTROL", (nameof(_isInBeaconModeControl), _isInBeaconModeControl));
+            return _isInBeaconModeControl;
+        }
 
         public bool IsBeaconSyncHeadersFinished()
         {
             BlockHeader? lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader;
-            bool chainMerged =
-                ((lowestInsertedBeaconHeader?.Number ?? 0) - 1) <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue) &&
-                lowestInsertedBeaconHeader != null &&
-                _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
-            bool finished = lowestInsertedBeaconHeader == null
+            bool chainMerged = ((lowestInsertedBeaconHeader?.Number ?? 0) - 1) <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue)
+                               && lowestInsertedBeaconHeader is not null
+                               && _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
+
+            bool finished = lowestInsertedBeaconHeader is null
                             || lowestInsertedBeaconHeader.Number <= _syncConfig.PivotNumberParsed + 1
                             || chainMerged;
+
+            if (_logger.IsTrace)
+            {
+                ISyncModeSelector.LogDetailedSyncModeChecks(_logger, "IS BEACONHEADERS FINISHED",
+                    ("lowestInsertedBeaconHeader is null", lowestInsertedBeaconHeader is null),
+                    ("lowestInsertedBeaconHeader.Number <= _syncConfig.PivotNumberParsed + 1", lowestInsertedBeaconHeader?.Number <= _syncConfig.PivotNumberParsed + 1),
+                    (nameof(chainMerged), chainMerged));
+
+                _logger.Trace($"BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            }
 
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +

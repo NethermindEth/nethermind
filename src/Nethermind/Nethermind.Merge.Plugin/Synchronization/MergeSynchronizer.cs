@@ -93,11 +93,9 @@ public class MergeSynchronizer : Synchronizer
 
     private void StartBeaconHeadersComponents()
     {
-        FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-        BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
-        BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
-            new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
+        FastBlocksPeerAllocationStrategyFactory fastFactory = new(_logManager);
+        BeaconHeadersSyncFeed beaconHeadersFeed = new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
+        BeaconHeadersSyncDispatcher beaconHeadersDispatcher = new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)

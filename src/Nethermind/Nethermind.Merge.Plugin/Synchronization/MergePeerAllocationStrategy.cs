@@ -59,7 +59,7 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
             ? _postMergeAllocationStrategy.Allocate(currentPeer, postTTDPeers, nodeStatsManager, blockTree)
             : _preMergeAllocationStrategy.Allocate(currentPeer, peerInfos, nodeStatsManager, blockTree);
 
-        if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: Result of peer allocation {peerInfo}");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: Result of peer allocation {peerInfo}");
         return peerInfo;
     }
 

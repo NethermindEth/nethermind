@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
+using Newtonsoft.Json;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -176,24 +177,26 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     if (!FastSyncEnabled)
                     {
-                        best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-
-                        if (best.IsInWaitingForBlock)
+                        if (ShouldBeInWaitingForBlockMode(best))
                         {
+                            best.IsInWaitingForBlock = true;
                             newModes = SyncMode.WaitingForBlock;
                         }
                         else if (best.IsInBeaconHeaders)
                         {
+                            best.IsInBeaconHeaders = true;
                             newModes = SyncMode.BeaconHeaders;
                         }
                         else
                         {
                             if (ShouldBeInFullSyncModeInArchiveMode(best))
                             {
+                                best.IsInFullSync = true;
                                 newModes = SyncMode.Full;
                             }
                             else
                             {
+                                best.IsInDisconnected = true;
                                 newModes = SyncMode.Disconnected;
                                 reason = "No Useful Peers";
                             }
@@ -223,12 +226,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInStateSync, canBeInSnapRangesPhase ? SyncMode.SnapSync : SyncMode.StateNodes, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            if (IsTheModeSwitchWorthMentioning(newModes))
-                            {
-                                string stateString = BuildStateString(best);
-                                if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                            }
                         }
                         catch (InvalidAsynchronousStateException)
                         {
@@ -236,6 +233,31 @@ namespace Nethermind.Synchronization.ParallelSync
                             reason = "Snapshot Misalignment";
                         }
                     }
+
+                    if (IsTheModeSwitchWorthMentioning(newModes))
+                    {
+                        string stateString = BuildStateString(best);
+                        if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"Best: " +
+                                                       $"{nameof(best.Block)}:{best.Block}; " +
+                                                       $"{nameof(best.Header)}:{best.Header}; " +
+                                                       $"{nameof(best.Peer)}:{best.Peer.Block},{best.Peer.TotalDifficulty}; " +
+                                                       $"{nameof(best.Processed)}:{best.Processed}; " +
+                                                       $"{nameof(best.State)}:{best.State}; " +
+                                                       $"{nameof(best.ChainDifficulty)}:{best.ChainDifficulty}; " +
+                                                       $"{nameof(best.IsInDisconnected)}:{best.IsInDisconnected}; " +
+                                                       $"{nameof(best.IsInAnyBeaconMode)}:{best.IsInAnyBeaconMode}; " +
+                                                       $"{nameof(best.IsInBeaconControl)}:{best.IsInBeaconControl}; " +
+                                                       $"{nameof(best.IsInBeaconHeaders)}:{best.IsInBeaconHeaders}; " +
+                                                       $"{nameof(best.IsInFastBodies)}:{best.IsInFastBodies}; " +
+                                                       $"{nameof(best.IsInFastHeaders)}:{best.IsInFastHeaders}; " +
+                                                       $"{nameof(best.IsInFastReceipts)}:{best.IsInFastReceipts}; " +
+                                                       $"{nameof(best.IsInFastSync)}:{best.IsInFastSync}; " +
+                                                       $"{nameof(best.IsInFullSync)}:{best.IsInFullSync}; " +
+                                                       $"{nameof(best.IsInStateSync)}:{best.IsInStateSync}; " +
+                                                       $"{nameof(best.IsInWaitingForBlock)}:{best.IsInWaitingForBlock}; ");
 
                     if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
                         && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
@@ -654,27 +676,8 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
-        {
-            List<string> matched = new();
-            List<string> failed = new();
-
-            foreach ((string Name, bool IsSatisfied) check in checks)
-            {
-                if (check.IsSatisfied)
-                {
-                    matched.Add(check.Name);
-                }
-                else
-                {
-                    failed.Add(check.Name);
-                }
-            }
-
-            bool result = checks.All(c => c.IsSatisfied);
-            string text = $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
-            _logger.Trace(text);
-        }
+        private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks) =>
+            ISyncModeSelector.LogDetailedSyncModeChecks(_logger, syncType, checks);
 
         private ref struct Snapshot
         {
