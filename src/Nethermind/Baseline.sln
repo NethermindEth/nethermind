@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30011.22
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{E3CA6610-B520-43EB-A12B-27A592C9CA68}"
 EndProject
@@ -59,8 +59,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rocks", "Neth
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{3D1257A1-2981-48DB-BD41-BBE9C83B5316}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{D91B6626-AAFF-4BAB-9A1A-C35D914246C7}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging", "Nethermind.Logging\Nethermind.Logging.csproj", "{C8BB54D9-300C-476B-B38B-7795C830CD76}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{29C4A00C-30F9-421A-BF18-7060602C7EEB}"
@@ -93,9 +91,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Grpc", "Nethermi
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Monitoring", "Nethermind.Monitoring\Nethermind.Monitoring.csproj", "{DFDD625C-04B4-41BC-AC5F-3F9EBFA08248}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{C50317E4-E5C8-4B33-9D27-82FB0840E1B8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{C50317E4-E5C8-4B33-9D27-82FB0840E1B8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Analytics", "Nethermind.Analytics\Nethermind.Analytics.csproj", "{A59A7F43-E20A-42E6-97A6-7EE3B844EF43}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Analytics", "Nethermind.Analytics\Nethermind.Analytics.csproj", "{A59A7F43-E20A-42E6-97A6-7EE3B844EF43}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -211,10 +209,6 @@ Global
 		{3D1257A1-2981-48DB-BD41-BBE9C83B5316}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3D1257A1-2981-48DB-BD41-BBE9C83B5316}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3D1257A1-2981-48DB-BD41-BBE9C83B5316}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D91B6626-AAFF-4BAB-9A1A-C35D914246C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D91B6626-AAFF-4BAB-9A1A-C35D914246C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D91B6626-AAFF-4BAB-9A1A-C35D914246C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D91B6626-AAFF-4BAB-9A1A-C35D914246C7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C8BB54D9-300C-476B-B38B-7795C830CD76}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C8BB54D9-300C-476B-B38B-7795C830CD76}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C8BB54D9-300C-476B-B38B-7795C830CD76}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -311,7 +305,6 @@ Global
 		{DD343C66-E154-494E-BC01-1B66BA345DDE} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{964B7AB0-A507-4763-866B-C61D80266DEF} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{3D1257A1-2981-48DB-BD41-BBE9C83B5316} = {E4D07050-1288-4344-B79D-470C2DC86146}
-		{D91B6626-AAFF-4BAB-9A1A-C35D914246C7} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{C8BB54D9-300C-476B-B38B-7795C830CD76} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{29C4A00C-30F9-421A-BF18-7060602C7EEB} = {E4D07050-1288-4344-B79D-470C2DC86146}
 		{F53D4760-545A-4086-AE9D-7A0285791413} = {E4D07050-1288-4344-B79D-470C2DC86146}
