@@ -15,29 +15,33 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 
-namespace Nethermind.Init
+namespace Nethermind.Init;
+
+public static class VersionToMetrics
 {
-    public static class VersionToMetrics
+    public static int ConvertToNumber(string version)
     {
-        public static int ConvertToNumber(string version)
+        try
         {
-            try
-            {
-                int indexOfDash = version.IndexOf('-');
-                indexOfDash = indexOfDash == -1 ? version.Length : indexOfDash;
-                int prefixLength = version.StartsWith('v') ? 1 : 0;
-                string numberString = version.AsSpan(prefixLength, indexOfDash - prefixLength).ToString();
-                string[] versionParts = numberString.Split(".");
-                int result = 100_000 * int.Parse(versionParts[0]);
-                result += 1000 * int.Parse(versionParts[1]);
-                result += 1 * int.Parse(versionParts[2]);
-                return result;
-            }
-            catch (Exception)
-            {
-                return 0;
-            }
+            var index = version.IndexOfAny(new[] { '-', '+' });
+
+            if (index != -1)
+                version = version[..index];
+
+            var versions = version
+                .Split('.')
+                .Select(v => int.Parse(v))
+                .ToArray();
+
+            return versions.Length == 3
+                ? versions[0] * 100_000 + versions[1] * 1_000 + versions[2]
+                : throw new ArgumentException("Invalid version format");
+        }
+        catch (Exception)
+        {
+            return 0;
         }
     }
 }
