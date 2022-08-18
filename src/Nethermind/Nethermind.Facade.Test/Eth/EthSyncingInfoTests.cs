@@ -46,19 +46,6 @@ namespace Nethermind.Facade.Test.Eth
         }
 
         [Test]
-        public void GetFullInfo_WhenAncientBodiesSyncing()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            ISyncConfig syncConfig = new SyncConfig{FastSync = true, AncientBodiesBarrier = 6160000L, PivotNumber = "6170000"};
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig);
-            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(true, syncingResult.IsSyncing);
-        }
-
-        [Test]
         public void GetFullInfo_WhenSyncing()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
