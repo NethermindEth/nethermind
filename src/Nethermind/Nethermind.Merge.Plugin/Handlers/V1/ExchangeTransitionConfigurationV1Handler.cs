@@ -47,9 +47,9 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         long configuredTerminalBlockNumber = _poSSwitcher.ConfiguredTerminalBlockNumber ?? 0;
         Keccak configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Keccak.Zero;
 
-        if (terminalTotalDifficulty == null)
+        if (terminalTotalDifficulty == _ttdPlaceholderForCl)
         {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind");
+            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
         }
         if (beaconTransitionConfiguration.TerminalTotalDifficulty != terminalTotalDifficulty)
         {
