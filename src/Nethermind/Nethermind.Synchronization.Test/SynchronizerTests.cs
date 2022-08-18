@@ -201,9 +201,9 @@ namespace Nethermind.Synchronization.Test
                 return header;
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
-                if (priority == SendBlockPriority.High)
+                if (mode == SendBlockMode.FullBlock)
                     ReceivedBlocks.Push(block);
             }
 
@@ -329,15 +329,17 @@ namespace Nethermind.Synchronization.Test
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
                 PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
+                IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
+                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new TrieStore(stateDb, LimboLogs.Instance),
+                    trieStore,
                     progressTracker,
                     syncConfig,
                     _logManager);
@@ -345,7 +347,7 @@ namespace Nethermind.Synchronization.Test
                 if (IsMerge(synchronizerType))
                     SyncPeerPool = new SyncPeerPool(BlockTree, stats,
                         new MergeBetterPeerStrategy(
-                            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), poSSwitcher, LimboLogs.Instance), 25, _logManager);
+                            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), poSSwitcher, beaconPivot, LimboLogs.Instance), 25, _logManager);
                 else
                     SyncPeerPool = new SyncPeerPool(BlockTree, stats,
                         new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25,
@@ -355,7 +357,7 @@ namespace Nethermind.Synchronization.Test
                 IBetterPeerStrategy bestPeerStrategy;
                 bestPeerStrategy = IsMerge(synchronizerType)
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy,
-                        poSSwitcher, LimboLogs.Instance)
+                        poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
@@ -366,14 +368,13 @@ namespace Nethermind.Synchronization.Test
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb,
-                        BlockTree, _logManager);
                     SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
                         BlockTree,
+                        blockCacheService,
                         NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
@@ -381,7 +382,6 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         bestPeerStrategy,
                         syncReport,
-                        invalidChainTracker,
                         syncProgressResolver,
                         _logManager
                     );
@@ -399,6 +399,7 @@ namespace Nethermind.Synchronization.Test
                         pivot,
                         poSSwitcher,
                         mergeConfig,
+                        invalidChainTracker,
                         _logManager,
                         syncReport);
                 }
@@ -433,7 +434,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    stateDb,
+                    trieStore,
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,

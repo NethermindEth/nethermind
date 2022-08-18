@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -212,8 +213,8 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions insertOption = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, insertOption);
+        BlockTreeInsertHeaderOptions insertHeaderOption = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOption);
 
         Assert.AreEqual(AddBlockResult.Added, insertResult);
         Assert.AreEqual(9, notSyncedTree.BestKnownNumber);
@@ -231,12 +232,12 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
-            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
             Assert.AreEqual(insertOutcome, insertResult);
         }
     }
@@ -247,13 +248,13 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
 
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
-            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
             Assert.AreEqual(AddBlockResult.Added, insertOutcome);
         }
 
@@ -273,6 +274,7 @@ public partial class BlockTreeTests
         {
             private BlockTreeBuilder? _syncedTreeBuilder;
             private IChainLevelHelper? _chainLevelHelper;
+            private IBeaconPivot _beaconPivot;
 
             public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null)
             {
@@ -305,7 +307,9 @@ public partial class BlockTreeTests
                         LimboLogs.Instance);
                 }
 
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
+                _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, LimboLogs.Instance);
+
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 if (moveBlocksToMainChain)
                     NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                 return this;
@@ -319,8 +323,8 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
                 Block? beaconBlock = SyncedTree.FindBlock(num, BlockTreeLookupOptions.None);
-                AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, true,
-                    BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain);
+                AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader,
+                    BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain);
                 Assert.AreEqual(AddBlockResult.Added, insertResult);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(beaconBlock!.Hash).Bytes);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(beaconBlock.Number).Bytes);
@@ -346,10 +350,10 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2)
+            public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
-                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
-                while (headers != null && headers.Length > 0)
+                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
+                while (headers != null && headers.Length > 1)
                 {
                     BlockDownloadContext blockDownloadContext = new(
                         Substitute.For<ISpecProvider>(),
@@ -379,7 +383,7 @@ public partial class BlockTreeTests
                         Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                     }
 
-                    headers = _chainLevelHelper!.GetNextHeaders(maxCount);
+                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
                 }
 
                 return this;
@@ -394,9 +398,9 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertHeaders(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
-                BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderInsert;
+                BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
                 if (tdMode == TotalDifficultyMode.Null)
-                    options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+                    headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
                 for (long i = high; i >= low; --i)
                 {
                     BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
@@ -405,7 +409,7 @@ public partial class BlockTreeTests
                         beaconHeader!.TotalDifficulty = null;
                     else if (tdMode == TotalDifficultyMode.Zero)
                         beaconHeader.TotalDifficulty = 0;
-                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, options);
+                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, headerOptions);
                     Assert.AreEqual(AddBlockResult.Added, insertResult);
                 }
 
@@ -414,7 +418,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertBeaconBlocks(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
+                BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
                 for (long i = high; i >= low; --i)
                 {
                     Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
@@ -423,7 +427,7 @@ public partial class BlockTreeTests
                     else if (tdMode == TotalDifficultyMode.Zero)
                         beaconBlock!.Header.TotalDifficulty = 0;
 
-                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true, insertOptions);
+                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                     Assert.AreEqual(AddBlockResult.Added, insertResult);
                 }
 
@@ -440,8 +444,8 @@ public partial class BlockTreeTests
                     if (parent == null)
                         parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
-                    NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
-                    SyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.NotOnMainChain);
+                    NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+                    SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
 
                     BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
                     newBlockInfo.BlockNumber = blockToInsert.Number;
@@ -471,7 +475,7 @@ public partial class BlockTreeTests
                     NullBloomStorage.Instance,
                     new SyncConfig(),
                     LimboLogs.Instance);
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 return this;
             }
 

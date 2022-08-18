@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -27,9 +27,9 @@ namespace Nethermind.Blockchain.Find
         Keccak GenesisHash { get; }
 
         Keccak? PendingHash { get; }
-        
+
         Keccak? FinalizedHash { get; }
-        
+
         Keccak? SafeHash { get; }
 
         Block? Head { get; }
@@ -70,36 +70,27 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
-        public Block? FindPendingBlock() =>
-            PendingHash == null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
-        
-        public Block? FindFinalizedBlock() =>
-            FinalizedHash == null ? null : FindBlock(FinalizedHash, BlockTreeLookupOptions.None);
-        
-        public Block? FindSafeBlock() =>
-            SafeHash == null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
+        public Block? FindPendingBlock() => PendingHash == null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
+
+        public Block? FindFinalizedBlock() => FinalizedHash == null ? null : FindBlock(FinalizedHash, BlockTreeLookupOptions.None);
+
+        public Block? FindSafeBlock() => SafeHash == null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
         public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindHeader(long blockNumber) =>
-            FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+        public BlockHeader? FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
-        public BlockHeader FindGenesisHeader() =>
-            FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical)
-            ?? throw new Exception("Genesis header could not be found");
+        public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
         public BlockHeader FindEarliestHeader() => FindGenesisHeader();
 
         public BlockHeader? FindLatestHeader() => Head?.Header;
 
-        public BlockHeader? FindPendingHeader() =>
-            PendingHash == null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindPendingHeader() => PendingHash == null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindFinalizedHeader() =>
-            FinalizedHash == null ? null : FindHeader(FinalizedHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindFinalizedHeader() => FinalizedHash == null ? null : FindHeader(FinalizedHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindSafeHeader() =>
-            SafeHash == null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindSafeHeader() => SafeHash == null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
 
         BlockHeader FindBestSuggestedHeader();
 
@@ -158,7 +149,7 @@ namespace Nethermind.Blockchain.Find
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
-        
+
         /// <summary>
         /// Highest state persisted
         /// </summary>

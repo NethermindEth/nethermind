@@ -19,7 +19,7 @@ jobs:
       with:
         fetch-depth: 2
     - name: Updating submodules
-      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet src/tests src/Math.Gmp.Native
+      run: git submodule update --init src/int256 src/Dirichlet src/tests src/Math.Gmp.Native
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v1
       with:

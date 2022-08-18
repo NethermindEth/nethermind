@@ -176,6 +176,15 @@ namespace Nethermind.Merge.Plugin
                 _logger.Trace(
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
+            if ((header.TotalDifficulty ?? 0) != 0 && dontTrustTotalDifficulty && header.IsGenesis == false)
+            {
+                BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+                if (parentHeader != null && parentHeader.TotalDifficulty != 0)
+                    header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
+                else
+                    header.TotalDifficulty = null;
+            }
+
             bool isTerminal = false, isPostMerge;
             if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
             {
@@ -206,25 +215,8 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    if (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty && dontTrustTotalDifficulty && header.IsGenesis == false)
-                    {
-                        BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-                        if (parentHeader != null && parentHeader.TotalDifficulty != 0)
-                            header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
-                        else
-                            header.TotalDifficulty = null;
-                    }
-
-                    if (header.TotalDifficulty == null)
-                    {
-                        isPostMerge = header.Difficulty == 0;
-                        isTerminal = false; // we can't say if block isTerminal if we don't have TD
-                    }
-                    else
-                    {
-                        isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
-                        isPostMerge = !isTerminal;
-                    }
+                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
+                    isPostMerge = !isTerminal;
                 }
             }
 

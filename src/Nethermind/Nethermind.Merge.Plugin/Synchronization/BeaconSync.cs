@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = true;
         }
 
-        public void InitBeaconHeaderSync(BlockHeader? blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
@@ -97,7 +97,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             || lowestInsertedBeaconHeader.Number <= _syncConfig.PivotNumberParsed + 1
                             || chainMerged;
 
-            if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            if (_logger.IsTrace) _logger.Trace(
+                $"IsBeaconSyncHeadersFinished: {finished}," +
+                $" BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}," +
+                $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
+                $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
+                $" ChainMerged: {chainMerged}," +
+                $" BeaconPivot: {_beaconPivot.PivotNumber}," +
+                $" BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
         }
 
@@ -116,7 +123,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        void InitBeaconHeaderSync(BlockHeader? blockHeader);
+        void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }

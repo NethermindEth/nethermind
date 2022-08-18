@@ -15,19 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -37,22 +39,31 @@ public class ChainLevelHelper : IChainLevelHelper
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
     private readonly ILogger _logger;
+    private readonly IBeaconPivot _beaconPivot;
 
     public ChainLevelHelper(
         IBlockTree blockTree,
+        IBeaconPivot beaconPivot,
         ISyncConfig syncConfig,
         ILogManager logManager)
     {
         _blockTree = blockTree;
+        _beaconPivot = beaconPivot;
         _syncConfig = syncConfig;
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
             return null;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is {startingPoint}");
 
         List<BlockHeader> headers = new(maxCount);
         int i = 0;
@@ -76,6 +87,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {startingPoint} not found");
                 break;
             }
+
             if (_logger.IsTrace)
             {
                 _logger.Trace($"ChainLevelHelper - MainChainBlock: {level.MainChainBlock} TD: {level.MainChainBlock?.TotalDifficulty}");
@@ -125,13 +137,26 @@ public class ChainLevelHelper : IChainLevelHelper
         return true;
     }
 
+    /// <summary>
+    /// Returns a number BEFORE the lowest beacon info where the forward beacon sync should start, or the latest
+    /// block that was processed where we should continue processing.
+    /// </summary>
+    /// <returns></returns>
     private long? GetStartingPoint()
     {
-        long startingPoint = _blockTree.BestKnownNumber + 1;
+        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool foundBeaconBlock;
+
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
         if (beaconMainChainBlock == null) return null;
+
+        if (!beaconMainChainBlock.IsBeaconInfo)
+        {
+            return startingPoint;
+        }
+
         Keccak currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
@@ -143,11 +168,14 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            BlockInfo blockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
-            foundBeaconBlock = blockInfo.IsBeaconInfo;
+            BlockInfo parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
+            foundBeaconBlock = parentBlockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {blockInfo?.ToString()}");
+                    $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
+
+            // Note: the starting point, points to the non-beacon info block.
+            // MergeBlockDownloader does not download the first header so this is deliberate
             --startingPoint;
             currentHash = header.ParentHash!;
             if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)

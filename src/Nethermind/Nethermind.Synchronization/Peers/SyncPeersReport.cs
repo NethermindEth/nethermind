@@ -63,8 +63,14 @@ namespace Nethermind.Synchronization.Peers
 
                 RememberState(out bool _);
                 _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
+                bool headerAdded = false;
                 foreach (PeerInfo peerInfo in OrderedPeers)
                 {
+                    if (!headerAdded)
+                    {
+                        headerAdded = true;
+                        AddPeerHeader();
+                    }
                     _stringBuilder.AppendLine();
                     AddPeerInfo(peerInfo);
                 }
@@ -82,7 +88,6 @@ namespace Nethermind.Synchronization.Peers
                 {
                     return;
                 }
-
                 RememberState(out bool changed);
                 if (!changed)
                 {
@@ -90,8 +95,14 @@ namespace Nethermind.Synchronization.Peers
                 }
                 
                 _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                bool headerAdded = false;
                 foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
                 {
+                    if (!headerAdded)
+                    {
+                        headerAdded = true;
+                        AddPeerHeader();
+                    }
                     _stringBuilder.AppendLine();
                     AddPeerInfo(peerInfo);
                 }
@@ -113,6 +124,18 @@ namespace Nethermind.Synchronization.Peers
             _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.SnapRanges));
             _stringBuilder.Append(']');
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
+        }
+
+        private void AddPeerHeader()
+        {
+            _stringBuilder.AppendLine();
+            _stringBuilder.Append("===")
+                                .Append("[Allocated][Sleeping][Peer Info                           ]")
+                                .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
+                                .Append("[Client Info (Name/Version/OS/Language)                   ]")
+                                .AppendLine();
+            _stringBuilder.Append("----------------------------------------------------------------------" +
+                "----------------------------------------------------------------------------------------");
         }
 
         private void RememberState(out bool initializedCountChanged)

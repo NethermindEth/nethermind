@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private BlockHeader GetParentHeader(Block block) => 
+        private BlockHeader GetParentHeader(Block block) =>
             _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)!;
 
         private void ValidateGasLimit(Block block)
@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.AuRa
             if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
-                throw new InvalidBlockException(block.Hash);
+                throw new InvalidBlockException(block);
             }
         }
 
@@ -137,16 +137,16 @@ namespace Nethermind.Consensus.AuRa
                 if (args.Action != TxAction.Add)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {args.Reason}.");
-                    throw new InvalidBlockException(block.Hash);
+                    throw new InvalidBlockException(block);
                 }
             }
         }
-        
+
         private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
         {
             CheckTxPosdaoRules(e);
         }
-        
+
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
             AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader header)

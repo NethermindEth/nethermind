@@ -70,23 +70,43 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public Keccak PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
+        public BlockHeader? ProcessDestination { get; set; }
+
+        // We actually start beacon header sync from the pivot parent hash because hive test.... And because
+        // we can I guess?
+        public Keccak PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _syncConfig.PivotHashParsed;
+
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 
         public long PivotDestinationNumber => CurrentBeaconPivot is null
             ? 0
             : _syncConfig.PivotNumberParsed + 1;
-        public void EnsurePivot(BlockHeader? blockHeader)
+        public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
             if (blockHeader != null)
             {
+                if (beaconPivotExists && updateOnlyIfNull)
+                {
+                    return;
+                }
+
+                if (updateOnlyIfNull)
+                {
+                    if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader}");
+                }
+
                 // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
                     return;
                 }
 
+                // BeaconHeaderSync actually starts from the parent of the pivot. So we need to to manually insert
+                // the pivot itself here.
+                _blockTree.Insert(blockHeader,
+                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
@@ -120,10 +140,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
     public interface IBeaconPivot : IPivot
     {
-        void  EnsurePivot(BlockHeader? blockHeader);
+        void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false);
 
         void RemoveBeaconPivot();
 
         bool BeaconPivotExists();
+
+        // Used as a hint for MergeBlockDownloader to check from what point should it start checking for beacon blocks
+        // in case where the lowest beacon block is lower than the best known number. This header moves forward
+        // as MergeBlockDownloader process higher block, making it somewhat like a lowest processed beacon block.
+        // TODO: Check if we can just re-use pivot and move pivot forward
+        BlockHeader? ProcessDestination { get; set; }
     }
 }

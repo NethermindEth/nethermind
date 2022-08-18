@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
-            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.GWei()) / 100;
+            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei()) / 100;
             estimate.Should().BeEquivalentTo(expectedGasPrice);
         }
         
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
-            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.GWei())) * 110 / 100);
+            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei())) * 110 / 100);
         }
 
         [Test]

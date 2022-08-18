@@ -1,10 +1,13 @@
 name: '[RUN] Nethermind/Ethereum Tests'
 
-concurrency: 
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}  
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
-on: 
+on:
   push:
+    branches:
+       - master
   pull_request:
   workflow_dispatch:
 
@@ -91,10 +94,7 @@ jobs:
     - name: Nethermind.Logging.NLog.Test
       run: |
         dotnet test src/Nethermind/Nethermind.Logging.NLog.Test -c ${{ env.BUILD_CONFIG }}
-    - name: MathGmp.Native
-      run: |
-        dotnet test src/Math.Gmp.Native/MathGmp.Native.UnitTests -c ${{ env.BUILD_CONFIG }}
-        
+
   neth-tests3:
     name: Running Nethermind Tests 3
     runs-on: ubuntu-latest
@@ -291,7 +291,7 @@ jobs:
     - name: Ethereum.VM.Test
       run: |
         dotnet test src/Nethermind/Ethereum.VM.Test -c ${{ env.BUILD_CONFIG }}
-        
+
   eth-tests3:
     name: Running Ethereum Tests 3
     runs-on: ubuntu-latest

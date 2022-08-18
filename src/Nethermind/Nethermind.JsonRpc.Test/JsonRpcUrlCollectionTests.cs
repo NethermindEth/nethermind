@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -216,6 +216,56 @@ namespace Nethermind.JsonRpc.Test
             {
                 { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
                 { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, false, new [] { "db", "erc20", "web3" }) }
+            }, urlCollection); ;
+        }
+
+        [Test]
+        public void EngineHost_and_EnginePort_specified()
+        {
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+            {
+                Enabled = true,
+                EnabledModules = _enabledModules,
+                AdditionalRpcUrls = new []
+                {
+                    "http://127.0.0.1:8551|http|eth;web3;engine"
+                },
+                EngineHost = "127.0.0.1",
+                EnginePort = 8551,
+                EngineEnabledModules = new[] {"eth"}
+            };
+
+            JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+            CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
+            {
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
+                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, new [] { "eth", "engine" }) },
+            }, urlCollection); ;
+        }
+
+        [Test]
+        public void Skips_AdditionalUrl_with_engine_module_enabled_when_EngineUrl_specified()
+        {
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+            {
+                Enabled = true,
+                EnabledModules = _enabledModules,
+                AdditionalRpcUrls = new []
+                {
+                    "http://127.0.0.1:8551|http|eth;web3;engine",
+                    "http://127.0.0.1:1234|http|eth;web3"
+                },
+                EngineHost = "127.0.0.1",
+                EnginePort = 8552,
+                EngineEnabledModules = new []{"eth"}
+            };
+
+            JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
+            CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
+            {
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
+                { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, new [] { "eth", "engine" }) },
+                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, new [] { "eth", "web3" })}
             }, urlCollection); ;
         }
     }
