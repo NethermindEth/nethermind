@@ -16,7 +16,7 @@ jobs:
       with:
         dotnet-version: '6.0.x'
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native
+      run: git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -39,4 +39,3 @@ jobs:
         cd src/Nethermind/Nethermind.Vault.Test
         sed -i '5s/.*/    <Parameter name="token" value="'"$TOKEN"'" \/>/' vault.runsettings
         dotnet test -s vault.runsettings
-        

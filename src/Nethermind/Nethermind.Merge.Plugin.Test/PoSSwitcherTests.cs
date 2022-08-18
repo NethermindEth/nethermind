@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             UInt256? expectedTtd = null;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, TestSpecProvider.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
         }
