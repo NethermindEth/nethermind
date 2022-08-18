@@ -80,7 +80,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
         ISyncConfig syncConfig = new SyncConfig();
         TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-        EthSyncingInfo = new EthSyncingInfo(BlockTree, syncConfig);
+        EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig);
         PostMergeBlockProducerFactory blockProducerFactory = new(
             SpecProvider,
             SealEngine,

@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -31,11 +32,12 @@ namespace Nethermind.Facade.Test.Eth
         [Test]
         public void GetFullInfo_WhenNotSyncing()
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig();
-            blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
-            blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockFinder, syncConfig);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(false, syncingResult.IsSyncing);
             Assert.AreEqual(0, syncingResult.CurrentBlock);
@@ -46,11 +48,12 @@ namespace Nethermind.Facade.Test.Eth
         [Test]
         public void GetFullInfo_WhenAncientBodiesSyncing()
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig{FastSync = true, AncientBodiesBarrier = 6160000L, PivotNumber = "6170000"};
-            blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
-            blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockFinder, syncConfig);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(true, syncingResult.IsSyncing);
         }
@@ -58,11 +61,12 @@ namespace Nethermind.Facade.Test.Eth
         [Test]
         public void GetFullInfo_WhenSyncing()
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig();
-            blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
-            blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockFinder, syncConfig);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(true, syncingResult.IsSyncing);
             Assert.AreEqual(6178000L, syncingResult.CurrentBlock);
@@ -70,38 +74,67 @@ namespace Nethermind.Facade.Test.Eth
             Assert.AreEqual(0, syncingResult.StartingBlock);
         }
 
-        [TestCase(6178001L, 0L, 6178000L, 6178001L, false, false)]
-        [TestCase(6178010L, 0L, 6178000L, 6178001L, false, true)]
-        [TestCase(6178010L, 1000L, 6178009L, 1000L, true, false)]
-        [TestCase(6178010L, 1001L, 6178009L, 1000L, true, true)]
-        [TestCase(6178010L, 1001L, 6178000L, 1000L, true, true)]
-        [TestCase(6178010L, 1000L, 6178000L, 1000L, true, true)]
-        public void IsSyncing_ReturnsExpectedResult(long bestHeader, long currentTail, long currentHead,
-            long ancientBodiesBarrier, bool isFastSync, bool expectedResult)
+        [TestCase(6178001L, 6178000L, false)]
+        [TestCase(6178010L, 6178000L, true)]
+        public void IsSyncing_ReturnsExpectedResult(long bestHeader, long currentHead, bool expectedResult)
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, new SyncConfig());
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+            Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
+        }
+
+        [TestCase(800, 1000, true, false, 1100, false)]
+        [TestCase(801, 1000, true, false, 1100, true)]
+        [TestCase(799, 1000, true, false, 1100, false)]
+        [TestCase(800, 1000, true, false, 1050, true)]
+        [TestCase(801, 1000, true, false, 1050, true)]
+        [TestCase(799, 1000, true, false, 1050, true)]
+
+        [TestCase(1000, 900, false, true, 1100, false)]
+        [TestCase(1000, 901, false, true, 1100, true)]
+        [TestCase(1000, 899, false, true, 1100, false)]
+        [TestCase(1000, 900, false, true, 1050, true)]
+        [TestCase(1000, 901, false, true, 1050, true)]
+        [TestCase(1000, 899, false, true, 1050, true)]
+
+        [TestCase(800, 900, true, true, 1100, false)]
+        [TestCase(800, 901, true, true, 1100, true)]
+        [TestCase(800, 899, true, true, 1100, false)]
+        [TestCase(801, 900, true, true, 1100, true)]
+        [TestCase(801, 901, true, true, 1100, true)]
+        [TestCase(801, 899, true, true, 1100, true)]
+        [TestCase(799, 900, true, true, 1100, false)]
+        [TestCase(799, 901, true, true, 1100, true)]
+        [TestCase(799, 899, true, true, 1100, false)]
+        public void IsSyncing_AncientBarriers(long bodiesTail, long receiptsTail, bool downloadBodies,
+            bool downloadReceipts, long currentHead, bool expectedResult)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig
             {
-                FastSync = isFastSync,
-                AncientBodiesBarrier = ancientBodiesBarrier,
-                PivotNumber = ancientBodiesBarrier.ToString()
+                FastSync = true,
+                AncientBodiesBarrier = 800,
+                // AncientBodiesBarrierCalc = Max(1, Min(Pivot, BodiesBarrier)) = BodiesBarrier = 800
+                AncientReceiptsBarrier = 900,
+                // AncientReceiptsBarrierCalc = Max(1, Min(Pivot, Max(BodiesBarrier, ReceiptsBarrier))) = ReceiptsBarrier = 900
+                DownloadBodiesInFastSync = downloadBodies,
+                DownloadReceiptsInFastSync = downloadReceipts,
+                PivotNumber = "1000"
             };
-            blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
-            blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject)
+
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1100).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject)
                 .TestObject);
-            blockFinder.FindBlock(Arg.Any<long>())
-                .Returns(x =>
-                {
-                    long number = (long)x[0];
-                    if (currentTail <= number && number <= currentHead)
-                    {
-                        return Build.A.Block.WithNumber(number).TestObject;
-                    }
+            blockTree.LowestInsertedBodyNumber.Returns(bodiesTail);
 
-                    return null;
-                });
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(receiptsTail);
 
-            EthSyncingInfo ethSyncingInfo = new(blockFinder, syncConfig);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
         }

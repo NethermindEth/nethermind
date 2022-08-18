@@ -18,7 +18,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -37,8 +37,9 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
@@ -58,7 +59,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, syncConfig);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
