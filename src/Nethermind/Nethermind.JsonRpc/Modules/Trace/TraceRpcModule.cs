@@ -77,11 +77,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
-            for (int index = 0; index < calls.Length; index++)
-            {
-                TransactionForRpcWithTraceTypes call = calls[index];
-                call.Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
-            }
 
             SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
             if (headerSearch.IsError)
@@ -93,6 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Length];
             for (int i = 0; i < calls.Length; i++)
             {
+                calls[i].Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
                 Transaction tx = calls[i].Transaction.ToTransaction();
                 tx.Hash = new Keccak(new UInt256((ulong)i).ToBigEndian());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
