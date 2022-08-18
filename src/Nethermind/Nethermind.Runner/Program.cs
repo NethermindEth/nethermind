@@ -76,7 +76,7 @@ namespace Nethermind.Runner
                     logger.Error(FailureString + eventArgs.ExceptionObject);
                 }
             };
-                
+
             try
             {
                 Run(args);
@@ -480,7 +480,7 @@ namespace Nethermind.Runner
             ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger.IsInfo)
+                if (_logger.IsInfo) 
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }
