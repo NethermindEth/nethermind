@@ -106,10 +106,10 @@ namespace Nethermind.Runner
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
-            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+            GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
-            _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
+            _ = app.VersionOption("-v|--version", () => ProductInfo.Version, GetProductInfo);
 
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);
@@ -148,7 +148,7 @@ namespace Nethermind.Runner
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
+                if (_logger.IsDebug) _logger.Debug(ProductInfo.ClientId);
 
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
@@ -271,7 +271,7 @@ namespace Nethermind.Runner
         {
             string shortCommand = "-pd";
             string longCommand = "--pluginsDirectory";
-            
+
             string[] GetPluginArgs()
             {
                 for (int i = 0; i < args.Length; i++)
@@ -279,14 +279,14 @@ namespace Nethermind.Runner
                     string arg = args[i];
                     if (arg == shortCommand || arg == longCommand)
                     {
-                        return i == args.Length - 1 ? new[] {arg} : new[] {arg, args[i + 1]};
+                        return i == args.Length - 1 ? new[] { arg } : new[] { arg, args[i + 1] };
                     }
                 }
 
                 return Array.Empty<string>();
             }
-            
-            CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
+
+            CommandLineApplication pluginsApp = new() { Name = "Nethermind.Runner.Plugins" };
             CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
             string pluginDirectory = "plugins";
             pluginsApp.OnExecute(() =>
@@ -401,7 +401,7 @@ namespace Nethermind.Runner
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();
-            if(incorrectSettings.Errors.Count() > 0)
+            if (incorrectSettings.Errors.Count() > 0)
             {
                 logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
             }
@@ -480,10 +480,27 @@ namespace Nethermind.Runner
             ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger.IsInfo) 
+                if (_logger.IsInfo)
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }
+        }
+
+        private static string GetProductInfo()
+        {
+            var info = new StringBuilder();
+
+            info
+                .Append("Version: ").AppendLine(ProductInfo.Version)
+                .Append("Commit: ").AppendLine(ProductInfo.Commit)
+                .Append("Build Date: ").AppendLine(ProductInfo.BuildTimestamp.ToString("u"))
+                .Append("OS: ")
+                    .Append(ProductInfo.OS)
+                    .Append(' ')
+                    .AppendLine(ProductInfo.OSArchitecture)
+                .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
+
+            return info.ToString();
         }
     }
 }
