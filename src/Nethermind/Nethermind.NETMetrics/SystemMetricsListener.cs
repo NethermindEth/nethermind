@@ -49,7 +49,6 @@ public class SystemMetricsListener: EventListener
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        Console.WriteLine(eventData.EventName);
         if (!eventData.EventName.Equals("EventCounters"))
         {
             return;
