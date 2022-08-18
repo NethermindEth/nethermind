@@ -4,5 +4,5 @@ namespace Nethermind.NETMetrics;
 
 public class Metrics
 {
-    public static Dictionary<string, long> SystemRuntimeMetric = new Dictionary<string, long>();
+    public static IDictionary<string, double> SystemRuntimeMetric = new Dictionary<string, double>();
 }

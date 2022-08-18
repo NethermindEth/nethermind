@@ -70,18 +70,18 @@ public class SystemMetricsListener: EventListener
 
         if (eventPayload.TryGetValue("Name", out object displayValue))
         {
-            counterName = displayValue.ToString();
+            counterName = displayValue.ToString().Replace("-", "_");
         }
 
         if (eventPayload.TryGetValue("Mean", out object value))
         {
-            Metrics.SystemRuntimeMetric[counterName] = long.Parse(value.ToString());
+            Metrics.SystemRuntimeMetric[counterName] = double.Parse(value.ToString());
             return;
         }
 
         if (eventPayload.TryGetValue("Increment", out value))
         {
-            Metrics.SystemRuntimeMetric[counterName] += long.Parse(value.ToString());
+            Metrics.SystemRuntimeMetric[counterName] = double.Parse(value.ToString());
             return;
         }
 
