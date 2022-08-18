@@ -26,53 +26,52 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Init.Steps;
+
+[RunnerStepDependencies(typeof(InitializeNetwork))]
+public class StartMonitoring : IStep
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork))]
-    public class StartMonitoring : IStep
+    private readonly IApiWithNetwork _api;
+
+    public StartMonitoring(INethermindApi api)
     {
-        private readonly IApiWithNetwork _api;
+        _api = api;
+    }
 
-        public StartMonitoring(INethermindApi api)
+    public async Task Execute(CancellationToken cancellationToken)
+    {
+        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
+        ILogger logger = _api.LogManager.GetClassLogger();
+        
+        // hacky
+        if (!string.IsNullOrEmpty(metricsConfig.NodeName))
         {
-            _api = api;
+            _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
-
-        public async Task Execute(CancellationToken cancellationToken)
+        
+        if (metricsConfig.Enabled)
         {
-            IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger();
-            
-            // hacky
-            if (!string.IsNullOrEmpty(metricsConfig.NodeName))
+            Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
+            MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
+            _api.MonitoringService = new MonitoringService(metricsUpdater, metricsConfig, _api.LogManager);
+            IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
+            foreach (Type metric in metrics)
             {
-                _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
+                _api.MonitoringService.RegisterMetrics(metric);    
             }
-            
-            if (metricsConfig.Enabled)
-            {
-                Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
-                MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
-                _api.MonitoringService = new MonitoringService(metricsUpdater, metricsConfig, _api.LogManager);
-                IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
-                foreach (Type metric in metrics)
-                {
-                    _api.MonitoringService.RegisterMetrics(metric);    
-                }
 
-                await _api.MonitoringService.StartAsync().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && logger.IsError) 
-                        logger.Error("Error during starting a monitoring.", x.Exception);
-                }, cancellationToken);
-                
-                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
-            }
-            else
+            await _api.MonitoringService.StartAsync().ContinueWith(x =>
             {
-                if (logger.IsInfo) 
-                    logger.Info("Grafana / Prometheus metrics are disabled in configuration");
-            }
+                if (x.IsFaulted && logger.IsError) 
+                    logger.Error("Error during starting a monitoring.", x.Exception);
+            }, cancellationToken);
+            
+            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
+        }
+        else
+        {
+            if (logger.IsInfo) 
+                logger.Info("Grafana / Prometheus metrics are disabled in configuration");
         }
     }
 }
