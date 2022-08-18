@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,8 +24,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
-        private readonly Dictionary<Keccak, ParityTraceTypes>? _typesByTransaction;
-        private Block _block = null!;
+        private readonly IDictionary<Keccak, ParityTraceTypes>? _typesByTransaction;
+        private Block _block;
         private readonly ParityTraceTypes _types;
 
         public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
-        public ParityLikeBlockTracer(Dictionary<Keccak,ParityTraceTypes> typesByTransaction)
+        public ParityLikeBlockTracer(IDictionary<Keccak, ParityTraceTypes> typesByTransaction)
         {
             _typesByTransaction = typesByTransaction;
             IsTracingRewards = false;
