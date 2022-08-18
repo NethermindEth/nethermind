@@ -43,7 +43,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
 
     public ResultWrapper<TransitionConfigurationV1> Handle(TransitionConfigurationV1 beaconTransitionConfiguration)
     {
-        UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
+        UInt256 terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty ?? _ttdPlaceholderForCl;
         long configuredTerminalBlockNumber = _poSSwitcher.ConfiguredTerminalBlockNumber ?? 0;
         Keccak configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Keccak.Zero;
 
@@ -64,7 +64,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         {
             TerminalBlockHash = configuredTerminalBlockHash,
             TerminalBlockNumber = configuredTerminalBlockNumber,
-            TerminalTotalDifficulty = terminalTotalDifficulty ?? _ttdPlaceholderForCl
+            TerminalTotalDifficulty = terminalTotalDifficulty
         });
     }
 }

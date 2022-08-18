@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (block.Header.Number <= _syncConfig.PivotNumberParsed)
             {
-                if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
+                if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
                 return NewPayloadV1Result.Syncing;
             }
 
