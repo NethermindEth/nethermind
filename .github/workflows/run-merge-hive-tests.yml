@@ -48,10 +48,11 @@ on:
         type: string 
       loglevel:
         description: 'Log level'
-        required: true
-        default: '3' 
+        required: false
+        default: '' 
         type: choice
         options:
+        -
         - 0
         - 1
         - 2
