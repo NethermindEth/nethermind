@@ -20,8 +20,11 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -30,6 +33,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
@@ -100,8 +104,9 @@ public class BeaconHeadersSyncTests
             SyncConfig,
             Report,
             BeaconPivot,
-            MergeConfig,
             InvalidChainTracker,
+            SpecProvider,
+            Substitute.For<IHeaderValidator>(),
             LimboLogs.Instance
         );
 
@@ -164,6 +169,10 @@ public class BeaconHeadersSyncTests
 
         private IBlockCacheService? _blockCacheService;
         public IBlockCacheService BlockCacheService => _blockCacheService ??= new BlockCacheService();
+
+        private ISpecProvider _specProvider;
+        public ISpecProvider SpecProvider => _specProvider ??= new OverridableSpecProvider(MainnetSpecProvider.Instance, spec => spec) { TerminalTotalDifficulty = 498000000 };
+
     }
 
     [Test]
@@ -181,6 +190,7 @@ public class BeaconHeadersSyncTests
             },
             MergeConfig = { Enabled = true }
         };
+
         ctx.BeaconPivot = PreparePivot(2000, ctx.SyncConfig, ctx.BlockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
         feed.InitializeFeed();
@@ -284,7 +294,11 @@ public class BeaconHeadersSyncTests
         Block parent = firstBlock;
         for (int i = 0; i < 5; i++)
         {
-            Block block = Build.A.Block.WithParent(parent).WithNonce(1).TestObject;
+            Block block = Build.A.Block.WithParent(parent)
+                .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty + parent.TotalDifficulty)
+                .WithNonce(1).TestObject;
+
             blockTree.SuggestBlock(block);
             parent = block;
         }

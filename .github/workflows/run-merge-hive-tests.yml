@@ -118,7 +118,7 @@ jobs:
       - name: Run Hive With Limit
         continue-on-error: true
         if: "${{ github.event.inputs.limit != '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }} --sim.loglevel ${{ github.event.inputs.loglevel }}
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
