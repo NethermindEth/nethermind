@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -55,11 +56,22 @@ namespace Nethermind.Hive
 
         private void OnPeerRefreshed(object? sender, PeerHeadRefreshedEventArgs e)
         {
+            BlockTreeSuggestOptions GetOptions(BlockHeader blockHeader)
+            {
+                BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess;
+                if (blockHeader.IsTerminalBlock(_api.SpecProvider!))
+                {
+                    options |= BlockTreeSuggestOptions.FillBeaconBlock;
+                }
+
+                return options;
+            }
+
             BlockHeader header = e.Header;
             if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
             {
                 Block block = new(header, new BlockBody());
-                _api.BlockTree!.SuggestBlock(block);
+                _api.BlockTree!.SuggestBlock(block, GetOptions(header));
             }
         }
 
