@@ -125,6 +125,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (_lastInsertedHash is not null)
         {
             BlockHeader? parentHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            if (_logger.IsTrace) _logger.Trace($"Finish {nameof(BeaconHeadersSyncFeed)}, LastInsertedHash {_lastInsertedHash}, ParentHeader {parentHeader}");
             if (parentHeader is not null && !parentHeader.IsPoS() && parentHeader.IsTerminalBlock(_specProvider))
             {
                 _invalidChainTracker.OnInvalidBlock(_lastInsertedHash, parentHeader.Hash);
