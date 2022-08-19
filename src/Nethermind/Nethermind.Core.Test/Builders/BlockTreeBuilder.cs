@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -30,6 +30,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -43,7 +44,7 @@ namespace Nethermind.Core.Test.Builders
         private IReceiptStorage? _receiptStorage;
         private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
-        private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;        
+        private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
@@ -58,7 +59,7 @@ namespace Nethermind.Core.Test.Builders
             HeadersDb = new MemDb();
             BlockInfoDb = new MemDb();
             MetadataDb = new MemDb();
-            
+
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
@@ -71,7 +72,7 @@ namespace Nethermind.Core.Test.Builders
         public MemDb HeadersDb { get; set; }
 
         public MemDb BlockInfoDb { get; set; }
-        
+
         public MemDb MetadataDb { get; set; }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
@@ -96,6 +97,7 @@ namespace Nethermind.Core.Test.Builders
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
 
+            UInt256 totalDifficulty = UInt256.Zero;
             bool skipGenesis = TestObjectInternal.Genesis != null;
             for (int i = 0; i < chainLength; i++)
             {
@@ -109,7 +111,7 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary, totalDifficulty);
                 }
                 else
                 {
@@ -123,16 +125,19 @@ namespace Nethermind.Core.Test.Builders
 
                     Block parent = current;
 
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary, totalDifficulty);
                 }
+
+                totalDifficulty += current.Difficulty;
             }
 
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary, UInt256 totalDifficulty)
         {
             Block currentBlock;
+            UInt256 difficulty = BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant);
             if (_receiptStorage != null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
@@ -144,7 +149,8 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock = Build.A.Block
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
+                    .WithDifficulty(difficulty)
+                    .WithTotalDifficulty(totalDifficulty)
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
                     .WithBeneficiary(beneficiary)
@@ -182,7 +188,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 currentBlock = Build.A.Block.WithNumber(blockIndex + 1)
                     .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
+                    .WithDifficulty(difficulty)
+                    .WithTotalDifficulty(totalDifficulty)
                     .WithBeneficiary(beneficiary)
                     .TestObject;
             }

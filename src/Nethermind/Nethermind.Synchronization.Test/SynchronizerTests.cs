@@ -399,6 +399,7 @@ namespace Nethermind.Synchronization.Test
                         pivot,
                         poSSwitcher,
                         invalidChainTracker,
+                        Always.Valid,
                         _logManager,
                         syncReport);
                 }

@@ -21,6 +21,8 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -31,6 +33,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
@@ -47,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization;
 [TestFixture]
 public class BeaconHeadersSyncTests
 {
-    private static readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
+    private static readonly ISpecProvider _specProvider = new OverridableSpecProvider(MainnetSpecProvider.Instance, spec => spec) { TerminalTotalDifficulty = 498000000 };
 
     private class Context
     {
@@ -105,7 +108,7 @@ public class BeaconHeadersSyncTests
             BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
             BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
             ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
+            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, new NoopInvalidChainTracker(), _specProvider, Always.Valid, LimboLogs.Instance);
         }
     }
 
@@ -127,7 +130,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
+            pivot, new NoopInvalidChainTracker(), _specProvider, new HeaderValidator(blockTree, new NethDevSealEngine(), _specProvider, LimboLogs.Instance), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -159,7 +162,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot,
-            new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
+            new NoopInvalidChainTracker(), _specProvider, new HeaderValidator(blockTree, new NethDevSealEngine(), _specProvider, LimboLogs.Instance), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -217,12 +220,16 @@ public class BeaconHeadersSyncTests
         blockTree.SuggestBlock(firstBlock);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
         IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
-        Context ctx = new (blockTree, new SyncConfig(), pivot);
+        Context ctx = new (blockTree, new SyncConfig() , pivot);
         // fork in chain
         Block parent = firstBlock;
         for (int i = 0; i < 5; i++)
         {
-            Block block = Build.A.Block.WithParent(parent).WithNonce(1).TestObject;
+            Block block = Build.A.Block.WithParent(parent)
+                .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty + parent.TotalDifficulty)
+                .WithNonce(1).TestObject;
+
             blockTree.SuggestBlock(block);
             parent = block;
         }
