@@ -858,7 +858,7 @@ namespace Nethermind.Blockchain
             header.Hash ??= blockHash;
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
-            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) == BlockTreeLookupOptions.None;
+            bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
             if ((totalDifficultyNeeded && header.TotalDifficulty is null) || requiresCanonical)
@@ -869,13 +869,12 @@ namespace Nethermind.Blockchain
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
                     if (_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (calculateTotalDifficulty)
+                    if (createLevelIfMissing)
                     {
                         SetTotalDifficulty(header);
+                        blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
+                        level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                     }
-
-                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
@@ -1709,9 +1708,9 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
+        public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
 
-        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
+        private (BlockInfo? Info, ChainLevelInfo? Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {
             ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
             if (chainLevelInfo is null)
@@ -1884,7 +1883,7 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
-            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
+            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) ==
                                             BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;

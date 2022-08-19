@@ -131,7 +131,7 @@ public class InvalidChainTracker: IInvalidChainTracker
             return block.Header;
         }
 
-        return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+        return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)

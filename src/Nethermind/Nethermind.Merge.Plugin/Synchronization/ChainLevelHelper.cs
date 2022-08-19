@@ -145,7 +145,7 @@ public class ChainLevelHelper : IChainLevelHelper
     private long? GetStartingPoint()
     {
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
-        bool foundBeaconBlock;
+        bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
 
@@ -168,8 +168,13 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            BlockInfo parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
-            foundBeaconBlock = parentBlockInfo.IsBeaconInfo;
+            BlockInfo? parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
+            if (parentBlockInfo == null)
+            {
+                return null;
+            }
+            
+            shouldContinue = parentBlockInfo.IsBeaconInfo || parentBlockInfo.TotalDifficulty == 0;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
@@ -183,7 +188,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;
             }
-        } while (foundBeaconBlock);
+        } while (shouldContinue);
 
         return startingPoint;
     }

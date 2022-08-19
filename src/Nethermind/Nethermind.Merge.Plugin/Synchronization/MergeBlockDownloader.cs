@@ -219,21 +219,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         }
                     }
 
-                    bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
+                    bool isPostMergeBlock = _poSSwitcher.GetBlockConsensusInfo(currentBlock.Header).IsPostMerge;
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
+                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isPostMergeBlock}");
 
-                    if (isKnownBeaconBlock)
+                    if (isPostMergeBlock)
                     {
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
                     }
 
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
+                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isPostMergeBlock} ShouldProcess: {shouldProcess}");
 
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
