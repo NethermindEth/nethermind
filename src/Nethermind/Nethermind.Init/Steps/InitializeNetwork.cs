@@ -521,7 +521,7 @@ namespace Nethermind.Init.Steps
 
             if (_syncConfig.WitnessProtocolEnabled)
             {
-                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 1));
             }
 
             _api.ProtocolValidator = protocolValidator;
