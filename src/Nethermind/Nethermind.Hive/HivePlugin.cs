@@ -59,7 +59,7 @@ namespace Nethermind.Hive
             BlockHeader header = e.Header;
             IBlockTree blockTree = _api.BlockTree!;
             Block? head = blockTree.Head;
-            if ((head is null || !head.IsPoS() || !head.IsTerminalBlock(_api.SpecProvider!))
+            if ((head is null || (!head.IsPoS() && !head.IsTerminalBlock(_api.SpecProvider!)))
                 && header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
             {
                 if (_logger.IsTrace) _logger.Trace($"Suggesting hive empty peer refresher block: HeadIsPos: {head?.IsPoS()}, HeadIsTerminalBlock: {head?.IsTerminalBlock(_api.SpecProvider!)}, HeadTTD {head?.TotalDifficulty}, BlockTTD {header.TotalDifficulty}");

@@ -343,8 +343,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (batch.Response.Length > batch.RequestSize)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
+                if (_logger.IsDebug) _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
                 if (batch.ResponseSourcePeer != null)
                 {
                     _syncPeerPool.ReportBreachOfProtocol(

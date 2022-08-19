@@ -134,15 +134,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     {
         if (_chainMerged)
         {
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    "Chain already merged, skipping header insert");
+            if (_logger.IsTrace) _logger.Trace("Chain already merged, skipping header insert");
             return AddBlockResult.AlreadyKnown;
         }
 
-        if (_logger.IsTrace)
-            _logger.Trace(
-                $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        if (_logger.IsTrace) _logger.Trace($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
         if (_nextHeaderDiff is null)
         {
@@ -153,9 +149,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            if (_logger.IsTrace) _logger.Trace($"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
             return AddBlockResult.AlreadyKnown;
         }
 
@@ -178,9 +172,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
         }
 
-        if (_logger.IsTrace)
-            _logger.Trace(
-                $"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
+        if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
         return insertOutcome;
     }
 }
