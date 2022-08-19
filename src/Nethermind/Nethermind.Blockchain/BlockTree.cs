@@ -868,12 +868,16 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-                    if (_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
+                    if (_logger.IsWarn) _logger.Warn($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     if (createLevelIfMissing)
                     {
                         SetTotalDifficulty(header);
                         blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
                         level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+                    }
+                    else
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Skipped adding block info for {header.ToString(BlockHeader.Format.FullHashAndNumber)} headerTD: {header.TotalDifficulty}");
                     }
                 }
                 else
