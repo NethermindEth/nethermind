@@ -398,7 +398,6 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         poSSwitcher,
-                        mergeConfig,
                         invalidChainTracker,
                         _logManager,
                         syncReport);

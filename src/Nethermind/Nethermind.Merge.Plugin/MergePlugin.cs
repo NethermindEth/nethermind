@@ -389,7 +389,6 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
                     _poSSwitcher,
-                    _mergeConfig,
                     _invalidChainTracker,
                     _api.LogManager,
                     syncReport);

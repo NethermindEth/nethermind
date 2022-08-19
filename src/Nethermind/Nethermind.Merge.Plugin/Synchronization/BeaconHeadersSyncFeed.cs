@@ -17,10 +17,12 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -37,10 +39,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly ISpecProvider _specProvider;
     private readonly IPivot _pivot;
-    private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     private bool _chainMerged;
+    private Keccak? _lastInsertedHash;
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
@@ -57,21 +60,20 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         IPivot? pivot,
-        IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
+        ISpecProvider specProvider,
         ILogManager logManager)
         : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager,
             true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _invalidChainTracker = invalidChainTracker;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
-    protected override SyncMode ActivationSyncModes { get; }
-        = SyncMode.BeaconHeaders;
+    protected override SyncMode ActivationSyncModes => SyncMode.BeaconHeaders;
 
     public override bool IsMultiFeed => true;
 
@@ -120,6 +122,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void PostFinishCleanUp()
     {
+        if (_lastInsertedHash is not null)
+        {
+            BlockHeader? parentHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            if (parentHeader is not null && !parentHeader.IsPoS() && parentHeader.IsTerminalBlock(_specProvider))
+            {
+                _invalidChainTracker.OnInvalidBlock(_lastInsertedHash, parentHeader.Hash);
+            }
+        }
+
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
         HeadersSyncProgressReport.MarkEnd();
         _dependencies.Clear(); // there may be some dependencies from wrong branches
@@ -160,16 +171,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
-            {
-                _nextHeaderDiff = nextHeaderDiff;
-            }
-            else
-            {
-                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
+            _nextHeaderDiff = _expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true
+                ? nextHeaderDiff
+                : header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
                     ? header.TotalDifficulty - header.Difficulty
                     : null;
-            }
+            _lastInsertedHash = header.Hash;
         }
 
         if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");

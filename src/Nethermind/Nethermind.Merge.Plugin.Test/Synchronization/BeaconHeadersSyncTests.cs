@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -46,6 +47,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization;
 [TestFixture]
 public class BeaconHeadersSyncTests
 {
+    private static readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
+
     private class Context
     {
         public IBlockTree BlockTree;
@@ -68,7 +71,7 @@ public class BeaconHeadersSyncTests
             {
                 IDb blockInfoDb = new MemDb();
                 Block genesis = Build.A.Block.Genesis.TestObject;
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), _specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
                 BlockTree.SuggestBlock(genesis);
             }
             else
@@ -86,8 +89,7 @@ public class BeaconHeadersSyncTests
             _syncConfig = syncConfig ?? new SyncConfig();
             _mergeConfig = mergeConfig ?? new MergeConfig();
             _metadataDb = metadataDb ?? new MemDb();
-            PoSSwitcher poSSwitcher = new(_mergeConfig, _syncConfig, _metadataDb, blockTree!,
-                MainnetSpecProvider.Instance, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(_mergeConfig, _syncConfig, _metadataDb, blockTree!, _specProvider, LimboLogs.Instance);
 
             ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
 
@@ -103,8 +105,7 @@ public class BeaconHeadersSyncTests
             BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
             BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
             ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig,
-                new NoopInvalidChainTracker(), LimboLogs.Instance);
+            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
         }
     }
 
@@ -112,8 +113,7 @@ public class BeaconHeadersSyncTests
     public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
     {
         IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
-        BlockTree blockTree = new(memDbProvider, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-            MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+        BlockTree blockTree = new(memDbProvider, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), _specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
@@ -127,7 +127,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, new MergeConfig() {Enabled = true}, new NoopInvalidChainTracker(), LimboLogs.Instance);
+            pivot, new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -155,12 +155,11 @@ public class BeaconHeadersSyncTests
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
          };
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree!,
-            MainnetSpecProvider.Instance, LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree, _specProvider, LimboLogs.Instance);
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
-            Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},
-            new NoopInvalidChainTracker(), LimboLogs.Instance);
+            Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot,
+            new NoopInvalidChainTracker(), _specProvider, LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
