@@ -540,24 +540,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
 
-        private AddBlockResult InsertHeader(BlockHeader header)
-        {
-            if (header.IsGenesis)
-            {
-                return AddBlockResult.AlreadyKnown;
-            }
-
-            return InsertToBlockTree(header);
-        }
+        private AddBlockResult InsertHeader(BlockHeader header) =>
+            header.IsGenesis ? AddBlockResult.AlreadyKnown : InsertToBlockTree(header);
 
         protected virtual AddBlockResult InsertToBlockTree(BlockHeader header)
         {
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
-                ulong nextHeaderDiff = 0;
                 _nextHeaderHash = header.ParentHash!;
-                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
                 {
                     _nextHeaderDiff = nextHeaderDiff;
                 }

@@ -43,7 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPivot _pivot;
     private readonly ILogger _logger;
     private bool _chainMerged;
-    private Keccak? _lastInsertedHash;
+    private bool _lastBlockIsPoS = true;
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
@@ -122,16 +122,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void PostFinishCleanUp()
     {
-        if (_lastInsertedHash is not null)
-        {
-            BlockHeader? parentHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
-            if (_logger.IsTrace) _logger.Trace($"Finish {nameof(BeaconHeadersSyncFeed)}, LastInsertedHash {_lastInsertedHash}, ParentHeader {parentHeader}");
-            if (parentHeader is not null && !parentHeader.IsPoS() && parentHeader.IsTerminalBlock(_specProvider))
-            {
-                _invalidChainTracker.OnInvalidBlock(_lastInsertedHash, parentHeader.Hash);
-            }
-        }
-
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
         HeadersSyncProgressReport.MarkEnd();
         _dependencies.Clear(); // there may be some dependencies from wrong branches
@@ -157,6 +147,20 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         }
 
+        bool isPoS = header.IsPoS();
+        if (_lastBlockIsPoS && !isPoS)
+        {
+            bool isTerminalBlock = header.IsTerminalBlock(_specProvider);
+            if (_logger.IsTrace) _logger.Trace($"{nameof(BeaconHeadersSyncFeed)}, LastBlock is PoS, this block is PoW, isTerminalBlock {isTerminalBlock}, {header}");
+            if (!isTerminalBlock)
+            {
+                _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
+                return AddBlockResult.InvalidBlock;
+            }
+        }
+
+        _lastBlockIsPoS = isPoS;
+
         // Found existing block in the block tree
         if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
@@ -177,7 +181,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                 : header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
                     ? header.TotalDifficulty - header.Difficulty
                     : null;
-            _lastInsertedHash = header.Hash;
         }
 
         if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
