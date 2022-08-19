@@ -255,7 +255,6 @@ namespace Nethermind.Merge.Plugin
                 PayloadPreparationService payloadPreparationService = new(
                     _postMergeBlockProducer,
                     improvementContextFactory,
-                    _api.Sealer,
                     _api.TimerFactory,
                     _api.LogManager,
                     TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
@@ -285,6 +284,7 @@ namespace Nethermind.Merge.Plugin
                         _blockCacheService,
                         _invalidChainTracker,
                         _beaconSync,
+                        _beaconPivot,
                         _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),

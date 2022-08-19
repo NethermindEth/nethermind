@@ -49,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
 
@@ -61,6 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockCacheService blockCacheService,
             IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
+            IBeaconPivot beaconPivot,
             IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
@@ -72,6 +74,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockCacheService = blockCacheService;
             _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
+            _beaconPivot = beaconPivot;
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
         }
@@ -92,13 +95,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
-                    _mergeSyncController.InitBeaconHeaderSync(block.Header);
-                    _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
-                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                    _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-                    _blockCacheService.ProcessDestination ??= block.Header;
-
-                    if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
+                    StartNewBeaconHeaderSync(forkchoiceState, block, requestStr);
 
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
@@ -107,21 +104,30 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
                 }
-
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
             BlockInfo blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
             if (!blockInfo.WasProcessed)
             {
+                BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!);
+                if (blockParent == null)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Parent of block not available. Starting new beacon header. sync.");
+
+                    StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
+
+                    return ForkchoiceUpdatedV1Result.Syncing;
+                }
+
                 if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
-                    ReorgBeaconChainDuringSync(newHeadBlock, blockInfo);
+                    ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
 
                 int processingQueueCount = _processingQueue.Count;
                 if (processingQueueCount == 0)
                 {
-                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
-                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                    _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                     _mergeSyncController.StopBeaconModeControl();
 
@@ -132,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
                 }
 
-                _blockCacheService.ProcessDestination ??= newHeadBlock.Header;
+                _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
@@ -152,7 +158,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header))
+            if ((newHeadBlock.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header)))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock.Header.TotalDifficulty}. Request: {requestStr}.");
 
@@ -232,6 +238,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
+        }
+
+        private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, Block block, string requestStr)
+        {
+            _mergeSyncController.InitBeaconHeaderSync(block.Header);
+            _beaconPivot.ProcessDestination = block.Header;
+            _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
+            _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+
+            if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
         }
 
         // This method will detect reorg in terminal PoW block
@@ -332,8 +348,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync or cache rebuilt");
             BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
-            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_blockCacheService.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
-            _blockCacheService.ProcessDestination = newHeadBlock.Header;
+            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_beaconPivot.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
+            _beaconPivot.ProcessDestination = newHeadBlock.Header;
         }
 
         private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)

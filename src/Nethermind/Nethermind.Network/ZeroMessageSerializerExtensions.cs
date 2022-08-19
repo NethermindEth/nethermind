@@ -31,7 +31,7 @@ namespace Nethermind.Network
             try
             {
                 serializer.Serialize(byteBuffer, message);
-                return byteBuffer.ReadAllBytesAsArray();
+                return byteBuffer.ReadAllBytes();
 
             }
             finally
