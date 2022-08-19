@@ -67,11 +67,16 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
         }
 
-        public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
-            => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions().Where(pt => pt.SenderAddress != null)
+        public ResultWrapper<ParityTransaction[]> parity_pendingTransactions(Address? address = null)
+        {
+           IEnumerable<Transaction> enumerable = address == null
+                ? _txPool.GetPendingTransactions()
+                : _txPool.GetPendingTransactionsBySender(address);
+            return ResultWrapper<ParityTransaction[]>.Success(enumerable
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
-                    t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
-        
+                t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
+        }
+
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
