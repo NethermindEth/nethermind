@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,6 +28,7 @@ namespace Nethermind.Api
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
+        public bool ReadChainSpecFromFile { get; set; } = false;
         public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
         public string HiveChainSpecPath { get; set; } = "chainspec/test.json";
         public string BaseDbPath { get; set; } = "db";

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,8 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using Nethermind.Logging;
 
@@ -23,6 +25,28 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public static class ChainSpecLoaderExtensions
     {
+
+        public static ChainSpec LoadFromEmbeddedResource(this IChainSpecLoader chainSpecLoader, string fileName)
+        {
+            fileName = fileName.Replace('/', '.');
+            Assembly assembly = Assembly.GetEntryAssembly();
+            string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
+            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(fileName)))
+            {
+                StringBuilder missingChainspecFileMessage = new($"Embedded chainspec cannot be found {fileName}");
+                missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
+                for (int i = 0; i < embeddedChainSpecFiles.Length; i++)
+                {
+                    missingChainspecFileMessage.AppendLine($"  * {embeddedChainSpecFiles[i].Replace("Nethermind.Runner.", "")}");
+                }
+                throw new Exception(missingChainspecFileMessage.ToString());
+            }
+            string resourceName = $"Nethermind.Runner.{fileName}";
+            using Stream stream = assembly.GetManifestResourceStream(resourceName);
+            using StreamReader reader = new(stream);
+            return chainSpecLoader.Load(reader.ReadToEnd());
+        }
+
         public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
         {
             filePath = filePath.GetApplicationResourcePath();
