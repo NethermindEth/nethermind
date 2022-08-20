@@ -67,9 +67,6 @@
       <Link>Nethermind Ethereum Client - Terms and Conditions 20190831.pdf</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <EmbeddedResource Include="..\Chains\**\*.*">
-      <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </EmbeddedResource>
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

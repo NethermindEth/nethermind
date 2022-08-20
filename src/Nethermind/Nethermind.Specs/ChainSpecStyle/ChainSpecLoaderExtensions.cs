@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.Specs.ChainSpecStyle
@@ -29,7 +30,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public static ChainSpec LoadFromEmbeddedResource(this IChainSpecLoader chainSpecLoader, string fileName)
         {
             fileName = fileName.Replace('/', '.');
-            Assembly assembly = Assembly.GetEntryAssembly();
+            Assembly assembly = typeof(IConfig).Assembly;
             string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
             if (!embeddedChainSpecFiles.Any(s => s.EndsWith(fileName)))
             {
@@ -41,7 +42,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
                 throw new Exception(missingChainspecFileMessage.ToString());
             }
-            string resourceName = $"Nethermind.Runner.{fileName}";
+            string resourceName = $"Nethermind.Config.{fileName}";
             using Stream stream = assembly.GetManifestResourceStream(resourceName);
             using StreamReader reader = new(stream);
             return chainSpecLoader.Load(reader.ReadToEnd());
