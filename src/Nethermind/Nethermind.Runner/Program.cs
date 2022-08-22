@@ -21,6 +21,8 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,7 +76,7 @@ namespace Nethermind.Runner
                     logger.Error(FailureString + eventArgs.ExceptionObject);
                 }
             };
-
+                
             try
             {
                 Run(args);
@@ -102,6 +104,7 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+            AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
@@ -194,6 +197,21 @@ namespace Nethermind.Runner
 
             _ = app.Execute(args);
             _appClosed.Wait();
+        }
+
+        private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
+        {
+            const string MacosSnappyPath = "/opt/homebrew/Cellar/snappy";
+            var alternativePath = nativeLibraryName switch
+            {
+                "libdl" or "liblibdl" => "libdl.so.2",
+                "libbz2.so.1.0" => "libbz2.so.1",
+                "libsnappy" or "snappy" => Directory.Exists(MacosSnappyPath) ?
+                    Directory.EnumerateFiles(MacosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
+                _ => null
+            };
+
+            return alternativePath is null ? IntPtr.Zero : NativeLibrary.Load(alternativePath);
         }
 
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
