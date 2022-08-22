@@ -100,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +
                 $" BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}," +
+                $" LowestInsertedBeaconHeaderHash: {_blockTree.LowestInsertedBeaconHeader?.Hash}," +
                 $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
                 $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
                 $" ChainMerged: {chainMerged}," +

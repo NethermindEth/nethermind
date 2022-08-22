@@ -346,11 +346,13 @@ namespace Nethermind.Consensus.Processing
                 || _blockTree.IsBetterThanHead(suggestedBlock.Header)
                 || options.ContainsFlag(ProcessingOptions.ForceProcessing);
 
+            /*
             if (!shouldProcess)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
+            */
 
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);

@@ -84,6 +84,7 @@ namespace Nethermind.Init.Steps
             if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
 
             _logger = getApi.LogManager.GetClassLogger();
+            _logger.Info("Initblockchain");
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();

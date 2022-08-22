@@ -37,7 +37,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "--config configs/goerli.cfg --baseDbPath /home/amirul/nethermind_goerli --JsonRpc.JwtSecretFile /tmp/jwtsecret --JsonRpc.IpcUnixDomainSocketPath /home/amirul/.ethereum/geth.ipc --Metrics.Enabled true --Metrics.ExposePort 9999",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
