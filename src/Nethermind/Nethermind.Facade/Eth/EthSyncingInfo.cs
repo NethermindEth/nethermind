@@ -63,7 +63,7 @@ namespace Nethermind.Facade.Eth
                 if (_syncConfig.DownloadBodiesInFastSync &&
                     _blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc)
                 {
-                    return new SyncingResult() {IsSyncing = true};
+                    return new SyncingResult() { IsSyncing = true };
                 }
             }
 

@@ -90,6 +90,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithBlockTree(IBlockTree blockTree)
+            {
+                _blockchain.BlockTree = blockTree;
+                return this;
+            }
+
             public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
             {
                 _blockchain.ReceiptFinder = receiptFinder;
