@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-//
+// 
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -67,13 +67,13 @@ namespace Nethermind.Core.Test.Blockchain
         public IBlockchainProcessor BlockchainProcessor { get; set; }
 
         public IBlockPreprocessorStep BlockPreprocessorStep { get; set; }
-
+        
         public IBlockProcessingQueue BlockProcessingQueue { get; set; }
-        public IBlockTree BlockTree { get => _blockTree!; set => _blockTree = value; }
+        public IBlockTree BlockTree { get; set; }
 
         public IBlockFinder BlockFinder
         {
-            get => _blockFinder ?? BlockTree!;
+            get => _blockFinder ?? BlockTree;
             set => _blockFinder = value;
         }
 
@@ -85,9 +85,9 @@ namespace Nethermind.Core.Test.Blockchain
         public IBlockProducer BlockProducer { get; private set; }
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
-
+        
         public ISealEngine SealEngine { get; set; }
-
+        
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
 
         public IPoSSwitcher PoSSwitcher { get; set; }
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected TestBlockchain()
         {
         }
-
+        
         public string SealEngineType { get; set; }
 
         public static Address AccountA = TestItem.AddressA;
@@ -105,10 +105,9 @@ namespace Nethermind.Core.Test.Blockchain
         private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new(true);
         private IBlockFinder _blockFinder;
-        private IBlockTree? _blockTree;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
-        private TrieStoreBoundaryWatcher _trieStoreWatcher;
+        private TrieStoreBoundaryWatcher _trieStoreWatcher;		
         public IHeaderValidator HeaderValidator { get; set; }
 
         public IBlockValidator BlockValidator { get; set; }
@@ -117,7 +116,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
         public ManualTimestamper Timestamper { get; protected set; }
-
+        
         public ProducedBlockSuggester Suggester { get; protected set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -145,14 +144,14 @@ namespace Nethermind.Core.Test.Blockchain
 
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
-
+            
             ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
             StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
-
+            
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            _blockTree ??= new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
             TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool();
@@ -164,26 +163,26 @@ namespace Nethermind.Core.Test.Blockchain
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
-
+            
             new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
-
+                
             BlockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
                 HeaderValidator,
                 Always.Valid,
                 SpecProvider,
                 LogManager);
-
+            
             PoSSwitcher = NoPoS.Instance;
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             SealEngine = new SealEngine(sealer, Always.Valid);
             BlockProcessor = CreateBlockProcessor();
-
+            
             BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
-
+            
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
@@ -200,7 +199,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-
+            
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
@@ -208,8 +207,8 @@ namespace Nethermind.Core.Test.Blockchain
 
         private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
         {
-            return specProvider is TestSpecProvider { AllowTestChainOverride: false }
-                ? specProvider
+            return specProvider is TestSpecProvider { AllowTestChainOverride: false } 
+                ? specProvider 
                 : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
         }
 
@@ -241,10 +240,10 @@ namespace Nethermind.Core.Test.Blockchain
             MiningConfig miningConfig = new();
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
-                DbProvider,
-                BlockTree,
-                ReadOnlyTrieStore,
-                SpecProvider,
+                DbProvider, 
+                BlockTree, 
+                ReadOnlyTrieStore, 
+                SpecProvider, 
                 BlockValidator,
                 NoBlockRewards.Instance,
                 ReceiptStorage,
@@ -285,7 +284,7 @@ namespace Nethermind.Core.Test.Blockchain
             {
                 genesisBlockBuilder = GenesisBlockBuilder;
             }
-
+            
             genesisBlockBuilder.WithStateRoot(State.StateRoot);
             if (SealEngineType == Nethermind.Core.SealEngineType.AuRa)
             {
@@ -350,7 +349,7 @@ namespace Nethermind.Core.Test.Blockchain
             // we want it to be last event, so lets re-register
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-
+            
             await WaitAsync(_oneAtATime, "Multiple block produced at once.");
             AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
@@ -387,10 +386,10 @@ namespace Nethermind.Core.Test.Blockchain
 
         public async Task AddFunds(params (Address address, UInt256 ether)[] funds) =>
             await AddBlock(funds.Select((f, i) => GetFundsTransaction(f.address, f.ether, (uint)i)).ToArray());
-
+        
         public async Task AddFundsAfterLondon(params (Address address, UInt256 ether)[] funds) =>
             await AddBlock(funds.Select((f, i) => GetFunds1559Transaction(f.address, f.ether, (uint)i)).ToArray());
-
+        
         private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
         {
             UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
@@ -402,7 +401,7 @@ namespace Nethermind.Core.Test.Blockchain
                 .TestObject;
             return tx;
         }
-
+        
         private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
         {
             UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);

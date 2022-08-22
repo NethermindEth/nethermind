@@ -30,8 +30,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
@@ -44,7 +42,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -342,16 +339,11 @@ public partial class EthRpcModuleTests
     public async Task Eth_syncing_true()
     {
         using Context ctx = await Context.Create();
+        IBlockFinder bridge = Substitute.For<IBlockFinder>();
+        bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
+        bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
 
-        IDb blockDb = new MemDb();
-        IDb headerDb = new MemDb();
-        IDb blockInfoDb = new MemDb();
-        TestBlockTree bridge = new (blockDb, headerDb, blockInfoDb);
-
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(bridge).Build();
-
-        bridge.SetHead(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
-        bridge.SetBestSuggestedHeader(Build.A.BlockHeader.WithNumber(1000L).TestObject);
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
 
         string serialized = ctx.Test.TestEthRpc("eth_syncing");
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"},\"id\":67}", serialized);
@@ -782,37 +774,15 @@ public partial class EthRpcModuleTests
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"nonce\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"transactionIndex\":\"0x0\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x0\",\"gasPrice\":\"0x5e91eb5d\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x4a817c800\",\"gas\":\"0x33518\",\"data\":\"0x0001\",\"input\":\"0x0001\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x6b82095065a599e6b5e52bed0043702baf3411418af679ac483f9fc75a8f6aef\",\"r\":\"0x8654517f7822e7a4e10e79f3f5a4136703c7d1b51d98e47686e201c3c2845f92\"},\"id\":67}", serialized);
     }
 
-    class TestBlockTree : BlockTree
-    {
-        public TestBlockTree(IDb blockDb, IDb headerDb, IDb blockInfoDb) : base(blockDb, headerDb, blockInfoDb,
-            new ChainLevelInfoRepository(blockInfoDb),
-            MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance)
-        {
-        }
-
-        public void SetBestSuggestedHeader(BlockHeader? bestSuggestedHeader)
-        {
-            BestSuggestedHeader = bestSuggestedHeader;
-        }
-
-        public void SetHead(Block? head)
-        {
-            Head = head;
-        }
-    }
-
     [Test]
     public async Task Eth_syncing()
     {
         using Context ctx = await Context.Create();
-        IDb blockDb = new MemDb();
-        IDb headerDb = new MemDb();
-        IDb blockInfoDb = new MemDb();
-        TestBlockTree bridge = new (blockDb, headerDb, blockInfoDb);
+        IBlockFinder bridge = Substitute.For<IBlockFinder>();
+        bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178000L).TestObject);
+        bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(bridge).Build();
-        bridge.SetBestSuggestedHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject);
-        bridge.SetHead(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
         string serialized = ctx.Test.TestEthRpc("eth_syncing");
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"},\"id\":67}", serialized);

@@ -79,9 +79,9 @@ namespace Nethermind.Blockchain
         private bool _tryToRecoverFromHeaderBelowBodyCorruption = false;
 
         public BlockHeader? Genesis { get; private set; }
-        public Block? Head { get; protected set; }
+        public Block? Head { get; private set; }
 
-        public BlockHeader? BestSuggestedHeader { get; protected set; }
+        public BlockHeader? BestSuggestedHeader { get; private set; }
 
         public Block? BestSuggestedBody { get; private set; }
         public BlockHeader? LowestInsertedHeader { get; private set; }
