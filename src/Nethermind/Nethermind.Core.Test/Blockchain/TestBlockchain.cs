@@ -69,7 +69,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IBlockPreprocessorStep BlockPreprocessorStep { get; set; }
 
         public IBlockProcessingQueue BlockProcessingQueue { get; set; }
-        public IBlockTree? BlockTree { get; set; }
+        public IBlockTree BlockTree { get => _blockTree!; set => _blockTree = value; }
 
         public IBlockFinder BlockFinder
         {
@@ -105,6 +105,7 @@ namespace Nethermind.Core.Test.Blockchain
         private ManualResetEvent _suggestedBlockResetEvent;
         private AutoResetEvent _oneAtATime = new(true);
         private IBlockFinder _blockFinder;
+        private IBlockTree? _blockTree;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private TrieStoreBoundaryWatcher _trieStoreWatcher;
@@ -151,7 +152,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree ??= new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            _blockTree ??= new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
             TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool();
