@@ -42,9 +42,6 @@ namespace Nethermind.Api
         [ConfigItem(Description = "If 'true' then the node will try to seal/mine new blocks", DefaultValue = "false")]
         bool IsMining { get; set; }
 
-        [ConfigItem(Description = "Specifies whether to read chainspec form file or from the binary.", DefaultValue = "false")]
-        bool ReadChainSpecFromFile { get; set; }
-
         [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "chainspec/foundation.json")]
         string ChainSpecPath { get; set; }
 

@@ -95,10 +95,7 @@ namespace Nethermind.Runner.Ethereum.Api
             ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            if (_initConfig.ReadChainSpecFromFile)
-                return loader.LoadFromFile(chainSpecFile);
-            else
-                return loader.LoadFromEmbeddedResource(chainSpecFile);
+            return loader.LoadFromEmbeddedOrFile(chainSpecFile, _logger);
         }
 
         private void SetLoggerVariables(ChainSpec chainSpec)

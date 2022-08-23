@@ -27,25 +27,34 @@ namespace Nethermind.Specs.ChainSpecStyle
     public static class ChainSpecLoaderExtensions
     {
 
-        public static ChainSpec LoadFromEmbeddedResource(this IChainSpecLoader chainSpecLoader, string fileName)
+        public static ChainSpec LoadFromEmbeddedOrFile(this IChainSpecLoader chainSpecLoader, string fileName, ILogger logger)
         {
-            fileName = fileName.Replace('/', '.');
+            string resourceName = fileName;
+            if (!resourceName.Contains('/'))
+            {
+                resourceName = "chainspec/" + resourceName;
+            }
+            if (!resourceName.EndsWith(".json", StringComparison.InvariantCultureIgnoreCase))
+            {
+                resourceName += ".json";
+            }
+            resourceName = resourceName.Replace('/', '.');
             Assembly assembly = typeof(IConfig).Assembly;
             string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(fileName)))
+            if (embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName)))
             {
-                StringBuilder missingChainspecFileMessage = new($"Embedded chainspec cannot be found {fileName}");
-                missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                for (int i = 0; i < embeddedChainSpecFiles.Length; i++)
+                resourceName = "Nethermind.Config." + resourceName;
+                using Stream stream = assembly.GetManifestResourceStream(resourceName);
+                using StreamReader reader = new(stream);
+                fileName = fileName.GetApplicationResourcePath();
+                if (File.Exists(fileName))
                 {
-                    missingChainspecFileMessage.AppendLine($"  * {embeddedChainSpecFiles[i].Replace("Nethermind.Runner.", "")}");
+                    if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. " +
+                        "Loading chainspec from embedded resource instead file!");
                 }
-                throw new Exception(missingChainspecFileMessage.ToString());
+                return chainSpecLoader.Load(reader.ReadToEnd());
             }
-            string resourceName = $"Nethermind.Config.{fileName}";
-            using Stream stream = assembly.GetManifestResourceStream(resourceName);
-            using StreamReader reader = new(stream);
-            return chainSpecLoader.Load(reader.ReadToEnd());
+            return chainSpecLoader.LoadFromFile(fileName);
         }
 
         public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
