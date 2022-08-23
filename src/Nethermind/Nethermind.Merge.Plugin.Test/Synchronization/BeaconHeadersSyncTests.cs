@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -28,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
@@ -48,86 +48,141 @@ public class BeaconHeadersSyncTests
 {
     private class Context
     {
-        public IBlockTree BlockTree;
-        public ActivatedSyncFeed<HeadersSyncBatch> Feed;
-        public IBeaconPivot BeaconPivot;
-        public BeaconSync BeaconSync;
-
-        private readonly IMergeConfig _mergeConfig;
-        private readonly ISyncConfig _syncConfig;
-        private readonly IDb _metadataDb;
-
-        public Context(
-            IBlockTree? blockTree = null,
-            ISyncConfig? syncConfig = null,
-            IBeaconPivot? beaconPivot = null,
-            IDb? metadataDb = null,
-            IMergeConfig? mergeConfig = null)
+        private IBlockTree _blockTree;
+        public IBlockTree BlockTree
         {
-            if (blockTree == null)
+            get
             {
-                IDb blockInfoDb = new MemDb();
-                Block genesis = Build.A.Block.Genesis.TestObject;
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-                BlockTree.SuggestBlock(genesis);
-            }
-            else
-            {
-                BlockTree = blockTree;
-            }
+                if (_blockTree == null)
+                {
+                    IDb blockInfoDb = new MemDb();
+                    Block genesis = Build.A.Block.Genesis.TestObject;
+                    _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                    _blockTree.SuggestBlock(genesis);
+                }
 
-            ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
-            ISyncReport report = Substitute.For<ISyncReport>();
-            MeasuredProgress measuredProgress = new MeasuredProgress();
-            report.BeaconHeaders.Returns(measuredProgress);
-            report.HeadersInQueue.Returns(measuredProgress);
+                return _blockTree;
+            }
+            set => _blockTree = value;
+        }
 
-            MemDb stateDb = new();
-            _syncConfig = syncConfig ?? new SyncConfig();
-            _mergeConfig = mergeConfig ?? new MergeConfig();
-            _metadataDb = metadataDb ?? new MemDb();
-            PoSSwitcher poSSwitcher = new(_mergeConfig, _syncConfig, _metadataDb, blockTree!,
+        private IBeaconPivot? _beaconPivot;
+        public IBeaconPivot BeaconPivot
+        {
+            get => _beaconPivot ??= new BeaconPivot(SyncConfig, MetadataDb, BlockTree, LimboLogs.Instance);
+            set => _beaconPivot = value;
+        }
+
+        private BeaconSync? _beaconSync;
+        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, LimboLogs.Instance);
+
+        private IDb? _metadataDb;
+        public IDb MetadataDb => _metadataDb ??= new MemDb();
+
+        private PoSSwitcher? _poSSwitcher;
+        public PoSSwitcher PoSSwitcher => _poSSwitcher ??= new(MergeConfig, SyncConfig, MetadataDb, BlockTree,
                 MainnetSpecProvider.Instance, LimboLogs.Instance);
 
-            ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
+        private IInvalidChainTracker? _invalidChainTracker;
 
-            SyncProgressResolver syncProgressResolver = new(
-                BlockTree,
-                NullReceiptStorage.Instance,
-                stateDb,
-                new TrieStore(stateDb, LimboLogs.Instance),
-                progressTracker,
-                _syncConfig,
-                LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new (LimboLogs.Instance);
-            BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
-            BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
-            ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig,
-                new NoopInvalidChainTracker(), LimboLogs.Instance);
+        public IInvalidChainTracker InvalidChainTracker
+        {
+            get => _invalidChainTracker ??= new NoopInvalidChainTracker();
+            set => _invalidChainTracker = value;
         }
+
+        private BeaconHeadersSyncFeed? _feed;
+        public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
+            PoSSwitcher,
+            Selector,
+            BlockTree,
+            PeerPool,
+            SyncConfig,
+            Report,
+            BeaconPivot,
+            MergeConfig,
+            InvalidChainTracker,
+            LimboLogs.Instance
+        );
+
+        private MultiSyncModeSelector? _selector;
+        public MultiSyncModeSelector Selector
+        {
+            get
+            {
+                if (_selector == null)
+                {
+                    MemDb stateDb = new();
+                    ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
+                    SyncProgressResolver syncProgressResolver = new(
+                        BlockTree,
+                        NullReceiptStorage.Instance,
+                        stateDb,
+                        new TrieStore(stateDb, LimboLogs.Instance),
+                        progressTracker,
+                        SyncConfig,
+                        LimboLogs.Instance);
+                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new (LimboLogs.Instance);
+                    _selector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, SyncConfig, BeaconSync,
+                        bestPeerStrategy, LimboLogs.Instance);
+                }
+
+                return _selector;
+            }
+        }
+
+        private ISyncPeerPool? _peerPool;
+        public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
+
+        private ISyncConfig? _syncConfig;
+        public ISyncConfig SyncConfig
+        {
+            get => _syncConfig ??= new SyncConfig();
+            set => _syncConfig = value;
+        }
+
+        private ISyncReport? _report;
+        public ISyncReport Report
+        {
+            get
+            {
+                if (_report == null)
+                {
+                    _report = Substitute.For<ISyncReport>();
+                    MeasuredProgress measuredProgress = new MeasuredProgress();
+                    Report.BeaconHeaders.Returns(measuredProgress);
+                    Report.HeadersInQueue.Returns(measuredProgress);
+                }
+
+                return _report;
+            }
+            set => _report = value;
+        }
+
+        private IMergeConfig? _mergeConfig;
+        public IMergeConfig MergeConfig => _mergeConfig ??= new MergeConfig();
+
+        private IBlockCacheService? _blockCacheService;
+        public IBlockCacheService BlockCacheService => _blockCacheService ??= new BlockCacheService();
     }
 
     [Test]
     public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
     {
-        IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
-        BlockTree blockTree = new(memDbProvider, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-            MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-        ISyncConfig syncConfig = new SyncConfig
+        Context ctx = new()
         {
-            FastSync = true,
-            FastBlocks = true,
-            PivotNumber = "1000",
-            PivotHash = Keccak.Zero.ToString(),
-            PivotTotalDifficulty = "1000"
+            SyncConfig = new SyncConfig
+            {
+                FastSync = true,
+                FastBlocks = true,
+                PivotNumber = "1000",
+                PivotHash = Keccak.Zero.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            MergeConfig = { Enabled = true }
         };
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, memDbProvider.MetadataDb, blockTree!,
-            MainnetSpecProvider.Instance, LimboLogs.Instance);
-        IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
-        BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
-            Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, new MergeConfig() {Enabled = true}, new NoopInvalidChainTracker(), LimboLogs.Instance);
+        ctx.BeaconPivot = PreparePivot(2000, ctx.SyncConfig, ctx.BlockTree);
+        BeaconHeadersSyncFeed feed = ctx.Feed;
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -155,12 +210,16 @@ public class BeaconHeadersSyncTests
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
          };
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree!,
-            MainnetSpecProvider.Instance, LimboLogs.Instance);
-        IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
-        BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
-            Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},
-            new NoopInvalidChainTracker(), LimboLogs.Instance);
+
+        Context ctx = new()
+        {
+            BlockTree = blockTree,
+            Report = report,
+            SyncConfig = syncConfig,
+            MergeConfig = { Enabled = true }
+        };
+        ctx.BeaconPivot = PreparePivot(2000, syncConfig, blockTree);
+        BeaconHeadersSyncFeed feed = ctx.Feed;
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -190,7 +249,8 @@ public class BeaconHeadersSyncTests
         };
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(700, BlockTreeLookupOptions.None);
         IBeaconPivot pivot = PreparePivot(700, syncConfig, blockTree, pivotHeader);
-        Context ctx = new (blockTree, syncConfig, pivot);
+
+        Context ctx = new() { BlockTree = blockTree, SyncConfig = syncConfig, BeaconPivot = pivot };
 
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0, 501);
 
@@ -218,7 +278,8 @@ public class BeaconHeadersSyncTests
         blockTree.SuggestBlock(firstBlock);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
         IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
-        Context ctx = new (blockTree, new SyncConfig(), pivot);
+        Context ctx = new () { BlockTree = blockTree, BeaconPivot = pivot };
+
         // fork in chain
         Block parent = firstBlock;
         for (int i = 0; i < 5; i++)
@@ -236,6 +297,28 @@ public class BeaconHeadersSyncTests
         blockTree.BestKnownNumber.Should().Be(6);
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+    }
+
+    [Test]
+    public void Feed_connect_invalid_chain()
+    {
+        Context ctx = new();
+        IInvalidChainTracker invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(ctx.PoSSwitcher,
+            ctx.BlockTree, ctx.BlockCacheService, LimboLogs.Instance);
+        ctx.InvalidChainTracker = invalidChainTracker;
+
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100).TestObject;
+        HeadersSyncBatch batch = new HeadersSyncBatch();
+        batch.RequestSize = 100;
+        batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.GenesisHash, 100, 0, false);
+        ctx.Feed.HandleResponse(batch);
+
+        Keccak lastHeader = syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None).Hash;
+        Keccak headerToInvalidate = syncedBlockTree.FindHeader(10, BlockTreeLookupOptions.None).Hash;
+        Keccak lastValidHeader = syncedBlockTree.FindHeader(9, BlockTreeLookupOptions.None).Hash;
+        invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
+        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Keccak storedLastValidHash).Should().BeTrue();
+        storedLastValidHash.Should().Be(lastValidHeader);
     }
 
     private async void BuildAndProcessHeaderSyncBatches(
