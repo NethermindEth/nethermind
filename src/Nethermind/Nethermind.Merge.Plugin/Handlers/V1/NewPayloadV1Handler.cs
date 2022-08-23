@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (block.Header.Number <= _syncConfig.PivotNumberParsed)
             {
-                if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
+                if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
                 return NewPayloadV1Result.Syncing;
             }
 
@@ -195,6 +195,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (result == ValidationResult.Invalid)
             {
+                if (_logger.IsInfo) _logger.Info($"Invalid block found. Validation message: {message}. Result of {requestStr}.");
                 _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
                 return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
             }

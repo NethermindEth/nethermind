@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -29,16 +29,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         private readonly Transaction? _tx;
         private readonly ParityTraceTypes _parityTraceTypes;
         private readonly ParityLikeTxTrace _trace;
-        
+
         private readonly Stack<ParityTraceAction> _actionStack = new();
         private ParityTraceAction? _currentAction;
-        
+
         private ParityVmOperationTrace? _currentOperation;
         private readonly List<byte[]> _currentPushList = new();
-        
+
         private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
         private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
-        
+
         private bool _treatGasParityStyle; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
 
@@ -49,9 +49,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _tx = tx;
             _trace = new ParityLikeTxTrace
             {
-                TransactionHash = tx?.Hash, 
-                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx), 
-                BlockNumber = block.Number, 
+                TransactionHash = tx?.Hash,
+                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
 
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 IsTracingReceipt = true;
             }
         }
-        
+
         public bool IsTracingReceipt { get; }
         public bool IsTracingActions { get; }
         public bool IsTracingOpLevelStorage => false;
@@ -112,7 +112,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
             }
         }
-        
+
         private string GetActionType(ExecutionType executionType)
         {
             switch (executionType)
@@ -135,7 +135,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "call";
             }
         }
-        
+
         private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
             switch (evmExceptionType)
@@ -173,10 +173,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 _trace.Action = null;
             }
-            
+
             return _trace;
         }
-        
+
         private void PushAction(ParityTraceAction action)
         {
             if (_currentAction != null)
@@ -231,7 +231,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     _treatGasParityStyle = true;
                 }
             }
-            
+
             _actionStack.Pop();
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
@@ -259,7 +259,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
 
             _trace.Output = output;
-            
+
             // quick tx fail (before execution)
             if (_trace.Action == null)
             {
@@ -299,18 +299,18 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             if (!_gasAlreadySetForCurrentOp)
             {
                 _gasAlreadySetForCurrentOp = true;
-                
+
                 _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
-                
+
                 // based on Parity behaviour - adding stipend to the gas cost
                 if (_currentOperation.Cost == 7400)
                 {
                     _currentOperation.Cost = 9700;
                 }
-                
+
                 _currentOperation.Push = _currentPushList.ToArray();
                 _currentOperation.Used = gas;
-                
+
                 _treatGasParityStyle = false;
             }
         }
@@ -325,7 +325,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
-        
+
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             if (data.Length != 0)
@@ -342,14 +342,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();
 
         public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => throw new NotSupportedException();
-        
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (_trace.StateChanges is null)
             {
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
-            
+
             if (!_trace.StateChanges.ContainsKey(address))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
@@ -368,7 +368,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
-            
+
             if (!_trace.StateChanges.ContainsKey(address))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
@@ -440,7 +440,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;
             }
-            
+
             PushAction(action);
         }
 
@@ -497,7 +497,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException(
                     $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
             }
-            
+
             _currentAction.Result.Address = deploymentAddress;
             _currentAction.Result.Code = deployedCode.ToArray();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
