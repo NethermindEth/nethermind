@@ -41,20 +41,18 @@ namespace Nethermind.Specs.ChainSpecStyle
             resourceName = resourceName.Replace('/', '.');
             Assembly assembly = typeof(IConfig).Assembly;
             string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-            if (embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName)))
+            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName)))
+                return chainSpecLoader.LoadFromFile(fileName);
+            resourceName = "Nethermind.Config." + resourceName;
+            using Stream stream = assembly.GetManifestResourceStream(resourceName);
+            using StreamReader reader = new(stream);
+            fileName = fileName.GetApplicationResourcePath();
+            if (File.Exists(fileName))
             {
-                resourceName = "Nethermind.Config." + resourceName;
-                using Stream stream = assembly.GetManifestResourceStream(resourceName);
-                using StreamReader reader = new(stream);
-                fileName = fileName.GetApplicationResourcePath();
-                if (File.Exists(fileName))
-                {
-                    if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. " +
-                        "Loading chainspec from embedded resource instead file!");
-                }
-                return chainSpecLoader.Load(reader.ReadToEnd());
+                if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. " +
+                    "Loading chainspec from embedded resource instead file!");
             }
-            return chainSpecLoader.LoadFromFile(fileName);
+            return chainSpecLoader.Load(reader.ReadToEnd());
         }
 
         public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
