@@ -99,6 +99,8 @@ namespace Nethermind.Init.Steps
 
         private async Task Initialize(CancellationToken cancellationToken)
         {
+            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+
             if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
@@ -109,9 +111,7 @@ namespace Nethermind.Init.Steps
                 NetworkDiagTracer.Start(_api.LogManager);
             }
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder",
-                _networkConfig.NettyArenaOrder.ToString());
-
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
             ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
@@ -161,7 +161,7 @@ namespace Nethermind.Init.Steps
                     syncReport,
                     _api.LogManager);
                 _api.Synchronizer ??= new Synchronizer(
-                    _api.DbProvider!,
+                    _api.DbProvider,
                     _api.SpecProvider!,
                     _api.BlockTree!,
                     _api.ReceiptStorage!,
@@ -179,7 +179,7 @@ namespace Nethermind.Init.Steps
             _api.DisposeStack.Push(_api.Synchronizer);
 
             _api.SyncServer = new SyncServer(
-                _api.DbProvider.StateDb,
+                _api.TrieStore!,
                 _api.DbProvider.CodeDb,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
@@ -195,8 +195,6 @@ namespace Nethermind.Init.Steps
                 cht);
 
             _ = _api.SyncServer.BuildCHT();
-
-
             _api.DisposeStack.Push(_api.SyncServer);
 
             InitDiscovery();
@@ -265,8 +263,7 @@ namespace Nethermind.Init.Steps
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
-            ThisNodeInfo.AddInfo("Version      :",
-                $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
+            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
         }
@@ -280,8 +277,7 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
                 return Task.CompletedTask;
             }
 
@@ -299,9 +295,7 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

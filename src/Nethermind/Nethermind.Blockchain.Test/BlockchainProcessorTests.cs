@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -48,11 +48,11 @@ namespace Nethermind.Blockchain.Test
             private ILogManager _logManager = LimboLogs.Instance;
 
 //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            
+
             private class BlockProcessorMock : IBlockProcessor
             {
                 private ILogger _logger;
-                
+
                 private HashSet<Keccak> _allowed = new();
 
                 private HashSet<Keccak> _allowedToFail = new();
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger = logManager.GetClassLogger();
                 }
-                
+
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to process");
@@ -79,9 +79,9 @@ namespace Nethermind.Blockchain.Test
                     if (blockTracer != NullBlockTracer.Instance)
                     {
                         // this is for block reruns on failure for diag tracing
-                        throw new InvalidBlockException(Keccak.Zero);
+                        throw new InvalidBlockException(suggestedBlocks[0]);
                     }
-                    
+
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
@@ -89,14 +89,15 @@ namespace Nethermind.Blockchain.Test
                         for (int i = 0; i < suggestedBlocks.Count; i++)
                         {
                             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                            Keccak hash = suggestedBlocks[i].Hash;
+                            Block suggestedBlock = suggestedBlocks[i];
+                            Keccak hash = suggestedBlock.Hash!;
                             if (!_allowed.Contains(hash))
                             {
                                 if (_allowedToFail.Contains(hash))
                                 {
                                     _allowedToFail.Remove(hash);
                                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
-                                    throw new InvalidBlockException(hash);
+                                    throw new InvalidBlockException(suggestedBlock);
                                 }
 
                                 notYet = true;
@@ -130,7 +131,7 @@ namespace Nethermind.Blockchain.Test
             private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private ILogger _logger;
-                
+
                 private ConcurrentDictionary<Keccak, object> _allowed = new();
 
                 private ConcurrentDictionary<Keccak, object> _allowedToFail = new();
@@ -139,7 +140,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger = logManager.GetClassLogger();
                 }
-                
+
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to recover");
@@ -199,10 +200,10 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new();
                 MemDb blockInfoDb = new();
                 MemDb headersDb = new();
-                
+
                 MemDb stateDb = new();
                 Block genesis = Build.A.Block.Genesis.TestObject;
-                
+
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
@@ -210,7 +211,7 @@ namespace Nethermind.Blockchain.Test
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, new StateReader(new TrieStore(stateDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
                 _queueEmptyResetEvent = new AutoResetEvent(false);
-                
+
                 _processor.ProcessingQueueEmpty += (_, _) =>
                 {
                     _processingQueueEmptyFired++;
@@ -329,7 +330,7 @@ namespace Nethermind.Blockchain.Test
                 _recoveryStep.Allow(block.Hash);
                 return this;
             }
-            
+
             public ProcessingTestContext CountIs(int expectedCount)
             {
                 var count = ((IBlockProcessingQueue)_processor).Count;
@@ -480,7 +481,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
-        
+
         [Test]
         [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
@@ -488,11 +489,11 @@ namespace Nethermind.Blockchain.Test
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
-            
+
             long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
             metricsAfter.Should().NotBe(metricsBefore);
         }
-        
+
         [Test]
         public void Can_process_fast_sync_transition()
         {
@@ -645,7 +646,7 @@ namespace Nethermind.Blockchain.Test
                 .Processed(_block1D2).BecomesNewHead()
                 .ProcessedSkipped(_block2D4).IsKeptOnBranch();
         }
-        
+
         [Test]
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
@@ -659,7 +660,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
         }
-        
+
         [Test]
         public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
         {
@@ -674,7 +675,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
         }
-        
+
         [Test]
         public void ProcessorIsNotStarted_returns_false()
         {
@@ -683,7 +684,7 @@ namespace Nethermind.Blockchain.Test
                 .Sleep(1000)
                 .IsProcessingBlocks(false, 10);
         }
-        
+
         [Test]
         public void QueueCount_returns_correctly()
         {
@@ -692,8 +693,8 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block0)
                 .BecomesGenesis()
                 .QueueIsEmpty(2)
-                
-                
+
+
                 .Suggested(_block1D2)
                 .Recovered(_block1D2)
                 .CountIs(1)

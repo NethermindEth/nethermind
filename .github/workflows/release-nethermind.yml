@@ -147,7 +147,7 @@ jobs:
       - name: Update Homebrew file with new version, commit and date
         run: | 
           chmod +x ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
-          ./${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
+          bash ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
-        
+
         [TestCase(15_050_000, "0xf0afd0e3", 21_000_000L, "First Gray Glacier")]
         [TestCase(21_000_000, "0x3f5fd195", 0L, "First Merge Fork Id test")]
         [TestCase(21_811_000, "0x3f5fd195", 0L, "Future Merge Fork Id test")]
@@ -125,6 +125,14 @@ namespace Nethermind.Network.Test
         public void Fork_id_and_hash_as_expected_on_ropsten(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
+        }
+
+        [TestCase(0, "0xFE3366E7", 1735371, "Sepolia genesis")]
+        [TestCase(1735370, "0xFE3366E7", 1735371, "Sepolia Last block before MergeForkIdTranstion")]
+        [TestCase(1735371, "0xb96cbd13", 0, "First block - Sepolia MergeForkIdTransition")]
+        public void Fork_id_and_hash_as_expected_on_sepolia(long head, string forkHashHex, long next, string description)
+        {
+            Test(head, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
         }
 
         private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")

@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading.Tasks;
@@ -56,7 +56,7 @@ public class BeaconHeadersSyncTests
         private readonly IMergeConfig _mergeConfig;
         private readonly ISyncConfig _syncConfig;
         private readonly IDb _metadataDb;
-        
+
         public Context(
             IBlockTree? blockTree = null,
             ISyncConfig? syncConfig = null,
@@ -103,10 +103,11 @@ public class BeaconHeadersSyncTests
             BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
             BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
             ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig, LimboLogs.Instance);
+            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig,
+                new NoopInvalidChainTracker(), LimboLogs.Instance);
         }
     }
-        
+
     [Test]
     public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
     {
@@ -114,7 +115,7 @@ public class BeaconHeadersSyncTests
         BlockTree blockTree = new(memDbProvider, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
             MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         ISyncConfig syncConfig = new SyncConfig
-        { 
+        {
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "1000",
@@ -126,7 +127,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, new MergeConfig() {Enabled = true}, LimboLogs.Instance);
+            pivot, new MergeConfig() {Enabled = true}, new NoopInvalidChainTracker(), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -157,7 +158,9 @@ public class BeaconHeadersSyncTests
         PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree!,
             MainnetSpecProvider.Instance, LimboLogs.Instance);
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
-        BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},  LimboLogs.Instance);
+        BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
+            Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},
+            new NoopInvalidChainTracker(), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -167,7 +170,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        measuredProgress.CurrentValue.Should().Be(2000);
+        measuredProgress.CurrentValue.Should().Be(999);
     }
 
     [Test]
@@ -190,14 +193,49 @@ public class BeaconHeadersSyncTests
         Context ctx = new (blockTree, syncConfig, pivot);
 
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0, 501);
-        
+
         // move best pointers forward as proxy for chain merge
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
-        blockTree.Insert(highestBlock, true);
-        
+        blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
+
+        pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
+
+        highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
+        blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        // TODO: beaconsync lowest inserted beacon header should be known header + 1
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 501);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900, 901);
+    }
+
+    [Test]
+    public async Task Feed_able_to_connect_to_existing_chain_through_block_hash()
+    {
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        Block genesisBlock = syncedBlockTree.FindBlock(syncedBlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
+        BlockTree blockTree = Build.A.BlockTree().TestObject;
+        blockTree.SuggestBlock(genesisBlock);
+        Block? firstBlock = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None);
+        blockTree.SuggestBlock(firstBlock);
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
+        IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
+        Context ctx = new (blockTree, new SyncConfig(), pivot);
+        // fork in chain
+        Block parent = firstBlock;
+        for (int i = 0; i < 5; i++)
+        {
+            Block block = Build.A.Block.WithParent(parent).WithNonce(1).TestObject;
+            blockTree.SuggestBlock(block);
+            parent = block;
+        }
+
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        blockTree.BestKnownNumber.Should().Be(6);
+        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
+        result.Should().BeNull();
+        blockTree.BestKnownNumber.Should().Be(6);
+        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
     }
 
     private async void BuildAndProcessHeaderSyncBatches(
@@ -209,13 +247,33 @@ public class BeaconHeadersSyncTests
         long endLowestBeaconHeader)
     {
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        ctx.Feed.InitializeFeed();
         blockTree.BestKnownNumber.Should().Be(bestPointer);
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
         blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
-        long lowestHeaderNumber = pivot.PivotNumber + 1;
-        
+
+        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
+
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
+        result.Should().BeNull();
+        // check headers are inserted into block tree during sync
+        blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
+        blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
+        blockTree.BestKnownNumber.Should().Be(bestPointer);
+        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
+        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+    }
+
+    private async void BuildHeadersSyncBatches(
+        Context ctx,
+        BlockTree blockTree,
+        BlockTree syncedBlockTree,
+        IBeaconPivot pivot,
+        long endLowestBeaconHeader)
+    {
+        ctx.Feed.InitializeFeed();
+        long lowestHeaderNumber = pivot.PivotNumber;
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
@@ -225,18 +283,10 @@ public class BeaconHeadersSyncTests
             lowestHeaderNumber = lowestHeaderNumber - batch.RequestSize < endLowestBeaconHeader
                 ? endLowestBeaconHeader
                 : lowestHeaderNumber - batch.RequestSize;
-            
+
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
             blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
         }
-
-        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
-        result.Should().BeNull();
-        blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None));
-        blockTree.BestKnownNumber.Should().Be(bestPointer);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
-        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
     }
 
     private void BuildHeadersSyncBatchResponse(HeadersSyncBatch batch, IBlockTree blockTree)
@@ -251,10 +301,9 @@ public class BeaconHeadersSyncTests
         BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, true);
         batch.Response = headers;
     }
-    
+
     private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
     {
-        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;

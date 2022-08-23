@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -112,6 +112,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             CompareSpecProviders(goerli, provider, blockNumbersToTest);
             Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
 
         [Test]
@@ -172,6 +173,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
 
         private static void CompareSpecProviders(

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -25,16 +24,11 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -43,9 +37,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin
@@ -263,7 +255,6 @@ namespace Nethermind.Merge.Plugin
                 PayloadPreparationService payloadPreparationService = new(
                     _postMergeBlockProducer,
                     improvementContextFactory,
-                    _api.Sealer,
                     _api.TimerFactory,
                     _api.LogManager,
                     TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
@@ -282,6 +273,7 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockProcessingQueue,
                         _invalidChainTracker,
                         _beaconSync,
+                        _api.SpecProvider,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -292,6 +284,7 @@ namespace Nethermind.Merge.Plugin
                         _blockCacheService,
                         _invalidChainTracker,
                         _beaconSync,
+                        _beaconPivot,
                         _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
@@ -344,11 +337,18 @@ namespace Nethermind.Merge.Plugin
                     _api.LogManager);
 
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
-                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
-                    _api.SpecProvider, _api.LogManager);
+                _api.BlockValidator = new InvalidBlockInterceptor(
+                    new BlockValidator(
+                        _api.TxValidator,
+                        _api.HeaderValidator,
+                        _api.UnclesValidator,
+                        _api.SpecProvider,
+                        _api.LogManager),
+                    _invalidChainTracker,
+                    _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
-                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _api.LogManager);
+                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher,  _beaconPivot, _api.LogManager);
 
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,
@@ -366,6 +366,7 @@ namespace Nethermind.Merge.Plugin
                     _beaconPivot,
                     _api.SpecProvider,
                     _api.BlockTree,
+                    _blockCacheService,
                     _api.ReceiptStorage!,
                     _api.BlockValidator!,
                     _api.SealValidator!,
@@ -373,7 +374,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BetterPeerStrategy!,
                     syncReport,
-                    _invalidChainTracker,
+                    _api.SyncProgressResolver,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider,
@@ -389,6 +390,7 @@ namespace Nethermind.Merge.Plugin
                     _api.Pivot,
                     _poSSwitcher,
                     _mergeConfig,
+                    _invalidChainTracker,
                     _api.LogManager,
                     syncReport);
             }

@@ -31,7 +31,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
-    private const int JwtTokenTtl = 5;
+    private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
     private MicrosoftJwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
@@ -119,7 +119,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
     {
         if (token == null)
         {
-            if (_logger.IsWarn) _logger.Warn("Message authentication error: Can't find authentication token"); 
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Can't find authentication token");
             return false;
         }
 

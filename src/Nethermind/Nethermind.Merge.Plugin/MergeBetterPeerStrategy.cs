@@ -20,6 +20,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin;
@@ -28,15 +29,18 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 {
     private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBeaconPivot _beaconPivot;
     private readonly ILogger _logger;
 
     public MergeBetterPeerStrategy(
         IBetterPeerStrategy preMergeBetterPeerStrategy,
         IPoSSwitcher poSSwitcher,
+        IBeaconPivot beaconPivot,
         ILogManager logManager)
     {
         _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
         _poSSwitcher = poSSwitcher;
+        _beaconPivot = beaconPivot;
         _logger = logManager.GetClassLogger();
     }
 
@@ -55,9 +59,15 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 
     public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
-        return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty)
-            ? _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader)
-            : bestPeerInfo.Number > bestHeader.Number;
+        if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty))
+        {
+            return _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader);
+        }
+
+        // Post-merge it depends on the beacon pivot.
+        // Some hive test sync to a lower number and have peer without the beacon pivot, but it has
+        // the pivot's parent. So we need to allow peer with the parent of the beacon pivot.
+        return _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1;
     }
 
     public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) =>

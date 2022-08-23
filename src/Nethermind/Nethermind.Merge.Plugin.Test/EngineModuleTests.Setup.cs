@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin.Test
         protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null)
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
 
@@ -70,6 +70,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.BlockTree,
                 blockCacheService,
                 new TestErrorLogManager());
+            invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
@@ -87,7 +88,9 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockProcessingQueue,
                     invalidChainTracker,
                     chain.BeaconSync,
-                    chain.LogManager),
+                    chain.SpecProvider,
+                    chain.LogManager,
+                    newPayloadTimeout),
                 new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
                     chain.BlockFinalizationManager,
@@ -97,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Test
                     blockCacheService,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.BeaconPivot,
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
@@ -126,9 +130,9 @@ namespace Nethermind.Merge.Plugin.Test
             public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
             {
                 _blockProcessingThrottle = delayMs;
-                if (BlockProcessor is ThrottledBlockProcessor throttledBlockProcessor)
+                if (BlockProcessor is TestBlockProcessorInterceptor testBlockProcessor)
                 {
-                    throttledBlockProcessor.DelayMs = delayMs;
+                    testBlockProcessor.DelayMs = delayMs;
                 }
                 return this;
             }
@@ -184,7 +188,6 @@ namespace Nethermind.Merge.Plugin.Test
                 PayloadPreparationService ??= new PayloadPreparationService(
                     postMergeBlockProducer,
                     new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
-                    SealEngine,
                     TimerFactory.Default,
                     LogManager,
                     TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
@@ -205,7 +208,7 @@ namespace Nethermind.Merge.Plugin.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
-                return new ThrottledBlockProcessor(processor, _blockProcessingThrottle);
+                return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
             }
 
             private IBlockValidator CreateBlockValidator()
@@ -236,12 +239,13 @@ namespace Nethermind.Merge.Plugin.Test
         }
     }
 
-    internal class ThrottledBlockProcessor: IBlockProcessor
+    internal class TestBlockProcessorInterceptor: IBlockProcessor
     {
         private readonly IBlockProcessor _blockProcessorImplementation;
         public int DelayMs { get; set; }
+        public Exception? ExceptionToThrow { get; set; }
 
-        public ThrottledBlockProcessor(IBlockProcessor baseBlockProcessor, int delayMs)
+        public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, int delayMs)
         {
             _blockProcessorImplementation = baseBlockProcessor;
             DelayMs = delayMs;
@@ -253,6 +257,11 @@ namespace Nethermind.Merge.Plugin.Test
             if (DelayMs > 0)
             {
                 Thread.Sleep(DelayMs);
+            }
+
+            if (ExceptionToThrow != null)
+            {
+                throw ExceptionToThrow;
             }
 
             return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);

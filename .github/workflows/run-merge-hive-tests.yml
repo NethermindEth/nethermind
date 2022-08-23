@@ -12,15 +12,15 @@ on:
         type: choice
         options:
         - ethereum/engine        
-      hive:
-        description: 'Repository for hive tests'
-        required: true
-        default: 'ethereum/hive'
-        type: string
       limit:
         description: 'Limit for hive tests'
         required: false
         type: string
+      hive:
+        description: 'Repository for hive tests'
+        required: true
+        default: 'ethereum/hive'
+        type: string        
       branch:
         description: 'Branch for hive tests'
         default: 'master'
@@ -37,17 +37,31 @@ on:
         options:
         - ethereum/engine        
         - ethereum/rpc
-        - devp2p
+        - ethereum/rpc-compat
+        - ethereum/sync
         - ethereum/graphql
         - ethereum/consensus
+        - devp2p
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string 
+      loglevel:
+        description: 'Log level'
+        required: true
+        default: '3' 
+        type: choice
+        options:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5        
       hive:
         description: 'Repository for hive tests'
         required: true
         default: 'ethereum/hive'
-        type: string
-      limit:
-        description: 'Limit for hive tests'
-        required: false
         type: string        
       branch:
         description: 'Branch for hive tests'
@@ -60,7 +74,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Output Inputs
-        run: echo "${{ toJSON(github.event.inputs) }}"
+        env: 
+            PARAMS_ENTERED: ${{ toJSON(github.event.inputs) }}
+        run: echo $PARAMS_ENTERED
       - name: Checking out Nethermind
         uses: actions/checkout@v2
       - name: Unshallow fetching
@@ -96,11 +112,13 @@ jobs:
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Hive
+        continue-on-error: true
         if: "${{ github.event.inputs.limit == '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.loglevel ${{ github.event.inputs.loglevel }}
       - name: Run Hive With Limit
+        continue-on-error: true
         if: "${{ github.event.inputs.limit != '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }} --sim.loglevel ${{ github.event.inputs.loglevel }}
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:

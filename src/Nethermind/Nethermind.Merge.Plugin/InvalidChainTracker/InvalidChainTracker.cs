@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
 /// <summary>
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
-/// 
+///
 /// </summary>
 public class InvalidChainTracker: IInvalidChainTracker
 {
@@ -40,12 +40,12 @@ public class InvalidChainTracker: IInvalidChainTracker
     private readonly IBlockCacheService _blockCacheService;
     private readonly ILogger _logger;
     private readonly LruCache<Keccak, Node> _tree;
-    
-    // CompositeDisposable only available on System.Reactive. So this will do for now. 
+
+    // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = new();
 
     public InvalidChainTracker(
-        IPoSSwitcher poSSwitcher, 
+        IPoSSwitcher poSSwitcher,
         IBlockFinder blockFinder,
         IBlockCacheService blockCacheService,
         ILogManager logManager)
@@ -66,7 +66,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         });
     }
 
-    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlockHash, null);
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
     public void SetChildParent(Keccak child, Keccak parent)
     {
@@ -77,7 +77,7 @@ public class InvalidChainTracker: IInvalidChainTracker
             parentNode.Children.Add(child);
             needPropagate = parentNode.LastValidHash != null;
         }
-        
+
         if (needPropagate)
         {
             PropagateLastValidHash(parentNode);
@@ -99,8 +99,7 @@ public class InvalidChainTracker: IInvalidChainTracker
     {
         Queue<Node> bfsQue = new();
         bfsQue.Enqueue(node);
-        HashSet<Node> visited = new();
-        visited.Add(node);
+        HashSet<Node> visited = new() { node };
 
         while (bfsQue.Count > 0)
         {
@@ -122,24 +121,27 @@ public class InvalidChainTracker: IInvalidChainTracker
                 }
             }
         }
-        
+
     }
 
-    private BlockHeader? TryGetBlockHeader(Keccak hash)
+    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Keccak hash)
     {
         if (_blockCacheService.BlockCache.TryGetValue(hash, out Block? block))
         {
             return block.Header;
         }
 
-        return _blockFinder.FindHeader(hash);
+        return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
     {
+        if(_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
+
+        // TODO: This port can now be removed? We should never get null here?
         if (parent == null)
         {
-            BlockHeader? failedBlockHeader = TryGetBlockHeader(failedBlock);
+            BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
             if (failedBlockHeader == null)
             {
                 if(_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
@@ -148,9 +150,9 @@ public class InvalidChainTracker: IInvalidChainTracker
 
             parent = failedBlockHeader.ParentHash!;
         }
-        
+
         Keccak effectiveParent = parent;
-        BlockHeader? parentHeader = TryGetBlockHeader(parent);
+        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
         if (parentHeader != null)
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))

@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ISyncProgressResolver SyncProgressResolver { get; set; }
 
                 public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
-                
+
                 public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 
                 private void SetDefaults()
@@ -709,7 +709,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     return this;
                 }
-                
+
                 public ScenarioBuilder WhenInBeaconSyncMode(BeaconSync mode = BeaconSync.None)
                 {
                     BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
@@ -733,7 +733,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             overwrite.Invoke();
                         }
-                        
+
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.Stop();
@@ -755,12 +755,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                                 string peeringSetupName = peeringSetup.Invoke();
                                 string configSetupName = configSetups.Invoke();
 
-                                Console.WriteLine("=====================");
-                                Console.WriteLine(syncProgressSetupName);
-                                Console.WriteLine(peeringSetupName);
-                                Console.WriteLine(configSetupName);
+                                // Console.WriteLine("=====================");
+                                // Console.WriteLine(syncProgressSetupName);
+                                // Console.WriteLine(peeringSetupName);
+                                // Console.WriteLine(configSetupName);
                                 Test();
-                                Console.WriteLine("=====================");
+                                // Console.WriteLine("=====================");
                             }
                         }
                     }
@@ -776,7 +776,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>
                 new ScenarioBuilder().WhenConsensusRequiresToWaitForHeaders(needToWaitForHeaders);
         }
-        
+
         public enum BeaconSync
         {
             None,

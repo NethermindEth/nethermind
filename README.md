@@ -1,8 +1,8 @@
 <img src="Nethermind.png" width="200">
 
-# .NET Core Ethereum client
+# .NET Ethereum client
 
-Nethermind is a is a high-performance, highly configurable full Ethereum protocol client built on .NET Core that runs on Linux, Windows and MacOS, and supports Clique, AuRa, Ethash and Proof of Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high performance JSON-RPC based on Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
+Nethermind is a high-performance, highly configurable full Ethereum protocol client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, Ethash, and Proof-of-Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
 
 [![Documentation](https://img.shields.io/badge/GitBook-docs-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white)](https://docs.nethermind.io)
 [![Releases](https://img.shields.io/github/release/NethermindEth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/releases)
@@ -122,7 +122,7 @@ sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
 ```
 *Tested on Fedora 32*
 
-### MacOS
+### macOS
 
 * [Install .NET](https://www.microsoft.com/net/download)
 * Install dependencies
@@ -172,13 +172,14 @@ dotnet test EthereumTests.sln
 
 ## :bricks:	IDE
 
+[![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visual%20studio&logoColor=white)](https://visualstudio.microsoft.com/downloads)
 [![JetBrains Rider](https://img.shields.io/badge/Rider-000000?style=for-the-badge&logo=Rider&logoColor=white)](https://www.jetbrains.com/rider)
 [![Visual Studio Code](https://img.shields.io/badge/Visual_Studio_Code-0078D4?style=for-the-badge&logo=visual%20studio%20code&logoColor=white)](https://code.visualstudio.com/docs/other/dotnet)
-[![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visual%20studio&logoColor=white)](https://visualstudio.microsoft.com/downloads)
 
 ## :footprints:	Contributors welcome
 [![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/issues)
 [![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/graphs/contributors)
 
 ## License
-[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)
+[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-GPL)
+[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-LGPL)

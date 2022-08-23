@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
-        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             throw new NotImplementedException();
         }

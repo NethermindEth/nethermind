@@ -8,13 +8,13 @@ on:
       branch:
         description: 'Branch to get tests from'
         required: false
-        default: 'master'
+        default: 'bc-test-merge'
   workflow_dispatch:
     inputs:
       branch:
         description: 'Branch to get tests from'
         required: false
-        default: 'master'
+        default: 'bc-test-merge'
 
 jobs:
   run-posdao-tests:
@@ -48,23 +48,29 @@ jobs:
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
         cp -r Nethermind.Runner/bin/Release/net6.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
-    - name: Setup the Node.js
+    - name: Setup the Node.js (v12)
+      if: ${{ !contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '12'
+    - name: Setup the Node.js (v16)
+      if: ${{ contains(github.event.inputs.branch, 'merge') }}
+      uses: actions/setup-node@v1.4.4
+      with:
+        node-version: '16'
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
-    - name: Stopping and compressing logs      
-      run: |
-        cd posdao-test-setup
-        npm run stop-test-setup
-        zip -r node-logs.zip data/node0/log data/node1/log data/node2/log \
-          data/node3/log data/node4/log data/node5/log data/node6/log data/node1/checkRandomSeed.log
-    - uses: actions/upload-artifact@master      
-      name: Upload nodes logs
+    - name: Collect posdao logs if workflow was cancelled (otherwise it's collected in the test step)
+      if: cancelled()
+      run: cd posdao-test-setup && bash scripts/collect-logs
+    - name: Move logs to different dir
+      if: always()
+      run: mkdir posdao-logs && cp posdao-test-setup/posdao-logs/latest/* posdao-logs && ls posdao-logs
+    - name: Upload posdao logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        name: posdao-tests-logs
-        path: |
-          posdao-test-setup/node-logs.zip
+        name: posdao-logs
+        path: posdao-logs/*
