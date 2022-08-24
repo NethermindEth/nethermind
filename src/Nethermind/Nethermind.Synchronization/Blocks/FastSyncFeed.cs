@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
@@ -53,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
             return options;
         }
 
-        public override Task<BlocksRequest> PrepareRequest() => Task.FromResult(_blocksRequest);
+        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
         {
