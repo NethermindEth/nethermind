@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -30,17 +30,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
             AddActionsRecursively(results, txTrace, txTrace.Action);
             return results.ToArray();
         }
-        
-        public static ParityTxTraceFromStore[] FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
+
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
         {
             List<ParityTxTraceFromStore> results = new();
             foreach (ParityLikeTxTrace tx in txTrace)
             {
                 AddActionsRecursively(results, tx, tx.Action);
             }
-            
-            return results.ToArray(); 
-            
+
+            return results;
+
         }
 
         private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 Error = txTraceAction.Error
             };
             results.Add(result);
-            
+
             foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
             {
                 AddActionsRecursively(results, txTrace, subtrace);
@@ -71,10 +71,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         public ParityTraceAction Action { get; set; }
-        
+
         public Keccak BlockHash { get; set; }
-        
-        [JsonConverter(typeof(LongConverter), NumberConversion.Raw)] 
+
+        [JsonConverter(typeof(LongConverter), NumberConversion.Raw)]
         public long BlockNumber { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]

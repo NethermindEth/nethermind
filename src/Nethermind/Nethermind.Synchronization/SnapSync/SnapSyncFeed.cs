@@ -55,8 +55,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
-        
-        public override Task<SnapSyncBatch?> PrepareRequest()
+
+        public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {

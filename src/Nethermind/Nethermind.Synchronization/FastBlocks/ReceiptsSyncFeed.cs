@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -124,7 +125,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
-        public override Task<ReceiptsSyncBatch?> PrepareRequest()
+        public override Task<ReceiptsSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())

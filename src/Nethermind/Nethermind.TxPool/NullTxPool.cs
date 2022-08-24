@@ -57,7 +57,6 @@ namespace Nethermind.TxPool
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-
         public event EventHandler<TxEventArgs> NewDiscovered
         {
             add { }
