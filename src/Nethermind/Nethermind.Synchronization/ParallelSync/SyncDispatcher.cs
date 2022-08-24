@@ -106,14 +106,14 @@ namespace Nethermind.Synchronization.ParallelSync
                                     if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                                 }
 
-                                if (cancellationToken.IsCancellationRequested)
-                                {
-                                    if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
-                                    return;
-                                }
-
                                 try
                                 {
+                                    if (cancellationToken.IsCancellationRequested)
+                                    {
+                                        if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
+                                        return;
+                                    }
+
                                     SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                                     ReactToHandlingResult(request, result, allocatedPeer);
                                 }
