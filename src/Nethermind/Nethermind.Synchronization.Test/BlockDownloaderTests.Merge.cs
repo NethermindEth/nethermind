@@ -49,6 +49,7 @@ public partial class BlockDownloaderTests
     [TestCase(16L, 32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
     [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
+    [TestCase(16L, SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, SyncBatchSize.Max * 8 - 16L)]
     public async Task Merge_Happy_path(long pivot, long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -68,8 +69,7 @@ public partial class BlockDownloaderTests
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-
-        BlockCacheService blockCacheService = new();
+        beaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
         MergeBlockDownloader downloader = new(
             posSwitcher,
@@ -83,7 +83,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(notSyncedTree, blockCacheService,  new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(notSyncedTree, beaconPivot,  new SyncConfig(),  LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -109,6 +109,7 @@ public partial class BlockDownloaderTests
         }
 
         receiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
+        beaconPivot.ProcessDestination?.Number.Should().Be(insertedBeaconBlocks);
     }
 
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
@@ -134,8 +135,6 @@ public partial class BlockDownloaderTests
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
-        BlockCacheService blockCacheService = new();
-
         MergeBlockDownloader downloader = new(
             posSwitcher,
             beaconPivot,
@@ -148,7 +147,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(notSyncedTree, blockCacheService, new SyncConfig(), LimboLogs.Instance),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -182,7 +181,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             testSpecProvider,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(blockTree, blockCacheService, new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(blockTree, beaconPivot, new SyncConfig(),  LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
     }

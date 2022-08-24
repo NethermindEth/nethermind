@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.Peers;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Synchronization.ParallelSync
         int FeedId { get; }
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        Task<T> PrepareRequest();
+        Task<T> PrepareRequest(CancellationToken token = default);
         SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
         
         /// <summary>

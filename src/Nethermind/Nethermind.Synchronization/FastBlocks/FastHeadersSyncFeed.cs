@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -180,19 +181,20 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.HeadersInQueue.MarkEnd();
         }
 
-        private void HandleDependentBatches()
+        private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
             while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
+                cancellationToken.ThrowIfCancellationRequested();
             }
         }
 
-        public override Task<HeadersSyncBatch?> PrepareRequest()
+        public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
-            HandleDependentBatches();
+            HandleDependentBatches(cancellationToken);
 
             if (_pending.TryDequeue(out HeadersSyncBatch? batch))
             {
@@ -334,7 +336,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return dependentBatch;
         }
 
-        private int InsertHeaders(HeadersSyncBatch batch)
+        protected virtual int InsertHeaders(HeadersSyncBatch batch)
         {
             if (batch.Response == null)
             {

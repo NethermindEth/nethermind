@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-//
+// 
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -22,11 +22,11 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
-using NativeImport;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -76,7 +76,7 @@ namespace Nethermind.Runner
                     logger.Error(FailureString + eventArgs.ExceptionObject);
                 }
             };
-
+                
             try
             {
                 Run(args);
@@ -104,6 +104,7 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+            AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
@@ -144,8 +145,6 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-
-
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
@@ -154,8 +153,6 @@ namespace Nethermind.Runner
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();
-
-                PatchRockDbVersion(initConfig.BaseDbPath);
 
                 EthereumJsonSerializer serializer = new();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
@@ -202,45 +199,20 @@ namespace Nethermind.Runner
             _appClosed.Wait();
         }
 
-        private static void PatchRockDbVersion(string baseDbPath)
+        private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
         {
-            void CheckAndPatch(string versiontoPatch, string[] versions)
+            const string MacosSnappyPath = "/opt/homebrew/Cellar/snappy";
+            var alternativePath = nativeLibraryName switch
             {
-                if (!versions.Contains(versiontoPatch))
-                {
-                    return;
-                }
+                "libdl" or "liblibdl" => "libdl.so.2",
+                "libbz2.so.1.0" => "libbz2.so.1",
+                "libsnappy" or "snappy" => Directory.Exists(MacosSnappyPath) ?
+                    Directory.EnumerateFiles(MacosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
+                _ => null
+            };
 
-                _logger.Info($"Patching RocksDB versions: {string.Join(", ", versions)}");
-                foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
-                {
-                    File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
-                }
-            }
-
-            try
-            {
-                if (!Directory.Exists(baseDbPath))
-                {
-                    return;
-                }
-
-                var versions = Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
-                    .Select(f => File.ReadLines(f).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
-                    .Distinct()
-                    .ToArray();
-
-                _logger.Info($"RocksDB files versions found: {string.Join(", ", versions)}");
-
-                CheckAndPatch("6.15.5", versions);
-                CheckAndPatch("6.26.1", versions);                                                       // TODO: check arm
-            }
-            catch(Exception ex)
-            {
-                _logger.Warn($"RocksDB patching failed {ex.Message}\n{ex.StackTrace}");
-            }
+            return alternativePath is null ? IntPtr.Zero : NativeLibrary.Load(alternativePath);
         }
-
 
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
         {
@@ -299,7 +271,7 @@ namespace Nethermind.Runner
         {
             string shortCommand = "-pd";
             string longCommand = "--pluginsDirectory";
-
+            
             string[] GetPluginArgs()
             {
                 for (int i = 0; i < args.Length; i++)
@@ -313,7 +285,7 @@ namespace Nethermind.Runner
 
                 return Array.Empty<string>();
             }
-
+            
             CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
             CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
             string pluginDirectory = "plugins";
@@ -508,7 +480,7 @@ namespace Nethermind.Runner
             ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger.IsInfo)
+                if (_logger.IsInfo) 
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }

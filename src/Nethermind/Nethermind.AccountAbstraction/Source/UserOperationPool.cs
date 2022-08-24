@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Concurrent;
@@ -65,11 +65,11 @@ namespace Nethermind.AccountAbstraction.Source
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksReplacementChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
         private readonly Channel<BlockEventArgs> _headBlockChannel = Channel.CreateUnbounded<BlockEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
-        
+
         private readonly ulong _chainId;
 
         private UInt256 _currentBaseFee;
-        
+
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -106,7 +106,7 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
-            
+
             _blockTree.BlockAddedToMain += OnBlockAdded;
             _blockTree.NewHeadBlock += OnNewHead;
 
@@ -129,7 +129,7 @@ namespace Nethermind.AccountAbstraction.Source
                         $"Couldn't correctly add or remove user operations from UserOperationPool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-        
+
         private void OnNewHead(object? sender, BlockEventArgs e)
         {
             try
@@ -170,7 +170,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
             });
         }
-        
+
         private void ProcessNewHeadBlocks()
         {
             Task.Factory.StartNew(async () =>
@@ -242,14 +242,14 @@ namespace Nethermind.AccountAbstraction.Source
         }
 
         // we only want to increment opsSeen for ops whose maxFeePerGas passes baseFee
-        // else paymasters could be griefed by submitting many ops which might never 
+        // else paymasters could be griefed by submitting many ops which might never
         // make it on chain but will increase opsSeen
         private void IncrementOpsSeenForOpsSurpassingBaseFee()
         {
             _userOperationSortedPool.UpdatePool(RemoveOpsSurpassingBaseFee);
         }
 
-        private IEnumerable<(UserOperation Tx, Action<UserOperation>? Change)> RemoveOpsSurpassingBaseFee(Address address, ICollection<UserOperation> userOperations)
+        private IEnumerable<(UserOperation Tx, Action<UserOperation>? Change)> RemoveOpsSurpassingBaseFee(Address address, IReadOnlyCollection<UserOperation> userOperations)
         {
             foreach (UserOperation op in userOperations)
             {
@@ -280,7 +280,7 @@ namespace Nethermind.AccountAbstraction.Source
 
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
             NewReceived?.Invoke(this, userOperationEventArgs);
-            
+
             UpdateCurrentBaseFee();
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
@@ -295,9 +295,9 @@ namespace Nethermind.AccountAbstraction.Source
                         _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     }
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} inserted into pool");
-                    _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
+                    _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
                     NewPending?.Invoke(this, userOperationEventArgs);
-                    
+
                     return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
                 }
 
@@ -371,7 +371,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 return ResultWrapper<Keccak>.Fail($"maxFeePerGas must be at least 70% of baseFee to be accepted into pool");
             }
-            
+
 
             PaymasterStatus paymasterStatus =
                 _paymasterThrottler.GetPaymasterStatus(userOperation.Paymaster);
