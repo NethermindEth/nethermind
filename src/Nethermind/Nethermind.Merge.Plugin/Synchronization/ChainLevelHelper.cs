@@ -100,10 +100,9 @@ public class ChainLevelHelper : IChainLevelHelper
             if (beaconMainChainBlock.IsBeaconInfo)
             {
                 newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
-                /*
                 if (beaconMainChainBlock.TotalDifficulty != 0)
                 {
-                    newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
+                    newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
                 }
                 else if (headers.Count > 0)
                 {
@@ -117,7 +116,6 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     newHeader.TotalDifficulty = null;
                 }
-                */
             }
             if (_logger.IsTrace)
                 _logger.Trace(

@@ -41,15 +41,12 @@ public class MergeSealValidator : ISealValidator
 
     public bool ValidateSeal(BlockHeader header, bool force)
     {
-        return _poSSwitcher.GetBlockConsensusInfo(header, true).IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force);
-        /*
-        (bool IsTerminal, bool IsPostMerge) consensusInfo = _poSSwitcher.GetBlockConsensusInfo(header, true);
+        (bool IsTerminal, bool IsPostMerge) consensusInfo = _poSSwitcher.GetBlockConsensusInfo(header);
         bool result = consensusInfo.IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force || consensusInfo.IsTerminal);
         if (!result)
         {
-            // _invalidChainTracker?.OnInvalidBlock(header.Hash!, header.ParentHash);
+            _invalidChainTracker?.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
         return result;
-        */
     }
 }
