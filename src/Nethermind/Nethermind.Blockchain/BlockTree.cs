@@ -881,6 +881,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
+                    if (_logger.IsWarn) _logger.Warn($"Set totalDifficulty for {header.ToString(BlockHeader.Format.FullHashAndNumber)} TD value: {blockInfo.TotalDifficulty}");
                     header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }
 
