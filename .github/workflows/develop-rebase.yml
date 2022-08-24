@@ -1,0 +1,19 @@
+name: Develop Rebase
+on:
+  push:
+    branches:
+      # All pushes to this branch will trigger the task.
+      - master
+
+jobs:
+  rebase_branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebase head_branch on base_ref
+        # Recommended: specify a version such as `@v1.0` rather than `@main`
+        uses: DeeDeeG/rebase-github-action@main
+        with:
+          # Head branch, which will be rebased onto the base_ref.
+          head_branch: develop
+          # Branch, or Git ref, that the head_branch will be rebased onto.
+          base_ref: master
