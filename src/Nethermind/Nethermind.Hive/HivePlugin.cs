@@ -46,21 +46,9 @@ namespace Nethermind.Hive
             if (Enabled)
             {
                 if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
-
-                _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
             }
 
             return Task.CompletedTask;
-        }
-
-        private void OnPeerRefreshed(object? sender, PeerHeadRefreshedEventArgs e)
-        {
-            BlockHeader header = e.Header;
-            if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
-            {
-                Block block = new(header, new BlockBody());
-                _api.BlockTree!.SuggestBlock(block);
-            }
         }
 
         public async Task InitRpcModules()
