@@ -17,6 +17,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -24,17 +25,31 @@ public class MergeSealValidator : ISealValidator
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly ISealValidator _preMergeSealValidator;
+    private readonly IInvalidChainTracker? _invalidChainTracker;
 
     public MergeSealValidator(
         IPoSSwitcher poSSwitcher,
-        ISealValidator preMergeSealValidator)
-    {
+        ISealValidator preMergeSealValidator,
+        IInvalidChainTracker? invalidChainTracker = null
+    ) {
         _poSSwitcher = poSSwitcher;
         _preMergeSealValidator = preMergeSealValidator;
+        _invalidChainTracker = invalidChainTracker;
     }
     public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
         _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header);
 
-    public bool ValidateSeal(BlockHeader header, bool force) =>
-        _poSSwitcher.GetBlockConsensusInfo(header, true).IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force);
+    public bool ValidateSeal(BlockHeader header, bool force)
+    {
+        return _poSSwitcher.GetBlockConsensusInfo(header, true).IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force);
+        /*
+        (bool IsTerminal, bool IsPostMerge) consensusInfo = _poSSwitcher.GetBlockConsensusInfo(header, true);
+        bool result = consensusInfo.IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force || consensusInfo.IsTerminal);
+        if (!result)
+        {
+            // _invalidChainTracker?.OnInvalidBlock(header.Hash!, header.ParentHash);
+        }
+        return result;
+        */
+    }
 }
