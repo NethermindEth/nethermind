@@ -139,29 +139,27 @@ namespace Nethermind.HealthChecks
 
         public bool CheckClAlive()
         {
-            return CheckMethodInvoked("engine_forkchoiceUpdatedV1") || CheckMethodInvoked("engine_newPayloadV1") ||
-                   CheckMethodInvoked("engine_exchangeTransitionConfigurationV1");
+            var now = _api.Timestamper.UtcNow;
+            bool forkchoice = CheckMethodInvoked("engine_forkchoiceUpdatedV1", now);
+            bool newPayload = CheckMethodInvoked("engine_newPayloadV1", now);
+            bool exchangeTransition = CheckMethodInvoked("engine_exchangeTransitionConfigurationV1", now);
+            return forkchoice || newPayload || exchangeTransition;
         }
 
         private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
-        private DateTime _previousMethodCheckTime = DateTime.MinValue;
+        private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
         private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
 
-        private bool CheckMethodInvoked(string methodName)
+        private bool CheckMethodInvoked(string methodName, DateTime now)
         {
-            var now = _api.Timestamper.UtcNow;
-            var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName);
+            var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
             var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
             var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
+            var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
 
-            if (_previousMethodCheckTime == DateTime.MinValue)
+            if (methodCallSuccesses == previousSuccesses)
             {
-                _previousMethodCheckTime = now;
-            }
-
-            if (methodCallSuccesses.Successes == previousSuccesses)
-            {
-                int diff = (int)(Math.Floor((now - _previousMethodCheckTime).TotalSeconds));
+                int diff = (int)(Math.Floor((now - lastSuccessfulCheckTime).TotalSeconds));
                 if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
                 {
                     _previousMethodCheckResult[methodName] = false;
@@ -171,9 +169,9 @@ namespace Nethermind.HealthChecks
                 return previousCheckResult;
             }
 
-            _previousMethodCheckTime = now;
+            _previousSuccessfulCheckTime[methodName] = now;
             _previousMethodCheckResult[methodName] = true;
-            _previousMethodCallSuccesses[methodName] = methodCallSuccesses.Successes;
+            _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
             return true;
         }
 

@@ -51,7 +51,7 @@ namespace Nethermind.HealthChecks
         [ConfigItem(Description = "Max interval in seconds in which we assume that node producing blocks in a healthy way", DefaultValue = "null")]
         public ulong? MaxIntervalWithoutProducedBlock { get; set; }
 
-        [ConfigItem(Description = "Max request interval in witch we assume that CL works in a healthy way", DefaultValue = "70")]
+        [ConfigItem(Description = "Max request interval in which we assume that CL works in a healthy way", DefaultValue = "70")]
         public int MaxIntervalClRequestTime { get; set; }
     }
 }
