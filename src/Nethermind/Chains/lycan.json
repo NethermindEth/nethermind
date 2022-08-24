@@ -1,0 +1,199 @@
+{
+  "name": "lyc",
+  "engine": {
+    "authorityRound": {
+      "params": {
+        "stepDuration": "3",
+        "blockReward": "0x0",
+        "maximumUncleCountTransition": 0,
+        "maximumUncleCount": 0,
+        "validators": {
+          "multi": {
+            "0": {
+              "list": [
+                "0x769559CF7cd1A6959BeF27558d0453EdEA99B001",
+                "0x1B3E635df4B13B6D92e6073243C1665E268cB002",
+                "0x76A5e9E9B61f72F7E1c55bDd403078320c27B003"
+              ]
+            },
+            "28352": {
+              "contract": "0xDd6F1393A0298863762e899D0edE78457B23F2De"
+            }
+          }
+        },
+        "blockRewardContractTransitions": {
+          "28352": "0x32DfA2202797a800FF44bE6c02Df9A560335AD85"
+        },
+        "randomnessContractAddress": {
+          "28352": "0x3eCF361A75B0fAa7CE08a02Da81c73500302F161"
+        },
+        "posdaoTransition": 28352
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400000",
+    "maximumExtraDataSize": "0x100",
+    "minGasLimit": "0x0",
+    "networkID": "0x2d1",
+    "eip155Transition": 0,
+    "validateChainIdTransition": 0,
+    "eip140Transition": 0,
+    "eip211Transition": 0,
+    "eip214Transition": 0,
+    "eip658Transition": 0,
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip98Transition": "0x7fffffffffffff",
+    "registrar": "0xeFcA19389C530a9F202133147503C1B0537C5966",
+    "transactionPermissionContract": "0x8a88c220a9F85AF3C7a585db8b9AEE2899bDBBc9",
+    "transactionPermissionContractTransition": 28352
+  },
+  "genesis": {
+    "seal": {
+      "authorityRound": {
+        "step": "0x0",
+        "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "difficulty": "0x20000",
+    "gasLimit": "0x112A880"
+  },
+  "nodes": [
+    "enode://63026a8bc9e7547ebf19deae57ac122290d8cbb39075189b1b2e2eae5baf9cd5503993d4f770657c33afd347afc276d7f503c9f218695671f8f9a933223d1d56@18.203.96.201:30300",
+    "enode://7d0f0f205183c8a5d5ecfa23ebd46e0fa74b39fded56908de249f90d113f9f627b1df29b94da1c42a0bcf74ac93010b08c1c6bb29f7c4bd2d25584b9c485b8d5@34.253.107.112:30300",
+    "enode://f496104b9d26dffa1395a50ab3e4c9762904594c0e35cb2033bedf22fbacc149353dd3c1be1243b41531434bb4f5cccb5e98ac71021bd7c54cd2287197e871ca@13.50.52.213:30300",
+    "enode://7df929228ee353f5ab0ad68d1e538aa4d5f757ced060d82589954b8ffe3ba21dfc5c07fba09b49a4972bc46a9d1c5ab1797ce223dfddb0c4d87fa51db04dedd0@13.50.55.48:30300",
+    "enode://4048ffcc35a291896dc6c38f3b03733554df4a6faea5955ae2ea865f8dc9b3a8c843d5c4eb1157676cd0cc36e1373f40ddaa5a61fa47f51ee63ce63febe73fcf@35.177.43.244:30300",
+    "enode://3b77c1134320003fc5a9e3a2d8a63b0a624f73812d67a0047db2694af3b7f21a8040db1204e12326015b55b3086053e27af1b05f1eee297a978a060537198fbd@18.134.188.251:30300"
+  ],
+  "accounts": {
+    "0x0000000000000000000000000000000000000001": {
+      "balance": "1",
+      "builtin": {
+        "name": "ecrecover",
+        "pricing": {
+          "linear": {
+            "base": 3000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000002": {
+      "balance": "1",
+      "builtin": {
+        "name": "sha256",
+        "pricing": {
+          "linear": {
+            "base": 60,
+            "word": 12
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000003": {
+      "balance": "1",
+      "builtin": {
+        "name": "ripemd160",
+        "pricing": {
+          "linear": {
+            "base": 600,
+            "word": 120
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000004": {
+      "balance": "1",
+      "builtin": {
+        "name": "identity",
+        "pricing": {
+          "linear": {
+            "base": 15,
+            "word": 3
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000005": {
+      "builtin": {
+        "name": "modexp",
+        "activate_at": 0,
+        "pricing": {
+          "modexp": {
+            "divisor": 20
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000006": {
+      "builtin": {
+        "name": "alt_bn128_add",
+        "activate_at": 0,
+        "pricing": {
+          "linear": {
+            "base": 500,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000007": {
+      "builtin": {
+        "name": "alt_bn128_mul",
+        "activate_at": 0,
+        "pricing": {
+          "linear": {
+            "base": 40000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000008": {
+      "builtin": {
+        "name": "alt_bn128_pairing",
+        "activate_at": 0,
+        "pricing": {
+          "alt_bn128_pairing": {
+            "base": 100000,
+            "pair": 80000
+          }
+        }
+      }
+    },
+    "0x301285A6AA92F76098462910adc717818daaC001": {
+      "balance": "721000000000000000000000000"
+    },
+    "0x21073d695CfFb22D330803628501A966199691DA": {
+      "balance": "360500000000000000000000000"
+    },
+    "0x2404B9024F973eD1dc8d1E0d860707C38839F1BD": {
+      "balance": "360500000000000000000000000"
+    },
+    "0x000173693cb4279ECe9C29CFa4144AD29D58f009": {
+      "balance": "1442000000000000000000000000"
+    },
+    "0x0002eb98D302dA1d238d2666878fe351b8157578": {
+      "balance": "1081500000000000000000000000"
+    },
+    "0x0003F5D29295010754e42e9E1409D1636c41CBBC": {
+      "balance": "865200000000000000000000000"
+    },
+    "0x00042C1EB54C587813E123BF5Fecdca5262766B9": {
+      "balance": "1802500000000000000000000000"
+    },
+    "0x0005E547D65568d305ca432318Bb817162Df8Fdf": {
+      "balance": "288400000000000000000000000"
+    },
+    "0x0006A0e2d0D903828be82E68dB7fa4E17AA0f1B5": {
+      "balance": "216300000000000000000000000"
+    },
+    "0x0007bBa2E71EFC0be70c991F96470fEB760dcD51": {
+      "balance": "72100000000000000000000000"
+    }
+  }
+}
