@@ -882,7 +882,10 @@ namespace Nethermind.Blockchain
                 else
                 {
                     if (_logger.IsWarn) _logger.Warn($"Set totalDifficulty for {header.ToString(BlockHeader.Format.FullHashAndNumber)} TD value: {blockInfo.TotalDifficulty}");
-                    header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    if (!blockInfo.IsBeaconInfo)
+                        header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    else
+                        if (_logger.IsWarn) _logger.Warn($"Skipping total difficulty set for {header.ToString(BlockHeader.Format.FullHashAndNumber)} TD value: {blockInfo.TotalDifficulty}");
                 }
 
                 if (requiresCanonical)
@@ -1945,10 +1948,10 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (current.TotalDifficulty is null)
+                while (current.TotalDifficulty is null /*|| current.TotalDifficulty == 0*/)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
-                    if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
+                    if (level is null || blockInfo is null /*|| blockInfo.TotalDifficulty == 0*/)
                     {
                         stack.Push(current);
                         if (_logger.IsTrace)
@@ -1973,7 +1976,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.TotalDifficulty is not null)
+            if (header.TotalDifficulty is not null && header.TotalDifficulty != 0)
             {
                 return;
             }
