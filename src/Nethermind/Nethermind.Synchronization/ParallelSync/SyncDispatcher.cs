@@ -108,7 +108,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
                                 if (cancellationToken.IsCancellationRequested)
                                 {
-                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as shutdown is requested.");
+                                    if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
+                                    return;
                                 }
 
                                 try
