@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -36,7 +37,7 @@ namespace Nethermind.Synchronization.Blocks
         private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
-        public override Task<BlocksRequest?> PrepareRequest() => Task.FromResult<BlocksRequest?>(_blocksRequest);
+        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => Task.FromResult<BlocksRequest?>(_blocksRequest);
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {

@@ -420,8 +420,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("^mainnet ^goerli", false)]
         [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("goerli.cfg", true)]
+        [TestCase("mainnet.cfg", false)]
+        [TestCase("goerli.cfg", false)]
         public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
