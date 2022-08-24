@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -107,7 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.BodiesInQueue.MarkEnd();
         }
 
-        public override Task<BodiesSyncBatch?> PrepareRequest()
+        public override Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
