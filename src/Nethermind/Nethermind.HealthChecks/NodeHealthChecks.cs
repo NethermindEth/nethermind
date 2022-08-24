@@ -45,12 +45,6 @@ namespace Nethermind.HealthChecks
         {
             try
             {
-                if (_api.SpecProvider!.TerminalTotalDifficulty != null && !_nodeHealthService.CheckClAlive())
-                {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            "No incoming messages from Consensus Client. Please make sure that it's working properly");
-                }
                 CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
                 if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));

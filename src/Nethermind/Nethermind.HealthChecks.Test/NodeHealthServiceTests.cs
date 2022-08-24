@@ -65,7 +65,7 @@ namespace Nethermind.HealthChecks.Test
 
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
+                new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, api, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
@@ -110,7 +110,7 @@ namespace Nethermind.HealthChecks.Test
 
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
+                new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, api, false);
             nodeHealthService.CheckHealth();
 

@@ -19,12 +19,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Api;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth;
-using Nethermind.Int256;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -44,13 +42,11 @@ namespace Nethermind.HealthChecks
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly IBlockFinder _blockFinder;
         private readonly INethermindApi _api;
         private readonly bool _isMining;
 
         public NodeHealthService(
             ISyncServer syncServer,
-            IBlockFinder blockFinder,
             IBlockchainProcessor blockchainProcessor,
             IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
@@ -61,7 +57,6 @@ namespace Nethermind.HealthChecks
         {
             _syncServer = syncServer;
             _isMining = isMining;
-            _blockFinder = blockFinder;
             _healthChecksConfig = healthChecksConfig;
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
@@ -156,7 +151,6 @@ namespace Nethermind.HealthChecks
         {
             var now = _api.Timestamper.UtcNow;
             var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName);
-
             var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
             var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
 

@@ -16,11 +16,12 @@
 
 using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
@@ -37,7 +38,13 @@ namespace Nethermind.HealthChecks
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
 
-        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
+        private ClHealthLogger _clHealthLogger;
+
+        public ValueTask DisposeAsync()
+        {
+            _clHealthLogger.DisposeAsync();
+            return ValueTask.CompletedTask;
+        }
 
         public string Name => "HealthChecks";
 
@@ -53,6 +60,12 @@ namespace Nethermind.HealthChecks
             _initConfig = _api.Config<IInitConfig>();
 
             _logger = api.LogManager.GetClassLogger();
+
+            _nodeHealthService = new NodeHealthService(_api.SyncServer,
+                _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
+                _api.EthSyncingInfo!, _api, _initConfig.IsMining);
+
+            _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
 
             return Task.CompletedTask;
         }
@@ -101,14 +114,16 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
-            _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree!),
-                _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService,
-                _api.EthSyncingInfo, _api, _initConfig.IsMining);
             if (_healthChecksConfig.Enabled)
             {
                 HealthRpcModule healthRpcModule = new(_nodeHealthService);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthRpcModule>(healthRpcModule, true));
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
+            }
+
+            if (_api.SpecProvider!.TerminalTotalDifficulty != null)
+            {
+                _clHealthLogger.StartAsync(default);
             }
 
             return Task.CompletedTask;
@@ -119,6 +134,52 @@ namespace Nethermind.HealthChecks
             string host = _jsonRpcConfig.Host.Replace("0.0.0.0", "localhost");
             host = host.Replace("[::]", "localhost");
             return new UriBuilder("http", host, _jsonRpcConfig.Port, _healthChecksConfig.Slug).ToString();
+        }
+
+        private class ClHealthLogger : IHostedService, IAsyncDisposable
+        {
+            private readonly INodeHealthService _nodeHealthService;
+            private readonly ILogger _logger;
+
+            private Timer _timer;
+
+            public ClHealthLogger(INodeHealthService nodeHealthService, ILogger logger)
+            {
+                _nodeHealthService = nodeHealthService;
+                _logger = logger;
+            }
+
+            public Task StartAsync(CancellationToken cancellationToken)
+            {
+                _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
+                    TimeSpan.FromSeconds(5));
+
+                return Task.CompletedTask;
+            }
+
+            public Task StopAsync(CancellationToken cancellationToken)
+            {
+                _timer.Change(Timeout.Infinite, 0);
+
+                return Task.CompletedTask;
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                _timer.DisposeAsync();
+
+                return ValueTask.CompletedTask;
+            }
+
+            private void ReportClStatus(object _)
+            {
+                if (!_nodeHealthService.CheckClAlive())
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            "No incoming messages from Consensus Client. Please make sure that it's working properly");
+                }
+            }
         }
     }
 }
