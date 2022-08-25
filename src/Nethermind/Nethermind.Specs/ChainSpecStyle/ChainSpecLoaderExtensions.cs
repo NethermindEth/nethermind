@@ -22,65 +22,63 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Logging;
 
-namespace Nethermind.Specs.ChainSpecStyle
+namespace Nethermind.Specs.ChainSpecStyle;
+
+public static class ChainSpecLoaderExtensions
 {
-    public static class ChainSpecLoaderExtensions
+
+    public static ChainSpec LoadEmbeddedOrFromFile(this IChainSpecLoader chainSpecLoader, string fileName, ILogger logger)
     {
-
-        public static ChainSpec LoadFromEmbeddedOrFile(this IChainSpecLoader chainSpecLoader, string fileName, ILogger logger)
+        string resourceName = fileName;
+        if (!resourceName.Contains('/'))
         {
-            string resourceName = fileName;
-            if (!resourceName.Contains('/'))
-            {
-                resourceName = "chainspec/" + resourceName;
-            }
-            if (!resourceName.EndsWith(".json", StringComparison.InvariantCultureIgnoreCase))
-            {
-                resourceName += ".json";
-            }
-            resourceName = resourceName.Replace('/', '.');
-            Assembly assembly = typeof(IConfig).Assembly;
-            string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName)))
-                return chainSpecLoader.LoadFromFile(fileName);
-            resourceName = "Nethermind.Config." + resourceName;
-            using Stream stream = assembly.GetManifestResourceStream(resourceName);
-            using StreamReader reader = new(stream);
-            fileName = fileName.GetApplicationResourcePath();
-            if (File.Exists(fileName))
-            {
-                if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. " +
-                    "Loading chainspec from embedded resource instead file!");
-            }
-            return chainSpecLoader.Load(reader.ReadToEnd());
+            resourceName = $"chainspec/{resourceName}";
         }
-
-        public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
+        if (!resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
         {
-            filePath = filePath.GetApplicationResourcePath();
-            if (!File.Exists(filePath))
+            resourceName += ".json";
+        }
+        resourceName = resourceName.Replace('/', '.');
+        Assembly assembly = typeof(IConfig).Assembly;
+        string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
+        if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase)))
+            return chainSpecLoader.LoadFromFile(fileName);
+        resourceName = $"Nethermind.Config.{resourceName}";
+        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        using StreamReader reader = new(stream);
+        fileName = fileName.GetApplicationResourcePath();
+        if (File.Exists(fileName))
+        {
+            if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resource instead file!");
+        }
+        return chainSpecLoader.Load(reader.ReadToEnd());
+    }
+
+    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
+    {
+        filePath = filePath.GetApplicationResourcePath();
+        if (!File.Exists(filePath))
+        {
+            StringBuilder missingChainspecFileMessage = new($"Chainspec file does not exist {filePath}");
+            try
             {
-                StringBuilder missingChainspecFileMessage = new($"Chainspec file does not exist {filePath}");
-                try
+                missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
+                string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
+                for (int i = 0; i < configFiles.Length; i++)
                 {
-                    missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                    string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                    for (int i = 0; i < configFiles.Length; i++)
-                    {
-                        missingChainspecFileMessage.AppendLine($"  * {configFiles[i]}");
-                    }
-                }
-                catch (Exception)
-                {
-                    // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
-                }
-                finally
-                {
-                    throw new Exception(missingChainspecFileMessage.ToString());
+                    missingChainspecFileMessage.AppendLine($"  * {configFiles[i]}");
                 }
             }
-            
-            return chainSpecLoader.Load(File.ReadAllText(filePath));
+            catch (Exception)
+            {
+                // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+            }
+            finally
+            {
+                throw new Exception(missingChainspecFileMessage.ToString());
+            }
         }
+        
+        return chainSpecLoader.Load(File.ReadAllText(filePath));
     }
 }
