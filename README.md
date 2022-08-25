@@ -22,6 +22,8 @@ Nethermind documentation can be found at [docs.nethermind.io](https://docs.nethe
 
 ## Download and run
 
+Release builds are available on the [Releases page](https://github.com/nethermindeth/nethermind/releases) and at [downloads.nethermind.io](https://downloads.nethermind.io).
+
 #### Using PPA
 
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
@@ -62,7 +64,7 @@ The output must show the image digest, and then you can copy that output to the 
 #### Windows
 
 -   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=windows)
--   For some versions of Windows, you may need to install [Visual C++ Redistributable](https://docs.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist).
+-   For some versions of Windows, you may need to install [Visual C++ Redistributable](https://docs.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
 #### macOS
 
