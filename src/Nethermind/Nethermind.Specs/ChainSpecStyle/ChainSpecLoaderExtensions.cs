@@ -36,7 +36,7 @@ public static class ChainSpecLoaderExtensions
         }
         if (!resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
         {
-            resourceName += ".json";
+            resourceName = $"{resourceName}.json";
         }
         resourceName = resourceName.Replace('/', '.');
         Assembly assembly = typeof(IConfig).Assembly;
