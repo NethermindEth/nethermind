@@ -104,7 +104,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
                 }
-                else if (headers.Count > 0)
+                else if (headers.Count > 0 && headers[^1].TotalDifficulty != null)
                 {
                     // The beacon header may not have the total difficulty available since it is downloaded
                     // backwards and final total difficulty may not be known early on. But this is still needed
@@ -114,6 +114,8 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
                 else
                 {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"ChainLevelHelper - Unable to determine total difficulty. This is not expected. Header: {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                     newHeader.TotalDifficulty = null;
                 }
             }
