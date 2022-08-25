@@ -21,9 +21,9 @@ Nethermind is a high-performance, highly configurable full Ethereum protocol cli
 
 ## Download and run
 
-[![Windows](https://img.shields.io/badge/Windows-AMD64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](http://downloads.nethermind.io)
-[![Linux](https://img.shields.io/badge/Linux-AMD64/ARM64-FCC624?style=for-the-badge&logo=linux&logoColor=black)](http://downloads.nethermind.io)
-[![MacOS](https://img.shields.io/badge/MacOS-AMD64/ARM64-000000?style=for-the-badge&logo=apple&logoColor=white)](http://downloads.nethermind.io)
+[![Windows](https://img.shields.io/badge/Windows-AMD64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://downloads.nethermind.io)
+[![Linux](https://img.shields.io/badge/Linux-AMD64/ARM64-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://downloads.nethermind.io)
+[![MacOS](https://img.shields.io/badge/MacOS-AMD64/ARM64-000000?style=for-the-badge&logo=apple&logoColor=white)](https://downloads.nethermind.io)
 
 ### :chains: Currently supported list of networks
 
