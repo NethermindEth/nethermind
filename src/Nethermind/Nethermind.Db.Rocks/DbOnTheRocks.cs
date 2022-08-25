@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -31,15 +31,15 @@ namespace Nethermind.Db.Rocks;
 public class DbOnTheRocks : IDbWithSpan
 {
     private ILogger _logger;
-    
+
     private string? _fullPath;
-    
+
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
     private bool _isDisposed;
 
     private readonly HashSet<IBatch> _currentBatches = new();
-    
+
     internal readonly RocksDb _db;
     internal WriteOptions? WriteOptions { get; private set; }
 
@@ -525,7 +525,7 @@ public class DbOnTheRocks : IDbWithSpan
         {
             batch.Dispose();
         }
-        
+
         _db?.Dispose();
     }
 
@@ -533,21 +533,15 @@ public class DbOnTheRocks : IDbWithSpan
     {
         if (!_isDisposed)
         {
-            // ReSharper disable once ConstantConditionalAccessQualifier
-            _logger?.Info($"Disposing DB {Name}");
-
             if (disposing)
             {
+                if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
                 Flush();
+                ReleaseUnmanagedResources();
+                _dbsByPath.Remove(_fullPath!, out _);
             }
 
             _isDisposed = true;
-
-            ReleaseUnmanagedResources();
-            if (disposing)
-            {
-                _dbsByPath.Remove(_fullPath!, out _);
-            }
         }
     }
 
