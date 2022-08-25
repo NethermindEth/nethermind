@@ -48,9 +48,7 @@ public static class ChainSpecLoaderExtensions
         using StreamReader reader = new(stream);
         fileName = fileName.GetApplicationResourcePath();
         if (File.Exists(fileName))
-        {
             if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resource instead file!");
-        }
         return chainSpecLoader.Load(reader.ReadToEnd());
     }
 
@@ -78,7 +76,7 @@ public static class ChainSpecLoaderExtensions
                 throw new Exception(missingChainspecFileMessage.ToString());
             }
         }
-        
+
         return chainSpecLoader.Load(File.ReadAllText(filePath));
     }
 }
