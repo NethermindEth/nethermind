@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -61,6 +61,10 @@ public class EnrDiscovery : INodeSource
                     if (_logger.IsDebug) _logger.Error($"failed to parse enr record {nodeRecordText}", e);
                 }
             }
+        }
+        catch
+        {
+            if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{domain}\" timed out or internet connection is not available.");
         }
         finally
         {
