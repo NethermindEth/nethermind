@@ -531,7 +531,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private void ValidateSeals(BlockHeader?[] headers, CancellationToken cancellation)
+        protected void ValidateSeals(BlockHeader?[] headers, CancellationToken cancellation)
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
             ConcurrentQueue<Exception> exceptions = new();
@@ -553,7 +553,14 @@ namespace Nethermind.Synchronization.Blocks
 
                 try
                 {
-                    bool forceValidation = i == headers.Length - 1 || i == randomNumberForValidation;
+                    bool lastBlock = i == headers.Length - 1;
+                    // PoSSwitcher can't determine if a block is a terminal block if TD is missing due to another
+                    // problem. In theory, this should not be a problem, but additional seal check does no harm.
+                    bool terminalBlock = !lastBlock
+                                         && headers.Length > 1
+                                         && headers[i + 1].Difficulty == 0
+                                         && headers[i].Difficulty != 0;
+                    bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
                     if (!_sealValidator.ValidateSeal(header, forceValidation))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");

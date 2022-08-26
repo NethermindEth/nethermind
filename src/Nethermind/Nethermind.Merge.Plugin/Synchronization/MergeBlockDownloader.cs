@@ -140,6 +140,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
 
+                // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
+                ValidateSeals(headers!, cancellation);
+
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation

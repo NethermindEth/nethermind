@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -77,8 +78,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
         MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
+        ISyncConfig syncConfig = new SyncConfig();
         TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-        EthSyncingInfo = new EthSyncingInfo(BlockTree);
+        EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig);
         PostMergeBlockProducerFactory blockProducerFactory = new(
             SpecProvider,
             SealEngine,
