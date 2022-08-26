@@ -396,8 +396,6 @@ public class DbOnTheRocks : IDbWithSpan
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
     }
 
-    public IDb Innermost => this;
-
     public IBatch StartBatch()
     {
         IBatch batch = new RocksDbBatch(this);
@@ -433,7 +431,6 @@ public class DbOnTheRocks : IDbWithSpan
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
             _dbOnTheRocks._currentBatches.Remove(this);
             _rocksBatch.Dispose();
-            GC.SuppressFinalize(this);
         }
 
         public byte[]? this[byte[] key]
@@ -526,34 +523,25 @@ public class DbOnTheRocks : IDbWithSpan
             batch.Dispose();
         }
 
-        _db?.Dispose();
+        _db.Dispose();
     }
 
     private void Dispose(bool disposing)
     {
-        if (!_isDisposed)
+        if (!_isDisposed && disposing)
         {
-            if (disposing)
-            {
-                if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
-                Flush();
-                ReleaseUnmanagedResources();
-                _dbsByPath.Remove(_fullPath!, out _);
-            }
-
-            _isDisposed = true;
+            if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+            Flush();
+            ReleaseUnmanagedResources();
+            _dbsByPath.Remove(_fullPath!, out _);
         }
+
+        _isDisposed = true;
     }
 
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
-    ~DbOnTheRocks()
-    {
-        Dispose(false);
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
