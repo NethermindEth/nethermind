@@ -11,12 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: master
+          ref: develop
+          fetch-depth: 0
       - name: Rebase develop on master
         run: |
           git fetch --all
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git checkout develop
-          git rebase master
-          git push --force -u origin developTest
+          git rebase --stat origin/master develop
+          git push --force origin develop
