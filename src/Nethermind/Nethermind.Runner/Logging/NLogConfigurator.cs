@@ -62,19 +62,18 @@ namespace Nethermind.Runner.Logging
         public static void ConfigureLogLevels(CommandOption logLevelOverride)
         {
             string logLevel = logLevelOverride.Value();
-            LogLevel nLogLevel = LogLevel.Trace;
-            // LogLevel nLogLevel = logLevel.ToUpperInvariant() switch
-            // {
-            //     "OFF" => LogLevel.Off,
-            //     "ERROR" => LogLevel.Error,
-            //     "WARN" => LogLevel.Warn,
-            //     "INFO" => LogLevel.Info,
-            //     "DEBUG" => LogLevel.Debug,
-            //     "TRACE" => LogLevel.Trace,
-            //     _ => LogLevel.Info
-            // };
+            if (logLevel == null) return;
 
-            Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
+             LogLevel nLogLevel = logLevel.ToUpperInvariant() switch
+             {
+                 "OFF" => LogLevel.Off,
+                 "ERROR" => LogLevel.Error,
+                 "WARN" => LogLevel.Warn,
+                 "INFO" => LogLevel.Info,
+                 "DEBUG" => LogLevel.Debug,
+                 "TRACE" => LogLevel.Trace,
+                 _ => LogLevel.Info
+             };
 
             foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
             {
