@@ -97,8 +97,30 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
-            if (_logger.IsInfo)
-                _logger.Info(
+            if (beaconMainChainBlock.IsBeaconInfo)
+            {
+               newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
+                if (beaconMainChainBlock.TotalDifficulty != 0)
+                {
+                    newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
+                }
+                else if (headers.Count > 0 && headers[^1].TotalDifficulty != null)
+                {
+                    // The beacon header may not have the total difficulty available since it is downloaded
+                    // backwards and final total difficulty may not be known early on. But this is still needed
+                    // in order to know if a block is a terminal block.
+                    // The first header should be a processed header, so the TD should be correct.
+                    newHeader.TotalDifficulty = headers[^1].TotalDifficulty + newHeader.Difficulty;
+                }
+                else
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"ChainLevelHelper - Unable to determine total difficulty. This is not expected. Header: {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                    newHeader.TotalDifficulty = null;
+                }
+            }
+            if (_logger.IsTrace)
+                _logger.Trace(
                     $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
             headers.Add(newHeader);
             ++i;

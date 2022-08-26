@@ -55,7 +55,7 @@ namespace Nethermind.Consensus
         // Note: In the first post-merge release, the terminal block will be known, it explains why we can override it through settings.
         bool TryUpdateTerminalBlock(BlockHeader header);
 
-        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false);
+        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header);
 
         bool IsPostMerge(BlockHeader header);
     }

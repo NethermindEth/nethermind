@@ -871,17 +871,13 @@ namespace Nethermind.Blockchain
                     if (createLevelIfMissing)
                     {
                         SetTotalDifficulty(header);
-                        blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                        level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                     }
-                    else
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Skipped adding block info for {header.ToString(BlockHeader.Format.FullHashAndNumber)} headerTD: {header.TotalDifficulty}");
-                    }
+
+                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
+                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Set totalDifficulty for {header.ToString(BlockHeader.Format.FullHashAndNumber)} TD value: {blockInfo.TotalDifficulty}");
                     if (blockInfo.TotalDifficulty != 0)
                         header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }

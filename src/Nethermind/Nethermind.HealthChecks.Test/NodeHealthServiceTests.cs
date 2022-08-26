@@ -1,25 +1,26 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -36,15 +37,17 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            
+
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
             if (test.IsSyncing)
@@ -56,7 +59,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
@@ -81,13 +84,13 @@ namespace Nethermind.HealthChecks.Test
             public bool ExpectedHealthy { get; set; }
 
             public string ExpectedMessage { get; set; }
-            
+
             public string ExpectedLongMessage { get; set; }
 
             public override string ToString() =>
                 $"Lp: {Lp} ExpectedHealthy: {ExpectedHealthy}, ExpectedDescription: {ExpectedMessage}, ExpectedLongDescription: {ExpectedLongMessage}";
         }
-        
+
         public static IEnumerable<CheckHealthTest> CheckHealthTestCases
         {
             get
@@ -181,7 +184,7 @@ namespace Nethermind.HealthChecks.Test
                 };
             }
         }
-        
+
         private static string FormatMessages(IEnumerable<string> messages)
         {
             if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
@@ -192,7 +195,7 @@ namespace Nethermind.HealthChecks.Test
                     return joined + ".";
                 }
             }
-            
+
             return string.Empty;
         }
     }

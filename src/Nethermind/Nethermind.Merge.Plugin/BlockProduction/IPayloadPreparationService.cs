@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     {
         string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
 
-        Block? GetPayload(string payloadId);
+        ValueTask<Block?> GetPayload(string payloadId);
 
         event EventHandler<BlockEventArgs>? BlockImproved;
     }

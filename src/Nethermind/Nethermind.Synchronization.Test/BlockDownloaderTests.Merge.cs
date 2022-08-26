@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -56,7 +57,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(pivot)
-            .InsertHeaders(4, pivot - 1)
+            .InsertBeaconHeaders(4, pivot - 1)
             .InsertBeaconBlocks(pivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
@@ -121,7 +122,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(4, (int)headNumber + 1, true, ttd)
             .InsertBeaconPivot(16)
-            .InsertHeaders(4, 15)
+            .InsertBeaconHeaders(4, 15)
             .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
@@ -156,6 +157,78 @@ public partial class BlockDownloaderTests
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         Assert.True(posSwitcher.HasEverReachedTerminalBlock());
     }
+
+    [Test]
+    public async Task Recalculate_header_total_difficulty()
+    {
+        UInt256 ttd = 10000000;
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(1, 4, true, ttd);
+
+        BlockTree notSyncedTree = blockTrees.NotSyncedTree;
+        BlockTree syncedTree = blockTrees.SyncedTree;
+
+        blockTrees
+            .InsertOtherChainToMain(notSyncedTree, 1, 3) // Need to have the header inserted to LRU which mean we need to move the head forward
+            .InsertBeaconHeaders(1, 3, tdMode: BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+
+        Context ctx = new(notSyncedTree);
+
+        InMemoryReceiptStorage receiptStorage = new();
+        MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
+
+        BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
+
+        BlockHeader lastHeader = syncedTree.FindHeader(3, BlockTreeLookupOptions.None);
+        // Because the FindHeader recalculated the TD.
+        lastHeader.TotalDifficulty = 0;
+
+        beaconPivot.EnsurePivot(lastHeader);
+
+        ISealValidator sealValidator = Substitute.For<ISealValidator>();
+        sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns((info =>
+        {
+            BlockHeader header = (BlockHeader)info[0];
+            // Simulate something calls find header on the header, causing the TD to get recalculated
+            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            return true;
+        }));
+
+        MergeBlockDownloader downloader = new(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            notSyncedTree,
+            Always.Valid,
+            sealValidator,
+            NullSyncReport.Instance,
+            receiptStorage,
+            RopstenSpecProvider.Instance,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
+            Substitute.For<ISyncProgressResolver>(),
+            LimboLogs.Instance);
+
+        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        PeerInfo peerInfo = new(syncPeer);
+
+        Block? lastBestSuggestedBlock = null;
+
+        notSyncedTree.NewBestSuggestedBlock += (sender, args) =>
+        {
+            lastBestSuggestedBlock = args.Block;
+        };
+
+        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.Process | DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
+
+        lastBestSuggestedBlock.Hash.Should().Be(lastHeader.Hash);
+        lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
+    }
+
     private BlockDownloader CreateMergeBlockDownloader(Context ctx)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
