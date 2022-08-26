@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -77,12 +77,12 @@ namespace Nethermind.Init.Steps
             InitBlockTraceDumper();
 
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
-            
+
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
             if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
-            
+
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
@@ -94,7 +94,7 @@ namespace Nethermind.Init.Steps
                 _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-            
+
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             IWitnessCollector witnessCollector;
@@ -127,11 +127,11 @@ namespace Nethermind.Init.Steps
                     getApi.DisposeStack.Push(triggerPersistenceStrategy);
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
-                
+
                 setApi.TrieStore = trieStore = new TrieStore(
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    persistenceStrategy, 
+                    persistenceStrategy,
                     getApi.LogManager);
 
                 if (pruningConfig.Mode.IsFull())
@@ -152,7 +152,7 @@ namespace Nethermind.Init.Steps
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
-            
+
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             getApi.DisposeStack.Push(trieStore);
@@ -165,9 +165,9 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
-            
+
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
-            
+
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
@@ -196,9 +196,9 @@ namespace Nethermind.Init.Steps
             {
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
-            
+
             TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
-            
+
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
@@ -207,7 +207,7 @@ namespace Nethermind.Init.Steps
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-            
+
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
                 trieStore,
                 stateProvider,
@@ -267,7 +267,7 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree);
+            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
@@ -281,16 +281,16 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
-            
+
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
-            
+
             return Task.CompletedTask;
         }
 
         private static void InitializeFullPruning(
             IPruningConfig pruningConfig,
-            IInitConfig initConfig, 
-            INethermindApi api, 
+            IInitConfig initConfig,
+            INethermindApi api,
             IStateReader stateReader)
         {
             IPruningTrigger? CreateAutomaticTrigger(string dbPath)
@@ -324,14 +324,14 @@ namespace Nethermind.Init.Steps
                 }
             }
         }
-		
+
         private static void InitBlockTraceDumper()
         {
             BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
             BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
             BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
             BlockTraceDumper.Converters.Add(new TxReceiptConverter());
-        }		
+        }
 
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec!);

@@ -339,13 +339,23 @@ public partial class EthRpcModuleTests
     public async Task Eth_syncing_true()
     {
         using Context ctx = await Context.Create();
-        IBlockFinder bridge = Substitute.For<IBlockFinder>();
-        bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
-        bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        for (int i = 0; i < 897; ++i)
+        {
+            await ctx.Test.AddBlock();
+        }
+
+        BlockHeader header = ctx.Test.BlockTree.Genesis!;
+        for (int i = 0; i < 1000; i++)
+        {
+            BlockHeader newHeader = Build.A.BlockHeader.WithParent(header).TestObject;
+            ctx.Test.BlockTree.Insert(newHeader);
+            header = newHeader;
+        }
 
         string serialized = ctx.Test.TestEthRpc("eth_syncing");
+
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"},\"id\":67}", serialized);
     }
 
@@ -353,11 +363,21 @@ public partial class EthRpcModuleTests
     public async Task Eth_syncing_false()
     {
         using Context ctx = await Context.Create();
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
-        blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(901).TestObject);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        for (int i = 0; i < 897; ++i)
+        {
+            await ctx.Test.AddBlock();
+        }
+
+        BlockHeader header = ctx.Test.BlockTree.Genesis!;
+        for (int i = 0; i < 901; i++)
+        {
+            BlockHeader newHeader = Build.A.BlockHeader.WithParent(header).TestObject;
+            ctx.Test.BlockTree.Insert(newHeader);
+            header = newHeader;
+        }
+
         string serialized = ctx.Test.TestEthRpc("eth_syncing");
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}", serialized);
@@ -780,20 +800,6 @@ public partial class EthRpcModuleTests
         await ctx.Test.AddBlock(tx);
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionByHash", tx.Hash!.ToString());
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"nonce\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"transactionIndex\":\"0x0\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x0\",\"gasPrice\":\"0x5e91eb5d\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x4a817c800\",\"gas\":\"0x33518\",\"data\":\"0x0001\",\"input\":\"0x0001\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x6b82095065a599e6b5e52bed0043702baf3411418af679ac483f9fc75a8f6aef\",\"r\":\"0x8654517f7822e7a4e10e79f3f5a4136703c7d1b51d98e47686e201c3c2845f92\"},\"id\":67}", serialized);
-    }
-
-    [Test]
-    public async Task Eth_syncing()
-    {
-        using Context ctx = await Context.Create();
-        IBlockFinder bridge = Substitute.For<IBlockFinder>();
-        bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178000L).TestObject);
-        bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
-
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
-        string serialized = ctx.Test.TestEthRpc("eth_syncing");
-
-        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"},\"id\":67}", serialized);
     }
 
     [Test]
