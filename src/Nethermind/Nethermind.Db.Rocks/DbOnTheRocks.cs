@@ -462,7 +462,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Clear()
     {
-        Dispose(true);
+        Dispose();
         Delete();
     }
 
@@ -526,9 +526,9 @@ public class DbOnTheRocks : IDbWithSpan
         _db.Dispose();
     }
 
-    private void Dispose(bool disposing)
+    public void Dispose()
     {
-        if (!_isDisposed && disposing)
+        if (!_isDisposed)
         {
             if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
             Flush();
@@ -537,11 +537,6 @@ public class DbOnTheRocks : IDbWithSpan
         }
 
         _isDisposed = true;
-    }
-
-    public void Dispose()
-    {
-        Dispose(true);
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
