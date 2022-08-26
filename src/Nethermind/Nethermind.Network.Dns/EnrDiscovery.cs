@@ -17,6 +17,7 @@
 
 using System.Buffers.Text;
 using System.Net;
+using DnsClient;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -62,9 +63,9 @@ public class EnrDiscovery : INodeSource
                 }
             }
         }
-        catch
+        catch (DnsResponseException dnsException)
         {
-            if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{domain}\" timed out or internet connection is not available.");
+            if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{domain}\" had an error: {dnsException.DnsError}");
         }
         finally
         {
