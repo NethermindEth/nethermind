@@ -50,7 +50,7 @@ public class NoPoS : IPoSSwitcher
         throw new NotImplementedException();
     }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty) =>
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) =>
         (false, false);
 
     public bool IsPostMerge(BlockHeader header) => false;

@@ -27,14 +27,17 @@ public class MergeSealValidator : ISealValidator
 
     public MergeSealValidator(
         IPoSSwitcher poSSwitcher,
-        ISealValidator preMergeSealValidator)
-    {
+        ISealValidator preMergeSealValidator
+    ) {
         _poSSwitcher = poSSwitcher;
         _preMergeSealValidator = preMergeSealValidator;
     }
     public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
         _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header);
 
-    public bool ValidateSeal(BlockHeader header, bool force) =>
-        _poSSwitcher.GetBlockConsensusInfo(header, true).IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force);
+    public bool ValidateSeal(BlockHeader header, bool force)
+    {
+        (bool IsTerminal, bool IsPostMerge) consensusInfo = _poSSwitcher.GetBlockConsensusInfo(header);
+        return consensusInfo.IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force || consensusInfo.IsTerminal);
+    }
 }
