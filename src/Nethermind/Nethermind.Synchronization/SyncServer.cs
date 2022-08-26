@@ -210,7 +210,11 @@ namespace Nethermind.Synchronization
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
 
-                    Block blockToBroadCast = new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+                    // we want to broadcast original block, lets check if TD changed
+                    Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
+                        ? block
+                        : new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+
                     BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
