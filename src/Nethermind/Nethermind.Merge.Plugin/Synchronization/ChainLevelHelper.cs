@@ -99,7 +99,6 @@ public class ChainLevelHelper : IChainLevelHelper
 
             if (beaconMainChainBlock.IsBeaconInfo)
             {
-                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
                 if (beaconMainChainBlock.TotalDifficulty != 0)
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
