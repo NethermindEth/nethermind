@@ -8,6 +8,10 @@ on:
 jobs:
   rebase_branches:
     runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      packages: write
+      contents: write
     steps:
       - uses: actions/checkout@v3
         with:
