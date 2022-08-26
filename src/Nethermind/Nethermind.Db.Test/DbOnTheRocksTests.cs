@@ -85,7 +85,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Dispose_wont_cause_ObjectDisposedException()
+        public void Dispose_wont_cause_ObjectDisposedException_when_batch_is_still_open()
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new ("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
