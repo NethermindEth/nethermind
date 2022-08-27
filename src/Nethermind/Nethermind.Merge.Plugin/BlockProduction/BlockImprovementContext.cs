@@ -34,7 +34,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTime startDateTime)
+        DateTimeOffset startDateTime)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
@@ -62,7 +62,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     }
 
     public bool Disposed { get; private set; }
-    public DateTime StartDateTime { get; }
+    public DateTimeOffset StartDateTime { get; }
 
     public void Dispose()
     {

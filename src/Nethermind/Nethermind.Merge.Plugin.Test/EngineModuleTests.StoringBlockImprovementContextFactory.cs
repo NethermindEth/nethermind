@@ -34,14 +34,14 @@ public partial class EngineModuleTests
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         public IList<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
 
-        public event EventHandler<ImprovementStartedEventArgs> ImprovementStarted;
+        public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
         public StoringBlockImprovementContextFactory(IBlockImprovementContextFactory blockImprovementContextFactory)
         {
             _blockImprovementContextFactory = blockImprovementContextFactory;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTime startDateTime)
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime)
         {
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             CreatedContexts.Add(blockImprovementContext);

@@ -30,13 +30,13 @@ public partial class EngineModuleTests
 {
     private class MockBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTime startDateTime) =>
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
             new MockBlockImprovementContext(currentBestBlock, startDateTime);
     }
 
     private class MockBlockImprovementContext : IBlockImprovementContext
     {
-        public MockBlockImprovementContext(Block currentBestBlock, DateTime startDateTime)
+        public MockBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime)
         {
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
@@ -47,6 +47,6 @@ public partial class EngineModuleTests
         public Task<Block?> ImprovementTask { get; }
         public Block? CurrentBestBlock { get; }
         public bool Disposed { get; private set; }
-        public DateTime StartDateTime { get; }
+        public DateTimeOffset StartDateTime { get; }
     }
 }

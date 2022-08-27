@@ -43,7 +43,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTime startDateTime)
+        DateTimeOffset startDateTime)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
@@ -76,7 +76,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public Task<Block?> ImprovementTask { get; }
     public Block? CurrentBestBlock { get; private set; }
     public bool Disposed { get; private set; }
-    public DateTime StartDateTime { get; }
+    public DateTimeOffset StartDateTime { get; }
 
     public void Dispose()
     {

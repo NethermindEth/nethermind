@@ -26,5 +26,5 @@ public interface IBlockImprovementContext : IDisposable
     Task<Block?> ImprovementTask { get; }
     Block? CurrentBestBlock { get; }
     bool Disposed { get; }
-    DateTime StartDateTime { get; }
+    DateTimeOffset StartDateTime { get; }
 }
