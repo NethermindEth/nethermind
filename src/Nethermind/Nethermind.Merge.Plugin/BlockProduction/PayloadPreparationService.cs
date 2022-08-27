@@ -121,6 +121,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
                 (id, currentContext) =>
                 {
+                    // if there is payload improvement and its not yet finished leave it be
                     if (!currentContext.ImprovementTask.IsCompleted)
                     {
                         return currentContext;
@@ -141,7 +142,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
             {
                 // if after delay we still have time to try producing the block in this slot
-                if (DateTime.Now + _improvementDelay + _minTimeForProduction < startDateTime + _timePerSlot)
+                DateTime whenWeCouldFinishNextProduction = DateTime.Now + _improvementDelay + _minTimeForProduction;
+                DateTime slotFinished = startDateTime + _timePerSlot;
+                if (whenWeCouldFinishNextProduction < slotFinished)
                 {
                     await Task.Delay(_improvementDelay);
                     if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
@@ -160,10 +163,10 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
             foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
             {
-                DateTime dateTime = DateTime.Now;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= dateTime)
+                DateTime now = DateTime.Now;
+                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {dateTime:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }
@@ -213,7 +216,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 using (blockContext)
                 {
-                    if (!blockContext.ImprovementTask.IsCompleted && blockContext.CurrentBestBlock?.Transactions.Any() != true)
+                    bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Any() != true;
+                    if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                     {
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
