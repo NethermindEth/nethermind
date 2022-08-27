@@ -113,7 +113,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return emptyBlock;
         }
 
-
         private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTime startDateTime)
         {
             IBlockImprovementContext? oldContext = null;
@@ -133,7 +132,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
             oldContext?.Dispose();
         }
-
 
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTime startDateTime)
         {
