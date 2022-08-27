@@ -41,24 +41,25 @@ public partial class EngineModuleTests
             _delay = delay;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes) =>
-            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay);
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTime startDateTime) =>
+            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
         private CancellationTokenSource? _cancellationTokenSource;
 
-        public DelayBlockImprovementContext(
-            Block currentBestBlock,
+        public DelayBlockImprovementContext(Block currentBestBlock,
             IManualBlockProductionTrigger blockProductionTrigger,
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
-            int delay)
+            int delay,
+            DateTime startDateTime)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
             CurrentBestBlock = currentBestBlock;
+            StartDateTime = startDateTime;
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
 
@@ -80,11 +81,13 @@ public partial class EngineModuleTests
         }
 
         public Task<Block?> ImprovementTask { get; }
-
         public Block? CurrentBestBlock { get; private set; }
+        public bool Disposed { get; private set; }
+        public DateTime StartDateTime { get; }
 
         public void Dispose()
         {
+            Disposed = true;
             CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
         }
     }
