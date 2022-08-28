@@ -268,6 +268,23 @@ public partial class BlockTreeTests
         Assert.AreEqual(13, notSyncedTree.BestSuggestedBody!.Number);
     }
 
+    [Test]
+    public void FindHeader_will_not_change_total_difficulty_when_it_is_zero()
+    {
+        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
+
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
+        BlockHeader? beaconHeader = syncedTree.FindHeader(13, BlockTreeLookupOptions.None);
+        beaconHeader.TotalDifficulty = null;
+        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
+        Assert.AreEqual(insertOutcome, insertResult);
+
+        BlockHeader? headerToCheck = notSyncedTree.FindHeader(beaconHeader.Hash, BlockTreeLookupOptions.None);
+        Assert.IsNull(headerToCheck.TotalDifficulty);
+    }
+
     public static class BlockTreeTestScenario
     {
         public class ScenarioBuilder
@@ -753,9 +770,8 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
-            .InsertFork(6,9, true)
+            .InsertFork(6, 9, true)
             .SuggestBlocksUsingChainLevels()
-            .AssertChainLevel(0,9);
+            .AssertChainLevel(0, 9);
     }
 }
-
