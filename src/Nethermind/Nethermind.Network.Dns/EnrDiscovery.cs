@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 
 using System.Buffers.Text;
 using System.Net;
+using DnsClient;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -61,6 +62,10 @@ public class EnrDiscovery : INodeSource
                     if (_logger.IsDebug) _logger.Error($"failed to parse enr record {nodeRecordText}", e);
                 }
             }
+        }
+        catch (DnsResponseException dnsException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{domain}\" had an error: {dnsException.DnsError}");
         }
         finally
         {

@@ -38,7 +38,7 @@ public class MergeSealValidator : ISealValidator
 
     public bool ValidateSeal(BlockHeader header, bool force)
     {
-        (bool IsTerminal, bool IsPostMerge) consensusInfo = _poSSwitcher.GetBlockConsensusInfo(header);
-        return consensusInfo.IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force || consensusInfo.IsTerminal);
+        (bool isTerminal, bool isPostMerge) = _poSSwitcher.GetBlockConsensusInfo(header);
+        return isPostMerge || _preMergeSealValidator.ValidateSeal(header, force || isTerminal);
     }
 }
