@@ -121,6 +121,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     // if there is payload improvement and its not yet finished leave it be
                     if (!currentContext.ImprovementTask.IsCompleted)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
                         return currentContext;
                     }
 
@@ -133,7 +134,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
-            if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader}");
+            if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
@@ -143,12 +144,21 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 DateTimeOffset slotFinished = startDateTime + _timePerSlot;
                 if (whenWeCouldFinishNextProduction < slotFinished)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                     await Task.Delay(_improvementDelay);
                     if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
                     }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
+                    }
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
                 }
             });
 
