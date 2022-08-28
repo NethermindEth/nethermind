@@ -559,6 +559,14 @@ public partial class BlockTreeTests
                 return this;
             }
 
+            public ScenarioBuilder InsertToHeaderDb(BlockHeader header)
+            {
+                HeaderDecoder headerDecoder = new();
+                Rlp newRlp = headerDecoder.Encode(header);
+                NotSyncedTreeBuilder.HeadersDb.Set(header.Hash!, newRlp.Bytes);
+                return this;
+            }
+
             public ScenarioBuilder AssertBestBeaconHeader(long expected)
             {
                 Assert.IsNotNull(NotSyncedTree);
@@ -614,6 +622,17 @@ public partial class BlockTreeTests
         {
             return new();
         }
+    }
+
+    [Test]
+    public void Do_not_create_level_for_beacon_blocks_if_missing()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(10, 20);
+
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        scenario.InsertToHeaderDb(beaconBlock.Header);
+        Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
 
     [Test]
