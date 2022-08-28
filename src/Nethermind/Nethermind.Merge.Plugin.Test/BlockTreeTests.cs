@@ -793,4 +793,19 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);
     }
+
+    [Test]
+    public void Can_set_total_difficulty_when_suggested_with_0()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertBeaconBlocks(8, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero);
+
+        Block? block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None);
+        block.TotalDifficulty.Should().Be((UInt256)0);
+        AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
+        result.Should().Be(AddBlockResult.Added);
+        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None).TotalDifficulty.Should().NotBe((UInt256)0);
+    }
 }
