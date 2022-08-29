@@ -32,9 +32,9 @@ public partial class EngineModuleTests
     {
         private readonly IManualBlockProductionTrigger _productionTrigger;
         private readonly TimeSpan _timeout;
-        private readonly int _delay;
+        private readonly TimeSpan _delay;
 
-        public DelayBlockImprovementContextFactory(IManualBlockProductionTrigger productionTrigger, TimeSpan timeout, int delay)
+        public DelayBlockImprovementContextFactory(IManualBlockProductionTrigger productionTrigger, TimeSpan timeout, TimeSpan delay)
         {
             _productionTrigger = productionTrigger;
             _timeout = timeout;
@@ -54,7 +54,7 @@ public partial class EngineModuleTests
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
-            int delay,
+            TimeSpan delay,
             DateTimeOffset startDateTime)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
@@ -67,7 +67,7 @@ public partial class EngineModuleTests
             IManualBlockProductionTrigger blockProductionTrigger,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
-            int delay,
+            TimeSpan delay,
             CancellationToken cancellationToken)
         {
             Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);

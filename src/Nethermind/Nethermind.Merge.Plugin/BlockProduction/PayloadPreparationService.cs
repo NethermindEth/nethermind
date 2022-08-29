@@ -45,9 +45,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
-        public const int GetPayloadWaitForFullBlockMillisecondsDelay = 500;
-        public const int DefaultImprovementDelayMs = 3000;
-        public const int DefaultMinTimeForProductionMs = 500;
+        public static readonly TimeSpan GetPayloadWaitForFullBlockMillisecondsDelay = TimeSpan.FromMilliseconds(500);
+        public static readonly TimeSpan DefaultImprovementDelay = TimeSpan.FromMilliseconds(3000);
+        public static readonly TimeSpan DefaultMinTimeForProduction = TimeSpan.FromMilliseconds(500);
 
         /// <summary>
         /// Delay between block improvements
@@ -72,16 +72,16 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ILogManager logManager,
             TimeSpan timePerSlot,
             int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-            int improvementDelay = DefaultImprovementDelayMs,
-            int minTimeForProduction = DefaultMinTimeForProductionMs)
+            TimeSpan? improvementDelay = null,
+            TimeSpan? minTimeForProduction = null)
         {
             _blockProducer = blockProducer;
             _blockImprovementContextFactory = blockImprovementContextFactory;
             _timePerSlot = timePerSlot;
             TimeSpan timeout = timePerSlot;
             _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
-            _improvementDelay = TimeSpan.FromMilliseconds(improvementDelay);
-            _minTimeForProduction = TimeSpan.FromMilliseconds(minTimeForProduction);
+            _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
+            _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();

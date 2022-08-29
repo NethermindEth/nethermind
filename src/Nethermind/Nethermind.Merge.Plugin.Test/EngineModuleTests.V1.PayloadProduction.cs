@@ -132,9 +132,17 @@ public partial class EngineModuleTests
         chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
     }
 
-    [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay / 10, ExpectedResult = 3)]
-    [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay * 2, ExpectedResult = 0)]
-    public async Task<int> getPayloadV1_waits_for_block_production(int delay)
+    public static IEnumerable WaitTestCases
+    {
+        get
+        {
+            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay / 10) { ExpectedResult = 3, TestName = "Production manages to finish" };
+            yield return new TestCaseData(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay * 2) { ExpectedResult = 0, TestName = "Production takes too long" };
+        }
+    }
+
+    [TestCaseSource(nameof(WaitTestCases))]
+    public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan delay)
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
 
@@ -243,16 +251,16 @@ public partial class EngineModuleTests
         MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
-        int delayMs = 10;
-        int timePerSlot = 10 * delayMs;
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 10 * delay;
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            TimeSpan.FromMilliseconds(timePerSlot),
-            improvementDelay: delayMs,
-            minTimeForProduction: delayMs);
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -278,17 +286,17 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
-        int delayMs = 10;
-        int timePerSlot = 10 * delayMs;
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 10 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            TimeSpan.FromMilliseconds(timePerSlot),
-            improvementDelay: delayMs,
-            minTimeForProduction: delayMs);
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -318,17 +326,17 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
-        int delayMs = 10;
-        int timePerSlot = 10 * delayMs;
-        StoringBlockImprovementContextFactory improvementContextFactory = new(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delayMs));
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 10 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
             improvementContextFactory,
             TimerFactory.Default,
             chain.LogManager,
-            TimeSpan.FromMilliseconds(timePerSlot),
-            improvementDelay: delayMs,
-            minTimeForProduction: delayMs);
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
