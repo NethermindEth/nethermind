@@ -193,7 +193,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            shouldContinue = parentBlockInfo.IsBeaconInfo || parentBlockInfo.TotalDifficulty == 0;
+            shouldContinue = parentBlockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
