@@ -1658,7 +1658,6 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, Keccak hash, BlockInfo blockInfo, bool setAsMain = false)
         {
-            if (_logger.IsInfo) _logger.Info($"UpdateOrCreateLevel {number}, {hash}, {blockInfo}, {new System.Diagnostics.StackTrace()}");
             using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
                 ChainLevelInfo level = LoadLevel(number, false);
