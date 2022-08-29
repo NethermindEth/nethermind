@@ -44,7 +44,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -558,7 +557,6 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task executePayloadV1_rejects_block_with_invalid_receiptsRoot()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            chain.InvalidChainTracker = Substitute.For<IInvalidChainTracker>();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
             getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
@@ -567,8 +565,6 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
-
-            chain.InvalidChainTracker.Received().OnInvalidBlock(getPayloadResult.BlockHash, Arg.Any<Keccak>());
             chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError.Should().BeTrue();
         }
 
@@ -1005,8 +1001,6 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task executePayloadV1_calculate_hash_for_cached_blocks()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            chain.InvalidChainTracker = Substitute.For<IInvalidChainTracker>();
-
             IEngineRpcModule rpc = CreateEngineModule(chain);
             ExecutionPayloadV1 executionPayload = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
@@ -1018,8 +1012,6 @@ namespace Nethermind.Merge.Plugin.Test
             resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
             executionPayload.ParentHash = executionPayload.BlockHash!;
             ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
-
-            chain.InvalidChainTracker.DidNotReceive().OnInvalidBlock(Arg.Any<Keccak>(), Arg.Any<Keccak>());
             invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 

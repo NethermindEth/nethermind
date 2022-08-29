@@ -43,7 +43,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -65,7 +64,14 @@ namespace Nethermind.Merge.Plugin.Test
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
 
             chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
-            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), chain.BlockCacheService, chain.LogManager);
+            BlockCacheService blockCacheService = new();
+            InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
+                chain.PoSSwitcher,
+                chain.BlockTree,
+                blockCacheService,
+                new TestErrorLogManager());
+            invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
+            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
                     chain.PayloadPreparationService!,
@@ -78,9 +84,9 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.PoSSwitcher,
                     chain.BeaconSync,
                     chain.BeaconPivot,
-                    chain.BlockCacheService,
+                    blockCacheService,
                     chain.BlockProcessingQueue,
-                    chain.InvalidChainTracker,
+                    invalidChainTracker,
                     chain.BeaconSync,
                     chain.SpecProvider,
                     chain.LogManager,
@@ -91,8 +97,8 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.PoSSwitcher,
                     chain.PayloadPreparationService!,
                     chain.BlockProcessingQueue,
-                    chain.BlockCacheService,
-                    chain.InvalidChainTracker,
+                    blockCacheService,
+                    invalidChainTracker,
                     chain.BeaconSync,
                     chain.BeaconPivot,
                     peerRefresher,
@@ -116,39 +122,6 @@ namespace Nethermind.Merge.Plugin.Test
             public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
 
             public IBeaconPivot BeaconPivot { get; set; }
-
-            public IInvalidChainTracker InvalidChainTracker {
-                get
-                {
-                    _invalidChainTracker ??= new InvalidChainTracker.InvalidChainTracker(
-                        PoSSwitcher,
-                        BlockFinder,
-                        BlockCacheService,
-                        LimboLogs.Instance);
-                    return _invalidChainTracker;
-                }
-                set
-                {
-                    _invalidChainTracker = value;
-                }
-            }
-
-            public IBlockCacheService BlockCacheService
-            {
-                get
-                {
-                    _blockCacheService ??= new BlockCacheService();
-                    return _blockCacheService;
-                }
-                set
-                {
-                    _blockCacheService = value;
-                }
-            }
-
-            private IInvalidChainTracker? _invalidChainTracker;
-
-            private IBlockCacheService? _blockCacheService;
 
             public BeaconSync BeaconSync { get; set; }
 
@@ -241,6 +214,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
+                IBlockCacheService blockCacheService = new BlockCacheService();
                 PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
                 SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
                 HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
