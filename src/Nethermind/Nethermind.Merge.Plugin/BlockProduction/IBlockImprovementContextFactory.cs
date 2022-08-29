@@ -23,7 +23,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public interface IBlockImprovementContextFactory
 {
-    IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock,
+    IBlockImprovementContext StartBlockImprovementContext(
+        Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime);

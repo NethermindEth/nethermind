@@ -110,10 +110,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return emptyBlock;
         }
 
-        private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
-        {
-            IBlockImprovementContext? oldContext = null;
-
+        private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
             _payloadStorage.AddOrUpdate(payloadId,
                 id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
                 (id, currentContext) =>
@@ -125,12 +122,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                         return currentContext;
                     }
 
-                    oldContext = currentContext;
-                    return CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                    IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                    currentContext.Dispose();
+                    return newContext;
                 });
 
-            oldContext?.Dispose();
-        }
 
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {

@@ -33,7 +33,8 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
         _timeout = timeout;
     }
 
-    public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock,
+    public IBlockImprovementContext StartBlockImprovementContext(
+        Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime) =>
