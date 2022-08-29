@@ -867,10 +867,10 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-                    if (_logger.IsWarn) _logger.Warn($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
+                    if (_logger.IsWarn) _logger.Warn($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     if (createLevelIfMissing == false || (BestKnownBeaconNumber > BestKnownNumber && header.Number > BestKnownNumber))
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
+                        if (_logger.IsWarn) _logger.Warn($"Ignoring creation of the level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
                     else
                     {
