@@ -285,6 +285,24 @@ public partial class BlockTreeTests
         Assert.IsNull(headerToCheck.TotalDifficulty);
     }
 
+    [Test]
+    public void FindBlock_will_not_change_total_difficulty_when_it_is_zero()
+    {
+        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
+
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
+        Block? beaconBlock2 = syncedTree.FindBlock(13, BlockTreeLookupOptions.None);
+        beaconBlock2.Header.TotalDifficulty = null;
+        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.None);
+        Assert.AreEqual(insertOutcome, insertResult);
+
+        Block? blockToCheck = notSyncedTree.FindBlock(beaconBlock2.Hash, BlockTreeLookupOptions.None);
+        Assert.IsNull(blockToCheck.TotalDifficulty);
+    }
+
+
     public static class BlockTreeTestScenario
     {
         public class ScenarioBuilder
@@ -567,6 +585,15 @@ public partial class BlockTreeTests
                 return this;
             }
 
+            public ScenarioBuilder InsertToBlockDb(Block block)
+            {
+                BlockDecoder blockDecoder = new();
+                Rlp newRlp = blockDecoder.Encode(block);
+                NotSyncedTreeBuilder.BlocksDb.Set(block.Hash, newRlp.Bytes);
+
+                return this;
+            }
+
             public ScenarioBuilder AssertBestBeaconHeader(long expected)
             {
                 Assert.IsNotNull(NotSyncedTree);
@@ -625,7 +652,7 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Should_throw_exception_when_trying_to_find_dangling_block()
+    public void FindHeader_should_throw_exception_when_trying_to_find_dangling_block()
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20);
@@ -636,7 +663,18 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Should_not_throw_exception_when_finding_blocks_with_known_beacon_info()
+    public void FindBlock_should_throw_exception_when_trying_to_find_dangling_block()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(10, 20);
+
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        scenario.InsertToBlockDb(beaconBlock);
+        Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
+    }
+
+    [Test]
+    public void FindHeader_should_not_throw_exception_when_finding_blocks_with_known_beacon_info()
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
@@ -648,7 +686,19 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Should_not_throw_exception_when_create_level_is_missing()
+    public void FindBlock_should_not_throw_exception_when_finding_blocks_with_known_beacon_info()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(10, 20)
+            .InsertBeaconBlocks(18,19);
+
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        scenario.InsertToBlockDb(beaconBlock);
+        Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
+    }
+
+    [Test]
+    public void FindHeader_should_not_throw_exception_when_create_level_is_missing()
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20);
@@ -656,6 +706,17 @@ public partial class BlockTreeTests
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToHeaderDb(beaconBlock.Header);
         Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing));
+    }
+
+    [Test]
+    public void FindBlock_should_not_throw_exception_when_create_level_is_missing()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(10, 20);
+
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        scenario.InsertToBlockDb(beaconBlock!);
+        Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing));
     }
 
     [Test]

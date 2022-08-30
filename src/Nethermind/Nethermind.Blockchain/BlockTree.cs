@@ -867,7 +867,7 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-
+                    // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && header.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
                     if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
@@ -1901,8 +1901,7 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-
-
+                    // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
                     if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
