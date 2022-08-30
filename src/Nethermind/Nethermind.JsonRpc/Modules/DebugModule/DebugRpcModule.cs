@@ -272,5 +272,48 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _debugBridge.UpdateHeadBlock(blockHash);
             return ResultWrapper<bool>.Success(true);
         }
+
+        public ResultWrapper<byte[]> debug_getRawTransaction(Keccak transactionHash)
+        {
+            var transaction = _debugBridge.GetTransactionFromHash(transactionHash);
+            if (transaction == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            var rlp = Rlp.Encode(transaction);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
+        public ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber)
+        {
+            var receipts = _debugBridge.GetReceiptsFromBlock(blockNumber);
+            if(receipts == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
+            }
+            var rlp = Rlp.Encode(receipts);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
+        public ResultWrapper<byte[]> debug_getRawBlock(long blockNumber)
+        {
+            var blockRLP = _debugBridge.GetBlockRlp(blockNumber);
+            if ( blockRLP == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            return ResultWrapper<byte[]>.Success(blockRLP);
+        } 
+
+        public ResultWrapper<byte[]> debug_getRawHeader(long blockNumber) {
+            var block = _debugBridge.GetBlock(blockNumber);
+            if (block == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            Rlp rlp = Rlp.Encode<BlockHeader>(block.Header);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
     }
 }
