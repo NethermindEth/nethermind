@@ -62,8 +62,22 @@ namespace Nethermind.Merge.Plugin
         public override bool Validate(BlockHeader header, bool isUncle = false) =>
             Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
 
-        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) =>
-            _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
+        {
+            if (_poSSwitcher.IsPostMerge(header))
+            {
+                _logger.Info($"Block is port merge {header.Hash}");
+                return true;
+            }
+
+            if (header.Difficulty == 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - zero difficulty for PoW block.");
+                return false;
+            }
+
+            return base.ValidateTotalDifficulty(parent, header);
+        }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
