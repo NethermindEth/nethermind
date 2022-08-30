@@ -17,14 +17,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics.Tracing;
 using System.Reflection;
 
 
 namespace Nethermind.NETMetrics;
 
-public class SystemMetricsListener: EventListener
+public class SystemMetricsListener : EventListener
 {
+    private string[] EnabledEvents = new[] {"System.Runtime", "Microsoft-Windows-DotNETRuntime"};
+
+    private const int GC_KEYWORD =                 0x0000001;
+    private const int TYPE_KEYWORD =               0x0080000;
+    private const int GCHEAPANDTYPENAMES_KEYWORD = 0x1000000;
+
     public SystemMetricsListener()
     {
     }
@@ -35,35 +42,70 @@ public class SystemMetricsListener: EventListener
     {
         Console.WriteLine($"{source.Guid} | {source.Name}");
 
-        if (!source.Name.Equals("System.Runtime"))
+        if (!EnabledEvents.Contains(source.Name))
         {
             return;
         }
 
-        EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
-            {
-                ["EventCounterIntervalSec"] = TimeInterval.ToString()
-            }
-        );
+        if (source.Name.Equals("System.Runtime"))
+        {
+            EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
+                {
+                    ["EventCounterIntervalSec"] = "1"
+                }
+            );
+        }
+
+        if (source.Name.Equals("Microsoft-Windows-DotNETRuntime"))
+        {
+            EnableEvents(
+                source,
+                EventLevel.Verbose,
+                (EventKeywords) (GC_KEYWORD | GCHEAPANDTYPENAMES_KEYWORD | TYPE_KEYWORD),
+                new Dictionary<string, string?>()
+                {
+                    ["EventCounterIntervalSec"] = TimeInterval.ToString()
+                }
+
+            );
+        }
+
+        if (source.Name.Equals("System.Runtime"))
+        {
+            EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
+                {
+                    ["EventCounterIntervalSec"] = TimeInterval.ToString()
+                }
+            );
+        }
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (!eventData.EventName.Equals("EventCounters"))
+        if (!EnabledEvents.Contains(eventData.EventName))
         {
             return;
         }
 
         for (int i = 0; i < eventData.Payload.Count; ++ i)
         {
-            if (eventData.Payload[i] is IDictionary<string, object> eventPayload)
+            if (eventData.EventName.Equals("System.Runtime"))
             {
-                UpdateMetrics(eventPayload);
+                if (eventData.Payload[i] is IDictionary<string, object> eventPayload)
+                {
+                    UpdateSystemMetrics(eventPayload);
+                }
             }
+
+            if (eventData.EventName.Equals("Microsoft-Windows-DotNETRuntime"))
+            {
+                UpdateDotNETMetrics(eventData.EventName, eventData.PayloadNames[i], eventData.Payload[i].ToString());
+            }
+
         }
     }
 
-    private static void UpdateMetrics(
+    private static void UpdateSystemMetrics(
         IDictionary<string, object> eventPayload)
     {
         string counterName = "";
@@ -86,4 +128,10 @@ public class SystemMetricsListener: EventListener
         }
 
     }
+
+    private static void UpdateDotNETMetrics(string name, string payloadName, string payloadValue)
+    {
+        Metrics.DotNETRuntimeMetric[name + payloadName] = double.Parse(payloadValue);
+    }
+
 }
