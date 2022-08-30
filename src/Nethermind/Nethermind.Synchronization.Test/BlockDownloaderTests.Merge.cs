@@ -131,8 +131,9 @@ public partial class BlockDownloaderTests
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        RopstenSpecProvider specProvider = new();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, LimboLogs.Instance);
+            specProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
@@ -147,7 +148,7 @@ public partial class BlockDownloaderTests
             Always.Valid,
             NullSyncReport.Instance,
             receiptStorage,
-            RopstenSpecProvider.Instance,
+            specProvider,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
             new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
@@ -182,8 +183,9 @@ public partial class BlockDownloaderTests
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        RopstenSpecProvider specProvider = new();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, LimboLogs.Instance);
+            specProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
@@ -198,7 +200,7 @@ public partial class BlockDownloaderTests
             Always.Valid,
             NullSyncReport.Instance,
             receiptStorage,
-            RopstenSpecProvider.Instance,
+            specProvider,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
             new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
