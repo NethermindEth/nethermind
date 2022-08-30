@@ -38,8 +38,40 @@ public class NETMetricsPlugin: INethermindPlugin
     public string Author => "Nethermind";
     public Task Init(INethermindApi nethermindApi)
     {
+        Dictionary<string, string[]> enabledEvents = new();
+        enabledEvents["EventCounters"] = new[]
+        {
+            "cpu_usage", "working_set", "gc_heap_size", "gen_0_gc_count", "gen_1_gc_count", "gen_2_gc_count",
+            "threadpool_thread_count", "monitor_lock_contention_count", "threadpool_queue_length",
+            "threadpool_completed_items_count", "alloc_rate", "active_timer_count", "gc_fragmentation",
+            "gc_committed", "exception_count", "time_in_gc", "gen_0_size", "gen_1_size", "gen_2_size", "loh_size",
+            "poh_size", "assembly_count", "il_bytes_jitted", "methods_jitted_count", "time_in_jit"
+        };
+        enabledEvents["IncreaseMemoryPressure"] =  new[] {"BytesAllocated", "ClrInstanceID"};
+        enabledEvents["GCTriggered"] = new[] {"Reason", "ClrInstanceID"};
+        enabledEvents["GCMarkWithType"] = new[] {"HeapNum", "ClrInstanceID", "Type", "Bytes"};
+        enabledEvents["PinObjectAtGCTime"] = new[] {"HandleID", "ObjectID", "ObjectSize", "TypeName", "ClrInstanceID"};
+        enabledEvents["GCGlobalHeapHistory_V4"] = new[]
+        {
+            "FinalYoungestDesired", "NumHeaps", "CondemnedGeneration", "Gen0ReductionCount", "Reason",
+            "GlobalMechanisms", "ClrInstanceID", "PauseMode", "MemoryPressure", "CondemnReasons0",
+            "CondemnReasons1", "Count"
+        };
+        enabledEvents["GCPerHeapHistory_V3"] = new[]
+        {
+            "ClrInstanceID", "FreeListAllocated", "FreeListRejected", "EndOfSegAllocated", "CondemnedAllocated",
+            "PinnedAllocated", "PinnedAllocatedAdvance", "RunningFreeListEfficiency", "CondemnReasons0",
+            "CondemnReasons1", "CompactMechanisms", "ExpandMechanisms", "HeapIndex", "ExtraGen0Commit", "Count"
+        };
+        enabledEvents["GCHeapStats_V2"] = new[]
+        {
+            "GenerationSize0", "TotalPromotedSize0", "GenerationSize1", "TotalPromotedSize1", "GenerationSize2",
+            "TotalPromotedSize2", "GenerationSize3", "TotalPromotedSize3", "FinalizationPromotedSize",
+            "FinalizationPromotedCount", "PinnedObjectCount", "SinkBlockCount", "GCHandleCount", "ClrInstanceID",
+            "GenerationSize4", "TotalPromotedSize4"
+        };
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        _metricsListener = new SystemMetricsListener();
+        _metricsListener = new SystemMetricsListener(enabledEvents);
         _logger = _nethermindApi.LogManager.GetClassLogger();
         return Task.CompletedTask;
     }

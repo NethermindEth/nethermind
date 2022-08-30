@@ -26,14 +26,15 @@ namespace Nethermind.NETMetrics;
 
 public class SystemMetricsListener : EventListener
 {
-    private string[] EnabledEvents = new[] {"System.Runtime", "Microsoft-Windows-DotNETRuntime"};
+    private Dictionary<string, string[]>EnabledEvents;
 
     private const int GC_KEYWORD =                 0x0000001;
     private const int TYPE_KEYWORD =               0x0080000;
     private const int GCHEAPANDTYPENAMES_KEYWORD = 0x1000000;
 
-    public SystemMetricsListener()
+    public SystemMetricsListener(Dictionary<string, string[]> enabledEvents)
     {
+        EnabledEvents = enabledEvents;
     }
 
     private const int TimeInterval = 1;
@@ -41,11 +42,6 @@ public class SystemMetricsListener : EventListener
     protected override void OnEventSourceCreated(EventSource source)
     {
         Console.WriteLine($"{source.Guid} | {source.Name}");
-
-        if (!EnabledEvents.Contains(source.Name))
-        {
-            return;
-        }
 
         if (source.Name.Equals("System.Runtime"))
         {
@@ -70,68 +66,65 @@ public class SystemMetricsListener : EventListener
             );
         }
 
-        if (source.Name.Equals("System.Runtime"))
-        {
-            EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
-                {
-                    ["EventCounterIntervalSec"] = TimeInterval.ToString()
-                }
-            );
-        }
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (!EnabledEvents.Contains(eventData.EventName))
+        if (!EnabledEvents.Keys.Contains(eventData.EventName))
         {
             return;
         }
 
         for (int i = 0; i < eventData.Payload.Count; ++ i)
         {
-            if (eventData.EventName.Equals("System.Runtime"))
+            string? eventName;
+            string? payloadName = null;
+            double payloadValue = 0;
+
+            eventName = eventData.EventName;
+            if (eventName.Equals("EventCounters"))
             {
                 if (eventData.Payload[i] is IDictionary<string, object> eventPayload)
                 {
-                    UpdateSystemMetrics(eventPayload);
+                    (payloadName, payloadValue) = ParseSystemMetrics(eventPayload);
                 }
             }
-
-            if (eventData.EventName.Equals("Microsoft-Windows-DotNETRuntime"))
+            else
             {
-                UpdateDotNETMetrics(eventData.EventName, eventData.PayloadNames[i], eventData.Payload[i].ToString());
+                payloadName = eventData.PayloadNames[i];
+                payloadValue = double.Parse(eventData.Payload[i].ToString());
             }
 
+            if (payloadName is null || !EnabledEvents[eventName].Contains(payloadName))
+            {
+                return;
+            }
+
+            Metrics.RuntimeMetrics[eventName + payloadName] = payloadValue;
         }
     }
 
-    private static void UpdateSystemMetrics(
+    private static (string? payloadName, double payloadValue) ParseSystemMetrics(
         IDictionary<string, object> eventPayload)
     {
-        string counterName = "";
+        string payloadName = "";
 
         if (eventPayload.TryGetValue("Name", out object displayValue))
         {
-            counterName = displayValue.ToString().Replace("-", "_");
+            payloadName = displayValue.ToString().Replace("-", "_");
         }
 
         if (eventPayload.TryGetValue("Mean", out object value))
         {
-            Metrics.SystemRuntimeMetric[counterName] = double.Parse(value.ToString());
-            return;
+            return (payloadName, double.Parse(value.ToString()));
         }
 
         if (eventPayload.TryGetValue("Increment", out value))
         {
-            Metrics.SystemRuntimeMetric[counterName] = double.Parse(value.ToString());
-            return;
+            return (payloadName, double.Parse(value.ToString()));
         }
 
-    }
-
-    private static void UpdateDotNETMetrics(string name, string payloadName, string payloadValue)
-    {
-        Metrics.DotNETRuntimeMetric[name + payloadName] = double.Parse(payloadValue);
+        return (null, 0);
     }
 
 }
