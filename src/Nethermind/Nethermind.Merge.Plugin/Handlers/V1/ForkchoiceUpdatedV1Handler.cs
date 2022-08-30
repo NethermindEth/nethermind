@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
             if (blockInfo == null)
             {
-                if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't not found."); }
+                if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
             if (!blockInfo.WasProcessed)
