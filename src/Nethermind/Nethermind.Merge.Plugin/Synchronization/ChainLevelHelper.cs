@@ -169,15 +169,10 @@ public class ChainLevelHelper : IChainLevelHelper
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
-        if (beaconMainChainBlock == null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. No beacon main chain on starting point");
-            return null;
-        }
+        if (beaconMainChainBlock == null) return null;
 
         if (!beaconMainChainBlock.IsBeaconInfo)
         {
-            if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting points info {beaconMainChainBlock.BlockHash}, {beaconMainChainBlock.Metadata}, {beaconMainChainBlock.IsBeaconBody}, {beaconMainChainBlock.IsBeaconHeader}, {beaconMainChainBlock.IsBeaconMainChain}");
             return startingPoint;
         }
 

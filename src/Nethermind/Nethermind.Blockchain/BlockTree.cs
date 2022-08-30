@@ -536,10 +536,8 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
         {
-           // _logger.Info($"Inserting header {header.Hash}");
             if (!CanAcceptNewBlocks)
             {
-            //    _logger.Info("BT cannot accept");
                 return AddBlockResult.CannotAccept;
             }
 
@@ -635,7 +633,6 @@ namespace Nethermind.Blockchain
                 blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
             }
 
-            // _logger.Info($"BT metadata {blockInfo.Metadata}");
             UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, isOnMainChain);
 
             return AddBlockResult.Added;
@@ -1710,15 +1707,6 @@ namespace Nethermind.Blockchain
                 {
                     level.HasBlockOnMainChain = true;
                 }
-
-                /*
-                _logger.Info("Persisting CLI");
-                foreach (BlockInfo levelBlockInfo in level.BlockInfos)
-                {
-                    _logger.Info($"{levelBlockInfo.BlockHash} {levelBlockInfo.Metadata}");
-                }
-                _logger.Info(Environment.StackTrace);
-                */
 
                 _chainLevelInfoRepository.PersistLevel(number, level, batch);
 

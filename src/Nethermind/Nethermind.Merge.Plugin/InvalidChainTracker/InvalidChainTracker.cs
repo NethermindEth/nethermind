@@ -158,11 +158,6 @@ public class InvalidChainTracker : IInvalidChainTracker
             if (!_poSSwitcher.IsPostMerge(parentHeader))
             {
                 effectiveParent = Keccak.Zero;
-                if(_logger.IsTrace) _logger.Trace($"Parent is not post merge");
-            }
-            else
-            {
-                if(_logger.IsTrace) _logger.Trace($"Parent is post merge, {parentHeader.Difficulty}, {parentHeader.TotalDifficulty}");
             }
         }
         else
