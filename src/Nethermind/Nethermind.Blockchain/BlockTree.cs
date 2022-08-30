@@ -881,8 +881,12 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != 0)
+                    if (blockInfo.TotalDifficulty != 0 || header.IsGenesis)
                         header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    else
+                    {
+                        _logger.Info("Skipped...");
+                    }
                 }
 
                 if (requiresCanonical)
@@ -1913,8 +1917,12 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != 0)
+                    if (blockInfo.TotalDifficulty != 0 || block.IsGenesis)
                         block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    else
+                    {
+                        _logger.Info("Skipped...");
+                    }
                 }
 
 
