@@ -99,16 +99,16 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
         Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
     
-        [JsonRpcMethod(Description = "Get Raw Block format.")]
+        [JsonRpcMethod(Description = "Get Raw Block format.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<byte[]> debug_getRawBlock(long blockNumber);
         
-        [JsonRpcMethod(Description = "Get Raw Receipt format.")]
+        [JsonRpcMethod(Description = "Get Raw Receipt format.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber);
         
-        [JsonRpcMethod(Description = "Get Raw Header format.")]
+        [JsonRpcMethod(Description = "Get Raw Header format.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<byte[]> debug_getRawHeader(long blockNumber);
         
-        [JsonRpcMethod(Description = "Get Raw Transaction format.")]
+        [JsonRpcMethod(Description = "Get Raw Transaction format.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<byte[]> debug_getRawTransaction(Keccak transactionHash);
     }
 }

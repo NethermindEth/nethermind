@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -125,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
                 {
                     Enabled = jsonRpcEnabled,
-                    AdditionalRpcUrls = new []{"http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"}
+                    AdditionalRpcUrls = new []{"http://localhost:8550|http;ws|net;debug;eth;subscribe;web3;client|no-auth"}
                 });
             }
             else

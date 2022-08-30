@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber)
         {
-            var receipts = _debugBridge.GetReceiptsFromBlock(blockNumber);
+            var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockNumber));
             if(receipts == null)
             {
                 return ResultWrapper<byte[]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -306,7 +306,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         } 
 
         public ResultWrapper<byte[]> debug_getRawHeader(long blockNumber) {
-            var block = _debugBridge.GetBlock(blockNumber);
+            var block = _debugBridge.GetBlock(new BlockParameter(blockNumber));
             if (block == null)
             {
                 return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    

@@ -35,8 +35,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
         byte[] GetBlockRlp(Keccak blockHash);
         byte[] GetBlockRlp(long number);
-        Block? GetBlock(Keccak blockHash);
-        Block? GetBlock(long number);
+        Block? GetBlock(BlockParameter blockParameter);
         byte[] GetDbValue(string dbName, byte[] key);
         object GetConfigValue(string category, string name);
         public ChainLevelInfo GetLevelInfo(long number);
@@ -44,8 +43,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public void UpdateHeadBlock(Keccak blockHash);
         Task<bool> MigrateReceipts(long blockNumber);
         void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-        TxReceipt[]? GetReceiptsFromBlock(long blockNumber);
-        TxReceipt[]? GetReceiptsFromBlock(Keccak blockHash);
+        TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParameter);
         Transaction? GetTransactionFromHash(Keccak hash);
     }
 }
