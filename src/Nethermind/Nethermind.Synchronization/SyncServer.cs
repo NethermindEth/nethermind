@@ -192,26 +192,29 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
-                if (!ValidateSeal(block, nodeWhoSentTheBlock))
-                {
-                    ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
-                }
-
-                bool isKnownParent = block.ParentHash is not null && _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
-                if (isKnownParent)
+                Block? parent = _blockTree.FindBlock(block.ParentHash);
+                if (parent != null)
                 {
                     // we null total difficulty for a block in a block tree as we don't trust the message
                     UInt256? totalDifficulty = block.TotalDifficulty;
 
-                    // we do not trust total difficulty from peers
-                    // Parity sends invalid data here and it is equally expensive to validate and to set from null
-                    block.Header.TotalDifficulty = null;
+                    // Recalculate total difficulty as we don't trust total difficulty from gossip
+                    block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
                     if (!_blockValidator.ValidateSuggestedBlock(block))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
 
-                    Block blockToBroadCast = new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+                    if (!ValidateSeal(block, nodeWhoSentTheBlock))
+                    {
+                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                    }
+
+                    // we want to broadcast original block, lets check if TD changed
+                    Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
+                        ? block
+                        : new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+
                     BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;

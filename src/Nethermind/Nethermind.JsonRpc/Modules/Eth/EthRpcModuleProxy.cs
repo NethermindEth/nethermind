@@ -290,7 +290,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate,
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] hashRate,
             BlockParameter blockParameter)
         {
             throw new NotSupportedException();

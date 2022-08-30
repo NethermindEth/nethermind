@@ -879,7 +879,8 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    if (blockInfo.TotalDifficulty != 0)
+                        header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }
 
                 if (requiresCanonical)

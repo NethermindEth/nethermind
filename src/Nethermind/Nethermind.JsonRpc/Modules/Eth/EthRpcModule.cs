@@ -702,7 +702,7 @@ public partial class EthRpcModule : IEthRpcModule
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] storageKeys,
         BlockParameter blockParameter)
     {
         BlockHeader header;
