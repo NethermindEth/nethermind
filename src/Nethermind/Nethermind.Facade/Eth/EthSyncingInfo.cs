@@ -66,14 +66,26 @@ namespace Nethermind.Facade.Eth
                     (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _receiptStorage.LowestInsertedReceiptBlockNumber == null))
                 {
                     if (_logger.IsInfo) _logger.Info($"Receipts not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
-                    return new SyncingResult { IsSyncing = true };
+                    return new SyncingResult
+                    {
+                        CurrentBlock = headNumberOrZero,
+                        HighestBlock = bestSuggestedNumber,
+                        StartingBlock = 0L,
+                        IsSyncing = true
+                    };;
                 }
 
                 if (_syncConfig.DownloadBodiesInFastSync &&
                     (_blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
                 {
                     if (_logger.IsInfo) _logger.Info($"Bodies not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
-                    return new SyncingResult() {IsSyncing = true};
+                    return new SyncingResult
+                    {
+                        CurrentBlock = headNumberOrZero,
+                        HighestBlock = bestSuggestedNumber,
+                        StartingBlock = 0L,
+                        IsSyncing = true
+                    };
                 }
             }
 
