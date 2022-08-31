@@ -138,19 +138,21 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
         public long? TransferSpeed { get; set; }
         public bool TDSameAsFTTD { get; set; }
 
-        public bool IsBetterThan(PeerInfoComparison bestPeer)
+        public bool IsBetterThan(PeerInfoComparison otherPeer)
         {
-            if (TDSameAsFTTD != bestPeer.TDSameAsFTTD)
-            {
-                // Prioritize probably PoS peer
-                // We may not have FTTD, or the TD of the peer, so this is a priority instead of a
-                // filter
-                return TDSameAsFTTD;
-            }
+            if (Info == null) return false;
+            if (otherPeer.Info == null) return true;
+
+            // Prioritize probably PoS peer
+            // We may not have FTTD, or the TD of the peer, so this is a priority instead of a
+            // filter
+            if (TDSameAsFTTD && !otherPeer.TDSameAsFTTD) return true;
+
+            if (Info!.SyncPeer.ReachedPoS && !otherPeer.Info.SyncPeer.ReachedPoS) return true;
 
             // TODO: On peer refresh, if the difficulty is 0, add marker to peer that the peer has reached PoS.
 
-            return (TransferSpeed ?? 0) > (bestPeer.TransferSpeed ?? 0);
+            return (TransferSpeed ?? 0) > (otherPeer.TransferSpeed ?? 0);
         }
     }
 }
