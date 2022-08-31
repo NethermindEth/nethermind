@@ -87,12 +87,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 block.Header.Author = _random.NextBoolean() ? block.Header.Beneficiary : block.Header.Author;
                 block.Header.Beneficiary = _random.NextBoolean() ? block.Header.Author : block.Header.Beneficiary;
                 block.Header.TotalDifficulty = UInt256.Parse(
-                    Enumerable.Range(0, 78)
+                    Enumerable.Range(0, 77)
                         .Select(_ => _random.Next(0, 10))
                         .Aggregate(String.Empty, (acc, val) => $"{acc}{val}")
                         );
                 block.Header.StateRoot = block.CalculateHash();
-                block.Header.Hash = block.Header.CalculateHash();
+                block.Header.Hash      = block.CalculateHash();
             }
         }
     }
