@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Eth
             bool isCloseToPivot = bestSuggestedNumber <= _syncConfig.PivotNumberParsed + 8;
             bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8 || (_blockTree.Head?.IsGenesis ?? true) ||  isCloseToPivot;
 
-            if (_logger.IsInfo) _logger.Info($"EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}.");
+            if (_logger.IsInfo) _logger.Info($"EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             if (isSyncing)
             {
                 return new SyncingResult
