@@ -84,7 +84,6 @@ namespace Nethermind.JsonRpc.Modules
             Eth,
             Subscribe,
             Trace,
-            Debug,
             TxPool,
             Web3,
             Personal,
@@ -93,6 +92,7 @@ namespace Nethermind.JsonRpc.Modules
             Parity,
             Health,
             Rpc,
+            Debug,
         };
 
         public static IEnumerable<string> DefaultEngineModules { get; } = new List<string>()
