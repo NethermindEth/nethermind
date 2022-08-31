@@ -15,9 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
+using System.Linq;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
+using MathNet.Numerics.Random;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -55,6 +62,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string payloadStr = payloadId.ToHexString(true);
             Block? block = await _payloadPreparationService.GetPayload(payloadStr);
 
+            // corrupting block for testing purposes
+            CorruptBlock(ref block);
+
             if (block == null)
             {
                 // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
@@ -65,6 +75,25 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_logger.IsInfo) _logger.Info($"GetPayloadV1 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
 
             return ResultWrapper<ExecutionPayloadV1?>.Success(new ExecutionPayloadV1(block));
+        }
+
+
+        [ThreadStatic] private readonly System.Random _random = new Random();
+        private void CorruptBlock(ref Block? block)
+        {
+            if (block is not null)
+            {
+                block.Header.GasUsed = _random.NextLong();
+                block.Header.Author = _random.NextBoolean() ? block.Header.Beneficiary : block.Header.Author;
+                block.Header.Beneficiary = _random.NextBoolean() ? block.Header.Author : block.Header.Beneficiary;
+                block.Header.TotalDifficulty = UInt256.Parse(
+                    Enumerable.Range(0, 78)
+                        .Select(_ => _random.Next(0, 10))
+                        .Aggregate(String.Empty, (acc, val) => $"{acc}{val}")
+                        );
+                block.Header.StateRoot = block.CalculateHash();
+                block.Header.Hash = block.Header.CalculateHash();
+            }
         }
     }
 }
