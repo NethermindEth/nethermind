@@ -18,6 +18,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 
 namespace Nethermind.Facade.Eth
 {
@@ -25,22 +26,29 @@ namespace Nethermind.Facade.Eth
     {
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
+        private readonly ILogger _logger;
         private readonly IReceiptStorage _receiptStorage;
 
-        public EthSyncingInfo(IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncConfig syncConfig)
+        public EthSyncingInfo(
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            ISyncConfig syncConfig,
+            ILogger logger)
         {
             _blockTree = blockTree;
             _syncConfig = syncConfig;
+            _logger = logger;
             _receiptStorage = receiptStorage;
         }
 
         public SyncingResult GetFullInfo()
         {
             long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader().Number;
-
             long headNumberOrZero = _blockTree.Head?.Number ?? 0;
-            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
+            bool isCloseToPivot = bestSuggestedNumber <= _syncConfig.PivotNumberParsed + 8;
+            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8 || (_blockTree.Head?.IsGenesis ?? true) ||  isCloseToPivot;
 
+            if (_logger.IsInfo) _logger.Info($"EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}.");
             if (isSyncing)
             {
                 return new SyncingResult
