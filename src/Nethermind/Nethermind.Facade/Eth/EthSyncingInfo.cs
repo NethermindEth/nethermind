@@ -63,13 +63,13 @@ namespace Nethermind.Facade.Eth
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.DownloadReceiptsInFastSync &&
-                    _receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc)
+                    (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
                 {
                     return new SyncingResult { IsSyncing = true };
                 }
 
                 if (_syncConfig.DownloadBodiesInFastSync &&
-                    _blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc)
+                    (_blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
                 {
                     return new SyncingResult() {IsSyncing = true};
                 }
