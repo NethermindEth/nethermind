@@ -107,7 +107,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            BlockInfo blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+            BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+            if (blockInfo == null)
+            {
+                if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
             if (!blockInfo.WasProcessed)
             {
                 BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!);
@@ -278,7 +283,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private Block? GetBlock(Keccak headBlockHash)
         {
-            Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (block is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
@@ -312,7 +317,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return null;
             }
 
-            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (blockHeader is null)
             {
                 errorMessage = $"Block {blockHash} not found.";
@@ -329,7 +334,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             while (true)
             {
-                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (predecessor == null)
                 {
                     blocks = Array.Empty<Block>();
@@ -366,7 +371,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     break;
                 }
-                BlockInfo predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+                BlockInfo? predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+                if (predecessorInfo == null) break;
                 predecessorInfo.BlockNumber = predecessor.Number;
                 if (predecessorInfo.IsBeaconMainChain || !predecessorInfo.IsBeaconInfo) break;
                 if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash} or cache rebuilt");

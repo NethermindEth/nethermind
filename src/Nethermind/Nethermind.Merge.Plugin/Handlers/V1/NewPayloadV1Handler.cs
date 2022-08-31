@@ -127,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (parentHeader is null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
@@ -245,8 +245,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             processingOptions = _defaultProcessingOptions;
 
-            BlockInfo parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
-            bool parentProcessed = parentBlockInfo.WasProcessed;
+            BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
+            bool parentProcessed = parentBlockInfo is { WasProcessed: true };
 
             // During the transition we can have a case of NP built over a transition block that wasn't processed.
             // We want to force process the whole branch then, but not longer than few blocks.
@@ -257,7 +257,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentIsPoWBlock = parent.Difficulty != UInt256.Zero;
             bool processTerminalBlock = !_poSSwitcher.TransitionFinished // we haven't finished transition
                                         && weHaveOnlyFewBlocksToProcess // we won't try to process too much blocks (if we are behind the transition block and still processing blocks)
-                                        && !parentBlockInfo.IsBeaconInfo // we are not in beacon sync
+                                        && parentBlockInfo is { IsBeaconInfo: false } // we are not in beacon sync
                                         && parentIsPoWBlock; // parent was PoW block -> so it was a transition block
 
             if (!parentProcessed && processTerminalBlock) // so if parent wasn't processed

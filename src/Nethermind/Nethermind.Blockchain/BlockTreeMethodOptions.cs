@@ -25,7 +25,7 @@ public enum BlockTreeLookupOptions
     None = 0,
     TotalDifficultyNotNeeded = 1,
     RequireCanonical = 2,
-    DoNotCalculateTotalDifficulty = 4,
+    DoNotCreateLevelIfMissing = 4,
     AllowInvalid = 8,
     All = 15
 }

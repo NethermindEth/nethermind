@@ -27,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
@@ -277,6 +278,20 @@ namespace Nethermind.Blockchain.Test.Validators
 
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
+        }
+
+        [TestCase(0)]
+        [TestCase(null)]
+        public void When_total_difficulty_0_or_null_we_should_skip_total_difficulty_validation(long? totalDifficulty)
+        {
+            _block.Header.Difficulty = 1;
+            _block.Header.TotalDifficulty = totalDifficulty == null ? null : (UInt256)totalDifficulty;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+
+            HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
+            bool result = validator.Validate(_block.Header);
+            Assert.True(result);
         }
 
         [Test]
