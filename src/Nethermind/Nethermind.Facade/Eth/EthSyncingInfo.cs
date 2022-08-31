@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Eth
             bool isCloseToPivot = bestSuggestedNumber <= _syncConfig.PivotNumberParsed + 8;
             bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8 || (_blockTree.Head?.IsGenesis ?? true) ||  isCloseToPivot;
 
-            if (_logger.IsInfo) _logger.Info($"EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             if (isSyncing)
             {
                 return new SyncingResult
@@ -65,16 +65,19 @@ namespace Nethermind.Facade.Eth
                 if (_syncConfig.DownloadReceiptsInFastSync &&
                     (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _receiptStorage.LowestInsertedReceiptBlockNumber == null))
                 {
+                    if (_logger.IsInfo) _logger.Info($"Receipts not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return new SyncingResult { IsSyncing = true };
                 }
 
                 if (_syncConfig.DownloadBodiesInFastSync &&
                     (_blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
                 {
+                    if (_logger.IsInfo) _logger.Info($"Bodies not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return new SyncingResult() {IsSyncing = true};
                 }
             }
 
+            if (_logger.IsInfo) _logger.Info($"Node is not syncing - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsCloseToPivot: {isCloseToPivot}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             return SyncingResult.NotSyncing;
         }
 
