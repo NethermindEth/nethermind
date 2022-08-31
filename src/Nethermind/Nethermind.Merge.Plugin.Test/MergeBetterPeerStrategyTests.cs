@@ -78,22 +78,6 @@ public class MergeBetterPeerStrategyTests
 
     [TestCase(6,4,7,2, false)]
     [TestCase(6,2,7,2, false)]
-    [TestCase(7,2,7,4, true)]
-    [TestCase(3,4,5,2, true)]
-    [TestCase(3,2,3,4, false)]
-    [TestCase(4,2,3,4, false)]
-    public void IsBetterThanLocalChain_return_expected_results(long chainDifficulty, long bestFullBlock, long peerTotalDifficulty, long peerNumber, bool expectedResult)
-    {
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);
-        syncPeer.HeadNumber.Returns(peerNumber);
-
-        MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestFullBlock)));
-    }
-
-    [TestCase(6,4,7,2, false)]
-    [TestCase(6,2,7,2, false)]
     [TestCase(3,4,5,2, true)]
     [TestCase(3,2,3,4, true)]
     [TestCase(4,2,3,4, false)]

@@ -49,14 +49,6 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
             ? _preMergeBetterPeerStrategy.Compare(valueX, valueY)
             : valueX.Number.CompareTo(valueY.Number);
 
-    public bool IsBetterThanLocalChain(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock)
-    {
-        if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestBlock.TotalDifficulty} LocalChainBestFullBlock: {bestBlock.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
-        return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestBlock.TotalDifficulty)
-            ? _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo, bestBlock)
-            : bestPeerInfo.Number > bestBlock.Number;
-    }
-
     public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty))
