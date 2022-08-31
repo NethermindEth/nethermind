@@ -1917,7 +1917,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != 0 || block.IsGenesis)
+                    if (blockInfo.TotalDifficulty != UInt256.Zero || block.IsGenesis)
                         block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }
 
