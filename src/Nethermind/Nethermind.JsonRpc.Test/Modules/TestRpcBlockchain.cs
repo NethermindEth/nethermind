@@ -161,7 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager),
                 FeeHistoryOracle);
 
             return this;

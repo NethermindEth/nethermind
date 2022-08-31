@@ -33,11 +33,11 @@ namespace Nethermind.Facade.Eth
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             ISyncConfig syncConfig,
-            ILogger logger)
+            ILogManager logManager)
         {
             _blockTree = blockTree;
             _syncConfig = syncConfig;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _receiptStorage = receiptStorage;
         }
 
