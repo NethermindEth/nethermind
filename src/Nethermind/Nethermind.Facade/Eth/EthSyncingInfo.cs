@@ -63,7 +63,7 @@ namespace Nethermind.Facade.Eth
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.DownloadReceiptsInFastSync &&
-                    (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
+                    (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _receiptStorage.LowestInsertedReceiptBlockNumber == null))
                 {
                     return new SyncingResult { IsSyncing = true };
                 }
