@@ -100,7 +100,7 @@ public class SystemMetricsListener : EventListener
                 return;
             }
 
-            Metrics.RuntimeMetrics[eventName + payloadName] = payloadValue;
+            Metrics.RuntimeMetrics[eventName + "_" + payloadName] = payloadValue;
         }
     }
 
