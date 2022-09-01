@@ -147,7 +147,6 @@ namespace Nethermind.Runner
 
             app.OnExecute(async () =>
             {
-                _appClosed.Reset();
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -192,25 +191,47 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
+                _appClosed.Reset();
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
+                bool runFailed = false;
+                try
                 {
-                    if (x.IsFaulted && _logger.IsError)
-                        _logger.Error("Error during ethereum runner start", x.Exception);
-                });
+                    await ethereumRunner.Start(_processCloseCancellationSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                    _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
+                    runFailed = true;
+                    _processCloseCancellationSource.Cancel();
+                }
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
+                if (runFailed)
+                {
+                    return -1;
+                }
                 return 0;
             });
 
-            _ = app.Execute(args);
-            _appClosed.Wait();
+            try
+            {
+                Environment.ExitCode = app.Execute(args);
+            }
+            catch (Exception)
+            {
+                Environment.ExitCode = -1;
+                throw;
+            }
+            finally
+            {
+                _appClosed.Wait();
+            }
         }
 
         private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
