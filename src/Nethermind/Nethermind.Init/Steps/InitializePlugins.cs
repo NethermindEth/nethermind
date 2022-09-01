@@ -53,6 +53,7 @@ namespace Nethermind.Init.Steps
                 catch (Exception e)
                 {
                     if(logger.IsError) logger.Error($"Failed to initialize plugin {plugin.Name} by {plugin.Author}", e);
+                    throw;
                 }
             }
         }
