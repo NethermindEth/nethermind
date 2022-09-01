@@ -361,18 +361,30 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _ => null
                 };
 
-                // the right condition in the OR feels hacky, if the block is already known
-                // then we should either it was processed with valid or invalid result or it hasn't
-                // been processed. the problem is that right now BlockTree.WasProcessed will only be
-                // true if it was processed with a valid result, so if we check this we would be unable
-                // to distinguish the block not being processed yet from the block being invalid during processing.
-                // one possible way to fix this is by adding a Contains method to the processing queue and if the block wasn't
-                // processed then we check the processing queue to see whether it was invalid during processing or if it's still pending in the queue.
-                if (!result.HasValue || (result & ValidationResult.AlreadyKnown) != 0)
+                if (!result.HasValue)
                 {
                     _processingQueue.Enqueue(block, processingOptions);
 
                     result = await blockProcessed.TimeoutOn(timeoutTask);
+                }
+
+                // if the block is marked as AlreadyKnown by the block tree then it means it has already
+                // been suggested. there are two possibilities, either the block hasn't been processed yet
+                // or the block was processed and it's valid. the case where the block was processed and is
+                // invalid is not a possibility, because it would have been intercepted by the InvalidChainTracker
+                // earlier in the handling pipeline.
+                if ((result & ValidationResult.AlreadyKnown) != 0)
+                {
+                    if (_blockTree.WasProcessed(block.Number, block.Hash!))
+                        result |= ValidationResult.Valid;
+                    // probably the block is already in the processing queue as a result
+                    // of a previous newPayload or the block being discovered during syncing
+                    // but add it to the processing queue just in case.
+                    else
+                    {
+                        _processingQueue.Enqueue(block, processingOptions);
+                        result = await blockProcessed.TimeoutOn(timeoutTask);
+                    }
                 }
 
                 if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
