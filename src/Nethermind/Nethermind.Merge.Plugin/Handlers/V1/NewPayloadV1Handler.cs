@@ -362,7 +362,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _ => null
                 };
 
-                if (!result.HasValue)
+                // the right condition in the OR feels hacky, if the block is already known
+                // then we should either it was processed with valid or invalid result or it hasn't
+                // been processed. the problem is that right now BlockTree.WasProcessed will only be
+                // true if it was processed with a valid result, so if we check this we would be unable
+                // to distinguish the block not being processed yet from the block being invalid during processing.
+                // one possible way to fix this is by adding a Contains method to the processing queue and if the block wasn't
+                // processed then we check the processing queue to see whether it was invalid during processing or if it's still pending in the queue.
+                if (!result.HasValue || (result & ValidationResult.AlreadyKnown) != 0)
                 {
                     _processingQueue.Enqueue(block, processingOptions);
 
