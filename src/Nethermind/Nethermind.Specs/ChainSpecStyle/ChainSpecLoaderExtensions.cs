@@ -41,19 +41,21 @@ public static class ChainSpecLoaderExtensions
                 resourceName = $"{resourceName}.json";
             }
             resourceName = resourceName.Replace('/', '.');
+            resourceName = $"Nethermind.Config.{resourceName}";
             Assembly assembly = typeof(IConfig).Assembly;
             string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase)))
+            if (!embeddedChainSpecFiles.Any(s => s.Equals(resourceName, StringComparison.OrdinalIgnoreCase)))
             {
                 if (logger.IsInfo) logger.Info($"Did not find chainspec in embedded resources: {fileName}");
                 return chainSpecLoader.LoadFromFile(fileName, logger);
             }
-            resourceName = $"Nethermind.Config.{resourceName}";
             using Stream stream = assembly.GetManifestResourceStream(resourceName);
             using StreamReader reader = new(stream);
             fileName = fileName.GetApplicationResourcePath();
             if (File.Exists(fileName))
+            {
                 if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead file!");
+            }
             if (logger.IsInfo) logger.Info($"Loading chainspec from embedded resources: {fileName}");
             return chainSpecLoader.Load(reader.ReadToEnd());
         }
