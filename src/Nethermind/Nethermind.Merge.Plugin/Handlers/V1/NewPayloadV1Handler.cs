@@ -294,13 +294,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             // Validate
-            bool validAndProcessed = ValidateWithBlockValidator(block, parent);
-            ValidationResult? result = ValidationResult.Syncing;
-
-            if (!validAndProcessed)
+            if (!ValidateWithBlockValidator(block, parent))
             {
                 return (ValidationResult.Invalid, string.Empty);
             }
+
+            ValidationResult? result = ValidationResult.Syncing;
 
             TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
             Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
@@ -391,7 +390,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
-            _latestBlocks?.Set(block.Hash!, validAndProcessed);
+            // notice that it is not correct to add information to the cache
+            // if we return SYNCING for example, and don't know yet whether
+            // the block is valid or invalid because we haven't processed it yet
+            if ((result & ValidationResult.Valid) != 0) // block is valid
+                _latestBlocks?.Set(block.Hash!, true); // add to cache
+            else if ((result & ValidationResult.Invalid) != 0) // block is invalid
+                _latestBlocks?.Set(block.Hash!, false); // add to cache
+
             return (result.Value, validationMessage);
         }
 
