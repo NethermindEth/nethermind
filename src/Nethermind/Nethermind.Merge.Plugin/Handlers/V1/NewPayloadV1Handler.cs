@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ISpecProvider _specProvider;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
-        private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
+        private readonly LruCache<Keccak, bool>? _latestBlocks;
         private readonly ProcessingOptions _defaultProcessingOptions;
         private readonly TimeSpan _timeout;
 
@@ -76,7 +76,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IMergeSyncController mergeSyncController,
             ISpecProvider specProvider,
             ILogManager logManager,
-            TimeSpan? timeout = null)
+            TimeSpan? timeout = null,
+            int cacheSize = 50)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
@@ -92,6 +93,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
             _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
             _timeout = timeout ?? TimeSpan.FromSeconds(7);
+            if (cacheSize > 0)
+                _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
@@ -279,8 +282,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string? validationMessage = null;
 
             // If duplicate, reuse results
-            bool isRecentBlock = _latestBlocks.TryGet(block.Hash!, out bool isValid);
-            if (isRecentBlock)
+            if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out bool isValid))
             {
                 if (!isValid && _logger.IsWarn)
                 {
@@ -382,7 +384,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
-            _latestBlocks.Set(block.Hash!, validAndProcessed);
+            _latestBlocks?.Set(block.Hash!, validAndProcessed);
             return (result.Value, validationMessage);
         }
 
