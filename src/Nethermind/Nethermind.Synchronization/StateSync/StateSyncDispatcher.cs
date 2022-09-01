@@ -67,14 +67,14 @@ namespace Nethermind.Synchronization.StateSync
                     if (batch.NodeDataType == NodeDataType.Code)
                     {
                         var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
-                        Logger.Warn($"GETBYTECODES count:{a.Length}");
+                        Logger.Trace($"GETBYTECODES count:{a.Length}");
                         task = handler.GetByteCodes(a, cancellationToken);
                     }
                     else
                     {
                         GetTrieNodesRequest request = GetRequest(batch);
 
-                        Logger.Warn($"GETTRIENODES count:{request.AccountAndStoragePaths.Length}");
+                        Logger.Trace($"GETTRIENODES count:{request.AccountAndStoragePaths.Length}");
 
                         task = handler.GetTrieNodes(request, cancellationToken);
                     }
