@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -803,6 +803,37 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+        }
+
+        [Test, NonParallelizable]
+        public async Task AlreadyKnown_not_cached_block_should_return_valid()
+        {
+            using MergeTestBlockchain? chain = await CreateBlockChain();
+
+            IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100), newPayloadCacheSize: 0);
+            Block? head = chain.BlockTree.Head!;
+
+            Block? b4 = Build.A.Block
+                .WithNumber(head.Number + 1)
+                .WithParent(head)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(head.StateRoot!)
+                .WithBeneficiary(Build.An.Address.TestObject)
+                .TestObject;
+
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b4))).Data.Status.Should().Be(PayloadStatus.Valid);
+
+            Block? b5 = Build.A.Block
+                .WithNumber(b4.Number + 1)
+                .WithParent(b4)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(b4.StateRoot!)
+                .TestObject;
+
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b5))).Data.Status.Should().Be(PayloadStatus.Valid);
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b5))).Data.Status.Should().Be(PayloadStatus.Valid);
         }
 
         [Test]
