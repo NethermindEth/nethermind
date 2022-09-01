@@ -75,6 +75,13 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(chainspec.ChainId, chainId);
         }
 
+        [TestCase("goerli.json", 5UL)]
+        public void ignoring_custom_chainspec_when_embedded_exists(string chainspecPath, ulong chainId)
+        {
+            var chainspec = _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger);
+            Assert.AreEqual(chainspec.ChainId, chainId);
+        }
+
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainspecNotFound(string chainspecPath)
         {
