@@ -16,6 +16,11 @@ print(emoji.emojize("Fast Sync configuration settings initialization     :white_
 
 configs = {
     # fast sync section
+    "default": {
+        "url": "api.etherscan.io",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },
     "mainnet": {
         "url": "api.etherscan.io",
         "blockReduced": 1000,

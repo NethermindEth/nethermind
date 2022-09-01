@@ -53,7 +53,7 @@ namespace Nethermind.Runner
     {
         private const string FailureString = "Failure";
         private const string DefaultConfigsDirectory = "configs";
-        private const string DefaultConfigFile = "configs/mainnet.cfg";
+        private const string DefaultConfigFile = "configs/default.cfg";
 
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
