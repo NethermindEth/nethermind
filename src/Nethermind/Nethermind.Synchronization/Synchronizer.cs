@@ -55,6 +55,9 @@ namespace Nethermind.Synchronization
         protected readonly ISyncReport _syncReport;
         protected readonly IPivot _pivot;
 
+        protected virtual IPeerAllocationStrategyFactory<StateSyncBatch> StateSyncAllocationStrategy => new StateSyncAllocationStrategyFactory();
+        protected virtual IPeerAllocationStrategyFactory<SnapSyncBatch> SnapSyncAllocationStrategy => new SnapSyncAllocationStrategyFactory();
+
         protected CancellationTokenSource? _syncCancellation = new();
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -150,7 +153,7 @@ namespace Nethermind.Synchronization
         {
             TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
-            StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, StateSyncAllocationStrategy, _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -167,7 +170,7 @@ namespace Nethermind.Synchronization
         private void StartSnapSyncComponents()
         {
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
-            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
+            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, SnapSyncAllocationStrategy, _logManager);
 
             Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {

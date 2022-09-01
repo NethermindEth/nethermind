@@ -30,10 +30,13 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -42,6 +45,20 @@ public class MergeSynchronizer : Synchronizer
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
     private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly IBeaconPivot _beaconPivot;
+
+    protected override IPeerAllocationStrategyFactory<StateSyncBatch> StateSyncAllocationStrategy =>
+        new StaticPeerAllocationStrategyFactory<StateSyncBatch>(
+            new TotalDiffStrategy(
+                new PoSStatusThenSpeedPeerAllocationStrategy(_beaconPivot, _poSSwitcher, TransferSpeedType.NodeData),
+                    TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse));
+
+    protected override IPeerAllocationStrategyFactory<SnapSyncBatch> SnapSyncAllocationStrategy => new StaticPeerAllocationStrategyFactory<SnapSyncBatch>(
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
+                new TotalDiffStrategy(
+                    new PoSStatusThenSpeedPeerAllocationStrategy(_beaconPivot, _poSSwitcher, TransferSpeedType.SnapRanges),
+                    TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap")
+        );
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -58,6 +75,7 @@ public class MergeSynchronizer : Synchronizer
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
+        IBeaconPivot beaconPivot,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -78,6 +96,7 @@ public class MergeSynchronizer : Synchronizer
         _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
+        _beaconPivot = beaconPivot;
     }
 
     public override void Start()

@@ -394,6 +394,7 @@ namespace Nethermind.Merge.Plugin
                     _poSSwitcher,
                     _mergeConfig,
                     _invalidChainTracker,
+                    _beaconPivot,
                     _api.LogManager,
                     syncReport);
             }
