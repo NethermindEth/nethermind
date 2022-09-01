@@ -29,30 +29,42 @@ public static class ChainSpecLoaderExtensions
 
     public static ChainSpec LoadEmbeddedOrFromFile(this IChainSpecLoader chainSpecLoader, string fileName, ILogger logger)
     {
-        string resourceName = fileName;
-        if (!resourceName.Contains('/'))
+        try
         {
-            resourceName = $"chainspec/{resourceName}";
+            string resourceName = fileName;
+            if (!resourceName.Contains('/'))
+            {
+                resourceName = $"chainspec/{resourceName}";
+            }
+            if (!resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                resourceName = $"{resourceName}.json";
+            }
+            resourceName = resourceName.Replace('/', '.');
+            Assembly assembly = typeof(IConfig).Assembly;
+            string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
+            if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (logger.IsInfo) logger.Info($"Did not find chainspec in embedded resources: {fileName}");
+                return chainSpecLoader.LoadFromFile(fileName, logger);
+            }
+            resourceName = $"Nethermind.Config.{resourceName}";
+            using Stream stream = assembly.GetManifestResourceStream(resourceName);
+            using StreamReader reader = new(stream);
+            fileName = fileName.GetApplicationResourcePath();
+            if (File.Exists(fileName))
+                if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead file!");
+            if (logger.IsInfo) logger.Info($"Loading chainspec from embedded resources: {fileName}");
+            return chainSpecLoader.Load(reader.ReadToEnd());
         }
-        if (!resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex)
         {
-            resourceName = $"{resourceName}.json";
+            if (logger.IsError) logger.Error("Error while loading Chainspec. Falling back to loading from file.", ex);
+            return chainSpecLoader.LoadFromFile(fileName, logger);
         }
-        resourceName = resourceName.Replace('/', '.');
-        Assembly assembly = typeof(IConfig).Assembly;
-        string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-        if (!embeddedChainSpecFiles.Any(s => s.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase)))
-            return chainSpecLoader.LoadFromFile(fileName);
-        resourceName = $"Nethermind.Config.{resourceName}";
-        using Stream stream = assembly.GetManifestResourceStream(resourceName);
-        using StreamReader reader = new(stream);
-        fileName = fileName.GetApplicationResourcePath();
-        if (File.Exists(fileName))
-            if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resource instead file!");
-        return chainSpecLoader.Load(reader.ReadToEnd());
     }
 
-    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
+    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger logger)
     {
         filePath = filePath.GetApplicationResourcePath();
         if (!File.Exists(filePath))
@@ -76,7 +88,7 @@ public static class ChainSpecLoaderExtensions
                 throw new Exception(missingChainspecFileMessage.ToString());
             }
         }
-
+        if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
         return chainSpecLoader.Load(File.ReadAllText(filePath));
     }
 }
