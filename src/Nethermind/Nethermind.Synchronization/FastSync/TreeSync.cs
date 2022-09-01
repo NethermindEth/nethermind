@@ -95,8 +95,8 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
 
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
-                    if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
+                    if (_logger.IsInfo) _logger.Info($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsInfo) _logger.Info($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
 
                     Interlocked.Increment(ref Metrics.StateSyncRequests);
@@ -126,10 +126,10 @@ namespace Nethermind.Synchronization.FastSync
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
+            if (_logger.IsInfo) _logger.Info($"Removing pending request {batch}");
             if (!_pendingRequests.TryRemove(batch, out _))
             {
-                if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
+                if (_logger.IsInfo) _logger.Info($"Cannot remove pending request {batch}");
                 return SyncResponseHandlingResult.OK;
             }
 
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
+                        if (_logger.IsInfo) _logger.Info(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -171,12 +171,12 @@ namespace Nethermind.Synchronization.FastSync
                     if (batch.Responses == null)
                     {
                         AddAgainAllItems();
-                        if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
+                        if (_logger.IsInfo) _logger.Info("Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _data.NotAssignedCount);
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
+                    if (_logger.IsInfo) _logger.Info($"Received node data - {responseLength} items in response to {requestLength}");
                     int nonEmptyResponses = 0;
                     int invalidNodes = 0;
                     for (int i = 0; i < batch.RequestedNodes!.Length; i++)
@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.FastSync
                         if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
-                            if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
+                            if (_logger.IsInfo) _logger.Info($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
                         }
@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.ConsumedNodesCount, nonEmptyResponses);
                     StoreProgressInDb();
 
-                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
+                    if (_logger.IsInfo) _logger.Info($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
                     bool isEmptish = (decimal)nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
@@ -243,7 +243,7 @@ namespace Nethermind.Synchronization.FastSync
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
                     if (isEmpty)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
+                        if (_logger.IsInfo) _logger.Info($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
                         return SyncResponseHandlingResult.NoProgress;
                     }
 
@@ -264,12 +264,12 @@ namespace Nethermind.Synchronization.FastSync
                     if (total != 0)
                     {
                         // calculate averages
-                        if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal)_handleWatch.ElapsedMilliseconds / total:P0})");
+                        if (_logger.IsInfo) _logger.Info($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal)_handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
                     if (_handleWatch.ElapsedMilliseconds > 250)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)_handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                        if (_logger.IsInfo) _logger.Info($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)_handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
                     _data.LastDbReads = _data.DbChecks;
@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public (bool continueProcessing, bool finishSyncRound) ValidatePrepareRequest(SyncMode currentSyncMode)
         {
-            if (_rootSaved == 1)    
+            if (_rootSaved == 1)
             {
                 VerifyPostSyncCleanUp();
                 return (false, true);
@@ -304,13 +304,13 @@ namespace Nethermind.Synchronization.FastSync
 
             if (_rootNode == Keccak.EmptyTreeHash)
             {
-                if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
+                if (_logger.IsInfo) _logger.Info("Falling asleep - root is empty tree");
                 return (false, true);
             }
 
             if (_hintsToResetRoot >= 32)
             {
-                if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
+                if (_logger.IsInfo) _logger.Info("Falling asleep - many missing responses");
                 return (false, true);
             }
 
@@ -388,7 +388,7 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
 
-                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
+                if (_logger.IsInfo) _logger.Info($"Clearing node stacks ({_pendingItems.Description})");
                 _pendingItems.Clear();
                 Interlocked.Exchange(ref _rootSaved, 0);
             }
@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_alreadySaved.Get(syncItem.Hash))
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
-                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    if (_logger.IsInfo) _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                     return AddNodeResult.AlreadySaved;
                 }
@@ -458,7 +458,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (keyExists)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                        if (_logger.IsInfo) _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
                         _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
@@ -474,7 +474,7 @@ namespace Nethermind.Synchronization.FastSync
                     isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
                     if (dependentItem != null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
+                        if (_logger.IsInfo) _logger.Info($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
                         AddDependency(syncItem.Hash, dependentItem);
                     }
                 }
@@ -485,13 +485,13 @@ namespace Nethermind.Synchronization.FastSync
                 if (isAlreadyRequested)
                 {
                     Interlocked.Increment(ref _data.CheckWasInDependencies);
-                    if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
+                    if (_logger.IsInfo) _logger.Info($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
                 }
             }
 
             _pendingItems.PushToSelectedStream(syncItem, _branchProgress.LastProgress);
-            if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
+            if (_logger.IsInfo) _logger.Info($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
 
@@ -504,10 +504,10 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     HashSet<DependentItem> dependentItems = _dependencies[hash];
 
-                    if (_logger.IsTrace)
+                    if (_logger.IsInfo)
                     {
                         string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
-                        _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
+                        _logger.Info($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
                     }
 
                     foreach (DependentItem dependentItem in dependentItems)
@@ -524,7 +524,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"No nodes dependent on {hash}");
+                    if (_logger.IsInfo) _logger.Info($"No nodes dependent on {hash}");
                 }
             }
 
@@ -537,7 +537,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
-            if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
+            if (_logger.IsInfo) _logger.Info($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
             Interlocked.Increment(ref _data.SavedNodesCount);
             switch (syncItem.NodeDataType)
             {
@@ -817,15 +817,15 @@ namespace Nethermind.Synchronization.FastSync
             int requestSize = requestHashes.Count;
             if (requestSize < MaxRequestSize)
             {
-                if (_logger.IsDebug) _logger.Debug($"Sending limited size request {requestSize} at level {_pendingItems.MaxStateLevel}");
+                if (_logger.IsInfo) _logger.Info($"Sending limited size request {requestSize} at level {_pendingItems.MaxStateLevel}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {requestSize} from ({_pendingItems.Description}) nodes");
-            if (_logger.IsTrace)
+            if (_logger.IsInfo) _logger.Info($"Preparing a request of length {requestSize} from ({_pendingItems.Description}) nodes");
+            if (_logger.IsInfo)
             {
                 foreach (StateSyncItem stateSyncItem in requestHashes)
                 {
-                    _logger.Trace($"Requesting {stateSyncItem.Hash}");
+                    _logger.Info($"Requesting {stateSyncItem.Hash}");
                 }
             }
         }
