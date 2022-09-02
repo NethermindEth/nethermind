@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -55,7 +55,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
             }
-            
+
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
             services.Configure<KestrelServerOptions>(options => {
@@ -68,7 +68,7 @@ namespace Nethermind.Runner.JsonRpc
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
-            
+
             services.AddResponseCompression(options =>
             {
                 options.Providers.Add<BrotliCompressionProvider>();
@@ -104,7 +104,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 throw new ApplicationException($"{nameof(IConfigProvider)} has not been loaded properly");
             }
-            
+
             ILogManager? logManager = app.ApplicationServices.GetService<ILogManager>() ?? NullLogManager.Instance;
             ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -121,7 +121,7 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
                 builder => builder.UseWebSocketsModules());
             }
-            
+
             app.UseEndpoints(endpoints =>
             {
                 if (healthChecksConfig.Enabled)
@@ -144,7 +144,7 @@ namespace Nethermind.Runner.JsonRpc
                     }
                 }
             });
-            
+
             app.Run(async (ctx) =>
             {
                 if (ctx.Request.Method == "GET")
@@ -158,9 +158,9 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers["Authorization"]))
                     {
-                        var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");
+                        var response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
                         ctx.Response.ContentType = "application/json";
-                        ctx.Response.StatusCode = StatusCodes.Status200OK;
+                        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                         jsonSerializer.Serialize(ctx.Response.Body, response);
                         await ctx.Response.CompleteAsync();
                         return;
@@ -241,13 +241,13 @@ namespace Nethermind.Runner.JsonRpc
         }
 
         private static int GetStatusCode(JsonRpcResult result) =>
-            ModuleTimeout(result) 
-                ? StatusCodes.Status503ServiceUnavailable 
+            ModuleTimeout(result)
+                ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status200OK;
 
         private static bool ModuleTimeout(JsonRpcResult result)
         {
-            static bool ModuleTimeoutError(JsonRpcResponse response) => 
+            static bool ModuleTimeoutError(JsonRpcResponse response) =>
                 response is JsonRpcErrorResponse errorResponse && errorResponse.Error?.Code == ErrorCodes.ModuleTimeout;
 
             if (result.IsCollection)
