@@ -414,5 +414,40 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
             chainSpec.AuRa.RewriteBytecode.Should().BeEquivalentTo(expected);
         }
+
+        [Test]
+        public void Can_load_geth_genesis()
+        {
+            string genesisPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/dummy_genesis.json");
+            ChainSpec gethChainSpec = LoadChainSpec(genesisPath);
+
+            string chainspecPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/dummy_chainspec.json");
+            ChainSpec parityChainSpec = LoadChainSpec(chainspecPath);
+
+            Assert.AreEqual(1, parityChainSpec.ChainId, $"{nameof(parityChainSpec.ChainId)}");
+            Assert.AreEqual(SealEngineType.Ethash, parityChainSpec.SealEngineType, "engine");
+            Assert.AreEqual(SealEngineType.Ethash, gethChainSpec.SealEngineType, "engine");
+
+            gethChainSpec.ChainId.Should().Be(parityChainSpec.ChainId);
+            gethChainSpec.HomesteadBlockNumber.Should().Be(parityChainSpec.HomesteadBlockNumber);
+            gethChainSpec.TangerineWhistleBlockNumber.Should().Be(parityChainSpec.TangerineWhistleBlockNumber);
+            gethChainSpec.SpuriousDragonBlockNumber.Should().Be(parityChainSpec.SpuriousDragonBlockNumber);
+            gethChainSpec.ByzantiumBlockNumber.Should().Be(parityChainSpec.ByzantiumBlockNumber);
+            gethChainSpec.ConstantinopleBlockNumber.Should().Be(parityChainSpec.ConstantinopleBlockNumber);
+            gethChainSpec.ConstantinopleFixBlockNumber.Should().Be(parityChainSpec.ConstantinopleFixBlockNumber);
+            gethChainSpec.IstanbulBlockNumber.Should().Be(parityChainSpec.IstanbulBlockNumber);
+            gethChainSpec.MuirGlacierNumber.Should().Be(parityChainSpec.MuirGlacierNumber);
+            gethChainSpec.BerlinBlockNumber.Should().Be(parityChainSpec.BerlinBlockNumber);
+            gethChainSpec.LondonBlockNumber.Should().Be(parityChainSpec.LondonBlockNumber);
+            gethChainSpec.ArrowGlacierBlockNumber.Should().Be(parityChainSpec.ArrowGlacierBlockNumber);
+            gethChainSpec.GrayGlacierBlockNumber.Should().Be(parityChainSpec.GrayGlacierBlockNumber);
+            gethChainSpec.DaoForkBlockNumber.Should().Be(parityChainSpec.DaoForkBlockNumber);
+
+            gethChainSpec.FixedDifficulty.Should().Be(parityChainSpec.FixedDifficulty);
+            gethChainSpec.Allocations.Should().BeEquivalentTo(parityChainSpec.Allocations);
+            gethChainSpec.Ethash.Should().BeEquivalentTo(parityChainSpec.Ethash, (options) => options.Excluding(exp => exp.DaoHardforkAccounts)
+                                                                                                     .Excluding(exp => exp.DaoHardforkBeneficiary));
+            gethChainSpec.Clique.Should().BeEquivalentTo(parityChainSpec.Clique);
+        }
     }
 }
