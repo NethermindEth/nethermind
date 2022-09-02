@@ -1,0 +1,249 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Nethermind.Int256;
+using Nethermind.Specs.GethSpecStyle;
+using Newtonsoft.Json.Linq;
+using static Nethermind.Specs.ChainSpecStyle.Json.ChainSpecJson;
+
+namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
+{
+    internal class GethSpecConverter
+    {
+        // Note : match Parity Chainspec loader defaults
+        public static ChainSpecJson? ToParityChainsSpec(GethGenesisJson gethGenesis)
+        {
+            var parityName = "GethConvertedSpec";
+
+            Dictionary<string, long> difficultyBombDelays = ExtractDifficultyBombParams(gethGenesis);
+            EngineJson engine = ExtractEngine(gethGenesis, difficultyBombDelays);
+            ChainSpecParamsJson parameters = ExtractChainParameters(gethGenesis);
+            ChainSpecGenesisJson genesis = ExtractGenesisBlock(gethGenesis);
+            Dictionary<string, AllocationJson>? accounts = ExtractAccount(gethGenesis);
+
+            return new ChainSpecJson
+            {
+                Name = parityName,
+                Engine = engine,
+                Params = parameters,
+                Genesis = genesis,
+                Accounts = accounts
+            };
+        }
+
+        private static Dictionary<string, long> ExtractDifficultyBombParams(GethGenesisJson gethGenesis)
+        {
+            var difficultyBombDelays = new Dictionary<string, long>();
+            bool proceed = true;
+            if (proceed && gethGenesis.Config?.Ethash?.Eip100bTransition.ToString() is String Eip100bkey)
+            {
+                difficultyBombDelays[Eip100bkey] = 3000000;
+            }
+            else proceed = false;
+
+            if (proceed && gethGenesis.Config?.ConstantinopleBlock.ToString() is String Eip145key)
+            {
+                difficultyBombDelays[Eip145key] = 2000000;
+            }
+            else proceed = false;
+
+            if (proceed && gethGenesis.Config?.MuirGlacierBlock.ToString() is String MuirGlacierkey)
+            {
+                difficultyBombDelays[MuirGlacierkey] = 4000000;
+            }
+            else proceed = false;
+
+            if (proceed && gethGenesis.Config?.LondonBlock.ToString() is String Eip1559Key)
+            {
+                difficultyBombDelays[Eip1559Key] = 700000;
+            }
+            else proceed = false;
+
+            if (proceed && gethGenesis.Config?.ArrowGlacierBlock.ToString() is String ArrowGlacierkey)
+            {
+                difficultyBombDelays[ArrowGlacierkey] = 1000000;
+            }
+            else proceed = false;
+
+            if (proceed && gethGenesis.Config?.GrayGlacierBlock.ToString() is String GrayGlacierkey)
+            {
+                difficultyBombDelays[GrayGlacierkey] = 700000;
+            }
+            else proceed = false;
+            return difficultyBombDelays;
+        }
+
+        private static EngineJson ExtractEngine(GethGenesisJson gethGenesis, Dictionary<string, long> difficultyBombDelays)
+        {
+
+            // Todo : Finish mapping Engine
+            return new EngineJson
+            {
+                Ethash = gethGenesis.Config?.Ethash is null
+                    ? null
+                    : new EthashEngineJson
+                    {
+                        Params = new EthashEngineParamsJson
+                        {
+                            DaoHardforkTransition = (long?)(gethGenesis.Config?.DAOForkBlock),
+                            HomesteadTransition = (long)(gethGenesis.Config?.HomesteadBlock ?? 0),
+                            Eip100bTransition = gethGenesis.Config?.Ethash?.Eip100bTransition ?? 0,
+                            MinimumDifficulty = 131072,
+                            FixedDifficulty = gethGenesis.Config?.Ethash.FixedDifficulty,
+                            DaoHardforkBeneficiary = gethGenesis.Config?.Ethash.DaoHardforkBeneficiary,
+                            BlockReward = new BlockRewardJson
+                            {
+                                [0] = 5000000000000000000
+                            },
+                            DifficultyBombDelays = difficultyBombDelays
+                        }
+                    },
+                Clique = gethGenesis.Config?.Clique is null
+                    ? null
+                    : new CliqueEngineJson
+                    {
+                        Params = new CliqueEngineParamsJson
+                        {
+                            Period = gethGenesis.Config?.Clique.Period ?? 0,
+                            Epoch = gethGenesis.Config?.Clique.Epoch ?? 0,
+                        }
+                    }
+            };
+        }
+
+        private static ChainSpecParamsJson ExtractChainParameters(GethGenesisJson gethGenesis)
+        {
+            return new ChainSpecParamsJson
+            {
+                ChainId = gethGenesis.Config?.ChainId ?? 0,
+                NetworkId = gethGenesis.Config?.ChainId ?? 0,
+                Eip160Transition = gethGenesis.Config?.Eip160Block,
+                Eip150Transition = gethGenesis.Config?.TangerWistleBlock,
+                Eip140Transition = gethGenesis.Config?.ByzantiumBlock,
+                Eip1283Transition = gethGenesis.Config?.ConstantinopleBlock,
+                Eip2200Transition = gethGenesis.Config?.IstanbulBlock,
+                Eip2929Transition = gethGenesis.Config?.BerlinBlock ?? (long.MaxValue - 1),
+                Eip1559Transition = gethGenesis.Config?.LondonBlock ?? (long.MaxValue - 1),
+                Eip1153Transition = gethGenesis.Config?.ShanghaiBlock ?? (long.MaxValue - 1),
+
+                MergeForkIdTransition = gethGenesis.Config?.MergeNetSplitBlock,
+                TerminalTotalDifficulty = gethGenesis.Config?.TerminalTotalDifficulty,
+                TerminalPoWBlockNumber = gethGenesis.Config?.MergeNetSplitBlock - 1
+            };
+        }
+
+        private static ChainSpecGenesisJson ExtractGenesisBlock(GethGenesisJson gethGenesis)
+        {
+            return new ChainSpecGenesisJson
+            {
+                Seal = new ChainSpecSealJson
+                {
+                    Ethereum = new ChainSpecEthereumSealJson
+                    {
+                        Nonce = gethGenesis.Nonce ?? 0,
+                        MixHash = gethGenesis.Mixhash
+                    }
+                },
+                Difficulty = gethGenesis.Difficulty ?? 0,
+                Author = gethGenesis.Coinbase,
+                Timestamp = gethGenesis.Timestamp ?? 0,
+                ParentHash = gethGenesis.ParentHash,
+                ExtraData = gethGenesis.ExtraData,
+                GasLimit = (UInt256?)gethGenesis.GasLimit ?? 0
+            };
+        }
+
+        private static Dictionary<string, AllocationJson>? ExtractAccount(GethGenesisJson gethGenesis)
+        {
+            var ToNumber = long (string str)
+                => long.Parse(str.StartsWith("0x") ? str.Substring(2) : str, System.Globalization.NumberStyles.HexNumber);
+
+            return gethGenesis
+                    ?.Alloc
+                    ?.Select(allocPair => (allocPair.Key, new AllocationJson
+                    {
+                        Balance = allocPair.Value.Balance,
+                        Nonce = allocPair.Value.Nonce ?? 0,
+                        BuiltIn = ToNumber(allocPair.Key) switch
+                        {
+                            1 => new BuiltInJson
+                            {
+                                Name = "ecrecover",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 3000, word = 0 })
+
+                                }
+                            },
+                            2 => new BuiltInJson
+                            {
+                                Name = "sha256",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 60, word = 12 })
+
+                                }
+                            },
+                            3 => new BuiltInJson
+                            {
+                                Name = "ripemd160",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 600, word = 120 })
+
+                                }
+                            },
+                            4 => new BuiltInJson
+                            {
+                                Name = "identity",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 15, word = 3 })
+
+                                }
+                            },
+                            5 => new BuiltInJson
+                            {
+                                Name = "nodexp",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["modexp"] = JObject.FromObject(new { divisor = 20 })
+
+                                }
+                            },
+                            6 => new BuiltInJson
+                            {
+                                Name = "alt_bn128_add",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 500, word = 0 })
+
+                                }
+                            },
+                            7 => new BuiltInJson
+                            {
+                                Name = "alt_bn128_mul",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["linear"] = JObject.FromObject(new { @base = 4000, word = 0 })
+
+                                }
+                            },
+                            8 => new BuiltInJson
+                            {
+                                Name = "alt_bn128_pairing",
+                                Pricing = new Dictionary<string, JObject>
+                                {
+                                    ["alt_bn128_pairing"] = JObject.FromObject(new { @base = 100000, pair = 80000 })
+
+                                }
+                            },
+                            _ => null
+                        }
+                    })).ToDictionary((pair) => pair.Key, (pair) => pair.Item2);
+        }
+    }
+}
