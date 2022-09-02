@@ -105,6 +105,7 @@ namespace Nethermind.Facade.Test.Eth
         public void IsSyncing_AncientBarriers(long? bodiesTail, long? receiptsTail, bool downloadBodies,
             bool downloadReceipts, long currentHead, bool expectedResult)
         {
+            const long highestBlock = 1100;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig
@@ -119,7 +120,7 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = "1000"
             };
 
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1100).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(highestBlock).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject)
                 .TestObject);
             blockTree.LowestInsertedBodyNumber.Returns(bodiesTail);
@@ -128,15 +129,13 @@ namespace Nethermind.Facade.Test.Eth
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(
-                expectedResult
-                    ? new SyncingResult
-                    {
-                        CurrentBlock = currentHead, HighestBlock = 1100, IsSyncing = true, StartingBlock = 0
-                    }
-                    : SyncingResult.NotSyncing, syncingResult);
+            Assert.AreEqual(CreateSyncingResult(expectedResult, currentHead, highestBlock), syncingResult);
         }
 
-
+        private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock)
+        {
+            if (!isSyncing) return SyncingResult.NotSyncing;
+            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0};
+        }
     }
 }
