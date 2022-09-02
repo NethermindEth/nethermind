@@ -20,6 +20,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -58,9 +59,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 return LoadFromDeserializedData(chainSpecJson);
             }
-            catch (JsonSerializationException)
+            catch(InvalidDataException)
             {
-                // if that fails we try to deserialize it as gethGenesis json object
+                // we try to deserialize data as Geth genesis format (this block will not run unless the happy path fails)
+                // Note : this will obscure errors if the file provided is an ill-formed Parity chainspec
                 ChainSpecJson chainSpecJson = LoadFromGethGenesis(jsonData);
                 return LoadFromDeserializedData(chainSpecJson);
             }
@@ -72,7 +74,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private ChainSpecJson LoadFromGethGenesis(string jsonData)
         {
-            var gethConfig = JsonConvert.DeserializeObject<GethGenesisJson>(jsonData);
+            var gethConfig = _serializer.Deserialize<GethGenesisJson>(jsonData);
+            if(gethConfig is null)
+            {
+                throw new Exception($"{nameof(gethConfig)} is null");
+            }
             return gethConfig.ToParityChainsSpec();
         }
 

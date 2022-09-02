@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Specs.GethSpecStyle;
 using Newtonsoft.Json.Linq;
@@ -38,37 +39,37 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
         {
             var difficultyBombDelays = new Dictionary<string, long>();
             bool proceed = true;
-            if (proceed && gethGenesis.Config?.Ethash?.Eip100bTransition.ToString() is String Eip100bkey)
+            if (proceed && gethGenesis.Config?.ByzantiumBlock?.ToHexString(true) is String Eip100bkey)
             {
                 difficultyBombDelays[Eip100bkey] = 3000000;
             }
             else proceed = false;
 
-            if (proceed && gethGenesis.Config?.ConstantinopleBlock.ToString() is String Eip145key)
+            if (proceed && gethGenesis.Config?.ConstantinopleBlock?.ToHexString(true) is String Eip145key)
             {
                 difficultyBombDelays[Eip145key] = 2000000;
             }
             else proceed = false;
 
-            if (proceed && gethGenesis.Config?.MuirGlacierBlock.ToString() is String MuirGlacierkey)
+            if (proceed && gethGenesis.Config?.MuirGlacierBlock?.ToHexString(true) is String MuirGlacierkey)
             {
                 difficultyBombDelays[MuirGlacierkey] = 4000000;
             }
             else proceed = false;
 
-            if (proceed && gethGenesis.Config?.LondonBlock.ToString() is String Eip1559Key)
+            if (proceed && gethGenesis.Config?.LondonBlock?.ToHexString(true) is String Eip1559Key)
             {
                 difficultyBombDelays[Eip1559Key] = 700000;
             }
             else proceed = false;
 
-            if (proceed && gethGenesis.Config?.ArrowGlacierBlock.ToString() is String ArrowGlacierkey)
+            if (proceed && gethGenesis.Config?.ArrowGlacierBlock?.ToHexString(true) is String ArrowGlacierkey)
             {
                 difficultyBombDelays[ArrowGlacierkey] = 1000000;
             }
             else proceed = false;
 
-            if (proceed && gethGenesis.Config?.GrayGlacierBlock.ToString() is String GrayGlacierkey)
+            if (proceed && gethGenesis.Config?.GrayGlacierBlock?.ToHexString(true) is String GrayGlacierkey)
             {
                 difficultyBombDelays[GrayGlacierkey] = 700000;
             }
@@ -78,8 +79,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
 
         private static EngineJson ExtractEngine(GethGenesisJson gethGenesis, Dictionary<string, long> difficultyBombDelays)
         {
-
-            // Todo : Finish mapping Engine
             return new EngineJson
             {
                 Ethash = gethGenesis.Config?.Ethash is null
@@ -88,15 +87,15 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
                     {
                         Params = new EthashEngineParamsJson
                         {
-                            DaoHardforkTransition = (long?)(gethGenesis.Config?.DAOForkBlock),
-                            HomesteadTransition = (long)(gethGenesis.Config?.HomesteadBlock ?? 0),
-                            Eip100bTransition = gethGenesis.Config?.Ethash?.Eip100bTransition ?? 0,
+                            DaoHardforkTransition = gethGenesis.Config?.DaoForkBlock,
+                            HomesteadTransition = gethGenesis.Config?.HomesteadBlock ?? 0,
+                            Eip100bTransition = gethGenesis.Config?.ByzantiumBlock ?? 0,
                             MinimumDifficulty = 131072,
-                            FixedDifficulty = gethGenesis.Config?.Ethash.FixedDifficulty,
-                            DaoHardforkBeneficiary = gethGenesis.Config?.Ethash.DaoHardforkBeneficiary,
                             BlockReward = new BlockRewardJson
                             {
-                                [0] = 5000000000000000000
+                                [0x000000] = 5000000000000000000,
+                                [0x42ae50] = 0x29a2241af62c0000,
+                                [0x6f1580] = 0x1bc16d674ec80000,
                             },
                             DifficultyBombDelays = difficultyBombDelays
                         }
@@ -120,14 +119,17 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
             {
                 ChainId = gethGenesis.Config?.ChainId ?? 0,
                 NetworkId = gethGenesis.Config?.ChainId ?? 0,
-                Eip160Transition = gethGenesis.Config?.Eip160Block,
-                Eip150Transition = gethGenesis.Config?.TangerWistleBlock,
-                Eip140Transition = gethGenesis.Config?.ByzantiumBlock,
+                
+                Eip160Transition  = gethGenesis.Config?.Eip160Block,
+                Eip150Transition  = gethGenesis.Config?.TangerineWistleBlock,
+                Eip140Transition  = gethGenesis.Config?.ByzantiumBlock,
                 Eip1283Transition = gethGenesis.Config?.ConstantinopleBlock,
+                Eip145Transition  = gethGenesis.Config?.ConstantinopleBlock,
                 Eip2200Transition = gethGenesis.Config?.IstanbulBlock,
                 Eip2929Transition = gethGenesis.Config?.BerlinBlock ?? (long.MaxValue - 1),
                 Eip1559Transition = gethGenesis.Config?.LondonBlock ?? (long.MaxValue - 1),
                 Eip1153Transition = gethGenesis.Config?.ShanghaiBlock ?? (long.MaxValue - 1),
+
 
                 MergeForkIdTransition = gethGenesis.Config?.MergeNetSplitBlock,
                 TerminalTotalDifficulty = gethGenesis.Config?.TerminalTotalDifficulty,
@@ -158,91 +160,89 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
 
         private static Dictionary<string, AllocationJson>? ExtractAccount(GethGenesisJson gethGenesis)
         {
-            var ToNumber = long (string str)
-                => long.Parse(str.StartsWith("0x") ? str.Substring(2) : str, System.Globalization.NumberStyles.HexNumber);
+            static BuiltInJson? ToBuiltinJson(string allocKey, GethAllocationJson allocation) {
+                var builtinNum = UInt256.Parse(allocKey.StartsWith("0x") ? allocKey.Substring(2) : allocKey, System.Globalization.NumberStyles.HexNumber);
+                if (builtinNum == 1) return new BuiltInJson
+                {
+                    Name = "ecrecover",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 3000, word = 0 })
 
+                    }
+                };
+                if (builtinNum == 2) return new BuiltInJson
+                {
+                    Name = "sha256",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 60, word = 12 })
+
+                    }
+                };
+                if (builtinNum == 3) return new BuiltInJson
+                {
+                    Name = "ripemd160",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 600, word = 120 })
+
+                    }
+                };
+                if (builtinNum == 4) return new BuiltInJson
+                {
+                    Name = "identity",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 15, word = 3 })
+
+                    }
+                };
+                if (builtinNum == 5) return new BuiltInJson
+                {
+                    Name = "nodexp",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["modexp"] = JObject.FromObject(new { divisor = 20 })
+
+                    }
+                };
+                if (builtinNum == 6) return new BuiltInJson
+                {
+                    Name = "alt_bn128_add",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 500, word = 0 })
+
+                    }
+                };
+                if (builtinNum == 7) return new BuiltInJson
+                {
+                    Name = "alt_bn128_mul",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["linear"] = JObject.FromObject(new { @base = 4000, word = 0 })
+
+                    }
+                };
+                if (builtinNum == 8) return new BuiltInJson
+                {
+                    Name = "alt_bn128_pairing",
+                    Pricing = new Dictionary<string, JObject>
+                    {
+                        ["alt_bn128_pairing"] = JObject.FromObject(new { @base = 100000, pair = 80000 })
+
+                    }
+                };
+                return null;
+            }
             return gethGenesis
                     ?.Alloc
                     ?.Select(allocPair => (allocPair.Key, new AllocationJson
                     {
                         Balance = allocPair.Value.Balance,
                         Nonce = allocPair.Value.Nonce ?? 0,
-                        BuiltIn = ToNumber(allocPair.Key) switch
-                        {
-                            1 => new BuiltInJson
-                            {
-                                Name = "ecrecover",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 3000, word = 0 })
-
-                                }
-                            },
-                            2 => new BuiltInJson
-                            {
-                                Name = "sha256",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 60, word = 12 })
-
-                                }
-                            },
-                            3 => new BuiltInJson
-                            {
-                                Name = "ripemd160",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 600, word = 120 })
-
-                                }
-                            },
-                            4 => new BuiltInJson
-                            {
-                                Name = "identity",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 15, word = 3 })
-
-                                }
-                            },
-                            5 => new BuiltInJson
-                            {
-                                Name = "nodexp",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["modexp"] = JObject.FromObject(new { divisor = 20 })
-
-                                }
-                            },
-                            6 => new BuiltInJson
-                            {
-                                Name = "alt_bn128_add",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 500, word = 0 })
-
-                                }
-                            },
-                            7 => new BuiltInJson
-                            {
-                                Name = "alt_bn128_mul",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["linear"] = JObject.FromObject(new { @base = 4000, word = 0 })
-
-                                }
-                            },
-                            8 => new BuiltInJson
-                            {
-                                Name = "alt_bn128_pairing",
-                                Pricing = new Dictionary<string, JObject>
-                                {
-                                    ["alt_bn128_pairing"] = JObject.FromObject(new { @base = 100000, pair = 80000 })
-
-                                }
-                            },
-                            _ => null
-                        }
+                        BuiltIn = ToBuiltinJson(allocPair.Key, allocPair.Value)
                     })).ToDictionary((pair) => pair.Key, (pair) => pair.Item2);
         }
     }
