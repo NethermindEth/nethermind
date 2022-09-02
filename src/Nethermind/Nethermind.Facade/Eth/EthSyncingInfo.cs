@@ -47,9 +47,10 @@ namespace Nethermind.Facade.Eth
             long headNumberOrZero = _blockTree.Head?.Number ?? 0;
             bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
 
-            if (_logger.IsInfo) _logger.Info($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+            if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             if (isSyncing)
             {
+                if (_logger.IsInfo) _logger.Info($"Too far from head - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}");
                 return new SyncingResult
                 {
                     CurrentBlock = headNumberOrZero,
@@ -62,9 +63,9 @@ namespace Nethermind.Facade.Eth
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.DownloadReceiptsInFastSync &&
-                    (_receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc || _receiptStorage.LowestInsertedReceiptBlockNumber == null))
+                    (_receiptStorage.LowestInsertedReceiptBlockNumber == null || _receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Receipts not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero} IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+                    if (_logger.IsInfo) _logger.Info($"Receipts not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientReceiptsBarrier: {_syncConfig.AncientReceiptsBarrierCalc}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return new SyncingResult
                     {
                         CurrentBlock = headNumberOrZero,
@@ -75,9 +76,9 @@ namespace Nethermind.Facade.Eth
                 }
 
                 if (_syncConfig.DownloadBodiesInFastSync &&
-                    (_blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc || _blockTree.LowestInsertedBodyNumber == null))
+                    (_blockTree.LowestInsertedBodyNumber == null || _blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Bodies not finished - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+                    if (_logger.IsInfo) _logger.Info($"Bodies not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientBodiesBarrier: {_syncConfig.AncientBodiesBarrierCalc}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return new SyncingResult
                     {
                         CurrentBlock = headNumberOrZero,
@@ -88,7 +89,7 @@ namespace Nethermind.Facade.Eth
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node is not syncing - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Node is not syncing - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber } LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
             return SyncingResult.NotSyncing;
         }
 
