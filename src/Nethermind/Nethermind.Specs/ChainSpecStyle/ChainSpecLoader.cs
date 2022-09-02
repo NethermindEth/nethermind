@@ -25,8 +25,11 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.GethSpecStyle;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle
@@ -51,9 +54,33 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             try
             {
+                // we attempt to deserialize data as Chainspec json object
                 ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-                ChainSpec chainSpec = new();
+                return LoadFromDeserializedData(chainSpecJson);
+            }
+            catch (JsonSerializationException)
+            {
+                // if that fails we try to deserialize it as gethGenesis json object
+                ChainSpecJson chainSpecJson = LoadFromGethGenesis(jsonData);
+                return LoadFromDeserializedData(chainSpecJson);
+            }
+            catch (Exception e)
+            {
+                throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
+            }
+        }
 
+        private ChainSpecJson LoadFromGethGenesis(string jsonData)
+        {
+            var gethConfig = JsonConvert.DeserializeObject<GethGenesisJson>(jsonData);
+            return gethConfig.ToParityChainsSpec();
+        }
+
+        private ChainSpec LoadFromDeserializedData(ChainSpecJson chainSpecJson)
+        {
+            try
+            {
+                ChainSpec chainSpec = new();
                 chainSpec.ChainId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
@@ -71,6 +98,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
             }
         }
+
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
