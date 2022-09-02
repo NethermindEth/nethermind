@@ -9,13 +9,12 @@ using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Specs.GethSpecStyle
 {
-    public class GethAllocation
+    public class GethAllocationJson
     {
-        public GethAllocation() { }
-        public GethAllocation(UInt256 allocationBalance) {
-            Balance = allocationBalance;
-        }
-        public GethAllocation(byte[]? code, Dictionary<UInt256, byte[]>? storage, UInt256? balance, UInt256? nonce, byte[]? privateKey)
+        public GethAllocationJson() { }
+        public GethAllocationJson(UInt256 allocationBalance)
+            => Balance = allocationBalance;
+        public GethAllocationJson(byte[]? code, Dictionary<UInt256, byte[]>? storage, UInt256? balance, UInt256? nonce, byte[]? privateKey)
         {
             Code = code;
             Storage = storage;
@@ -29,7 +28,7 @@ namespace Nethermind.Specs.GethSpecStyle
         public UInt256? Nonce { get; set; }
         public byte[]? PrivateKey { get; set; }
 
-        public static implicit operator ChainSpecAllocation(GethAllocation gethAlloc) => new ChainSpecAllocation
+        public static implicit operator ChainSpecAllocation(GethAllocationJson gethAlloc) => new ChainSpecAllocation
         {
             Balance = gethAlloc.Balance ?? 0,
             Nonce = gethAlloc.Nonce ?? 0,

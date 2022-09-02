@@ -15,10 +15,9 @@ using Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle;
 
 namespace Nethermind.Specs.GethSpecStyle
 {
-
     internal class GethGenesisJson
     {
-        public GethConfig? Config { get; set; }
+        public GethConfigJson? Config { get; set; }
         public ulong? Nonce { get; set; }
         public UInt256? Timestamp { get; set; }
         public Keccak? ParentHash { get; set; }
@@ -27,7 +26,7 @@ namespace Nethermind.Specs.GethSpecStyle
         public UInt256? Difficulty { get; set; }
         public Keccak? Mixhash { get; set; }
         public Address? Coinbase { get; set; }
-        public Dictionary<string, GethAllocation>? Alloc { get; set; }
+        public Dictionary<string, GethAllocationJson>? Alloc { get; set; }
         public ChainSpecJson? ToParityChainsSpec() => GethSpecConverter.ToParityChainsSpec(this);
             
     }
