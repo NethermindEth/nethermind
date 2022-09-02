@@ -98,7 +98,11 @@ namespace Nethermind.Facade.Test.Eth
         [TestCase(799, 900, true, true, 1100, false)]
         [TestCase(799, 901, true, true, 1100, true)]
         [TestCase(799, 899, true, true, 1100, false)]
-        public void IsSyncing_AncientBarriers(long bodiesTail, long receiptsTail, bool downloadBodies,
+
+        [TestCase(null, 899, true, true, 1100, true)]
+        [TestCase(799, null, true, true, 1100, true)]
+        [TestCase(null, null, true, true, 1100, true)]
+        public void IsSyncing_AncientBarriers(long? bodiesTail, long? receiptsTail, bool downloadBodies,
             bool downloadReceipts, long currentHead, bool expectedResult)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -124,7 +128,15 @@ namespace Nethermind.Facade.Test.Eth
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
+            Assert.AreEqual(
+                expectedResult
+                    ? new SyncingResult
+                    {
+                        CurrentBlock = currentHead, HighestBlock = 1100, IsSyncing = true, StartingBlock = 0
+                    }
+                    : SyncingResult.NotSyncing, syncingResult);
         }
+
+
     }
 }
