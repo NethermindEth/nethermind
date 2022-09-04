@@ -30,7 +30,7 @@ namespace Nethermind.Specs.GethSpecStyle
         public long? Eip160Block { get; set; }
         public long? ByzantiumBlock { get; set; }
         public long? ConstantinopleBlock { get; set; }
-        public long? TangerineWistleBlock { get; set; }
+        public long? TangerineWhistleBlock { get; set; }
         public long? PetersburgBlock { get; set; }
         public long? IstanbulBlock { get; set; }
         public long? MuirGlacierBlock { get; set; }
