@@ -68,11 +68,24 @@ namespace Nethermind.Monitoring
         {
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
-                MetricPusher metricPusher = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
-                    _intervalSeconds * 1000, new[]
+                MetricPusherOptions pusherOptions  = new MetricPusherOptions
+                {
+                    Endpoint = _pushGatewayUrl,
+                    Job = _options.Job,
+                    Instance = _options.Instance,
+                    IntervalMilliseconds = _intervalSeconds * 1000,
+                    AdditionalLabels = new[]
                     {
                         new Tuple<string, string>("nethermind_group", _options.Group),
-                    });
+                    },
+                    OnError = ex =>
+                    {
+                        if (_logger.IsError)
+                            _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
+                    }
+                };
+                MetricPusher metricPusher = new MetricPusher(pusherOptions);
+                
                 metricPusher.Start();
             }
             if (_exposePort != null)
