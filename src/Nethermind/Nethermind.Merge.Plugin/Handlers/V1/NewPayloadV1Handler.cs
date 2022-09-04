@@ -266,7 +266,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
         {
-            ValidationResult CacheResult(ValidationResult result)
+            ValidationResult TryCacheResult(ValidationResult result)
             {
                 // notice that it is not correct to add information to the cache
                 // if we return SYNCING for example, and don't know yet whether
@@ -293,7 +293,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             // Validate
             if (!ValidateWithBlockValidator(block, parent))
             {
-                return (CacheResult(ValidationResult.Invalid), string.Empty);
+                return (TryCacheResult(ValidationResult.Invalid), string.Empty);
             }
 
             TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
@@ -380,7 +380,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
-            return (CacheResult(result ?? ValidationResult.Syncing), validationMessage);
+            return (TryCacheResult(result ?? ValidationResult.Syncing), validationMessage);
         }
 
         private bool ValidateWithBlockValidator(Block block, BlockHeader parent)
