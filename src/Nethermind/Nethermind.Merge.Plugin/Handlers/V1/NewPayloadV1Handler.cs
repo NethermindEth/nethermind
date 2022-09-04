@@ -271,7 +271,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 // notice that it is not correct to add information to the cache
                 // if we return SYNCING for example, and don't know yet whether
                 // the block is valid or invalid because we haven't processed it yet
-                if (result != ValidationResult.Syncing)
+                if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
                     _latestBlocks?.Set(block.GetOrCalculateHash(), result == ValidationResult.Valid);
                 return result;
             }
