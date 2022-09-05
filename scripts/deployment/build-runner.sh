@@ -22,7 +22,6 @@ rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
 rm $OUT/$LIN_RELEASE/*.pdb
 cp -r configs $OUT/$LIN_RELEASE
-cp -r ../Chains $OUT/$LIN_RELEASE/chainspec
 mkdir $OUT/$LIN_RELEASE/Data
 mkdir $OUT/$LIN_RELEASE/keystore
 cp Data/static-nodes.json $OUT/$LIN_RELEASE/Data
@@ -31,7 +30,6 @@ rm -rf $OUT/$OSX_RELEASE/Data
 rm -rf $OUT/$OSX_RELEASE/Hive
 rm $OUT/$OSX_RELEASE/*.pdb
 cp -r configs $OUT/$OSX_RELEASE
-cp -r ../Chains $OUT/$OSX_RELEASE/chainspec
 mkdir $OUT/$OSX_RELEASE/Data
 mkdir $OUT/$OSX_RELEASE/keystore
 cp Data/static-nodes.json $OUT/$OSX_RELEASE/Data
@@ -40,7 +38,6 @@ rm -rf $OUT/$WIN_RELEASE/Data
 rm -rf $OUT/$WIN_RELEASE/Hive
 rm $OUT/$WIN_RELEASE/*.pdb
 cp -r configs $OUT/$WIN_RELEASE
-cp -r ../Chains $OUT/$WIN_RELEASE/chainspec
 mkdir $OUT/$WIN_RELEASE/Data
 mkdir $OUT/$WIN_RELEASE/keystore
 cp Data/static-nodes.json $OUT/$WIN_RELEASE/Data
@@ -49,7 +46,6 @@ rm -rf $OUT/$LIN_ARM64_RELEASE/Data
 rm -rf $OUT/$LIN_ARM64_RELEASE/Hive
 rm $OUT/$LIN_ARM64_RELEASE/*.pdb
 cp -r configs $OUT/$LIN_ARM64_RELEASE
-cp -r ../Chains $OUT/$LIN_ARM64_RELEASE/chainspec
 mkdir $OUT/$LIN_ARM64_RELEASE/Data
 mkdir $OUT/$LIN_ARM64_RELEASE/keystore
 cp Data/static-nodes.json $OUT/$LIN_ARM64_RELEASE/Data
@@ -58,7 +54,6 @@ rm -rf $OUT/$OSX_ARM64_RELEASE/Data
 rm -rf $OUT/$OSX_ARM64_RELEASE/Hive
 rm $OUT/$OSX_ARM64_RELEASE/*.pdb
 cp -r configs $OUT/$OSX_ARM64_RELEASE
-cp -r ../Chains $OUT/$OSX_ARM64_RELEASE/chainspec
 mkdir $OUT/$OSX_ARM64_RELEASE/Data
 mkdir $OUT/$OSX_ARM64_RELEASE/keystore
 cp Data/static-nodes.json $OUT/$OSX_ARM64_RELEASE/Data
