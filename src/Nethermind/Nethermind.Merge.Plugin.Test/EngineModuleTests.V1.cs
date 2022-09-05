@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -803,6 +803,73 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+        }
+
+        [Test, NonParallelizable]
+        public async Task AlreadyKnown_not_cached_block_should_return_valid()
+        {
+            using MergeTestBlockchain? chain = await CreateBlockChain();
+
+            IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100), newPayloadCacheSize: 0);
+            Block? head = chain.BlockTree.Head!;
+
+            Block? b4 = Build.A.Block
+                .WithNumber(head.Number + 1)
+                .WithParent(head)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(head.StateRoot!)
+                .WithBeneficiary(Build.An.Address.TestObject)
+                .TestObject;
+
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b4))).Data.Status.Should().Be(PayloadStatus.Valid);
+
+            Block? b5 = Build.A.Block
+                .WithNumber(b4.Number + 1)
+                .WithParent(b4)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(b4.StateRoot!)
+                .TestObject;
+
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b5))).Data.Status.Should().Be(PayloadStatus.Valid);
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(b5))).Data.Status.Should().Be(PayloadStatus.Valid);
+        }
+
+        [Test, NonParallelizable]
+        public async Task Invalid_block_on_processing_wont_be_accepted_if_sent_twice_in_a_row_when_block_processing_queue_is_not_empty()
+        {
+            using MergeTestBlockchain? chain = await CreateBlockChain();
+
+            IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100), newPayloadCacheSize: 10);
+            Block? head = chain.BlockTree.Head!;
+
+            // make sure AddressA has enough balance to send tx
+            chain.State.GetBalance(TestItem.AddressA).Should().BeGreaterThan(UInt256.One);
+
+            // block is an invalid block, but it is impossible to detect until we process it.
+            // it is invalid because after you processs its transactions, the root of the state trie
+            // doesn't match the state root in the block
+            Block? block = Build.A.Block
+                .WithNumber(head.Number + 1)
+                .WithParent(head)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithTransactions(
+                    Build.A.Transaction
+                    .WithTo(TestItem.AddressD)
+                    .WithValue(100.GWei())
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject
+                )
+                .WithGasUsed(21000)
+                // after processing transaction, this state root is wrong
+                .WithStateRoot(head.StateRoot!)
+                .TestObject;
+
+            chain.ThrottleBlockProcessor(1000); // throttle the block processor enough so that the block processing queue is never empty
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block))).Data.Status.Should().Be(PayloadStatus.Syncing);
+            (await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block))).Data.Status.Should().BeOneOf(PayloadStatus.Syncing);
         }
 
         [Test]
