@@ -17,10 +17,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
         // Note : match Parity Chainspec loader defaults
         public static ChainSpecJson? ToParityChainsSpec(GethGenesisJson gethGenesis)
         {
-            var parityName = "GethConvertedSpec";
+            var parityName = $"GethConvertedSpec{gethGenesis.Config?.ChainId}";
 
-            Dictionary<string, long> difficultyBombDelays = ExtractDifficultyBombParams(gethGenesis);
-            EngineJson engine = ExtractEngine(gethGenesis, difficultyBombDelays);
+            EngineJson engine = ExtractEngine(gethGenesis);
             ChainSpecParamsJson parameters = ExtractChainParameters(gethGenesis);
             ChainSpecGenesisJson genesis = ExtractGenesisBlock(gethGenesis);
             Dictionary<string, AllocationJson>? accounts = ExtractAccount(gethGenesis);
@@ -35,10 +34,12 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
             };
         }
 
-        private static Dictionary<string, long> ExtractDifficultyBombParams(GethGenesisJson gethGenesis)
+        private static Dictionary<string, long>? ExtractDifficultyBombParams(GethGenesisJson gethGenesis)
         {
+            bool proceed = gethGenesis.Config?.Ethash is not null;
+            if (proceed == false) return null;
+
             var difficultyBombDelays = new Dictionary<string, long>();
-            bool proceed = true;
             if (proceed && gethGenesis.Config?.ByzantiumBlock?.ToHexString(true) is String Eip100bkey)
             {
                 difficultyBombDelays[Eip100bkey] = 3000000;
@@ -77,8 +78,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
             return difficultyBombDelays;
         }
 
-        private static EngineJson ExtractEngine(GethGenesisJson gethGenesis, Dictionary<string, long> difficultyBombDelays)
+        private static EngineJson ExtractEngine(GethGenesisJson gethGenesis)
         {
+            Dictionary<string, long>? difficultyBombDelays = ExtractDifficultyBombParams(gethGenesis);
             return new EngineJson
             {
                 Ethash = gethGenesis.Config?.Ethash is null
@@ -93,9 +95,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
                             MinimumDifficulty = 131072,
                             BlockReward = new BlockRewardJson
                             {
+                                [gethGenesis.Config?.ConstantinopleBlock ?? 0x0] = 0x1bc16d674ec80000,
+                                [gethGenesis.Config?.ByzantiumBlock ?? 0x0]      = 0x29a2241af62c0000,
                                 [0x000000] = 5000000000000000000,
-                                [0x42ae50] = 0x29a2241af62c0000,
-                                [0x6f1580] = 0x1bc16d674ec80000,
                             },
                             DifficultyBombDelays = difficultyBombDelays
                         }
@@ -119,17 +121,18 @@ namespace Nethermind.Specs.ChainSpecStyle.Json.GethSpecStyle
             {
                 ChainId = gethGenesis.Config?.ChainId ?? 0,
                 NetworkId = gethGenesis.Config?.ChainId ?? 0,
-                
+
+                Eip1283DisableTransition = gethGenesis.Config?.PetersburgBlock,
                 Eip160Transition  = gethGenesis.Config?.Eip160Block,
-                Eip150Transition  = gethGenesis.Config?.TangerineWistleBlock,
+                Eip150Transition  = gethGenesis.Config?.TangerineWhistleBlock ?? gethGenesis.Config?.Eip150Block,
                 Eip140Transition  = gethGenesis.Config?.ByzantiumBlock,
-                Eip1283Transition = gethGenesis.Config?.ConstantinopleBlock,
+                Eip1283Transition = gethGenesis.Config?.PetersburgBlock,
                 Eip145Transition  = gethGenesis.Config?.ConstantinopleBlock,
                 Eip2200Transition = gethGenesis.Config?.IstanbulBlock,
                 Eip2929Transition = gethGenesis.Config?.BerlinBlock ?? (long.MaxValue - 1),
                 Eip1559Transition = gethGenesis.Config?.LondonBlock ?? (long.MaxValue - 1),
                 Eip1153Transition = gethGenesis.Config?.ShanghaiBlock ?? (long.MaxValue - 1),
-
+                Eip155Transition  = gethGenesis.Config?.Eip155Block,
 
                 MergeForkIdTransition = gethGenesis.Config?.MergeNetSplitBlock,
                 TerminalTotalDifficulty = gethGenesis.Config?.TerminalTotalDifficulty,
