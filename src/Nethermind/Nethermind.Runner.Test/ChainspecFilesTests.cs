@@ -14,34 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Analytics;
-using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
-using Nethermind.Config.Test;
-using Nethermind.Core;
-using Nethermind.EthStats;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc;
-using Nethermind.Monitoring.Config;
-using Nethermind.Network.Config;
-using Nethermind.Db.Blooms;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Init;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Json;
+using NSubstitute.ExceptionExtensions;
 
 namespace Nethermind.Runner.Test
 {
@@ -64,31 +43,29 @@ namespace Nethermind.Runner.Test
         [TestCase("chainspec/foundation.json", 1UL)]
         public void different_formats_to_chainspecPath(string chainspecPath, ulong chainId)
         {
-            var chainspec = _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger);
-            Assert.AreEqual(chainspec.ChainId, chainId);
+            _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("testspec.json", 5UL)]
         public void Chainspec_from_file(string chainspecPath, ulong chainId)
         {
-            var chainspec = _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger);
-            Assert.AreEqual(chainspec.ChainId, chainId);
+            _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("goerli.json", 5UL)]
         public void ignoring_custom_chainspec_when_embedded_exists(string chainspecPath, ulong chainId)
         {
-            var chainspec = _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger);
-            Assert.AreEqual(chainspec.ChainId, chainId);
+            _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainspecNotFound(string chainspecPath)
         {
-            Assert.Catch(new TestDelegate(() =>
-            {
-                _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger);
-            }));
+            _loader.Invoking(l=>l.LoadEmbeddedOrFromFile(chainspecPath, _logger))
+                .Should().Throw<FileNotFoundException>();
         }
 
     }

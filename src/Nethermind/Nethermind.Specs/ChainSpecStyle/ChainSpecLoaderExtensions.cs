@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Logging;
 
@@ -31,25 +32,14 @@ public static class ChainSpecLoaderExtensions
     {
         try
         {
-            string resourceName = fileName;
-            if (!resourceName.Contains('/'))
-            {
-                resourceName = $"chainspec/{resourceName}";
-            }
-            if (!resourceName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-            {
-                resourceName = $"{resourceName}.json";
-            }
-            resourceName = resourceName.Replace('/', '.');
-            resourceName = $"Nethermind.Config.{resourceName}";
+            string resourceName = getResourceName(fileName);
             Assembly assembly = typeof(IConfig).Assembly;
-            string[] embeddedChainSpecFiles = assembly.GetManifestResourceNames();
-            if (!embeddedChainSpecFiles.Any(s => s.Equals(resourceName, StringComparison.OrdinalIgnoreCase)))
+            using Stream stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream is null)
             {
                 if (logger.IsInfo) logger.Info($"Did not find chainspec in embedded resources: {fileName}");
                 return chainSpecLoader.LoadFromFile(fileName, logger);
             }
-            using Stream stream = assembly.GetManifestResourceStream(resourceName);
             using StreamReader reader = new(stream);
             fileName = fileName.GetApplicationResourcePath();
             if (File.Exists(fileName))
@@ -67,6 +57,23 @@ public static class ChainSpecLoaderExtensions
             if (logger.IsError) logger.Error("Error while loading Chainspec. Falling back to loading from file.", ex);
             return chainSpecLoader.LoadFromFile(fileName, logger);
         }
+    }
+
+    private static string getResourceName(string fileName)
+    {
+        StringBuilder builder = new();
+        builder.Append("Nethermind.Config.");
+        if (!fileName.Contains('/'))
+        {
+            builder.Append("chainspec/");
+        }
+        builder.Append(fileName);
+        if (!fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.Append(".json");
+        }
+        builder.Replace('/', '.');
+        return builder.ToString();
     }
 
     public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger logger)
@@ -90,7 +97,7 @@ public static class ChainSpecLoaderExtensions
             }
             finally
             {
-                throw new Exception(missingChainspecFileMessage.ToString());
+                throw new FileNotFoundException(missingChainspecFileMessage.ToString());
             }
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
