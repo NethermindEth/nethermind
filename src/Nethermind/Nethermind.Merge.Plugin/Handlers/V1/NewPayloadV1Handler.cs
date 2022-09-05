@@ -344,10 +344,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     AddBlockResult.InvalidBlock => ValidationResult.Invalid,
                     // if the block is marked as AlreadyKnown by the block tree then it means it has already
-                    // been suggested. there are two possibilities, either the block hasn't been processed yet
-                    // or the block was processed and it's valid. the case where the block was processed and is
-                    // invalid is not a possibility, because it would have been intercepted by the InvalidChainTracker
-                    // earlier in the handling pipeline. if processed return VALID, otherwise null so that it's process a few lines below
+                    // been suggested. there are three possibilities, either the block hasn't been processed yet,
+                    // the block was processed and returned invalid but this wasn't saved anywhere or the block was
+                    // processed and marked as valid.
+                    // if marked as processed by the blocktree then return VALID, otherwise null so that it's process a few lines below
                     AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
                     _ => null
                 };
@@ -373,6 +373,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             catch (TimeoutException)
             {
+                // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
                 if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
             }
             finally
