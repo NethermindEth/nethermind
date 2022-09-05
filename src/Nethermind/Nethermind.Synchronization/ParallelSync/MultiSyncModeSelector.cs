@@ -438,16 +438,18 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFastHeadersMode(Snapshot best)
         {
             bool fastBlocksHeadersNotFinished = !FastBlocksHeadersFinished;
+            bool notInFastSyncMode = !best.IsInFastSync;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("HEADERS",
-                    (nameof(fastBlocksHeadersNotFinished), fastBlocksHeadersNotFinished));
+                    (nameof(fastBlocksHeadersNotFinished), fastBlocksHeadersNotFinished),
+                    (nameof(notInFastSyncMode), notInFastSyncMode));
             }
 
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
             // also fast blocks headers can run in parallel with all other sync modes
-            return fastBlocksHeadersNotFinished;
+            return fastBlocksHeadersNotFinished && notInFastSyncMode;
         }
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)

@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public bool IsPriority { get; set; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected ISession Session { get; }
+        public ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;

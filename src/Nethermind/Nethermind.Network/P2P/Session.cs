@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
-        
+
         private readonly ILogger _logger;
         private readonly ILogManager _logManager;
 
@@ -169,7 +169,7 @@ namespace Nethermind.Network.P2P
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
-            
+
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)
@@ -187,9 +187,11 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            /*
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
+                              */
 
             if (protocol == null)
             {
@@ -227,7 +229,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
+            // if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             var size = _packetSender.Enqueue(message);
@@ -237,7 +239,7 @@ namespace Nethermind.Network.P2P
         public void ReceiveMessage(Packet packet)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, packet.Data.Length);
-            
+
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)
@@ -255,9 +257,11 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
+/*
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
+                              */
 
             if (protocol == null)
             {
@@ -306,6 +310,10 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Initialized;
             }
 
+            if (Initialized == null || Initialized.GetInvocationList().Length == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{this} no initialized handler");
+            }
             Initialized?.Invoke(this, EventArgs.Empty);
         }
 
@@ -388,7 +396,7 @@ namespace Nethermind.Network.P2P
 
                 State = SessionState.DisconnectingProtocols;
             }
-            
+
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
                 if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
@@ -435,14 +443,16 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
+        public bool CanDisconnect => Disconnected != null;
+
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"{this} already disconnected {disconnectReason} {disconnectType}");
+                    if (_logger.IsInfo)
+                        _logger.Info($"{this} already disconnected {disconnectReason} {disconnectType}");
                     return;
                 }
 
@@ -453,7 +463,7 @@ namespace Nethermind.Network.P2P
             {
                 _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
             }
-            
+
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
@@ -476,6 +486,10 @@ namespace Nethermind.Network.P2P
                     _logger.Trace($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
             }
 
+            if (Disconnecting == null || Disconnecting.GetInvocationList().Length == 0)
+            {
+                _logger.Info($"{this} invoking 'Disconnecting' event but no disconnecting handler");
+            }
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
@@ -638,7 +652,7 @@ namespace Nethermind.Network.P2P
         }
 
         private bool _isTracked = false;
-        
+
         public void StartTrackingSession()
         {
             _isTracked = true;

@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -35,6 +36,8 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
@@ -84,6 +87,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
+        private static Counter MoreToSyncDuration = Metrics.CreateCounter("nethermind_c_more_to_sync", "More to sync duration");
+        private static Counter DownloadBlockDuration = Metrics.CreateCounter("nethermind_download_block", "More to sync duration");
+        private static Counter DownloadBlockSealDuration = Metrics.CreateCounter("nethermind_download_block_seal", "More to sync duration");
+        private static Counter DownloadBlockDownloadDuration = Metrics.CreateCounter("nethermind_download_block_download", "More to sync duration");
+        private static Counter DownloadBlockSuggestDuration = Metrics.CreateCounter("nethermind_download_block_suggest", "More to sync duration");
+        private static Gauge DownloadBlockLoopCount = Metrics.CreateGauge("nethermind_download_block_loop_count", "More to sync duration");
+
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
@@ -103,6 +113,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
             int blocksSynced = 0;
+            int fullDownloadCount = 0;
             long currentNumber = _blockTree.BestKnownNumber;
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -119,7 +130,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
+                Stopwatch sw = Stopwatch.StartNew();
                 headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
+                MoreToSyncDuration.Inc(sw.ElapsedMilliseconds);
                 if (headers == null || headers.Length <= 1)
                 {
                     if (_logger.IsTrace)
@@ -130,9 +143,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return true;
             }
 
+            Stopwatch? sw = Stopwatch.StartNew();
             while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
-
+                if (_allocationWithCancellation.Cancellation.IsCancellationRequested) break;
+                DownloadBlockLoopCount.Set(fullDownloadCount);
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 Block[]? blocks = null;
                 TxReceipt[]?[]? receipts = null;
@@ -140,13 +155,28 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
 
+                if (sw != null)
+                {
+                    DownloadBlockDuration.Inc(sw.ElapsedMilliseconds);
+                    sw = Stopwatch.StartNew();
+                }
+                else
+                {
+                    sw = Stopwatch.StartNew();
+                }
+
                 // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
+                Stopwatch sealSw = Stopwatch.StartNew();
                 ValidateSeals(headers!, cancellation);
+                DownloadBlockSealDuration.Inc(sealSw.ElapsedMilliseconds);
 
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
+                Stopwatch downloadSw = Stopwatch.StartNew();
+                if (cancellation.IsCancellationRequested)
+                    return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
@@ -156,11 +186,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
+                DownloadBlockDownloadDuration.Inc(downloadSw.ElapsedMilliseconds);
+
                 _sinceLastTimeout++;
-                if (_sinceLastTimeout > 2)
+                if (_sinceLastTimeout > 2 && downloadSw.ElapsedMilliseconds < 5000)
                 {
                     _syncBatchSize.Expand();
-
                 }
 
                 blocks = context.Blocks;
@@ -240,7 +271,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
 
+                    Stopwatch suggestSw = Stopwatch.StartNew();
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
+                    DownloadBlockSuggestDuration.Inc(suggestSw.ElapsedMilliseconds);
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
@@ -291,8 +324,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
                 else
                 {
+                    _logger.Info($"No block synched. Best peer {bestPeer}");
                     break;
                 }
+
+                fullDownloadCount++;
+            }
+
+            if (sw != null)
+            {
+                DownloadBlockDuration.Inc(sw.ElapsedMilliseconds);
             }
 
             return blocksSynced;

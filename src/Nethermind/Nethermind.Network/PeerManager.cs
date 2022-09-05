@@ -108,12 +108,13 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount)
+            if (_pending < AvailableActivePeersCount && !IsBadPeer(peer))
             {
 #pragma warning disable 4014
                 // fire and forget - all the surrounding logic will be executed
                 // exceptions can be lost here without issues
                 // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
+                _logger.Info($"Setup connection {peer} via PeerPoolOnPeerAdded");
                 SetupPeerConnection(peer);
 #pragma warning restore 4014
             }
@@ -122,6 +123,22 @@ namespace Nethermind.Network
             {
                 _peerUpdateRequested.Set();
             }
+        }
+
+        private bool IsBadPeer(Peer peer)
+        {
+            (bool Result, NodeStatsEventType? DelayReason) delayResult = _stats.IsConnectionDelayed(peer.Node);
+            if (delayResult.Result)
+            {
+                return true;
+            }
+
+            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void PeerPoolOnPeerRemoved(object? sender, PeerEventArgs e)
@@ -269,6 +286,7 @@ namespace Nethermind.Network
 
                         for (int i = 0; i < nodesToTry; i++)
                         {
+                            _logger.Info($"Setup connection {remainingCandidates[currentPosition + i]} via PeerUpdateLoop");
                             await workerBlock.SendAsync(remainingCandidates[currentPosition + i]);
                         }
 

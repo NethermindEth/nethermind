@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -36,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Prometheus;
 
 namespace Nethermind.Blockchain
 {
@@ -697,6 +699,9 @@ namespace Nethermind.Blockchain
             }
         }
 
+        private static Counter BlockEncodeDuration = Prometheus.Metrics.CreateCounter("nethermind_bt_block_encode", "Blockencode");
+        private static Counter BlockSaveDuration = Prometheus.Metrics.CreateCounter("nethermind_bt_block_save", "Block Save");
+
         private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
@@ -753,8 +758,12 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
+                Stopwatch sw = Stopwatch.StartNew();
                 Rlp newRlp = _blockDecoder.Encode(block);
+                BlockEncodeDuration.Inc(sw.ElapsedMilliseconds);
+                sw = Stopwatch.StartNew();
                 _blockDb.Set(block.Hash, newRlp.Bytes);
+                BlockSaveDuration.Inc(sw.ElapsedMilliseconds);
             }
 
             if (!isKnown)

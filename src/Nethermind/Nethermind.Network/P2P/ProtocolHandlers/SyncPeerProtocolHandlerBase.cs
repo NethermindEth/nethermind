@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -203,7 +203,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers.Length > 0 ? headers[0] : null;
         }
-        
+
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
@@ -231,6 +231,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
+        public bool CanDisconnect => Session.CanDisconnect;
+
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
         public void SendNewTransaction(Transaction tx)
@@ -250,26 +252,26 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     SendMessage(txsToSend);
                     txsToSend.Clear();
                 }
-                
+
                 if (tx.Hash is not null)
                 {
                     txsToSend.Add(tx);
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
-            
+
             if (txsToSend.Count > 0)
             {
                 SendMessage(txsToSend);
             }
         }
-        
+
         private void SendMessage(IList<Transaction> txsToSend)
         {
             TransactionsMessage msg = new(txsToSend);
             Send(msg);
         }
-        
+
         protected void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
             Metrics.Eth62GetBlockHeadersReceived++;
@@ -293,7 +295,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             //     // Session.DeliverMessage(packet);
             //     LazyInitializer.EnsureInitialized(ref _eth1920000HeaderMessage, () => Deserialize<BlockHeadersMessage>(Bytes.FromHexString("f90210f9020da0a218e2c611f21232d857e3c8cecdcdf1f65f25a4477f98f6f47e4063807f2308a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794bcdfc35b86bedf72f0cda046a3c16829a2ef41d1a0c5e389416116e3696cce82ec4533cce33efccb24ce245ae9546a4b8f0d5e9a75a07701df8e07169452554d14aadd7bfa256d4a1d0355c1d174ab373e3e2d0a3743a026cf9d9422e9dd95aedc7914db690b92bab6902f5221d62694a2fa5d065f534bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008638c3bf2616aa831d4c008347e7c08301482084578f7aa88d64616f2d686172642d666f726ba05b5acbf4bf305f948bd7be176047b20623e1417f75597341a059729165b9239788bede87201de42426")));
             //     Session.DeliverMessage(_eth1920000HeaderMessage);
-            //     
+            //
             //     if (Logger.IsTrace) Logger.Trace($"OUT hardcoded 1920000 BlockHeaders to {Node:c}");
             //     return;
             // }
@@ -361,7 +363,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             return new BlockBodiesMessage(blocks);
         }
-        
+
         protected virtual void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
@@ -438,7 +440,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region Cleanup
 
         private int _isDisposed;
-        
+
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -493,7 +495,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             protocolHandler = null;
             return false;
         }
-        
+
         #endregion
     }
 }

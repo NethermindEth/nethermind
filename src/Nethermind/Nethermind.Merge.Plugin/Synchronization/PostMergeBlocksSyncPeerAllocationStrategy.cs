@@ -18,9 +18,12 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -28,14 +31,18 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
 {
     private readonly long? _minBlocksAhead;
     private readonly IBeaconPivot _beaconPivot;
+    private readonly ILogger _logger;
 
     private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
     private const int MinDiffForSpeedSwitch = 10;
 
-    public PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, IBeaconPivot beaconPivot)
+    private static Gauge PeersWithNoSpeed = Metrics.CreateGauge("nethermind_peers_with_no_speed", "Peers with not speed");
+
+    public PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, IBeaconPivot beaconPivot, ILogManager logManager)
     {
         _minBlocksAhead = minBlocksAhead;
         _beaconPivot = beaconPivot;
+        _logger = logManager.GetClassLogger<PostMergeBlocksSyncPeerAllocationStrategy>();
     }
 
     public bool CanBeReplaced => true;
@@ -65,6 +72,7 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
             : GetSpeed(nodeStatsManager, currentPeer!) ?? nullSpeed;
         (PeerInfo? Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
 
+        int peersWithNoSpeed = 0;
         foreach (PeerInfo info in peers)
         {
             (this as IPeerAllocationStrategy).CheckAsyncState(info);
@@ -81,12 +89,36 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
                continue;
             }
 
-            long averageTransferSpeed = GetSpeed(nodeStatsManager, info) ?? 0;
-            if (averageTransferSpeed > fastestPeer.TransferSpeed)
+            long? speed = GetSpeed(nodeStatsManager, info);
+            long effectiveSpeed = speed ?? 0;
+
+            if (speed == null)
             {
-                fastestPeer = (info, averageTransferSpeed);
+                peersWithNoSpeed++;
+            }
+
+            // If we don't know the speed of this peer, randomly decide if we should try it by setting it's speed
+            // to very high so that we know if we have better peer.
+            // Note, this roll runs (every second * number of peer with unknown speed). So the percentage of the
+            // time it would get in effect PER SECOND is 1-((1-P)^N), Or:
+            // 53% when N is 50
+            // 26% when N is 20
+            // 7 % when N is 5
+            // So, quite more often than the number suggest.
+            if (speed == null && Random.Shared.NextDouble() < 0.015)
+            {
+                effectiveSpeed = long.MaxValue;
+            }
+            _logger.Info($"The speed for {info} is {effectiveSpeed}");
+
+            if (effectiveSpeed > fastestPeer.TransferSpeed)
+            {
+                fastestPeer = (info, effectiveSpeed);
             }
         }
+
+        _logger.Info($"Peers with no speed {peersWithNoSpeed}");
+        PeersWithNoSpeed.Set(peersWithNoSpeed);
 
         if (peersCount == 0)
         {
