@@ -13,22 +13,21 @@
 //
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Evm.Tracing.ParityStyle;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc.TraceStore;
+
+public interface ITraceStoreConfig : IConfig
 {
-    public interface IRpcModulePool
-    {
-    }
+    [ConfigItem(Description = "Defines whether the TraceStore plugin is enabled, if 'true' traces will come from DB if possible.", DefaultValue = "false")]
+    public bool Enabled { get; set; }
 
-    public interface IRpcModulePool<T> : IRpcModulePool where T : IRpcModule
-    {
-        Task<T> GetModule(bool canBeShared);
+    [ConfigItem(Description = "Defines how many blocks counting from head are kept in the TraceStore, if '0' all traces of processed blocks will be kept.", DefaultValue = "10000")]
+    public int BlocksToKeep { get; set; }
 
-        void ReturnModule(T module);
-
-        IRpcModuleFactory<T> Factory { get; }
-    }
+    [ConfigItem(Description = "Defines what kind of traces are saved and kept in TraceStore.", DefaultValue = "Trace and Rewards")]
+    public ParityTraceTypes TraceTypes { get; set; }
 }

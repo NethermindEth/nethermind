@@ -13,22 +13,15 @@
 //
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Evm.Tracing.ParityStyle;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc.TraceStore;
+
+public class TraceStoreConfig : ITraceStoreConfig
 {
-    public interface IRpcModulePool
-    {
-    }
-
-    public interface IRpcModulePool<T> : IRpcModulePool where T : IRpcModule
-    {
-        Task<T> GetModule(bool canBeShared);
-
-        void ReturnModule(T module);
-
-        IRpcModuleFactory<T> Factory { get; }
-    }
+    public bool Enabled { get; set; }
+    public int BlocksToKeep { get; set; } = 10000;
+    public ParityTraceTypes TraceTypes { get; set; } = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
 }

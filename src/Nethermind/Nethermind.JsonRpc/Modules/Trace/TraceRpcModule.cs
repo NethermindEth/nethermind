@@ -59,10 +59,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
-        private static ParityTraceTypes GetParityTypes(string[] types)
-        {
-            return types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
-        }
+        public static ParityTraceTypes GetParityTypes(string[] types) =>
+            types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
         {
@@ -228,6 +226,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
+            List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        }
+
+        public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
+        {
             List<ParityTxTraceFromStore> traces = new();
             ParityTxTraceFromStore[] transactionTraces = traceTransaction.Data.ToArray();
             for (int index = 0; index < positions.Length; index++)
@@ -240,7 +244,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
             }
 
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+            return traces;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash)

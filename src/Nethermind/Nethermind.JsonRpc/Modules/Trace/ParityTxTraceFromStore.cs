@@ -43,26 +43,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         }
 
-        private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
+        private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction? txTraceAction)
         {
-            ParityTxTraceFromStore result = new()
+            if (txTraceAction is not null)
             {
-                Action = txTraceAction,
-                Result = txTraceAction.Result,
-                Subtraces = txTraceAction.Subtraces.Count,
-                Type = txTraceAction.Type,
-                BlockHash = txTrace.BlockHash,
-                BlockNumber = txTrace.BlockNumber,
-                TransactionHash = txTrace.TransactionHash,
-                TransactionPosition = txTrace.TransactionPosition,
-                TraceAddress = txTraceAction.TraceAddress,
-                Error = txTraceAction.Error
-            };
-            results.Add(result);
+                ParityTxTraceFromStore result = new()
+                {
+                    Action = txTraceAction,
+                    Result = txTraceAction.Result,
+                    Subtraces = txTraceAction.Subtraces.Count,
+                    Type = txTraceAction.Type,
+                    BlockHash = txTrace.BlockHash,
+                    BlockNumber = txTrace.BlockNumber,
+                    TransactionHash = txTrace.TransactionHash,
+                    TransactionPosition = txTrace.TransactionPosition,
+                    TraceAddress = txTraceAction.TraceAddress,
+                    Error = txTraceAction.Error
+                };
+                results.Add(result);
 
-            foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
-            {
-                AddActionsRecursively(results, txTrace, subtrace);
+                foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
+                {
+                    AddActionsRecursively(results, txTrace, subtrace);
+                }
             }
         }
 
