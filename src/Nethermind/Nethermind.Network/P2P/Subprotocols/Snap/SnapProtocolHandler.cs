@@ -38,8 +38,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     {
         private const int MAX_BYTES_LIMIT = 2_000_000;
         private const int MIN_BYTES_LIMIT = 200_000;
-        private const long UPPER_LATENCY_THRESHOLD = 5000;
+        private const long UPPER_LATENCY_THRESHOLD = 4000;
         private const long LOWER_LATENCY_THRESHOLD = 3000;
+        private const double ADJUSTMENT_FACTOR = 1.5;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -329,11 +330,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 }
                 else if (sw.ElapsedMilliseconds < LOWER_LATENCY_THRESHOLD)
                 {
-                    _currentBytesLimit = Math.Min(startingBytesLimit * 2, MAX_BYTES_LIMIT);
+                    _currentBytesLimit = Math.Min((int)(startingBytesLimit * ADJUSTMENT_FACTOR), MAX_BYTES_LIMIT);
                 }
                 else if (sw.ElapsedMilliseconds > UPPER_LATENCY_THRESHOLD && startingBytesLimit > MIN_BYTES_LIMIT)
                 {
-                    _currentBytesLimit = startingBytesLimit / 2;
+                    _currentBytesLimit = (int)(startingBytesLimit / ADJUSTMENT_FACTOR);
                 }
             }
         }
