@@ -47,6 +47,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using NLog.Fluent;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -159,7 +160,7 @@ namespace Nethermind.Merge.Plugin.Test
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 ISyncConfig syncConfig = new SyncConfig();
-                EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig);
+                EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
                 PostMergeBlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,
