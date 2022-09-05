@@ -32,7 +32,7 @@ public static class ChainSpecLoaderExtensions
     {
         try
         {
-            string resourceName = getResourceName(fileName);
+            string resourceName = GetResourceName(fileName);
             Assembly assembly = typeof(IConfig).Assembly;
             using Stream stream = assembly.GetManifestResourceStream(resourceName);
             if (stream is null)
@@ -59,7 +59,7 @@ public static class ChainSpecLoaderExtensions
         }
     }
 
-    private static string getResourceName(string fileName)
+    private static string GetResourceName(string fileName)
     {
         StringBuilder builder = new();
         builder.Append("Nethermind.Config.");
