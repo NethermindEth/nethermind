@@ -98,6 +98,7 @@ namespace Nethermind.Network
             }
 
             Peer peer = new(arg.Node);
+            _logger.Info($"New node created {peer}. Reputation is {_stats.GetNewPersistedReputation(peer.Node)}");
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);

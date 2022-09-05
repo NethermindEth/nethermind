@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -35,7 +36,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int BYTES_LIMIT = 200_000;
+        private const int MAX_BYTES_LIMIT = 2_000_000;
+        private const int MIN_BYTES_LIMIT = 200_000;
+        private const long UPPER_LATENCY_THRESHOLD = 5000;
+        private const long LOWER_LATENCY_THRESHOLD = 3000;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -49,6 +53,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = { 0 };
+
+        private int _currentBytesLimit = MIN_BYTES_LIMIT;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -185,10 +191,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetAccountRangeMessage()
             {
                 AccountRange = range,
-                ResponseBytes = BYTES_LIMIT
+                ResponseBytes = _currentBytesLimit
             };
 
-            AccountRangeMessage response = await SendRequest(request, _getAccountRangeRequests, token);
+            AccountRangeMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getAccountRangeRequests, token));
 
             Metrics.SnapGetAccountRangeSent++;
 
@@ -200,10 +207,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetStorageRangeMessage()
             {
                 StoragetRange = range,
-                ResponseBytes = BYTES_LIMIT
+                ResponseBytes = _currentBytesLimit
             };
 
-            StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);
+            StorageRangeMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getStorageRangeRequests, token));
 
             Metrics.SnapGetStorageRangesSent++;
 
@@ -215,10 +223,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetByteCodesMessage()
             {
                 Hashes = codeHashes,
-                Bytes = BYTES_LIMIT
+                Bytes = _currentBytesLimit
             };
 
-            ByteCodesMessage response = await SendRequest(request, _getByteCodesRequests, token);
+            ByteCodesMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getByteCodesRequests, token));
 
             Metrics.SnapGetByteCodesSent++;
 
@@ -233,10 +242,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             {
                 RootHash = request.RootHash,
                 Paths = groups,
-                Bytes = BYTES_LIMIT
+                Bytes = _currentBytesLimit
             };
 
-            TrieNodesMessage response = await SendRequest(reqMsg, _getTrieNodesRequests, token);
+            TrieNodesMessage response = await AdjustBytesLimit(() =>
+                SendRequest(reqMsg, _getTrieNodesRequests, token));
 
             Metrics.SnapGetTrieNodesSent++;
 
@@ -290,5 +300,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(TIn)}");
         }
+
+        /// <summary>
+        /// Adjust the _currentBytesLimit depending on the latency of the request and if the request failed.
+        /// </summary>
+        /// <param name="func"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        private async Task<T> AdjustBytesLimit<T>(Func<Task<T>> func)
+        {
+            int startingBytesLimit = _currentBytesLimit;
+            bool failed = false;
+            Stopwatch sw = Stopwatch.StartNew();
+            try
+            {
+                return await func();
+            }
+            catch (Exception)
+            {
+                failed = true;
+                throw;
+            }
+            finally
+            {
+                if (failed)
+                {
+                    _currentBytesLimit = MIN_BYTES_LIMIT;
+                }
+                else if (sw.ElapsedMilliseconds < LOWER_LATENCY_THRESHOLD)
+                {
+                    _currentBytesLimit = Math.Min(startingBytesLimit * 2, MAX_BYTES_LIMIT);
+                }
+                else if (sw.ElapsedMilliseconds > UPPER_LATENCY_THRESHOLD && startingBytesLimit > MIN_BYTES_LIMIT)
+                {
+                    _currentBytesLimit = startingBytesLimit / 2;
+                }
+            }
+        }
+
     }
 }
