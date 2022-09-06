@@ -163,7 +163,7 @@ namespace Nethermind.Merge.Plugin
 
             if (!hasEngineApiConfigured)
             {
-                if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Application can't work without engine port configured. Verify your RPC configuration");
+                if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples");
                 Environment.Exit(1);
             }
         }
