@@ -10,9 +10,9 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.TraceStore.Tests;
 
+[Parallelizable(ParallelScope.All)]
 public class DbPersistingBlockTracerTests
 {
-    [Parallelizable(ParallelScope.All)]
     [Test]
     public void saves_traces_to_db()
     {

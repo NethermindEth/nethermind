@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Buffers;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
 
@@ -24,7 +27,34 @@ namespace Nethermind.JsonRpc.TraceStore;
 
 public static class TraceSerializer
 {
-    private static readonly JsonSerializerOptions _jsonSerializerOptions = new() { Converters = { new KeccakUtf8Converter() }, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
-    public static TCollection? Deserialize<TCollection>(Span<byte> serialized) where TCollection : IEnumerable<ParityLikeTxTrace> => JsonSerializer.Deserialize<TCollection>(serialized, _jsonSerializerOptions);
-    public static byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces) => JsonSerializer.SerializeToUtf8Bytes(traces, _jsonSerializerOptions);
+    private static readonly JsonSerializerOptions _jsonSerializerOptions = new() { Converters = { new KeccakUtf8Converter() }, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault };
+    public static unsafe TCollection? Deserialize<TCollection>(Span<byte> serialized) where TCollection : IEnumerable<ParityLikeTxTrace>
+    {
+        fixed (byte* pBuffer = &serialized[0])
+        {
+            using UnmanagedMemoryStream input = new(pBuffer, serialized.Length);
+            using GZipStream compressionStream = new(input, CompressionMode.Decompress);
+            using ArrayPoolList<byte> arrayPoolList = new(1024 * 16);
+            Span<byte> buffer = stackalloc byte[1024];
+            int bytesRead = compressionStream.Read(buffer);
+            while (bytesRead > 0)
+            {
+                arrayPoolList.AddRange(buffer.Slice(0, bytesRead));
+                bytesRead = compressionStream.Read(buffer);
+            }
+
+            return JsonSerializer.Deserialize<TCollection>(arrayPoolList.AsSpan(), _jsonSerializerOptions);
+        }
+    }
+
+    public static byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    {
+        using MemoryStream output = new();
+        using (GZipStream compressionStream = new(output, CompressionMode.Compress))
+        {
+            JsonSerializer.Serialize(compressionStream, traces, _jsonSerializerOptions);
+        }
+
+        return output.ToArray();
+    }
 }
