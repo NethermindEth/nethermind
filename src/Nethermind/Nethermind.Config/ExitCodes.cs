@@ -21,5 +21,5 @@ public static class ExitCodes
 {
     public const int NoEngineModule = 1_000;
 
-    public const int NoDownloadOldReceiptsOrBlocks = 1_0001;
+    public const int NoDownloadOldReceiptsOrBlocks = 1_001;
 }
