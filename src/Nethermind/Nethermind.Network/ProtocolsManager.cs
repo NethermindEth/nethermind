@@ -122,10 +122,7 @@ namespace Nethermind.Network
             {
                 _syncPool.RemovePeer(removed);
                 _txPool.RemovePeer(removed.Node.Id);
-                if (session.BestStateReached == SessionState.Initialized)
-                {
-                    if (_logger.IsInfo) _logger.Info($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
-                }
+                if (_logger.IsInfo) _logger.Info($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details} {session.BestStateReached}");
             } else {
                 // _logger.Warn($"Session already not in sync peers {session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }

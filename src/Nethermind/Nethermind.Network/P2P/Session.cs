@@ -358,6 +358,7 @@ namespace Nethermind.Network.P2P
 
         public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
+            _logger.Info($"{this} disconnect initiated {this} {disconnectReason} ({details})");
             bool ShouldDisconnectStaticNode()
             {
                 switch (disconnectReason)
@@ -527,8 +528,7 @@ namespace Nethermind.Network.P2P
 
             if (Disconnected != null)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
+                _logger.Info($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
                 Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
             }
             else if (_logger.IsDebug)
