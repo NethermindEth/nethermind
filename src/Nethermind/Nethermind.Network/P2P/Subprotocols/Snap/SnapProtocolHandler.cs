@@ -38,8 +38,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     {
         private const int MAX_BYTES_LIMIT = 2_000_000;
         private const int MIN_BYTES_LIMIT = 200_000;
-        private const long UPPER_LATENCY_THRESHOLD = 4000;
-        private const long LOWER_LATENCY_THRESHOLD = 3000;
+        private const long UPPER_LATENCY_THRESHOLD = 2000;
+        private const long LOWER_LATENCY_THRESHOLD = 1000;
         private const double ADJUSTMENT_FACTOR = 1.5;
 
         public override string Name => "snap1";
