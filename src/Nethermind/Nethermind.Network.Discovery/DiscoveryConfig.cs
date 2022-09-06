@@ -20,15 +20,15 @@ namespace Nethermind.Network.Discovery;
 
 public class DiscoveryConfig : IDiscoveryConfig
 {
-    public int BucketSize { get; set; } = 16;
+    public int BucketSize { get; set; } = 12;
 
-    public int BucketsCount { get; set; } = 256;
+    public int BucketsCount { get; set; } = 512;
 
     public int Concurrency { get; set; } = 3;
 
     public int BitsPerHop { get; set; } = 8;
 
-    public int MaxDiscoveryRounds { get; set; } = 8;
+    public int MaxDiscoveryRounds { get; set; } = 12;
 
     public int EvictionCheckInterval { get; set; } = 75;
 
