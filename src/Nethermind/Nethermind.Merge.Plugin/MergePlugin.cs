@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -263,7 +263,10 @@ namespace Nethermind.Merge.Plugin
                     TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
+                    new GetPayloadV1Handler(
+                        payloadPreparationService,
+                        _api.LogManager,
+                        _api.StateProvider),
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,

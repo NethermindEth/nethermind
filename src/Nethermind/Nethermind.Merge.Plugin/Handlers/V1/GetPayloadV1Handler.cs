@@ -24,12 +24,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -51,10 +54,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
 
-        public GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
+        public GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager, IStateProvider stateProvider)
         {
             _payloadPreparationService = payloadPreparationService;
             _logger = logManager.GetClassLogger();
+            _stateProvider = stateProvider;
         }
 
         public async Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
@@ -79,9 +83,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
         [ThreadStatic] private readonly System.Random _random = new Random();
+        private IStateProvider _stateProvider { get; set; }
         private void CorruptBlock(ref Block? block)
         {
-            if (block is not null)
+            if (block is not null && _random.NextBoolean())
             {
                 block.Header.GasUsed = _random.NextLong();
                 block.Header.Author = _random.NextBoolean() ? block.Header.Beneficiary : block.Header.Author;
@@ -90,9 +95,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     Enumerable.Range(0, 77)
                         .Select(_ => _random.Next(0, 10))
                         .Aggregate(String.Empty, (acc, val) => $"{acc}{val}")
-                        );
-                block.Header.StateRoot = block.CalculateHash();
-                block.Header.Hash      = block.CalculateHash();
+                    );
+                _stateProvider.RecalculateStateRoot();
+                block.Header.StateRoot = _stateProvider.StateRoot;
+                block.Header.Hash = block.Header.CalculateHash();
+
+                _logger.Warn($"Block number {block.Number} has been intentionally corrupted!!! ");
             }
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -75,7 +75,8 @@ namespace Nethermind.Merge.Plugin.Test
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
                     chain.PayloadPreparationService!,
-                    chain.LogManager),
+                    chain.LogManager,
+                    chain.State),
                 new NewPayloadV1Handler(
                     chain.BlockValidator,
                     chain.BlockTree,
