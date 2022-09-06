@@ -23,6 +23,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -63,6 +64,16 @@ namespace Nethermind.Merge.Plugin
         public string Author => "Nethermind";
 
         public virtual bool MergeEnabled => _mergeConfig.Enabled;
+
+        private readonly IEnvironment _environment = new EnvironmentWrapper();
+        
+        public MergePlugin() {}
+
+        public MergePlugin(IEnvironment? environment = null)
+        {
+            if (environment != null)
+                _environment = environment;
+        }
 
         public virtual Task Init(INethermindApi nethermindApi)
         {
@@ -121,7 +132,7 @@ namespace Nethermind.Merge.Plugin
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {
                     if (_logger.IsError) _logger.Error("Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync");
-                    Environment.Exit(1);
+                    _environment.Exit(1);
                 }
             }
         }
@@ -164,7 +175,7 @@ namespace Nethermind.Merge.Plugin
             if (!hasEngineApiConfigured)
             {
                 if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples");
-                Environment.Exit(1);
+                _environment.Exit(1);
             }
         }
 
