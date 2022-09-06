@@ -114,7 +114,7 @@ namespace Nethermind.Network
                 // fire and forget - all the surrounding logic will be executed
                 // exceptions can be lost here without issues
                 // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                _logger.Info($"Setup connection {peer} via PeerPoolOnPeerAdded");
+                _logger.Info($"Setup connection {peer} via PeerPoolOnPeerAdded. Reputation: {_stats.GetCurrentReputation(peer.Node)}");
                 SetupPeerConnection(peer);
 #pragma warning restore 4014
             }
@@ -286,7 +286,8 @@ namespace Nethermind.Network
 
                         for (int i = 0; i < nodesToTry; i++)
                         {
-                            _logger.Info($"Setup connection {remainingCandidates[currentPosition + i]} via PeerUpdateLoop");
+                            Peer candidate = remainingCandidates[currentPosition + i];
+                            _logger.Info($"Setup connection {candidate} via PeerUpdateLoop. Reputation: {_stats.GetCurrentReputation(candidate.Node)}");
                             await workerBlock.SendAsync(remainingCandidates[currentPosition + i]);
                         }
 

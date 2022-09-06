@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Prometheus;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -32,6 +34,13 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ILogger Logger { get; }
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
+
+        public static Histogram SyncDispatchDuration = Prometheus.Metrics.CreateHistogram("sync_dispatch_duration", "Dispatch Duration",
+            new HistogramConfiguration()
+            {
+                LabelNames = new []{"sync_type", "status"},
+                Buckets = Prometheus.Histogram.ExponentialBuckets(1, 1.8, 16),
+            });
 
         protected SyncDispatcher(
             ISyncFeed<T>? syncFeed,
@@ -98,12 +107,18 @@ namespace Nethermind.Synchronization.ParallelSync
                         if (allocatedPeer != null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
+                            Stopwatch sw = Stopwatch.StartNew();
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
                                 .ContinueWith(t =>
                             {
                                 if (t.IsFaulted)
                                 {
+                                    SyncDispatchDuration.WithLabels(Feed.GetType().ToString(), "fail").Observe(sw.ElapsedMilliseconds);
                                     if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
+                                }
+                                else
+                                {
+                                    SyncDispatchDuration.WithLabels(Feed.GetType().ToString(), "success").Observe(sw.ElapsedMilliseconds);
                                 }
 
                                 try
