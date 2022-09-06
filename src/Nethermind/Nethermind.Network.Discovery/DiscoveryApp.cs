@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -310,7 +310,7 @@ public class DiscoveryApp : IDiscoveryApp
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
+                if (_logger.IsInfo) _logger.Info($"Running discovery with interval {_discoveryTimer.Interval}");
                 _discoveryTimer.Enabled = false;
                 RunDiscoveryProcess();
                 int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
@@ -442,7 +442,7 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
             }
-            
+
             Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             if (manager != null)
