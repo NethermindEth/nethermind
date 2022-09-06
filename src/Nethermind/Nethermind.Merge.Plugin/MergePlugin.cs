@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {
                     if (_logger.IsError) _logger.Error("Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync");
-                    _environment.Exit(ExitCodes.NoDownloadReceiptsOrBlocks);
+                    _environment.Exit(ExitCodes.NoDownloadOldReceiptsOrBlocks);
                 }
             }
         }
