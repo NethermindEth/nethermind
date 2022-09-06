@@ -46,6 +46,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -138,7 +139,10 @@ namespace Nethermind.JsonRpc.Benchmark
 
             GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
-            EthSyncingInfo ethSyncingInfo = new(blockTree);
+
+            IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+            ISyncConfig syncConfig = new SyncConfig();
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),

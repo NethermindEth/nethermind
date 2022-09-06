@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -98,7 +97,27 @@ public class ChainLevelHelper : IChainLevelHelper
             }
 
             if (beaconMainChainBlock.IsBeaconInfo)
-                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
+            {
+               newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
+                if (beaconMainChainBlock.TotalDifficulty != 0)
+                {
+                    newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
+                }
+                else if (headers.Count > 0 && headers[^1].TotalDifficulty != null)
+                {
+                    // The beacon header may not have the total difficulty available since it is downloaded
+                    // backwards and final total difficulty may not be known early on. But this is still needed
+                    // in order to know if a block is a terminal block.
+                    // The first header should be a processed header, so the TD should be correct.
+                    newHeader.TotalDifficulty = headers[^1].TotalDifficulty + newHeader.Difficulty;
+                }
+                else
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"ChainLevelHelper - Unable to determine total difficulty. This is not expected. Header: {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                    newHeader.TotalDifficulty = null;
+                }
+            }
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
@@ -145,7 +164,7 @@ public class ChainLevelHelper : IChainLevelHelper
     private long? GetStartingPoint()
     {
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
-        bool foundBeaconBlock;
+        bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
 
@@ -168,8 +187,13 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            BlockInfo parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
-            foundBeaconBlock = parentBlockInfo.IsBeaconInfo;
+            BlockInfo? parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
+            if (parentBlockInfo == null)
+            {
+                return null;
+            }
+
+            shouldContinue = parentBlockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {parentBlockInfo.IsBeaconBody}, {parentBlockInfo.IsBeaconHeader}");
@@ -183,7 +207,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;
             }
-        } while (foundBeaconBlock);
+        } while (shouldContinue);
 
         return startingPoint;
     }

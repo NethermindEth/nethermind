@@ -140,6 +140,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
 
+                // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
+                ValidateSeals(headers!, cancellation);
+
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -189,7 +192,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
+                        string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
+                        if (_logger.IsWarn) _logger.Warn(message);
+                        throw new EthSyncException(message);
                     }
 
                     if (shouldProcess)

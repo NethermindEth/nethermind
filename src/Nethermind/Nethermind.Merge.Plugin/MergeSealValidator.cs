@@ -17,6 +17,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -27,14 +28,17 @@ public class MergeSealValidator : ISealValidator
 
     public MergeSealValidator(
         IPoSSwitcher poSSwitcher,
-        ISealValidator preMergeSealValidator)
-    {
+        ISealValidator preMergeSealValidator
+    ) {
         _poSSwitcher = poSSwitcher;
         _preMergeSealValidator = preMergeSealValidator;
     }
     public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
         _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header);
 
-    public bool ValidateSeal(BlockHeader header, bool force) =>
-        _poSSwitcher.GetBlockConsensusInfo(header, true).IsPostMerge || _preMergeSealValidator.ValidateSeal(header, force);
+    public bool ValidateSeal(BlockHeader header, bool force)
+    {
+        (bool isTerminal, bool isPostMerge) = _poSSwitcher.GetBlockConsensusInfo(header);
+        return isPostMerge || _preMergeSealValidator.ValidateSeal(header, force || isTerminal);
+    }
 }

@@ -20,7 +20,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -29,6 +32,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,10 +44,12 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             INethermindApi api = Substitute.For<INethermindApi>();
             api.SpecProvider = Substitute.For<ISpecProvider>();
@@ -63,7 +69,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, api, test.IsMining);
@@ -76,7 +82,7 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         public void post_merge_health_checks([ValueSource(nameof(CheckHealthPostMergeTestCases))] CheckHealthPostMergeTest test)
         {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
@@ -108,7 +114,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), new TestLogManager());
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, api, false);
