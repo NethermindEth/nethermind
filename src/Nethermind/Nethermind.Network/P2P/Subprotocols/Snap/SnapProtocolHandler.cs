@@ -37,10 +37,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
         private const int MaxBytesLimit = 2_000_000;
-        private const int MinBytesLimit = 200_000;
+        private const int MinBytesLimit = 20_000;
         public static readonly TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(2000);
         public static readonly TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(1000);
-        private const double BytesLimitAdjustmentFactor = 1.5;
+        private const double BytesLimitAdjustmentFactor = 2;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
