@@ -751,7 +751,7 @@ namespace Nethermind.Network
                 throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
+            if (_logger.IsInfo) _logger.Info($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
             if (session.RemoteNodeId == null)
             {
