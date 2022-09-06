@@ -26,6 +26,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.Logging;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -59,7 +60,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();

@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,21 +13,14 @@
 //
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 
-namespace Nethermind.Facade.Eth
+namespace Nethermind.Config;
+
+public static class ExitCodes
 {
-    public struct SyncingResult
-    {
-        public static SyncingResult NotSyncing = new();
+    // config errors 100...199
+    public const int NoEngineModule = 100;
 
-        public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
-
-        public override string ToString()
-        {
-            return $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
-        }
-    }
+    public const int NoDownloadOldReceiptsOrBlocks = 101;
 }
