@@ -310,6 +310,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         /// <returns></returns>
         private async Task<T> AdjustBytesLimit<T>(Func<Task<T>> func)
         {
+            // Record bytes limit so that in case multiple concurrent request happens, we do not multiply the
+            // limit on top of other adjustment, so only the last adjustment will stick, which is fine.
             int startingBytesLimit = _currentBytesLimit;
             bool failed = false;
             Stopwatch sw = Stopwatch.StartNew();
