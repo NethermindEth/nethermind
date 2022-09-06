@@ -120,7 +120,8 @@ namespace Nethermind.Merge.Plugin
             {
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {
-                    throw new InvalidOperationException("Receipt and body must be available for merge to function");
+                    if (_logger.IsError) _logger.Error("Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync");
+                    Environment.Exit(1);
                 }
             }
         }
@@ -162,7 +163,8 @@ namespace Nethermind.Merge.Plugin
 
             if (!hasEngineApiConfigured)
             {
-                throw new InvalidOperationException("No RPC module for engine api configured");
+                if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Application can't work without engine port configured. Verify your RPC configuration");
+                Environment.Exit(1);
             }
         }
 
