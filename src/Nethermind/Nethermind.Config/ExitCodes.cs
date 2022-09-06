@@ -20,7 +20,7 @@ namespace Nethermind.Config;
 public static class ExitCodes
 {
     // config errors 1_000...1_999
-    public const int NoEngineModule = 1_000;
+    public const int NoEngineModule = 100;
 
-    public const int NoDownloadOldReceiptsOrBlocks = 1_001;
+    public const int NoDownloadOldReceiptsOrBlocks = 101;
 }
