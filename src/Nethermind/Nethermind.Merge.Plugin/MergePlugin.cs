@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin
         public virtual bool MergeEnabled => _mergeConfig.Enabled;
 
         private readonly IEnvironment _environment = new EnvironmentWrapper();
-        
+
         public MergePlugin() {}
 
         public MergePlugin(IEnvironment? environment = null)
@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {
                     if (_logger.IsError) _logger.Error("Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync");
-                    _environment.Exit(1);
+                    _environment.Exit(ExitCodes.NoDownloadReceiptsOrBlocks);
                 }
             }
         }
@@ -175,7 +175,7 @@ namespace Nethermind.Merge.Plugin
             if (!hasEngineApiConfigured)
             {
                 if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples");
-                _environment.Exit(1);
+                _environment.Exit(ExitCodes.NoEngineModule);
             }
         }
 
