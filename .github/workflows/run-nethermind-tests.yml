@@ -217,18 +217,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Db.Test
+      if: always()
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Db.Test
     - name: Nethermind.Hive.Tests
+      if: always()
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Hive.Tests
     - name: Nethermind.KeyStore.Test
+      if: always()
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test
     - name: Nethermind.Monitoring.Test
+      if: always()
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Monitoring.Test
     - name: Nethermind.Overseer.Test
+      if: always()
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Overseer.Test
 
