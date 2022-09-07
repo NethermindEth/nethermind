@@ -352,12 +352,17 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            long bestPeerBlock = best.Peer.Block;
-
+            // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            long heightDelta = bestPeerBlock - best.Header;
-            bool heightDeltaGreaterThanLag = heightDelta > FastSyncLag;
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(bestPeerBlock);
+            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
+
+            // We stop `FastSyncLag` block before the highest known block in case the highest known block is non-canon
+            // and we need to sync away from it.
+            // Note: its ok if target block height is not accurate as long as long full sync downloader does not stop
+            //  earlier than this condition below which would cause a hang.
+            long targetBlockHeight = _beaconSyncStrategy.GetTargetBlockHeight() ?? best.Peer.Block;
+            bool notReachedFullSyncTransition = best.Header < targetBlockHeight - FastSyncLag;
+
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
@@ -367,7 +372,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           // (catch up after node is off for a while
                           // OR standard fast sync)
                           notInAStickyFullSync &&
-                          heightDeltaGreaterThanLag &&
+                          notReachedFullSyncTransition &&
                           notHasJustStartedFullSync &&
                           notNeedToWaitForHeaders;
 
@@ -376,7 +381,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 LogDetailedSyncModeChecks("FAST",
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
-                    (nameof(heightDeltaGreaterThanLag), heightDeltaGreaterThanLag),
+                    (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
@@ -387,9 +392,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
+            // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool desiredPeerKnown = AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
+
+            // Shared with full sync archive
+            bool desiredPeerKnown = AnyDesiredPeerKnown(best) ;
+
+            // Full sync specific
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
