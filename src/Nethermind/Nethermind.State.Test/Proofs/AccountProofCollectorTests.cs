@@ -609,7 +609,8 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
         [TestCaseSource(nameof(HistoricallyFailing))]
         public void _Test_storage_failed_case(string historicallyFailingCase)
         {
-            string[] lines = historicallyFailingCase.Split(Environment.NewLine);
+            string splitter = historicallyFailingCase.Contains("\r\n") ? "\r\n" : "\n"; //Running Windows 11 "Environment.NewLine" was returning \r\n when in string \n was used - this may be more stable.
+            string[] lines = historicallyFailingCase.Split(splitter);
             int storageCount = lines.Length - 2;
 
             IDb memDb = new MemDb();

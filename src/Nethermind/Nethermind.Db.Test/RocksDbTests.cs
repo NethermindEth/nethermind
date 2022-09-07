@@ -5,6 +5,7 @@ using RocksDbSharp;
 namespace Nethermind.Db.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public static class RocksDbTests
 {
     [Test]
