@@ -28,6 +28,6 @@ public interface ITraceStoreConfig : IConfig
     [ConfigItem(Description = "Defines how many blocks counting from head are kept in the TraceStore, if '0' all traces of processed blocks will be kept.", DefaultValue = "10000")]
     public int BlocksToKeep { get; set; }
 
-    [ConfigItem(Description = "Defines what kind of traces are saved and kept in TraceStore. Available options are: Trace, Rewards, VmTrace, StateDiff or just All", DefaultValue = "Trace,Rewards")]
+    [ConfigItem(Description = "Defines what kind of traces are saved and kept in TraceStore. Available options are: Trace, Rewards, VmTrace, StateDiff or just All", DefaultValue = "Trace, Rewards")]
     public ParityTraceTypes TraceTypes { get; set; }
 }
