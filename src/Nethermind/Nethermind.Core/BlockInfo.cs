@@ -90,6 +90,6 @@ namespace Nethermind.Core
         /// </summary>
         public long BlockNumber { get; set; }
 
-        public override string ToString() => $"{BlockNumber} ({BlockHash})";
+        public override string ToString() => BlockHash.ToString();
     }
 }

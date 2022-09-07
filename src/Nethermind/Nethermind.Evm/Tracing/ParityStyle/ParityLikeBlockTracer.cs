@@ -75,10 +75,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public override void StartNewBlockTrace(Block block)
         {
             _block = block;
-        }
-
-        public override void EndBlockTrace()
-        {
+            base.StartNewBlockTrace(block);
         }
     }
 }

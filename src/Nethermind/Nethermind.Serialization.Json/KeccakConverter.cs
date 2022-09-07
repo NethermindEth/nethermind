@@ -43,27 +43,4 @@ namespace Nethermind.Serialization.Json
             return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
         }
     }
-
-    public class KeccakUtf8Converter : System.Text.Json.Serialization.JsonConverter<Keccak>
-    {
-        public override void Write(Utf8JsonWriter writer, Keccak value, JsonSerializerOptions options)
-        {
-            if (value is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                // TODO: don't allocate the string
-                writer.WriteStringValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
-            }
-        }
-
-        public override Keccak Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            // TODO: Remove string allocation
-            string s = reader.GetString();
-            return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
-        }
-    }
 }
