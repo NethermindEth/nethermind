@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -82,13 +82,13 @@ namespace Nethermind.Serialization.Json
             using StreamReader reader = new(stream);
             return Deserialize<T>(reader);
         }
-        
+
         public T Deserialize<T>(string json)
         {
             using StringReader reader = new(json);
             return Deserialize<T>(reader);
         }
-        
+
         private T Deserialize<T>(TextReader reader)
         {
             using JsonReader jsonReader = new JsonTextReader(reader);
@@ -148,7 +148,8 @@ namespace Nethermind.Serialization.Json
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
-                Converters = ReadableConverters
+                Converters = ReadableConverters,
+                MaxDepth = 128
             };
 
             _settings = new JsonSerializerSettings
@@ -157,6 +158,7 @@ namespace Nethermind.Serialization.Json
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.None,
                 Converters = BasicConverters,
+                MaxDepth = 128
             };
 
             _internalSerializer = JsonSerializer.Create(_settings);
