@@ -1,21 +1,23 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
 using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
@@ -67,19 +69,28 @@ namespace Nethermind.Db.Test
                     // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] {1, 2, 3});
                 }
-                
+
                 // ReSharper disable once FunctionNeverReturns
             });
 
             task.Start();
 
             await Task.Delay(100);
-            
+
             db.Dispose();
-            
+
             await Task.Delay(100);
-            
+
             task.Dispose();
+        }
+
+        [Test]
+        public void Dispose_wont_cause_ObjectDisposedException_when_batch_is_still_open()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new ("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
+            IBatch batch = db.StartBatch();
+            db.Dispose();
         }
 
         private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)

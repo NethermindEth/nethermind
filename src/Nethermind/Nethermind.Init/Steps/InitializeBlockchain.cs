@@ -267,7 +267,7 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig);
+            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig, getApi.LogManager);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);

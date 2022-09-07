@@ -47,7 +47,7 @@ configs = {
         "multiplierRequirement": 10000
     },
     "xdai": {
-        "url": "http://rpc.gnosischain.com",
+        "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
@@ -83,7 +83,7 @@ configs = {
         "multiplierRequirement": 30000 
     },
     "xdai_mev": {
-        "url": "http://rpc.gnosischain.com",
+        "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
@@ -99,7 +99,7 @@ configs = {
         "multiplierRequirement": 30000 
     },
     "xdai_aa": {
-        "url": "http://rpc.gnosischain.com",
+        "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }

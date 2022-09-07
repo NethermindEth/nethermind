@@ -137,7 +137,6 @@ namespace Nethermind.Runner.Test
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 initConfig.BaseDbPath = tempPath.Path;
-                initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
                 INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
                 int port = basePort + testIndex;

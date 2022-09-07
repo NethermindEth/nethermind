@@ -193,7 +193,7 @@ public partial class BlockDownloaderTests
         {
             BlockHeader header = (BlockHeader)info[0];
             // Simulate something calls find header on the header, causing the TD to get recalculated
-            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             return true;
         }));
 
