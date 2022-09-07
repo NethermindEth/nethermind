@@ -105,10 +105,13 @@ public class TraceStoreRpcModule : ITraceRpcModule
         {
             if (blockSearch.IsError)
             {
+                if (_logger.IsTrace) _logger.Trace($"Can't find block during trace_filter {blockSearch.Error}, {blockSearch.ErrorCode}");
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object!;
+
+            if (_logger.IsTrace) _logger.Trace($"Found block during trace_filter {block}{(blockSearch.Object is null ? "NULL!" : "")}");
             if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
             {
                 FilterTraces(traces, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
@@ -116,6 +119,8 @@ public class TraceStoreRpcModule : ITraceRpcModule
             }
             else
             {
+                if (_logger.IsTrace) _logger.Trace($"Can't find block traces for {block} during trace_filter");
+
                 // fallback when we miss any traces in db
                 return _traceModule.trace_filter(traceFilterForRpc);
             }
