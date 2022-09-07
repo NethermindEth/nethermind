@@ -1,0 +1,192 @@
+{
+  "name": "Ethereum",
+  "dataDir": "ethereum",
+  "engine": {
+    "Ethash": {
+      "params": {
+        "minimumDifficulty": "0x20000",
+        "difficultyBoundDivisor": "0x800",
+        "durationLimit": "0xd",
+        "blockReward": {
+          "0x0": "0x4563918244f40000",
+          "0x42ae50": "0x29a2241af62c0000",
+          "0x6f1580": "0x1bc16d674ec80000"
+        },
+        "homesteadTransition": "0x118c30",
+        "daoHardforkTransition": "0x1d4c00",
+        "daoHardforkBeneficiary": "0xbf4ed7b27f1d666546e30d74d50d173d20bca754",
+        "daoHardforkAccounts": [],
+        "eip100bTransition": "0x42ae50",
+        "difficultyBombDelays": {
+          "0x42ae50": "0x2dc6c0",
+          "0x6f1580": "0x1e8480",
+          "0x8C6180": "0x3D0900",
+          "0xC5D488": "0xAAE60",
+          "0xD228C8": "0xF4240",
+          "0xE5A510": "0xAAE60"
+        }
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "registrar": "0xe3389675d0338462dC76C6f9A3e432550c36A142",
+    "accountStartNonce": "0x0",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID": "0x1",
+    "forkBlock": "0x1d4c00",
+    "forkCanonHash": "0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb",
+    "eip150Transition": "0x259518",
+    "eip160Transition": "0x28d138",
+    "eip161abcTransition": "0x28d138",
+    "eip161dTransition": "0x28d138",
+    "eip155Transition": "0x28d138",
+    "maxCodeSize": "0x6000",
+    "maxCodeSizeTransition": "0x28d138",
+    "eip140Transition": "0x42ae50",
+    "eip211Transition": "0x42ae50",
+    "eip214Transition": "0x42ae50",
+    "eip658Transition": "0x42ae50",
+    "eip145Transition": "0x6f1580",
+    "eip1014Transition": "0x6f1580",
+    "eip1052Transition": "0x6f1580",
+    "eip152Transition": "0x8a61c8",
+    "eip1108Transition": "0x8a61c8",
+    "eip1344Transition": "0x8a61c8",
+    "eip1884Transition": "0x8a61c8",
+    "eip2028Transition": "0x8a61c8",
+    "eip2200Transition": "0x8a61c8",
+    "eip2565Transition": "0xBAD420",
+    "eip2929Transition": "0xBAD420",
+    "eip2930Transition": "0xBAD420",
+    "eip1559Transition": "0xC5D488",
+    "eip3198Transition": "0xC5D488",
+    "eip3529Transition": "0xC5D488",
+    "eip3541Transition": "0xC5D488",
+    "terminalTotalDifficulty": "C70D808A128D7380000"
+  },
+  "genesis": {
+    "seal": {
+      "ethereum": {
+        "nonce": "0x0000000000000042",
+        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "difficulty": "0x400000000",
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x0",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa",
+    "gasLimit": "0x1388",
+    "stateRoot": "0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544"
+  },
+  "nodes": [
+    "enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303",
+  ],
+  "accounts": {
+    "0x0000000000000000000000000000000000000001": {
+      "builtin": {
+        "name": "ecrecover",
+        "pricing": {
+          "linear": {
+            "base": 3000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000002": {
+      "builtin": {
+        "name": "sha256",
+        "pricing": {
+          "linear": {
+            "base": 60,
+            "word": 12
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000003": {
+      "builtin": {
+        "name": "ripemd160",
+        "pricing": {
+          "linear": {
+            "base": 600,
+            "word": 120
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000004": {
+      "builtin": {
+        "name": "identity",
+        "pricing": {
+          "linear": {
+            "base": 15,
+            "word": 3
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000005": {
+      "builtin": {
+        "name": "modexp",
+        "activate_at": "0x42ae50",
+        "pricing": {
+          "modexp": {
+            "divisor": 20
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000006": {
+      "builtin": {
+        "name": "alt_bn128_add",
+        "activate_at": "0x42ae50",
+        "pricing": {
+          "linear": {
+            "base": 500,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000007": {
+      "builtin": {
+        "name": "alt_bn128_mul",
+        "activate_at": "0x42ae50",
+        "pricing": {
+          "linear": {
+            "base": 40000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000008": {
+      "builtin": {
+        "name": "alt_bn128_pairing",
+        "activate_at": "0x42ae50",
+        "pricing": {
+          "alt_bn128_pairing": {
+            "base": 100000,
+            "pair": 80000
+          }
+        }
+      }
+    },
+    "0x3282791d6fd713f1e94f4bfd565eaa78b3a0599d": {
+      "balance": "0x487a9a304539440000"
+    },
+    "0x17961d633bcf20a7b029a7d94b7df4da2ec5427f": {
+      "balance": "0xc6ff070f1938b8000"
+    },
+    "0x493a67fe23decc63b10dda75f3287695a81bd5ab": {
+      "balance": "0x2fb474098f67c00000"
+    },
+    "0x01fb8ec12425a04f813e46c54c05748ca6b29aa9": {
+      "balance": "0xe15730385467c0000"
+    }
+  }
+}
