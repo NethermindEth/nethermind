@@ -20,13 +20,17 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.GethSpecStyle.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle
@@ -51,7 +55,34 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             try
             {
+                // we attempt to deserialize data as Chainspec json object
                 ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
+                return LoadFromDeserializedData(chainSpecJson);
+            }
+            catch(InvalidDataException)
+            {
+                // we try to deserialize data as Geth genesis format (this block will not run unless the happy path fails)
+                // Note : this will obscure errors if the file provided is an ill-formed Parity chainspec
+                ChainSpecJson chainSpecJson = LoadFromGethGenesis(jsonData);
+                return LoadFromDeserializedData(chainSpecJson);
+            }
+            catch (Exception e)
+            {
+                throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
+            }
+        }
+
+        private ChainSpecJson LoadFromGethGenesis(string jsonData)
+        {
+            var gethConfig = _serializer.Deserialize<GethGenesisJson>(jsonData);
+            ArgumentNullException.ThrowIfNull(gethConfig, $"{nameof(gethConfig)} is null");
+            return gethConfig.ToParityChainsSpec();
+        }
+
+        private ChainSpec LoadFromDeserializedData(ChainSpecJson chainSpecJson)
+        {
+            try
+            {
                 ChainSpec chainSpec = new();
 
                 chainSpec.ChainId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId;
@@ -71,6 +102,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
             }
         }
+
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
