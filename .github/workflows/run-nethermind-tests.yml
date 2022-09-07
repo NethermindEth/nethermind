@@ -73,7 +73,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Core.Test
     - name: Nethermind.Db.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Db.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Db.Test -l "console;verbosity=detailed"
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
@@ -187,7 +187,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.KeyStore.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test        
+        dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test -l "console;verbosity=detailed"
     - name: Nethermind.TxPool.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.TxPool.Test   
