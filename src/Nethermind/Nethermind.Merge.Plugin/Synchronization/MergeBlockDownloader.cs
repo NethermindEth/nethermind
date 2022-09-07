@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -296,6 +297,26 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
 
             return blocksSynced;
+        }
+
+        protected override async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        {
+            // Override PoW's RequestHeaders so that it won't request beyond PoW.
+            // This fixes `Incremental Sync` hive test.
+            BlockHeader[] response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
+            if (response.Length > 0)
+            {
+                BlockHeader lastBlockHeader = response[^1];
+                bool lastBlockIsPostMerge = _poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
+                if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
+                {
+                    response = response
+                        .TakeWhile((header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
+                        .ToArray();
+                    if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Length} sized batch.");
+                }
+            }
+            return response;
         }
 
         protected override void TryUpdateTerminalBlock(BlockHeader header, bool shouldProcess)
