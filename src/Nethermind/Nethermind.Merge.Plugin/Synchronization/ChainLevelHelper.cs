@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksRequestNumberOfLatestBlocksToBeIgnored);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int lastBlockToIgnore);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
