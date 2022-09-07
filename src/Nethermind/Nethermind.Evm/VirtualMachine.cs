@@ -882,20 +882,8 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            a.Abs(out Int256.Int256 absA);
-                            b.Abs(out Int256.Int256 absB);
-                            absA.Mod(in absB, out Int256.Int256 mod);
-
-                            int sign = a.Sign;
-                            if (sign < 0)
-                            {
-                                mod.Neg(out Int256.Int256 res);
-                                stack.PushSignedInt256(in res);
-                            }
-                            else
-                            {
-                                stack.PushSignedInt256(in mod);
-                            }
+                            a.Mod(in b, out Int256.Int256 mod);
+                            stack.PushSignedInt256(in mod);
                         }
 
                         break;

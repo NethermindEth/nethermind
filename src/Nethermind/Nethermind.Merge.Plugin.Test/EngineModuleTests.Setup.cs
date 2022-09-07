@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,6 +47,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using NLog.Fluent;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -59,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Test
         protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
 
@@ -90,7 +91,8 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BeaconSync,
                     chain.SpecProvider,
                     chain.LogManager,
-                    newPayloadTimeout),
+                    newPayloadTimeout,
+                    newPayloadCacheSize),
                 new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
                     chain.BlockFinalizationManager,
@@ -158,7 +160,7 @@ namespace Nethermind.Merge.Plugin.Test
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 ISyncConfig syncConfig = new SyncConfig();
-                EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig);
+                EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
                 PostMergeBlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,

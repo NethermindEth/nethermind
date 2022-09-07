@@ -16,10 +16,12 @@
 //
 
 using System;
+using System.Collections;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
@@ -78,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Epoch = CliqueConfig.Default.Epoch,
                 Period = CliqueConfig.Default.BlockPeriod
             };
-            _plugin = new MergePlugin();
+            _plugin = new MergePlugin(new EnvironmentExitMock());
 
             _consensusPlugin = new();
         }
@@ -186,6 +188,24 @@ namespace Nethermind.Merge.Plugin.Test
             else
             {
                 await invocation.Should().ThrowAsync<InvalidOperationException>();
+            }
+        }
+
+        private class EnvironmentExitMock : IEnvironment
+        {
+            public string GetEnvironmentVariable(string variableName)
+            {
+                throw new NotImplementedException();
+            }
+
+            public IDictionary GetEnvironmentVariables()
+            {
+                throw new NotImplementedException();
+            }
+
+            public void Exit(int exitCode)
+            {
+                throw new InvalidOperationException($"Exit with exitCode: {exitCode}");
             }
         }
     }

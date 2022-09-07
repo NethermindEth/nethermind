@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -130,8 +131,9 @@ public partial class BlockDownloaderTests
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        RopstenSpecProvider specProvider = new();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, LimboLogs.Instance);
+            specProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
@@ -146,7 +148,7 @@ public partial class BlockDownloaderTests
             Always.Valid,
             NullSyncReport.Instance,
             receiptStorage,
-            RopstenSpecProvider.Instance,
+            specProvider,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
             new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
@@ -156,6 +158,58 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         Assert.True(posSwitcher.HasEverReachedTerminalBlock());
+    }
+
+    [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]
+    [TestCase(32L, DownloaderOptions.MoveToMain, 16, true, 3)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int options, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
+    {
+        UInt256 ttd = 10_000_000;
+        int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(
+                4,
+                (int)headNumber + 1,
+                true,
+                ttd,
+                syncedSplitFrom: ttdBlock,
+                syncedSplitVariant: negativeTd
+            );
+        BlockTree notSyncedTree = blockTrees.NotSyncedTree;
+        BlockTree syncedTree = blockTrees.SyncedTree;
+
+        Context ctx = new(notSyncedTree);
+        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+        InMemoryReceiptStorage receiptStorage = new();
+        MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        RopstenSpecProvider specProvider = new();
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
+            specProvider, LimboLogs.Instance);
+        BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
+        if (withBeaconPivot)
+            beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+
+        MergeBlockDownloader downloader = new(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            notSyncedTree,
+            Always.Valid,
+            Always.Valid,
+            NullSyncReport.Instance,
+            receiptStorage,
+            specProvider,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
+            Substitute.For<ISyncProgressResolver>(),
+            LimboLogs.Instance);
+
+        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        PeerInfo peerInfo = new(syncPeer);
+        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+        notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
     }
 
     [Test]
@@ -193,7 +247,7 @@ public partial class BlockDownloaderTests
         {
             BlockHeader header = (BlockHeader)info[0];
             // Simulate something calls find header on the header, causing the TD to get recalculated
-            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             return true;
         }));
 
