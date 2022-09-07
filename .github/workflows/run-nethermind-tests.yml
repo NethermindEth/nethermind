@@ -43,6 +43,9 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.AccountAbstraction.Test
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests
 
   neth-tests2:
     name: Running Nethermind Tests 2
