@@ -234,7 +234,6 @@ jobs:
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
       with:
-        ref: ${{ github.event.inputs.tag }}
         path: nethermind
     - uses: actions/download-artifact@master
       name: Downloading Nethermind darwin package
