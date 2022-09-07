@@ -27,7 +27,7 @@ namespace Nethermind.Core.Collections
     public class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
-        private T[] _array;
+        protected T[] _array;
         private int _count = 0;
         private int _capacity;
         private bool _disposed;
