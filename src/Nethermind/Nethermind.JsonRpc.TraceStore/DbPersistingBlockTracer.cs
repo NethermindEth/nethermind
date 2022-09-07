@@ -80,6 +80,6 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
         byte[] tracesSerialized = _serialization(result);
         _db.Set(_currentBlockHash, tracesSerialized);
-        if (_logger.IsTrace) _logger.Trace($"Saved traces for block {_currentBlockNumber} ({_currentBlockHash})");
+        if (_logger.IsTrace) _logger.Trace($"Saved traces for block {_currentBlockNumber} ({_currentBlockHash}) with size {tracesSerialized.Length} bytes for {result.Count} traces.");
     }
 }

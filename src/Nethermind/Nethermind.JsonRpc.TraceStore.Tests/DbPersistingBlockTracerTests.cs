@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
@@ -27,7 +28,7 @@ public class DbPersistingBlockTracerTests
         dbPersistingTracer.EndTxTrace();
         dbPersistingTracer.EndBlockTrace();
 
-        ParityLikeTxTrace[]? traces = TraceSerializer.Deserialize<ParityLikeTxTrace[]>(memDb.Get(block.Hash!));
+        List<ParityLikeTxTrace>? traces = TraceSerializer.Deserialize(memDb.Get(block.Hash!));
         traces.Should().BeEquivalentTo(new ParityLikeTxTrace[] { new() { BlockHash = new Keccak("0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6"), TransactionPosition = -1 } });
 
     }

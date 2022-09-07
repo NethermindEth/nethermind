@@ -210,7 +210,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         {
             if (!tracesSerialized.IsEmpty)
             {
-                List<ParityLikeTxTrace>? tracesDeserialized = TraceSerializer.Deserialize<List<ParityLikeTxTrace>>(tracesSerialized);
+                List<ParityLikeTxTrace>? tracesDeserialized = TraceSerializer.Deserialize(tracesSerialized);
                 if (tracesDeserialized is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Found persisted traces for block {block.ToString(BlockHeader.Format.FullHashAndNumber)}");
@@ -288,9 +288,17 @@ public class TraceStoreRpcModule : ITraceRpcModule
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {
-        if (traces[^1].TransactionHash is null)
+        for (int i = traces.Count - 1; i >= 0; i--)
         {
-            traces.RemoveAt(traces.Count - 1);
+            ParityLikeTxTrace trace = traces[i];
+            if (trace.TransactionHash is null && trace.Action?.Type == "reward")
+            {
+                traces.RemoveAt(i);
+            }
+            else
+            {
+                break;
+            }
         }
     }
 }

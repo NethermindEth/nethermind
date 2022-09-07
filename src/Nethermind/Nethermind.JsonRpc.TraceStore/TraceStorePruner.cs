@@ -39,24 +39,28 @@ public class TraceStorePruner : IDisposable
         _blockToKeep = blockToKeep;
         _logger = logManager.GetClassLogger<TraceStorePruner>();
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+        if (_logger.IsDebug) _logger.Debug($"TraceStore pruning is enabled, keeping last {blockToKeep} blocks.");
     }
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
-        long levelToDelete = e.Block.Number - _blockToKeep;
-        if (levelToDelete > 0)
+        Task.Run((() =>
         {
-            ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
-            if (level is not null)
+            long levelToDelete = e.Block.Number - _blockToKeep;
+            if (levelToDelete > 0)
             {
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
+                if (level is not null)
                 {
-                    BlockInfo blockInfo = level.BlockInfos[i];
-                    if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {blockInfo}");
-                    _db.Delete(blockInfo.BlockHash);
+                    for (int i = 0; i < level.BlockInfos.Length; i++)
+                    {
+                        BlockInfo blockInfo = level.BlockInfos[i];
+                        if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
+                        _db.Delete(blockInfo.BlockHash);
+                    }
                 }
             }
-        }
+        }));
     }
 
     public void Dispose()
