@@ -295,13 +295,13 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|chain difficulty:{best.ChainDifficulty}|peer block:{best.Peer.Block}|peer total difficulty:{best.Peer.TotalDifficulty}";
+            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|chain difficulty:{best.ChainDifficulty}|peer block:{best.TargetBlock}|peer block:{best.Peer.Block}|peer total difficulty:{best.Peer.TotalDifficulty}";
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
             long bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
             bool hasEverBeenInFullSync = bestBlock > _pivotNumber && best.State > _pivotNumber;
-            long heightDelta = best.Peer.Block - bestBlock;
+            long heightDelta = best.TargetBlock - bestBlock;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
 
@@ -360,8 +360,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // and we need to sync away from it.
             // Note: its ok if target block height is not accurate as long as long full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
-            long targetBlockHeight = _beaconSyncStrategy.GetTargetBlockHeight() ?? best.Peer.Block;
-            bool notReachedFullSyncTransition = best.Header < targetBlockHeight - FastSyncLag;
+            bool notReachedFullSyncTransition = best.Header < best.TargetBlock - FastSyncLag;
 
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
@@ -528,16 +527,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInStateSyncMode(Snapshot best)
         {
-            long bestPeerBlock = best.Peer.Block;
-
             bool fastSyncEnabled = FastSyncEnabled;
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
-            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(bestPeerBlock);
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.Peer.Block);
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
-            bool stickyStateNodes = bestPeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stateNotDownloadedYet = (bestPeerBlock - best.State > FastSyncLag ||
+            bool stickyStateNodes = best.TargetBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
+            bool stateNotDownloadedYet = (best.TargetBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
@@ -591,8 +588,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeBeInSnapRangesPhase(Snapshot best)
         {
             bool isInStateSync = best.IsInStateSync;
-            long peerBlock = best.Peer.Block;
-            bool isCloseToHead = peerBlock >= best.Header && (peerBlock - best.Header) < Constants.MaxDistanceFromHead;
+            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) < Constants.MaxDistanceFromHead;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)
@@ -659,9 +655,10 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
+            long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
 
-            Snapshot best = new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl);
+            Snapshot best = new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock);
             VerifySnapshot(best);
             return best;
         }
@@ -674,6 +671,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 || best.State < 0
                 || best.Processed < 0
                 || best.Peer.Block < 0
+                || best.TargetBlock < 0
                 // best header is at least equal to the best full block
                 || best.Block > best.Header
                 // we cannot download state for an unknown header
@@ -716,7 +714,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, UInt256 chainDifficulty, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
+            public Snapshot(
+                long processed,
+                long state,
+                long block,
+                long header,
+                UInt256 chainDifficulty,
+                long peerBlock,
+                in UInt256 peerDifficulty,
+                bool isInBeaconControl,
+                long targetBlock
+            )
             {
                 Processed = processed;
                 State = state;
@@ -725,6 +733,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 ChainDifficulty = chainDifficulty;
                 Peer = (peerDifficulty, peerBlock);
                 IsInBeaconControl = isInBeaconControl;
+                TargetBlock = targetBlock;
 
                 IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders
                     = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = false;
@@ -763,6 +772,11 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best block header - may be missing body if we just insert headers
             /// </summary>
             public long Header { get; }
+
+            /// <summary>
+            /// The best block that we want to go to. best.Peer.Block for PoW, beaconSync.ProcessDestination for PoS
+            /// </summary>
+            public long TargetBlock { get; }
 
             /// <summary>
             /// Current difficulty of the chain

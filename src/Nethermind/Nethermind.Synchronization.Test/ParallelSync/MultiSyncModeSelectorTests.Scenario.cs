@@ -759,6 +759,22 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenBeaconProcessDestinationWithinFastSyncLag()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                            BeaconSyncStrategy.GetTargetBlockHeight().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.IsFastBlocksHeadersFinished().Returns(true);
+                            return "beacon process destination with fast sync lag";
+                        }
+                    );
+
+                    return this;
+                }
+
                 public void TheSyncModeShouldBe(SyncMode syncMode)
                 {
                     void Test()
