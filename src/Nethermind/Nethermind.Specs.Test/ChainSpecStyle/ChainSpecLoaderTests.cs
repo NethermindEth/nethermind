@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle
 {
@@ -32,6 +33,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
     [TestFixture]
     public class ChainSpecLoaderTests
     {
+
         [Test]
         public void Can_load_hive()
         {
@@ -419,6 +421,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         [TestCase("rinkeby")]
         [TestCase("goerli")]
         [TestCase("ropsten")]
+        [TestCase("sepolia")]
         public void Can_load_chainspec_from_geth_genesis(string chainName)
         {
 
