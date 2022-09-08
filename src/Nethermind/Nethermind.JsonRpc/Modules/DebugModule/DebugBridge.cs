@@ -122,6 +122,31 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _receiptStorage.Insert(block, txReceipts);
         }
 
+        public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam) 
+        {
+            SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
+            if (searchResult.IsError)
+            {
+                throw new InvalidDataException(searchResult.Error);
+            }
+
+            Block block = searchResult.Object;
+            return _receiptStorage.Get(block);
+        }
+
+        public Transaction? GetTransactionFromHash(Keccak txHash)
+        {
+            Keccak blockHash = _receiptStorage.FindBlockHash(txHash);
+            SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
+            if (searchResult.IsError)
+            {
+                throw new InvalidDataException(searchResult.Error);
+            }
+            Block block = searchResult.Object;
+            TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+            return block?.Transactions[txReceipt.Index];
+        }
+
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
@@ -157,16 +182,24 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public byte[] GetBlockRlp(Keccak blockHash)
-        {
-            return _dbMappings[DbNames.Blocks].Get(blockHash);
-        }
 
-        public byte[] GetBlockRlp(long number)
+        public byte[] GetBlockRlp(BlockParameter parameter)
         {
-            Keccak hash = _blockTree.FindHash(number);
-            return hash == null ? null : _dbMappings[DbNames.Blocks].Get(hash);
+            if(parameter.BlockHash is Keccak hash)
+            {
+                return _dbMappings[DbNames.Blocks].Get(hash);
+
+            }
+            if (parameter.BlockNumber is long num)
+            {
+                var blockHash = _blockTree.FindHash(num);
+                return GetBlockRlp(new BlockParameter(blockHash));
+
+            }
+            return null;
         }
+        public Block? GetBlock(BlockParameter param)
+            => _blockTree.FindBlock(param);
 
         public object GetConfigValue(string category, string name)
         {
