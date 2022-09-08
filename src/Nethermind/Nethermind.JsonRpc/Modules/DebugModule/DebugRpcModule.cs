@@ -220,7 +220,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
         {
-            byte[] rlp = _debugBridge.GetBlockRlp(blockNumber);
+            byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
             if (rlp == null)
             {
                 return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
@@ -231,7 +231,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         public ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash)
         {
-            byte[] rlp = _debugBridge.GetBlockRlp(hash);
+            byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(hash));
             if (rlp == null)
             {
                 return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);    
@@ -272,5 +272,48 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _debugBridge.UpdateHeadBlock(blockHash);
             return ResultWrapper<bool>.Success(true);
         }
+
+        public ResultWrapper<byte[]> debug_getRawTransaction(Keccak transactionHash)
+        {
+            var transaction = _debugBridge.GetTransactionFromHash(transactionHash);
+            if (transaction == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            var rlp = Rlp.Encode(transaction);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
+        public ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber)
+        {
+            var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockNumber));
+            if(receipts == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
+            }
+            var rlp = Rlp.Encode(receipts);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
+        public ResultWrapper<byte[]> debug_getRawBlock(long blockNumber)
+        {
+            var blockRLP = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
+            if ( blockRLP == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            return ResultWrapper<byte[]>.Success(blockRLP);
+        } 
+
+        public ResultWrapper<byte[]> debug_getRawHeader(long blockNumber) {
+            var block = _debugBridge.GetBlock(new BlockParameter(blockNumber));
+            if (block == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+            }
+            Rlp rlp = Rlp.Encode<BlockHeader>(block.Header);
+            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        }
+
     }
 }
