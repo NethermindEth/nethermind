@@ -66,6 +66,7 @@ namespace Nethermind.Consensus.Processing
         private DateTime _lastProcessedBlock;
 
         private int _currentRecoveryQueueSize;
+        private const int MaxBlocksDuringFastSyncTransition = 2048;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private readonly Stopwatch _stopwatch = new();
 
@@ -591,6 +592,14 @@ namespace Nethermind.Consensus.Processing
 
                 if (isFastSyncTransition)
                 {
+                    // if we met this condition it is strong side that something was wrong in MultiSyncModeSelector.
+                    // MultiSyncModeSelector switched to full sync when it shouldn't
+                    // In this case it is better to stop searching for more blocks and failed during the processing than trying to do the branch up to genesis point
+                    if (blocksToBeAddedToMain.Count > MaxBlocksDuringFastSyncTransition)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Too many blocks to processed during fast sync transition. Block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
+                        break;
+                    }
                     // if we have parent state it means that we don't need to go deeper
                     if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
                     {
