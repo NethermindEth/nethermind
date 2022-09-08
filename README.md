@@ -14,7 +14,7 @@ Nethermind is a high-performance, highly configurable full Ethereum protocol cli
 
 ## Documentation
 
-Nethermind documentation can be found at [docs.nethermind.io](https://docs.nethermind.io).
+Nethermind documentation is available at [docs.nethermind.io](https://docs.nethermind.io).
 
 ### Supported networks
 
@@ -28,11 +28,8 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
 2. `sudo apt install nethermind`
-3. Link libraries (Ubuntu 21.04 and later only):
-    - On x64: `sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so`
-    - On aarch64 (arm64): `sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so`
-4. To run the launcher: `nethermind`
-5. To run the runner: `nethermind -c mainnet_pruned`
+3. To run the launcher: `nethermind`
+4. To run the runner: `nethermind -c mainnet_pruned`
 
 _Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 
@@ -75,12 +72,6 @@ The output must show the image digest, and then you can copy that output to the 
     brew install rocksdb gmp snappy lz4 zstd
     ```
 
--   _Apple silicon (M1) users only._ Create symlink for Homebrew dependencies:
-
-    ```sh
-    sudo ln -s `find /opt/homebrew/Cellar/snappy -name "libsnappy.dylib"` /usr/local/lib/libsnappy.dylib
-    ```
-
 #### Ubuntu
 
 -   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-ubuntu)
@@ -89,17 +80,6 @@ The output must show the image digest, and then you can copy that output to the 
     ```sh
     sudo apt-get install libsnappy-dev libc6-dev libc6
     ```
-
-    Link libraries (Ubuntu 21.04 and later only):
-
-    -   On x64:
-        ```sh
-        sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
-        ```
-    -   On aarch64 (arm64):
-        ```sh
-        sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so
-        ```
 
     An extra dependency for aarch64 (arm64):
 
@@ -130,7 +110,6 @@ _Tested on Debian 10 (9 not working)_
 
     # Link libraries
     sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
-    sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
     ```
 
 _Tested on CentOS 8_
@@ -145,9 +124,6 @@ _Tested on CentOS 8_
 
     # Link libraries
     sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
-    sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
-    # also required for Fedora 35
-    sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
     ```
 
 _Tested on Fedora 32_
