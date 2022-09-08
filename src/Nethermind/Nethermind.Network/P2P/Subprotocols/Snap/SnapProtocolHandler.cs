@@ -1,21 +1,22 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -35,7 +36,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int BYTES_LIMIT = 2_000_000;
+        private const int MaxBytesLimit = 2_000_000;
+        private const int MinBytesLimit = 20_000;
+        public static readonly TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(2000);
+        public static readonly TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(1000);
+        private const double BytesLimitAdjustmentFactor = 2;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -49,6 +54,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = { 0 };
+
+        private int _currentBytesLimit = MinBytesLimit;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -185,10 +192,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetAccountRangeMessage()
             {
                 AccountRange = range,
-                ResponseBytes = BYTES_LIMIT
+                ResponseBytes = _currentBytesLimit
             };
 
-            AccountRangeMessage response = await SendRequest(request, _getAccountRangeRequests, token);
+            AccountRangeMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getAccountRangeRequests, token));
 
             Metrics.SnapGetAccountRangeSent++;
 
@@ -200,10 +208,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetStorageRangeMessage()
             {
                 StoragetRange = range,
-                ResponseBytes = BYTES_LIMIT
+                ResponseBytes = _currentBytesLimit
             };
 
-            StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);
+            StorageRangeMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getStorageRangeRequests, token));
 
             Metrics.SnapGetStorageRangesSent++;
 
@@ -215,10 +224,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetByteCodesMessage()
             {
                 Hashes = codeHashes,
-                Bytes = BYTES_LIMIT
+                Bytes = _currentBytesLimit
             };
 
-            ByteCodesMessage response = await SendRequest(request, _getByteCodesRequests, token);
+            ByteCodesMessage response = await AdjustBytesLimit(() =>
+                SendRequest(request, _getByteCodesRequests, token));
 
             Metrics.SnapGetByteCodesSent++;
 
@@ -233,10 +243,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             {
                 RootHash = request.RootHash,
                 Paths = groups,
-                Bytes = BYTES_LIMIT
+                Bytes = _currentBytesLimit
             };
 
-            TrieNodesMessage response = await SendRequest(reqMsg, _getTrieNodesRequests, token);
+            TrieNodesMessage response = await AdjustBytesLimit(() =>
+                SendRequest(reqMsg, _getTrieNodesRequests, token));
 
             Metrics.SnapGetTrieNodesSent++;
 
@@ -290,5 +301,46 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(TIn)}");
         }
+
+        /// <summary>
+        /// Adjust the _currentBytesLimit depending on the latency of the request and if the request failed.
+        /// </summary>
+        /// <param name="func"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        private async Task<T> AdjustBytesLimit<T>(Func<Task<T>> func)
+        {
+            // Record bytes limit so that in case multiple concurrent request happens, we do not multiply the
+            // limit on top of other adjustment, so only the last adjustment will stick, which is fine.
+            int startingBytesLimit = _currentBytesLimit;
+            bool failed = false;
+            Stopwatch sw = Stopwatch.StartNew();
+            try
+            {
+                return await func();
+            }
+            catch (Exception)
+            {
+                failed = true;
+                throw;
+            }
+            finally
+            {
+                sw.Stop();
+                if (failed)
+                {
+                    _currentBytesLimit = MinBytesLimit;
+                }
+                else if (sw.Elapsed < LowerLatencyThreshold)
+                {
+                    _currentBytesLimit = Math.Min((int)(startingBytesLimit * BytesLimitAdjustmentFactor), MaxBytesLimit);
+                }
+                else if (sw.Elapsed > UpperLatencyThreshold && startingBytesLimit > MinBytesLimit)
+                {
+                    _currentBytesLimit = (int)(startingBytesLimit / BytesLimitAdjustmentFactor);
+                }
+            }
+        }
+
     }
 }
