@@ -49,11 +49,11 @@ public class TransactionForRpc
             MaxFeePerGas = transaction.MaxFeePerGas;
             MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         }
-        ChainId = transaction.ChainId;
         Type = transaction.Type;
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
         Signature? signature = transaction.Signature;
+        ChainId = transaction.ChainId ?? signature?.ChainId;
         if (signature != null)
         {
 
@@ -93,7 +93,14 @@ public class TransactionForRpc
 
     public UInt256? MaxFeePerGas { get; set; }
     public long? Gas { get; set; }
-    public byte[]? Data { get; set; }
+
+    [JsonIgnore]
+    private byte[]? _data = null;
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public byte[]? Data { 
+        get => _data is null || _data.Length == 0 ? null : _data;
+        set => _data = value;
+    }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public byte[]? Input { get; set; }
