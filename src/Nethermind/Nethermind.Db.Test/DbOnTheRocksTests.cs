@@ -67,8 +67,15 @@ namespace Nethermind.Db.Test
             {
                 while (true)
                 {
-                    // ReSharper disable once AccessToDisposedClosure
-                    db.Set(Keccak.Zero, new byte[] {1, 2, 3});
+                    try
+                    {
+                        // ReSharper disable once AccessToDisposedClosure
+                        db.Set(Keccak.Zero, new byte[] { 1, 2, 3 });
+                    }
+                    catch (System.Exception e)
+                    {
+                        Assert.Fail(e.Message);
+                    }
                 }
 
                 // ReSharper disable once FunctionNeverReturns
