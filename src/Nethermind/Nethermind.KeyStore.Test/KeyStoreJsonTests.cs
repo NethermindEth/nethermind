@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Security;
@@ -98,14 +99,18 @@ namespace Nethermind.KeyStore.Test
         {
             testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
             Address address = new Address(testModel.KeyData.Address);
+            Console.Log("Before StoreKey");
             _store.StoreKey(address, testModel.KeyData);
 
             try
             {
+                Console.Log("Inside try");
                 var securedPass = new SecureString();
                 testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
+                Console.Log("Before getKey");
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
+                Console.Log("After getKey");
 
                 Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
                 Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
