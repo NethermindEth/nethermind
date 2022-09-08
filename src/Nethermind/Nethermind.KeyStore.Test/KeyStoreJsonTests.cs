@@ -67,7 +67,7 @@ namespace Nethermind.KeyStore.Test
             RunTest(testModel);
         }
 
-        //[Test]
+        [Test]
         public void Test2Test()
         {           
             var testModel = _testsModel.Test2;
