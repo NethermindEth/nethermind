@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -23,6 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -62,9 +65,11 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new ("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
 
+            bool spin = true;
+
             Task task = new (() =>
             {
-                while (true)
+                while (spin)
                 {
                     // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] {1, 2, 3});
@@ -80,6 +85,14 @@ namespace Nethermind.Db.Test
             db.Dispose();
 
             await Task.Delay(100);
+
+            spin = false;
+
+            try
+            {
+                await task;
+            }
+            catch (ObjectDisposedException) { }
 
             task.Dispose();
         }
