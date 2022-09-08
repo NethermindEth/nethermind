@@ -514,29 +514,21 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    private void ReleaseUnmanagedResources()
-    {
-        // ReSharper disable once ConstantConditionalAccessQualifier
-        // running in finalizer, potentially not fully constructed
-        foreach (IBatch batch in _currentBatches)
-        {
-            batch.Dispose();
-        }
-
-        _db.Dispose();
-    }
-
     public void Dispose()
     {
         if (!_isDisposed)
         {
             if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
             Flush();
-            ReleaseUnmanagedResources();
+            foreach (IBatch batch in _currentBatches)
+            {
+                batch.Dispose();
+            }
+
+            _isDisposed = true;
+            _db.Dispose();
             _dbsByPath.Remove(_fullPath!, out _);
         }
-
-        _isDisposed = true;
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
