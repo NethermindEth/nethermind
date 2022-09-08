@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Security;
@@ -110,6 +111,14 @@ namespace Nethermind.KeyStore.Test
                 Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
                 Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
 
+            }
+            catch (Exception e)
+            {
+                Assert.Fail(
+                    "Exception during test execution." + "\n" +
+                    "Message: " + e.Message + "\n" +
+                    "Source: " + e.Source + "\n" +
+                    "InnerException: " + e.InnerException);
             }
             finally
             {
