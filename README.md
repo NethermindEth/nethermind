@@ -29,7 +29,7 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
 2. `sudo apt install nethermind`
 3. To run the launcher: `nethermind`
-4. To run the runner: `nethermind -c mainnet_pruned`
+4. To run the runner: `nethermind -c mainnet`
 
 _Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 
@@ -38,7 +38,7 @@ _Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 1. `brew tap nethermindeth/nethermind`
 2. `brew install nethermind`
 3. To run the launcher: `nethermind-launcher`
-4. To run the runner: `nethermind -c mainnet_pruned`
+4. To run the runner: `nethermind -c mainnet`
 
 ## Docker image
 
