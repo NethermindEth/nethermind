@@ -94,13 +94,8 @@ public class TransactionForRpc
     public UInt256? MaxFeePerGas { get; set; }
     public long? Gas { get; set; }
 
-    [JsonIgnore]
-    private byte[]? _data = null;
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public byte[]? Data { 
-        get => _data is null || _data.Length == 0 ? null : _data;
-        set => _data = value;
-    }
+    public byte[]? Data { get; set; }
+    public bool ShouldSerializeData() => Data?.Length > 0;
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public byte[]? Input { get; set; }
