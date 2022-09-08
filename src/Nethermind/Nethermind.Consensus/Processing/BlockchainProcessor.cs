@@ -592,14 +592,15 @@ namespace Nethermind.Consensus.Processing
 
                 if (isFastSyncTransition)
                 {
-                    // if we met this condition it is strong side that something was wrong in MultiSyncModeSelector.
+                    // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
                     // MultiSyncModeSelector switched to full sync when it shouldn't
-                    // In this case it is better to stop searching for more blocks and failed during the processing than trying to do the branch up to genesis point
+                    // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
                     if (blocksToBeAddedToMain.Count > MaxBlocksDuringFastSyncTransition)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Too many blocks to processed during fast sync transition. Block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
+                        if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
                     }
+
                     // if we have parent state it means that we don't need to go deeper
                     if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
                     {
