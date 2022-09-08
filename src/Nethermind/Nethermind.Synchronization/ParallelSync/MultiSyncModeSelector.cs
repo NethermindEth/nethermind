@@ -391,6 +391,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = notInBeaconModes &&
@@ -399,6 +400,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           hasFastSyncBeenActive &&
                           notInFastSync &&
                           notInStateSync &&
+                          stateSyncFinished &&
                           notNeedToWaitForHeaders;
 
             if (_logger.IsTrace)
@@ -410,6 +412,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync),
+                    (nameof(stateSyncFinished), stateSyncFinished),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
 
