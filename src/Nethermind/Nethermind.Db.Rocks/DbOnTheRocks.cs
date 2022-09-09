@@ -36,7 +36,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
-    private int _isDisposed;
+    private int _disposedFlag;
 
     private readonly HashSet<IBatch> _currentBatches = new();
 
@@ -272,7 +272,7 @@ public class DbOnTheRocks : IDbWithSpan
     {
         get
         {
-            if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+            if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
@@ -282,7 +282,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
         set
         {
-            if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+            if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
             {
                 throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
             }
@@ -304,7 +304,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public Span<byte> GetSpan(byte[] key)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -318,7 +318,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Remove(byte[] key)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
         }
@@ -328,7 +328,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
         }
@@ -346,7 +346,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -369,7 +369,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -386,7 +386,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public bool KeyExists(byte[] key)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -413,7 +413,7 @@ public class DbOnTheRocks : IDbWithSpan
         {
             _dbOnTheRocks = dbOnTheRocks;
 
-            if (Interlocked.CompareExchange(ref _dbOnTheRocks._isDisposed, 0, 0) != 0)
+            if (Interlocked.CompareExchange(ref _dbOnTheRocks._disposedFlag, 0, 0) != 0)
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
@@ -423,7 +423,7 @@ public class DbOnTheRocks : IDbWithSpan
 
         public void Dispose()
         {
-            if (Interlocked.CompareExchange(ref _dbOnTheRocks._isDisposed, 0, 0) != 0)
+            if (Interlocked.CompareExchange(ref _dbOnTheRocks._disposedFlag, 0, 0) != 0)
             {
                 throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
             }
@@ -452,7 +452,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Flush()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) != 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) != 0)
         {
             throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
         }
@@ -516,7 +516,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) == 0)
+        if (Interlocked.CompareExchange(ref _disposedFlag, 0, 0) == 0)
         {
             if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
             Flush();
@@ -525,7 +525,7 @@ public class DbOnTheRocks : IDbWithSpan
                 batch.Dispose();
             }
 
-            if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _disposedFlag, 1, 0) == 0)
             {
                 _db.Dispose();
                 _dbsByPath.Remove(_fullPath!, out _);
