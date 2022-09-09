@@ -475,6 +475,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
+        public void When_state_sync_does_not_finished_then_sync_mode_should_be_full()
+        {
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfTheNodeDoesNotFinishStateSync()
+                .AndPeersMovedSlightlyForward()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
+        }
+
+        [Test]
         public void Switch_correctly_from_full_sync_to_state_nodes_catch_up()
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
