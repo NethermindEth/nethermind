@@ -213,6 +213,12 @@ namespace Nethermind.Init.Steps
 
             if (_syncConfig.SnapSync)
             {
+                if (_api.ProtocolsManager is null) throw new ArgumentNullException(nameof(_api.ProtocolsManager));
+
+                // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is no longer available).
+                // it is added here and never removed - when syncing process is finished we can run with eth67 and without snap.
+                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+
                 SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
                 snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
             }

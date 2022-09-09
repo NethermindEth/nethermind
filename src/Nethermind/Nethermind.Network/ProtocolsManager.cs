@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -31,6 +31,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Wit;
@@ -49,7 +50,7 @@ namespace Nethermind.Network
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
-        
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -130,7 +131,7 @@ namespace Nethermind.Network
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
-            
+
             _sessions.TryRemove(session.SessionId, out session);
         }
 
@@ -202,6 +203,7 @@ namespace Nethermind.Network
                         64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _specProvider, _logManager),
                         65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -266,14 +268,14 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        _hangingSatelliteProtocols.AddOrUpdate(session.Node, 
+                        _hangingSatelliteProtocols.AddOrUpdate(session.Node,
                             new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] {new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler)}),
                             (node, dict) =>
                         {
                             dict[session.SessionId] = handler;
                             return dict;
                         });
-                        
+
                         if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                     }
 
@@ -349,7 +351,7 @@ namespace Nethermind.Network
                                 if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
-                        
+
                         _syncPool.AddPeer(handler);
                         if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
@@ -400,7 +402,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
                 session.Node.Port = eventArgs.ListenPort;
             }
-            
+
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
@@ -409,7 +411,7 @@ namespace Nethermind.Network
         {
             _capabilities.Add(capability);
         }
-        
+
         public void RemoveSupportedCapability(Capability capability)
         {
             if (_capabilities.Remove(capability))
