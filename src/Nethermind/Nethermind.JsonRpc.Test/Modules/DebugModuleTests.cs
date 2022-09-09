@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlockDecoder decoder = new();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-            debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
+            debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockDecoder decoder = new();
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-            debugBridge.GetBlockRlp(1).Returns(rlp.Bytes);
+            debugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_block_rlp_when_missing()
         {
-            debugBridge.GetBlockRlp(1).Returns((byte[])null);
+            debugBridge.GetBlockRlp(new BlockParameter(1)).Returns((byte[])null);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlockDecoder decoder = new();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-            debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[])null);
+            debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns((byte[])null);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
