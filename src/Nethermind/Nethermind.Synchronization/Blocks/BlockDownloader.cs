@@ -53,6 +53,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool _cancelDueToBetterPeer;
         private AllocationWithCancellation _allocationWithCancellation;
+        protected bool HasBetterPeer => _allocationWithCancellation.Cancellation.IsCancellationRequested;
 
         protected SyncBatchSize _syncBatchSize;
         protected int _sinceLastTimeout;
@@ -110,10 +111,6 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             if (!_blockTree.CanAcceptNewBlocks) return;
-            CancellationTokenSource linkedCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellation,
-                    _allocationWithCancellation.Cancellation.Token);
 
             try
             {
@@ -121,14 +118,14 @@ namespace Nethermind.Synchronization.Blocks
                 if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
                 {
                     if (Logger.IsDebug) Logger.Debug("Downloading bodies");
-                    await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token)
+                    await DownloadBlocks(bestPeer, blocksRequest, cancellation)
                         .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
                     if (Logger.IsDebug) Logger.Debug("Finished downloading bodies");
                 }
                 else
                 {
                     if (Logger.IsDebug) Logger.Debug("Downloading headers");
-                    await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token)
+                    await DownloadHeaders(bestPeer, blocksRequest, cancellation)
                         .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
                     if (Logger.IsDebug) Logger.Debug("Finished downloading headers");
                 }
@@ -136,7 +133,6 @@ namespace Nethermind.Synchronization.Blocks
             finally
             {
                 _allocationWithCancellation.Dispose();
-                linkedCancellation.Dispose();
             }
         }
 
@@ -157,6 +153,7 @@ namespace Nethermind.Synchronization.Blocks
                 => currentNumber <= bestPeer!.HeadNumber;
             while (ImprovementRequirementSatisfied(bestPeer) && HasMoreToSync())
             {
+                if (HasBetterPeer) break;
                 int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
@@ -272,6 +269,7 @@ namespace Nethermind.Synchronization.Blocks
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
             {
+                if (HasBetterPeer) break;
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
@@ -419,7 +417,7 @@ namespace Nethermind.Synchronization.Blocks
                 _sinceLastTimeout = 0;
                 if (downloadTask.Exception?.Flatten().InnerExceptions.Any(x => x is TimeoutException) ?? false)
                 {
-                    if (_logger.IsTrace) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
+                    if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
                     _syncBatchSize.Shrink();
                 }
 
@@ -453,7 +451,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
+                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, Math.Max(_syncBatchSize.Current, peer.MaxBodiesPerRequest()));
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
                 BlockBody[] result = getBodiesRequest.Result;

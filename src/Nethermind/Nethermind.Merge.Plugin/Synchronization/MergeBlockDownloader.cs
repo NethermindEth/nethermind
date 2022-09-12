@@ -133,6 +133,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
+                if (HasBetterPeer)
+                {
+                    if (_logger.IsDebug) _logger.Debug("-- Has better peer, stopping...");
+                    break;
+                }
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 Block[]? blocks = null;
