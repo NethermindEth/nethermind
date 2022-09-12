@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Processing
         private DateTime _lastProcessedBlock;
 
         private int _currentRecoveryQueueSize;
-        private const int MaxBlocksDuringFastSyncTransition = 2048;
+        private const int MaxBlocksDuringFastSyncTransition = 8192;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private readonly Stopwatch _stopwatch = new();
 
