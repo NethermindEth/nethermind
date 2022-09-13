@@ -28,7 +28,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         // Speed calculation is a bit broken, so we don't set this too high until we fix that to prevent getting stuck
         // on slow peer which might reduces overall overall throughput. This is still an improvement though.
-        private readonly TimeSpan _maxAccountRequestWait = TimeSpan.FromMilliseconds(200);
+        public const int MAX_ACCOUNT_REQUEST_WAIT = 200;
+        private readonly TimeSpan _maxAccountRequestWait = TimeSpan.FromMilliseconds(MAX_ACCOUNT_REQUEST_WAIT);
         private readonly AutoResetEvent _accountRequestCompleted = new(false);
 
         private readonly ILogger _logger;
@@ -90,6 +91,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return CreateAccountRefreshRequest(request, rootHash);
             }
+            // Essentially, although we always want to prioritize this request whenever possible, if the current queue is kinda full, we don't.
             else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
                 return CreateAccountRangeRequest(rootHash, blockNumber, request);
