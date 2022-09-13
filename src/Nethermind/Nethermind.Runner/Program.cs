@@ -34,6 +34,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Db.Rocks;
 using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -45,6 +46,7 @@ using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
 using NLog;
 using NLog.Config;
+using RocksDbSharp;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner
@@ -156,6 +158,8 @@ namespace Nethermind.Runner
 
                 EthereumJsonSerializer serializer = new();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
+                string rocksDbVersion = DbOnTheRocks.GetRocksDbVersion();
+                if (_logger.IsInfo) _logger.Info($"RocksDb Version: {rocksDbVersion}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
 
