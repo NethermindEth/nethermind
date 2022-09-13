@@ -232,7 +232,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                         .WithTotalDifficulty(block.TotalDifficulty + 1000000)
-                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
                     Blocks.Add(block);
                 }
 
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                         .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
                     Blocks.Add(block);
                 }
 
@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.Test
 
             private ISyncPeerPool SyncPeerPool { get; }
 
-//            ILogManager _logManager = LimboLogs.Instance;
+            //            ILogManager _logManager = LimboLogs.Instance;
             ILogManager _logManager = LimboLogs.Instance;
 
             private ILogger _logger;
@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
 
-                MergeConfig? mergeConfig = new() {Enabled = true };
+                MergeConfig? mergeConfig = new() { };
                 if (WithTTD(synchronizerType))
                 {
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
@@ -362,7 +362,7 @@ namespace Nethermind.Synchronization.Test
 
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
-                Pivot pivot = new (syncConfig);
+                Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 IBlockDownloaderFactory blockDownloaderFactory;
@@ -562,7 +562,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
-                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
+                ((SyncPeerMock)syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
 
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);

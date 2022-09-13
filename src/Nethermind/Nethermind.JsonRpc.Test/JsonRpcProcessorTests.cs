@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Test
         private JsonRpcContext _context;
 
         private JsonRpcErrorResponse _errorResponse = new();
-        
+
         public JsonRpcProcessorTests(bool returnErrors)
         {
             _returnErrors = returnErrors;
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test
         public void Initialize()
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
-            service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? (JsonRpcResponse) new JsonRpcErrorResponse {Id = ci.Arg<JsonRpcRequest>().Id} : new JsonRpcSuccessResponse {Id = ci.Arg<JsonRpcRequest>().Id});
+            service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? (JsonRpcResponse)new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
             service.GetErrorResponse(0, null).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test
             /* we enable recorder always to have an easy smoke test for recording
              * and this is fine because recorder is non-critical component
              */
-            JsonRpcConfig configWithRecorder = new() {RpcRecorderState = RpcRecorderState.All};
+            JsonRpcConfig configWithRecorder = new() { RpcRecorderState = RpcRecorderState.All };
 
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual(BigInteger.Parse("12345678901234567890"), result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_hex_ids()
         {
@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual("0xa1aa12434", result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_int()
         {
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual(67, result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_uppercase_params()
         {
@@ -118,8 +118,8 @@ namespace Nethermind.JsonRpc.Test
                 result[0].Response.Should().BeOfType<JsonRpcSuccessResponse>();
             }
         }
-        
-        
+
+
         [Test]
         public async Task Can_process_long_ids()
         {
@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual(long.MaxValue, result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_special_characters_in_ids()
         {
@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual(";\\\"", result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_null_in_ids()
         {
@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             Assert.AreEqual(null, result[0].Response.Id);
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_nested_object_params()
         {
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Test
                 result[0].Responses.Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_nested_array_params()
         {
@@ -175,7 +175,7 @@ namespace Nethermind.JsonRpc.Test
                 result[0].Responses.Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_object_params()
         {
@@ -184,7 +184,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Response.Should().NotBeNull();
             result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_value_params()
         {
@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Response.Should().NotBeNull();
             result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
         }
-        
+
         [Test]
         public async Task Can_process_batch_request()
         {
@@ -202,7 +202,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().NotBeNull();
             result[0].Response.Should().BeNull();
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_some_params_missing()
         {
@@ -224,7 +224,7 @@ namespace Nethermind.JsonRpc.Test
             result[1].Responses.Should().BeNull();
             result[1].Response.Should().NotBeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_single_request_and_array_with_two()
         {
@@ -238,7 +238,7 @@ namespace Nethermind.JsonRpc.Test
             result[1].Responses.Should().HaveCount(2);
             Assert.IsTrue(result[1].Responses.All(r => r != _errorResponse));
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_second_not_closed_request()
         {
@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Test
             result[1].Responses.Should().BeNull();
             result[1].Response.Should().BeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public async Task Can_process_batch_request_with_single_request_and_incorrect()
         {
@@ -270,7 +270,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public async Task Can_handle_empty_array_request()
         {
@@ -280,7 +280,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().NotBeNull();
             Assert.IsTrue(result[0].Responses.All(r => r != _errorResponse));
         }
-        
+
         [Test]
         public async Task Can_handle_empty_object_request()
         {
@@ -290,7 +290,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().BeNull();
             result[0].Response.Should().NotBeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public async Task Can_handle_array_of_empty_requests()
         {
@@ -301,7 +301,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().HaveCount(3);
             Assert.IsTrue(result[0].Responses.All(r => r != _errorResponse));
         }
-        
+
         [Test]
         public async Task Can_handle_value_request()
         {
@@ -311,7 +311,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public async Task Can_handle_null_request()
         {
@@ -321,7 +321,7 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
-        
+
         [Test]
         public void Cannot_accept_null_file_system()
         {

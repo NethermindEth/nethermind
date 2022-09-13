@@ -47,7 +47,7 @@ namespace Nethermind.EvmPlayground
             _logger = logger ?? NullLogger.Instance;
             _jsonSerializer = jsonSerializer;
 
-            _client = new HttpClient {BaseAddress = uri};
+            _client = new HttpClient { BaseAddress = uri };
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }

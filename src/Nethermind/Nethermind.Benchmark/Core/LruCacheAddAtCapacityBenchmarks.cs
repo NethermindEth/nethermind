@@ -24,7 +24,7 @@ namespace Nethermind.Benchmarks.Core
         const int Capacity = 16;
         private object _object = new object();
         private LruCache<int, object> shared;
-        
+
         [GlobalSetup]
         public void Setup()
         {

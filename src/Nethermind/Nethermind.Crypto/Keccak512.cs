@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,9 +16,8 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Threading;
-using Nethermind.HashLib;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
 {
@@ -76,8 +75,6 @@ namespace Nethermind.Crypto
             return InternalCompute(input);
         }
 
-        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512? _hash;
-        
         public static uint[] ComputeToUInts(byte[] input)
         {
             if (input is null || input.Length == 0)
@@ -85,12 +82,7 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null) // avoid allocating Init func
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return _hash.ComputeBytesToUint(input);
+            return KeccakHash.ComputeBytesToUint(input, Size);
         }
 
         public static uint[] ComputeUIntsToUInts(Span<uint> input)
@@ -100,14 +92,9 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return _hash.ComputeUIntsToUint(input);
+            return KeccakHash.ComputeUIntsToUint(input, Size);
         }
-        
+
         public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
         {
             if (input.Length == 0)
@@ -115,27 +102,12 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            _hash.ComputeUIntsToUint(input, output);
+            KeccakHash.ComputeUIntsToUint(input, output);
         }
 
-        private static HashLib.Crypto.SHA3.Keccak512 Init()
-        {
-            return HashFactory.Crypto.SHA3.CreateKeccak512();
-        }
-        
         private static Keccak512 InternalCompute(byte[] input)
         {
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return new Keccak512(_hash.ComputeBytes(input).GetBytes());
+            return new Keccak512(KeccakHash.ComputeHash(input, Size).ToArray());
         }
 
         public static Keccak512 Compute(string? input)

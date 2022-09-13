@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, ((UInt256)chainId).ToBigEndian());
         }
-        
+
         private class Custom0 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
                 Test(SpecProvider.ChainId);
             }
         }
-        
+
         private class Custom32000 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
                 Test(SpecProvider.ChainId);
             }
         }
-        
+
         private class Goerli : Eip1344Tests
         {
             protected override long BlockNumber => GoerliSpecProvider.IstanbulBlockNumber;
@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Test
                 Test(SpecProvider.ChainId);
             }
         }
-        
+
         private class Mainnet : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Test
                 Test(SpecProvider.ChainId);
             }
         }
-        
+
         private class Ropsten : Eip1344Tests
         {
             protected override long BlockNumber => RopstenSpecProvider.IstanbulBlockNumber;

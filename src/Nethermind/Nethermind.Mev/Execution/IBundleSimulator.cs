@@ -38,6 +38,6 @@ namespace Nethermind.Mev.Execution
 
             return await Task.WhenAll(simulations);
         }
-        
+
     }
 }

@@ -330,13 +330,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             if (data.Length != 0)
             {
-                _currentOperation.Memory = new ParityMemoryChangeTrace {Offset = offset, Data = data.ToArray()};
+                _currentOperation.Memory = new ParityMemoryChangeTrace { Offset = offset, Data = data.ToArray() };
             }
         }
 
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
-            _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
+            _currentOperation.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();

@@ -57,16 +57,9 @@
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+    <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Data Marketplace - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\..\..\Nethermind Ethereum Client - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Ethereum Client - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -79,9 +72,6 @@
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
-    <Content Include="git-hash">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -112,23 +102,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <GitHash Include="git-hash" />
-  </ItemGroup>
-  <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
-
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
-    <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue" />
-  </Target>
-
-  <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
-    <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue" />
-  </Target>
 
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
@@ -147,4 +122,20 @@
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
+
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
+    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>Commit</_Parameter1>
+        <_Parameter2>$(Commit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
 </Project>

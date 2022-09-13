@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,13 +23,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class NewBlockMessageSerializer : IZeroInnerMessageSerializer<NewBlockMessage>
     {
         private BlockDecoder _blockDecoder = new();
-        
+
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            
+
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.Block);
             rlpStream.Encode(message.TotalDifficulty);
@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
                             Rlp.LengthOf(message.TotalDifficulty);
-            
+
             return Rlp.LengthOfSequence(contentLength);
         }
 

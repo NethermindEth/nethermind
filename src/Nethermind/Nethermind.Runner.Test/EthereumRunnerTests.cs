@@ -54,12 +54,12 @@ namespace Nethermind.Runner.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
-        private static readonly Lazy<ICollection> _cachedProviders = new (InitOnce);
+        private static readonly Lazy<ICollection> _cachedProviders = new(InitOnce);
 
         public static ICollection InitOnce()
         {
             // by pre-caching configs providers we make the tests do lot less work
-            ConcurrentQueue<(string, ConfigProvider)> result = new ();
+            ConcurrentQueue<(string, ConfigProvider)> result = new();
             Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
             {
                 var configProvider = new ConfigProvider();
@@ -137,7 +137,6 @@ namespace Nethermind.Runner.Test
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 initConfig.BaseDbPath = tempPath.Path;
-                initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
                 INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
                 int port = basePort + testIndex;

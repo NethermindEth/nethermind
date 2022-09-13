@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,7 +16,9 @@
 //
 
 using System;
+using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -44,7 +46,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
         boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
@@ -100,7 +102,7 @@ public partial class EngineModuleTests
     [Parallelizable(ParallelScope.None)]
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IJsonSerializer serializer = chain.JsonSerializer;
 
@@ -113,8 +115,58 @@ public partial class EngineModuleTests
             .WithContent("{\"timestamp\":\"0x3e8\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"suggestedFeeRecipient\":\"0x0000000000000000000000000000000000000000\"}")
             .Respond("application/json", "{\"timestamp\":\"0x3e9\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"suggestedFeeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}");
 
+        //TODO: think about extracting an essely serialisable class, test its serializatoin sepratly, refactor with it similar methods like the one above
+        string expected_parentHash = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133";
+        string expected_feeRecipient = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        string expected_stateRoot = "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f";
+        string expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
+        string expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        string expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
+        string expected_blockNumber = "0x1";
+        string expected_gasLimit = "0x3d0900";
+        string expected_gasUsed = "0x0";
+        string expected_timestamp = "0x3e9";
+        string expected_extraData = "0x4e65746865726d696e64"; // Nethermind
+        string expected_baseFeePerGas = "0x0";
+        string expected_blockHash = "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b";
+        string expected_transactions = "[]";
+        string expected_profit = "0x0";
+
+
+        string expectedContent = "{\"block\":{\"parentHash\":\"" +
+                                 expected_parentHash +
+                                 "\",\"feeRecipient\":\"" +
+                                 expected_feeRecipient +
+                                 "\",\"stateRoot\":\"" +
+                                 expected_stateRoot +
+                                 "\",\"receiptsRoot\":\"" +
+                                 expected_receiptsRoot +
+                                 "\",\"logsBloom\":\"" +
+                                 expected_logsBloom +
+                                 "\",\"prevRandao\":\"" +
+                                 expected_prevRandao +
+                                 "\",\"blockNumber\":\"" +
+                                 expected_blockNumber +
+                                 "\",\"gasLimit\":\"" +
+                                 expected_gasLimit +
+                                 "\",\"gasUsed\":\"" +
+                                 expected_gasUsed +
+                                 "\",\"timestamp\":\"" +
+                                 expected_timestamp +
+                                 "\",\"extraData\":\"" +
+                                 expected_extraData +
+                                 "\",\"baseFeePerGas\":\"" +
+                                 expected_baseFeePerGas +
+                                 "\",\"blockHash\":\"" +
+                                 expected_blockHash +
+                                 "\",\"transactions\":" +
+                                 expected_transactions +
+                                 "},\"profit\":\"" +
+                                 expected_profit +
+                                 "\"}";
+
         mockHttp.Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
-            .WithContent("{\"block\":{\"parentHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"feeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0x3e9\",\"extraData\":\"0x\",\"baseFeePerGas\":\"0x0\",\"blockHash\":\"0xb519d89363b891216dbf9bd046f226cae9348a90ba0db00e7ade437fff7a1510\",\"transactions\":[]},\"profit\":\"0x0\"}");
+            .WithContent(expectedContent);
 
         DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
@@ -151,7 +203,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBlockImprovementContextFactory improvementContextFactory;
         if (relay)
@@ -182,7 +234,7 @@ public partial class EngineModuleTests
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L}).Result.Data
+                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
             .PayloadId!;
 
         ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));

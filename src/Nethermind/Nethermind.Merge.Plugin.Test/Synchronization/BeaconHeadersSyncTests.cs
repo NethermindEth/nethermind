@@ -122,7 +122,7 @@ public class BeaconHeadersSyncTests
                         progressTracker,
                         SyncConfig,
                         LimboLogs.Instance);
-                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new (LimboLogs.Instance);
+                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                     _selector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, SyncConfig, BeaconSync,
                         bestPeerStrategy, LimboLogs.Instance);
                 }
@@ -179,7 +179,7 @@ public class BeaconHeadersSyncTests
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, ctx.SyncConfig, ctx.BlockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
@@ -200,7 +200,7 @@ public class BeaconHeadersSyncTests
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         ISyncReport report = Substitute.For<ISyncReport>();
         report.HeadersInQueue.Returns(new MeasuredProgress());
-        MeasuredProgress measuredProgress = new ();
+        MeasuredProgress measuredProgress = new();
         report.BeaconHeaders.Returns(measuredProgress);
         ISyncConfig syncConfig = new SyncConfig
         {
@@ -209,14 +209,14 @@ public class BeaconHeadersSyncTests
             PivotNumber = "1000",
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
-         };
+        };
 
         Context ctx = new()
         {
             BlockTree = blockTree,
             Report = report,
             SyncConfig = syncConfig,
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
@@ -278,7 +278,7 @@ public class BeaconHeadersSyncTests
         blockTree.SuggestBlock(firstBlock);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
         IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
-        Context ctx = new () { BlockTree = blockTree, BeaconPivot = pivot };
+        Context ctx = new() { BlockTree = blockTree, BeaconPivot = pivot };
 
         // fork in chain
         Block parent = firstBlock;

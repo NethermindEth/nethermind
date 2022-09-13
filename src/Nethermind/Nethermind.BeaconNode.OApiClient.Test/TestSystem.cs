@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.BeaconNode.OApiClient.Test
         public static IServiceCollection BuildTestServiceCollection()
         {
             var services = new ServiceCollection();
-            
+
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("Development/appsettings.json")
@@ -41,9 +41,9 @@ namespace Nethermind.BeaconNode.OApiClient.Test
                 configure.SetMinimumLevel(LogLevel.Trace);
                 configure.AddConsole();
             });
-            
+
             services.AddBeaconNodeOapiClient(configuration);
-            
+
             return services;
         }
 

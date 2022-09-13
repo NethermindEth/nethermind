@@ -51,7 +51,8 @@ namespace Nethermind.Consensus.AuRa
             IAuraConfig config,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
-            ILogManager logManager) 
+            ILogManager logManager,
+            IMiningConfig miningConfig)
             : base(
                 txSource,
                 processor,
@@ -63,7 +64,8 @@ namespace Nethermind.Consensus.AuRa
                 timestamper,
                 specProvider,
                 logManager,
-                new AuraDifficultyCalculator(auRaStepCalculator))
+                new AuraDifficultyCalculator(auRaStepCalculator),
+                miningConfig)
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));

@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Modules
             {
                 return new SearchResult<BlockHeader>("Incorrect head block", ErrorCodes.InternalError);
             }
-            
+
             blockParameter ??= BlockParameter.Latest;
 
             BlockHeader header;
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules
                 ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
-        
+
         public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
         {
             Block block;
@@ -104,8 +104,8 @@ namespace Nethermind.JsonRpc.Modules
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object == null)
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain =  blockFinder.IsMainChain(finalBlockHeader.Object!);
-                bool isStartingBlockOnMainChain =  blockFinder.IsMainChain(startingBlock.Object.Header);
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
                     Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules
                     {
                         yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
                     }
-                    
+
                     for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
                     {
                         yield return SearchForBlock(blockFinder, new BlockParameter(i));
@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.Modules
                 }
 
             }
-            
+
         }
     }
 }

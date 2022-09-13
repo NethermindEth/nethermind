@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,10 +45,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
     public class StartBlockProducerAuRa
     {
         private readonly AuRaNethermindApi _api;
-        
+
         private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
-        
+
         private readonly IAuraConfig _auraConfig;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
@@ -74,13 +74,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             BuildBlocksOnAuRaSteps onAuRaSteps = new(StepCalculator, _api.LogManager);
             BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
-                onAuRaSteps, 
-                _api.BlockProcessingQueue, 
-                _api.BlockTree, 
-                _api.LogManager, 
+                onAuRaSteps,
+                _api.BlockProcessingQueue,
+                _api.BlockTree,
+                _api.LogManager,
                 !_auraConfig.AllowAuRaPrivateChains);
-            
-            _api.DisposeStack.Push((IAsyncDisposable) onlyWhenNotProcessing);
+
+            _api.DisposeStack.Push((IAsyncDisposable)onlyWhenNotProcessing);
 
             return onlyWhenNotProcessing;
         }
@@ -89,14 +89,14 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
+
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
-            
+
             BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 
             IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerEnv.ReadOnlyTxProcessingEnv);
-            
+
             IBlockProducer blockProducer = new AuRaBlockProducer(
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
@@ -110,8 +110,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _auraConfig,
                 gasLimitCalculator,
                 _api.SpecProvider,
-                _api.LogManager);
-            
+                _api.LogManager,
+                _api.ConfigProvider.GetConfig<IMiningConfig>());
+
             return Task.FromResult(blockProducer);
         }
 
@@ -130,7 +131,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 constantContractTxProcessingEnv,
-                _api.SpecProvider, 
+                _api.SpecProvider,
                 new LocalTxFilter(_api.EngineSigner));
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
@@ -155,8 +156,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 _api.DisposeStack.Push(disposableValidator);
             }
-            
-            IDictionary<long,IDictionary<Address,byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
+
+            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
             return new AuRaBlockProcessor(
@@ -165,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
                 _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
                 changeableTxProcessingEnv.StateProvider,
-                changeableTxProcessingEnv.StorageProvider, 
+                changeableTxProcessingEnv.StorageProvider,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
@@ -180,15 +181,15 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority = 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
                 new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-            
+
             (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
                 _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
-                _api.DisposeStack.Push(_minGasPricesContractDataStore);                
+                _api.DisposeStack.Push(_minGasPricesContractDataStore);
 
                 ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
@@ -206,7 +207,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         _api.ReceiptFinder,
                         _api.LogManager,
                         _localDataSource?.GetPrioritiesLocalDataSource());
-                
+
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
@@ -217,12 +218,12 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     .WithBaseFeeFilter(_api.SpecProvider)
                     .WithNullTxFilter()
                     .Build;
-                
+
 
                 return new TxPriorityTxSource(
                     _api.TxPool,
-                    processingEnv.StateReader, 
-                    _api.LogManager, 
+                    processingEnv.StateReader,
+                    _api.LogManager,
                     txFilterPipeline,
                     whitelistContractDataStore,
                     prioritiesContractDataStore,
@@ -234,7 +235,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 return CreateStandardTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
             }
         }
-        
+
         // TODO: Use BlockProducerEnvFactory
         private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
         {
@@ -285,7 +286,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxFilter txSourceFilter = CreateAuraTxFilterForProducer(readOnlyTxProcessorSource,_api.SpecProvider);
+            ITxFilter txSourceFilter = CreateAuraTxFilterForProducer(readOnlyTxProcessorSource, _api.SpecProvider);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_api.SpecProvider)
@@ -353,7 +354,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
-            IList<ITxSource> txSources = new List<ITxSource> {CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
+            IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource) };
             bool needSigner = false;
 
             if (additionalTxSource is not null)
@@ -367,10 +368,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             if (needSigner)
             {
-                TxSealer transactionSealer = new TxSealer(_api.EngineSigner, _api.Timestamper); 
+                TxSealer transactionSealer = new TxSealer(_api.EngineSigner, _api.Timestamper);
                 txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
             }
-            
+
             ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
             if (txPermissionFilter != null)
             {

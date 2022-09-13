@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -98,7 +98,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
-            
+
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new(
                 ctx.Session,
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             protocolHandler.HandleMessage(statusPacket);
-            Assert.Throws<EthSyncException>(() =>protocolHandler.HandleMessage(getReceiptsPacket));
+            Assert.Throws<EthSyncException>(() => protocolHandler.HandleMessage(getReceiptsPacket));
         }
 
         [Test]
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
-            
+
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new(
                 ctx.Session,

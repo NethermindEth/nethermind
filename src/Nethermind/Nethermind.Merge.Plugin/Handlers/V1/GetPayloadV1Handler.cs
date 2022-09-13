@@ -64,6 +64,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_logger.IsInfo) _logger.Info($"GetPayloadV1 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
 
+            Metrics.GetPayloadRequests++;
+            Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
             return ResultWrapper<ExecutionPayloadV1?>.Success(new ExecutionPayloadV1(block));
         }
     }

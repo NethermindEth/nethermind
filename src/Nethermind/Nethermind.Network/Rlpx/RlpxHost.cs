@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Rlpx
             //     new[] { new ConsoleLoggerProvider(optionsMonitor) },
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
-            
+
             _group = new SingleThreadEventLoop();
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -113,8 +113,8 @@ namespace Nethermind.Network.Rlpx
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
                         Session session = new(LocalPort, ch, _disconnectsAnalyzer, _logManager);
-                        session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
-                        session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                        session.RemoteHost = ((IPEndPoint)ch.RemoteAddress).Address.ToString();
+                        session.RemotePort = ((IPEndPoint)ch.RemoteAddress).Port;
                         InitializeChannel(ch, session);
                     }));
 
@@ -126,11 +126,11 @@ namespace Nethermind.Network.Rlpx
                         if (aggregateException?.InnerException is SocketException socketException
                             && socketException.ErrorCode == 10048)
                         {
-                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");    
+                            if (_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");
                         }
                         else
                         {
-                            if(_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
+                            if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
                         }
 
                         return null;
@@ -230,14 +230,14 @@ namespace Nethermind.Network.Rlpx
 
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (Session) sender;
+            ISession session = (Session)sender;
             session.Disconnected -= SessionOnPeerDisconnected;
             session.Dispose();
         }
 
         public async Task Shutdown()
         {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
+            //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)

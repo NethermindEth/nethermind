@@ -56,15 +56,15 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
             var skip = (page - 1) * results;
             var items = (from depositsPaymentClaimsGroup in depositsPaymentClaimGroups.Skip(skip).Take(results)
-                let consumer = consumers.Items.FirstOrDefault(c => c.DepositId == depositsPaymentClaimsGroup.Key)
-                where !(consumer is null)
-                let payments = CalculatePayments(depositsPaymentClaimsGroup)
-                select new ConsumerReportItem(consumer.DataAsset.Id, consumer.DataAsset.Name,
-                    consumer.DataRequest.Consumer, consumer.DepositId, consumer.DataRequest.Value, payments.Claimed,
-                    payments.Pending, payments.Income)).ToList();
+                         let consumer = consumers.Items.FirstOrDefault(c => c.DepositId == depositsPaymentClaimsGroup.Key)
+                         where !(consumer is null)
+                         let payments = CalculatePayments(depositsPaymentClaimsGroup)
+                         select new ConsumerReportItem(consumer.DataAsset.Id, consumer.DataAsset.Name,
+                             consumer.DataRequest.Consumer, consumer.DepositId, consumer.DataRequest.Value, payments.Claimed,
+                             payments.Pending, payments.Income)).ToList();
 
             var totalResults = items.Count();
-            var totalPages = (int) Math.Ceiling((double) totalResults / query.Results);
+            var totalPages = (int)Math.Ceiling((double)totalResults / query.Results);
             var paymentsSummary = await _paymentClaimRepository.GetPaymentsSummary(assetId: query.AssetId,
                 consumer: query.Consumer);
 

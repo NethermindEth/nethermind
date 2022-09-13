@@ -15,12 +15,12 @@ namespace Nethermind.DataMarketplace.Providers.Policies
         }
 
         public async Task<bool> CanRequestReceipts(long unpaidUnits, UInt256 unitPrice)
-            => (UInt256) unpaidUnits * unitPrice >= await _providerThresholdsService.GetCurrentReceiptRequestAsync();
-        
+            => (UInt256)unpaidUnits * unitPrice >= await _providerThresholdsService.GetCurrentReceiptRequestAsync();
+
         public async Task<bool> CanMergeReceipts(long unmergedUnits, UInt256 unitPrice)
-            => (UInt256) unmergedUnits * unitPrice >= await _providerThresholdsService.GetCurrentReceiptsMergeAsync();
+            => (UInt256)unmergedUnits * unitPrice >= await _providerThresholdsService.GetCurrentReceiptsMergeAsync();
 
         public async Task<bool> CanClaimPayment(long unclaimedUnits, UInt256 unitPrice)
-            => (UInt256) unclaimedUnits * unitPrice >= await _providerThresholdsService.GetCurrentPaymentClaimAsync();
+            => (UInt256)unclaimedUnits * unitPrice >= await _providerThresholdsService.GetCurrentPaymentClaimAsync();
     }
 }

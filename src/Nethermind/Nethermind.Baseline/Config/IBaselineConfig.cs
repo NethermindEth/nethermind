@@ -26,25 +26,25 @@ namespace Nethermind.Baseline.Config
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "false")]
         bool BaselineTreeDbCacheIndexAndFilterBlocks { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1024")]
         ulong BaselineTreeDbBlockCacheSize { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1024")]
         ulong BaselineTreeDbWriteBufferSize { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "4")]
         uint BaselineTreeDbWriteBufferNumber { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "false")]
         bool BaselineTreeMetadataDbCacheIndexAndFilterBlocks { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1024")]
         ulong BaselineTreeMetadataDbBlockCacheSize { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1024")]
         ulong BaselineTreeMetadataDbWriteBufferSize { get; set; }
-        
+
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "4")]
         uint BaselineTreeMetadataDbWriteBufferNumber { get; set; }
     }

@@ -81,7 +81,7 @@ Use '/' as the path separator so the configs can be shared between all platforms
                 {
                     descriptionsBuilder.AppendLine($"{categoryAttribute.Description}").AppendLine();
                 }
-                
+
                 exampleBuilder.AppendLine($"        \"{configType.Name.Replace("Config", string.Empty)}\": {{");
 
                 var properties = configType.GetProperties(BindingFlags.Public | BindingFlags.Instance);

@@ -1,4 +1,4 @@
-﻿using Nethermind.Core.Crypto;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.P2P.Messages;
 

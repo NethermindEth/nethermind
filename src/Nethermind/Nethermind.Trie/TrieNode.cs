@@ -382,7 +382,7 @@ namespace Nethermind.Trie
 
         public object GetData(int index)
         {
-            if(index > _data.Length - 1)
+            if (index > _data.Length - 1)
             {
                 return null;
             }
@@ -735,7 +735,7 @@ namespace Nethermind.Trie
         {
             bool hasStorage = false;
             storageRoot = _storageRoot;
-            
+
             if (IsLeaf)
             {
                 if (storageRoot is not null)
@@ -822,32 +822,32 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
-                        {
-                            _data![i] = childOrRef = _nullNode;
-                            break;
-                        }
-                        case 160:
-                        {
-                            rlpStream.Position--;
-                            Keccak keccak = rlpStream.DecodeKeccak();
-                            TrieNode child = tree.FindCachedOrUnknown(keccak);
-                            _data![i] = childOrRef = child;
-
-                            if (IsPersisted && !child.IsPersisted)
                             {
-                                child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                _data![i] = childOrRef = _nullNode;
+                                break;
                             }
+                        case 160:
+                            {
+                                rlpStream.Position--;
+                                Keccak keccak = rlpStream.DecodeKeccak();
+                                TrieNode child = tree.FindCachedOrUnknown(keccak);
+                                _data![i] = childOrRef = child;
 
-                            break;
-                        }
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                }
+
+                                break;
+                            }
                         default:
-                        {
-                            rlpStream.Position--;
-                            Span<byte> fullRlp = rlpStream.PeekNextItem();
-                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                            _data![i] = childOrRef = child;
-                            break;
-                        }
+                            {
+                                rlpStream.Position--;
+                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                _data![i] = childOrRef = child;
+                                break;
+                            }
                     }
                 }
                 else
@@ -858,7 +858,7 @@ namespace Nethermind.Trie
 
             return childOrRef;
         }
-        
+
         private void UnresolveChild(int i)
         {
             if (IsPersisted)

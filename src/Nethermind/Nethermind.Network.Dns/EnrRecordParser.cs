@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ public class EnrRecordParser : IEnrRecordParser
     {
         _nodeRecordSigner = nodeRecordSigner;
     }
-    
+
     public NodeRecord ParseRecord(string nodeRecordText)
     {
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
@@ -74,7 +74,7 @@ public class EnrRecordParser : IEnrRecordParser
         StringCharSequence base64Sequence = new(nodeRecordText, 4, nodeRecordText.Length - 4);
         buffer.WriteCharSequence(base64Sequence, Encoding.UTF8);
         AddPadding(buffer, base64Sequence);
-        
+
         IByteBuffer base64Buffer = Base64.Decode(buffer, Base64Dialect.URL_SAFE);
         try
         {

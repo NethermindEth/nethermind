@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public enum SyncMode
     {
         None = 0,
-        
+
         /// <summary>
         /// We are connected to nodes and processing based on discovery
         /// </summary>
@@ -72,10 +72,10 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary> 
         BeaconHeaders = 4096,
 
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad |
               FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders
     }
-    
+
     public static class SyncModeExtensions
     {
         public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;

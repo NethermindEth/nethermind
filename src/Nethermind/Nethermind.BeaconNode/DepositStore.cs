@@ -23,14 +23,14 @@ namespace Nethermind.BeaconNode
             _crypto = crypto;
             _chainConstants = chainConstants;
         }
-        
+
         public Deposit Place(DepositData depositData)
         {
             Ref<DepositData> depositDataRef = depositData.OrRoot;
             Root leaf = _crypto.HashTreeRoot(depositDataRef);
             Bytes32 leafBytes = Bytes32.Wrap(leaf.Bytes);
             DepositData.Insert(leafBytes);
-            
+
             var proof = DepositData.GetProof(DepositData.Count - 1);
 
             Deposit deposit = new Deposit(proof, depositDataRef);
@@ -43,7 +43,7 @@ namespace Nethermind.BeaconNode
             // TODO: need to be able to delete?
             // generally need to understand how the verification would work here and the current code at least
             // encapsulates deposits creation and verification
-            
+
             Root depositDataRoot = _crypto.HashTreeRoot(deposit.Data);
             Bytes32 rootBytes = new Bytes32(depositDataRoot.AsSpan());
             VerificationData.Insert(Bytes32.Wrap(deposit.Data.Root.Bytes));
@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode
         }
 
         public IMerkleList DepositData { get; set; } = new ShaMerkleTree();
-        
+
         public IMerkleList VerificationData { get; set; } = new ShaMerkleTree();
     }
 }

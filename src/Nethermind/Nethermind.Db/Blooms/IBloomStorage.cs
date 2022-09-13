@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,17 +25,17 @@ namespace Nethermind.Db.Blooms
         long MinBlockNumber { get; }
 
         void Store(long blockNumber, Core.Bloom bloom);
-        
+
         void Migrate(IEnumerable<BlockHeader> blockHeaders);
-        
+
         IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
-        
+
         bool ContainsRange(in long fromBlockNumber, in long toBlockNumber);
 
         public bool NeedsMigration => MinBlockNumber != 0;
-        
+
         IEnumerable<Average> Averages { get; }
-        
+
         long MigratedBlockNumber { get; }
     }
 }

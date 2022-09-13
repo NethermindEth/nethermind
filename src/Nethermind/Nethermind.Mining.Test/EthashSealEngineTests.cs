@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ namespace Nethermind.Mining.Test
         {
             ulong validNonce = 971086423715460064;
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
@@ -60,7 +60,7 @@ namespace Nethermind.Mining.Test
         {
             ulong badNonce = 971086423715459953; // change if valid
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;

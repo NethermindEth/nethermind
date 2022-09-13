@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test
             Assert.False(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.True(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
         }
-        
+
         [TestCase(1, true)]
         [TestCase(300, true)]
         public void IsEip1559_returns_expected_results(int decodedFeeCap, bool expectedIsEip1559)

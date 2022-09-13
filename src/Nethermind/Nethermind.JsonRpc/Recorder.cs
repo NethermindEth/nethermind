@@ -50,15 +50,15 @@ namespace Nethermind.JsonRpc
             }
 
             _currentRecorderFilePath = _recorderBaseFilePath.Replace("{counter}", _recorderFileCounter.ToString());
-            using Stream stream =_fileSystem.File.Create(_currentRecorderFilePath);
+            using Stream stream = _fileSystem.File.Create(_currentRecorderFilePath);
             _recorderFileCounter++;
             _currentRecorderFileLength = 0;
         }
 
         public void RecordRequest(string request) => Record(request);
-        
+
         public void RecordResponse(string result) => Record(result);
-        
+
         private void Record(string data)
         {
             if (_isEnabled)

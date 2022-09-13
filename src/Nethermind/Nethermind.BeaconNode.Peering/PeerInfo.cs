@@ -25,9 +25,9 @@ namespace Nethermind.BeaconNode.Peering
         {
             Id = id;
         }
-        
+
         public string Id { get; }
-        
+
         public PeeringStatus? Status { get; private set; }
 
         public void SetStatus(PeeringStatus peeringStatus)

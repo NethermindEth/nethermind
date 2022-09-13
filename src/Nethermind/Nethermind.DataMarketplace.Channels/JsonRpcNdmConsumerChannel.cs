@@ -48,10 +48,10 @@ namespace Nethermind.DataMarketplace.Channels
                 if (queue.Count >= MaxCapacity)
                 {
                     if (_logger.IsWarn) _logger.Warn($"NDM data channel for JSON RPC has reached its max capacity: {MaxCapacity} items.");
-                    
+
                     return queue;
                 }
-                
+
                 queue.Enqueue(data);
 
                 return queue;

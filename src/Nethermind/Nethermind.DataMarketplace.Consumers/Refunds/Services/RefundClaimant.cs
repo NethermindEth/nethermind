@@ -60,14 +60,14 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 DisplayRefundInfo(deposit, now);
                 return RefundClaimStatus.Empty;
             }
-            
+
             Block? latestBlock = await _blockchainBridge.GetLatestBlockAsync();
             if (latestBlock == null)
             {
                 return RefundClaimStatus.Empty;
             }
-            
-            now = (ulong) latestBlock.Timestamp;
+
+            now = (ulong)latestBlock.Timestamp;
             if (!deposit.CanClaimRefund(now))
             {
                 DisplayRefundInfo(deposit, now);
@@ -122,19 +122,19 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             {
                 return RefundClaimStatus.Empty;
             }
-            
+
             Block? latestBlock = await _blockchainBridge.GetLatestBlockAsync();
             if (latestBlock == null)
             {
                 return RefundClaimStatus.Empty;
             }
-            
-            now = (ulong) latestBlock.Timestamp;
+
+            now = (ulong)latestBlock.Timestamp;
             if (!deposit.CanClaimEarlyRefund(now, deposit.Timestamp))
             {
                 return RefundClaimStatus.Empty;
             }
-            
+
             Keccak depositId = deposit.Deposit.Id;
             Keccak? transactionHash = deposit.ClaimedRefundTransaction?.Hash;
             if (transactionHash is null)
@@ -144,7 +144,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 {
                     throw new InvalidDataException($"Early refund ticket is null on a claimable deposit {depositId}");
                 }
-                
+
                 EarlyRefundTicket ticket = deposit.EarlyRefundTicket;
                 EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, deposit.DataAsset.Id,
                     deposit.Deposit.Units, deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider,
@@ -164,7 +164,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
 
             bool confirmed = await TryConfirmClaimAsync(deposit, "early ");
-            
+
             return confirmed
                 ? RefundClaimStatus.Confirmed(transactionHash)
                 : RefundClaimStatus.Unconfirmed(transactionHash);
@@ -174,7 +174,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
         {
             string claimType = $"{type}refund";
             Keccak depositId = deposit.Id;
-            
+
             NdmTransaction? transactionDetails = null;
             TransactionInfo includedTransaction = deposit.Transactions.SingleOrDefault(t => t.State == TransactionState.Included);
             IOrderedEnumerable<TransactionInfo> pendingTransactions = deposit.Transactions
@@ -182,7 +182,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 .OrderBy(t => t.Timestamp);
 
             if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' refund claim pending transactions: {string.Join(", ", pendingTransactions.Select(t => $"{t.Hash} [{t.Type}]"))}");
-            
+
             if (includedTransaction is null)
             {
                 foreach (TransactionInfo transaction in pendingTransactions)
@@ -193,14 +193,14 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                         if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{null}' for deposit: '{depositId}' to claim the {claimType}.");
                         return false;
                     }
-                    
-                    transactionDetails  = await _blockchainBridge.GetTransactionAsync(transactionHash);
+
+                    transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
                     if (transactionDetails is null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositId}' to claim the {claimType}.");
                         return false;
                     }
-            
+
                     if (transactionDetails.IsPending)
                     {
                         if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' {claimType} claim is still pending.");
@@ -227,7 +227,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     return false;
                 }
             }
-            
+
             if (includedTransaction is null)
             {
                 return false;
@@ -240,13 +240,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 if (_logger.IsWarn) _logger.Warn($"Block number: {transactionDetails!.BlockNumber}, hash: '{transactionDetails.BlockHash}' was not found for transaction hash: '{includedTransaction.Hash}' - {claimType} claim for deposit: '{depositId}' will not confirmed.");
                 return false;
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"The {claimType} claim (transaction hash: '{includedTransaction.Hash}') for deposit: '{depositId}' has {verifierResult.Confirmations} confirmations (required at least {verifierResult.RequiredConfirmations}).");
             if (!verifierResult.Confirmed)
             {
                 return false;
             }
-            
+
             deposit.SetRefundClaimed();
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"The {claimType} claim (transaction hash: '{includedTransaction.Hash}') for deposit: '{depositId}' has been confirmed.");

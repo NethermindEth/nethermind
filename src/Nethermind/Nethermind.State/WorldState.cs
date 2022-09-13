@@ -22,11 +22,11 @@ namespace Nethermind.State
     public class WorldState : IWorldState
     {
         public IStateProvider StateProvider { get; }
-        
+
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
             Snapshot.Storage storageSnapshot = StorageProvider.TakeSnapshot(newTransactionStart);
-            return new (StateProvider.TakeSnapshot(), storageSnapshot);
+            return new(StateProvider.TakeSnapshot(), storageSnapshot);
         }
 
         public void Restore(Snapshot snapshot)

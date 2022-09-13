@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test
     {
         private class GethLikeTxTraceJsonRpcDataSource : JsonRpcDataSource<GethLikeTxTrace>,
             IConsensusDataSource<GethLikeTxTrace>,
-            IConsensusDataSourceWithParameter<Keccak>, 
+            IConsensusDataSourceWithParameter<Keccak>,
             IConsensusDataSourceWithParameter<GethTraceOptions>
         {
             private Keccak _transactionHash;
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test
                 set => _options = value;
             }
 
-            public override async Task<string> GetJsonData() => 
+            public override async Task<string> GetJsonData() =>
                 await SendRequest(CreateRequest("debug_traceTransaction", _transactionHash.ToString(), _serializer.Serialize(_options)));
         }
     }

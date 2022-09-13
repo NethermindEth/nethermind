@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Api
         {
             StatusCode = statusCode;
         }
-        
+
         public static ApiResponse<T> Create<T>(StatusCode statusCode, T content)
         {
             return new ApiResponse<T>(statusCode, content);
@@ -32,10 +32,10 @@ namespace Nethermind.Core2.Api
         {
             return new ApiResponse<T>(statusCode, default!);
         }
-        
+
         public StatusCode StatusCode { get; }
     }
-    
+
     public class ApiResponse<T> : ApiResponse
     {
         public ApiResponse(StatusCode statusCode, T content) : base(statusCode)

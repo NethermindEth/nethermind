@@ -68,7 +68,7 @@ public class InvalidBlockInterceptorTest
     public void TestValidateProcessedBlock(bool baseReturnValue, bool isInvalidBlockReported)
     {
         Block block = Build.A.Block.TestObject;
-        Block suggestedBlock = Build.A.Block.WithExtraData(new byte[]{ 1 }).TestObject;
+        Block suggestedBlock = Build.A.Block.WithExtraData(new byte[] { 1 }).TestObject;
         TxReceipt[] txs = { };
         _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock).Returns(baseReturnValue);
         _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock);

@@ -26,21 +26,21 @@ namespace Nethermind.Network.P2P
         private bool _isClosed;
         private readonly Action<TMsg> _send;
         private Request<TMsg, TData>? _currentRequest;
-        
+
         private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
 
         public MessageQueue(Action<TMsg> send)
         {
             _send = send;
         }
-        
+
         public void Send(Request<TMsg, TData> request)
         {
             if (_isClosed)
             {
                 return;
             }
-            
+
             lock (_requestQueue)
             {
                 if (_currentRequest == null)
@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P
                 }
             }
         }
-        
+
         public void Handle(TData data, long size)
         {
             lock (_requestQueue)

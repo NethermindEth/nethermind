@@ -24,7 +24,7 @@ namespace Nethermind.Abi
     public partial class AbiType
     {
         private static readonly IDictionary<Type, AbiType> _typeMappings = new Dictionary<Type, AbiType>();
-        
+
         protected static AbiType GetForCSharpType(Type type)
         {
             if (_typeMappings.TryGetValue(type, out AbiType? abiTYpe))
@@ -37,7 +37,7 @@ namespace Nethermind.Abi
                 {
                     return DynamicBytes;
                 }
-                
+
                 Type elementType = type.GetElementType()!;
                 return new AbiArray(GetForCSharpType(elementType));
             }

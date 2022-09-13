@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private uint _priceTimerPeriod;
         private long _currentBlockTimestamp;
         private long _currentBlockNumber;
-        private string[] _currencies = {"USDT_DAI", "USDT_ETH"};
+        private string[] _currencies = { "USDT_DAI", "USDT_ETH" };
 
         public ConsumerServicesBackgroundProcessor(
             IAccountService accountService,
@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                         return;
                     }
 
-                    await ProcessBlockAsync((long) block.Number, (long) block.Timestamp);
+                    await ProcessBlockAsync((long)block.Number, (long)block.Timestamp);
                 });
 
         private async void PriceTimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
-            => ProcessBlockAsync(e.Block.Number, (long) e.Block.Timestamp).ContinueWith(t =>
+            => ProcessBlockAsync(e.Block.Number, (long)e.Block.Timestamp).ContinueWith(t =>
             {
                 if (t.IsFaulted && _logger.IsError)
                 {

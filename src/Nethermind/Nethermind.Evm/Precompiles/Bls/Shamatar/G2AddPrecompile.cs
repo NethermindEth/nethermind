@@ -45,18 +45,18 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
         }
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {  
+        {
             const int expectedInputLength = 8 * BlsParams.LenFp;
             if (inputData.Length != expectedInputLength)
             {
-                return (Array.Empty<byte>(), false); 
+                return (Array.Empty<byte>(), false);
             }
-            
+
             // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
             // inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            
+
             Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
             bool success = ShamatarLib.BlsG2Add(inputData.Span, output);
             if (success)

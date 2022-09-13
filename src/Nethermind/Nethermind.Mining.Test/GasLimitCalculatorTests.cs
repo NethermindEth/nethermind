@@ -36,7 +36,7 @@ namespace Nethermind.Mining.Test
         {
             MiningConfig miningConfig = new();
             miningConfig.TargetBlockGasLimit = target;
-            
+
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(
                 MainnetSpecProvider.Instance, miningConfig);
 

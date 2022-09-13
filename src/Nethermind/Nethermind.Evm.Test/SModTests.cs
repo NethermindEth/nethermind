@@ -37,8 +37,8 @@ namespace Nethermind.Evm.Test
         public void Sgt(int a, int b, int res)
         {
             byte[] code = Prepare.EvmCode
-                .PushData((UInt256) new Int256.Int256(b))
-                .PushData((UInt256) new Int256.Int256(a))
+                .PushData((UInt256)new Int256.Int256(b))
+                .PushData((UInt256)new Int256.Int256(a))
                 .Op(Instruction.SMOD)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -46,6 +46,23 @@ namespace Nethermind.Evm.Test
 
             _ = Execute(code);
             AssertStorage(UInt256.Zero, res);
+        }
+
+        [TestCase(-3, -2)]
+        [TestCase(3, -2)]
+        public void Test_for_a_equals_int256_dot_min(int b, int res)
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData((UInt256)new Int256.Int256(b))
+                .PushData(new UInt256(0ul, 0ul, 0ul, 0x8000000000000000ul))
+                .Op(Instruction.SMOD)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            _ = Execute(code);
+            AssertStorage(UInt256.Zero, res);
+
         }
     }
 }

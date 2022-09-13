@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -66,6 +66,11 @@ namespace Nethermind.Blockchain.Filters
         public FilterType GetFilterType(int filterId)
         {
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
+        }
+
+        public T GetFilter<T>(int filterId) where T : FilterBase
+        {
+            throw new InvalidOperationException($"Filter with ID {filterId} not found");
         }
 
         public event EventHandler<FilterEventArgs> FilterRemoved

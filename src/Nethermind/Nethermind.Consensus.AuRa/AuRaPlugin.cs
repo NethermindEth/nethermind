@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 
-[assembly:InternalsVisibleTo("Nethermind.Merge.AuRa")]
+[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -84,9 +84,9 @@ namespace Nethermind.Consensus.AuRa
 
             return Task.FromResult<IBlockProducer>(null);
         }
-        
+
         public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
-        
+
         public INethermindApi CreateApi() => new AuRaNethermindApi();
 
         public bool ShouldRunSteps(INethermindApi api) => true;

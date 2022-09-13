@@ -1,4 +1,4 @@
-﻿using Nethermind.Config.Test;
+using Nethermind.Config.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Hive.Tests

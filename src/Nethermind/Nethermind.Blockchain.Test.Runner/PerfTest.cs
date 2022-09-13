@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -47,13 +47,13 @@ namespace Nethermind.Blockchain.Test.Runner
                 {
                     continue;
                 }
-                
+
                 Setup(LimboLogs.Instance);
                 stopwatch.Restart();
                 EthereumTestResult result = RunTest(test);
                 stopwatch.Stop();
                 results.Add(result);
-                
+
                 if (!result.Pass)
                 {
                     ConsoleColor mem = Console.ForegroundColor;

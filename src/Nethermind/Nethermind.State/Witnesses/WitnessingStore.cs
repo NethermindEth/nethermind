@@ -32,7 +32,7 @@ namespace Nethermind.State.Witnesses
                 : new WitnessingStore(@this, witnessCollector);
         }
     }
-    
+
     public class WitnessingStore : IKeyValueStoreWithBatching
     {
         private readonly IKeyValueStoreWithBatching _wrapped;
@@ -52,7 +52,7 @@ namespace Nethermind.State.Witnesses
                 {
                     throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
                 }
-                
+
                 Touch(key);
                 return _wrapped[key];
             }

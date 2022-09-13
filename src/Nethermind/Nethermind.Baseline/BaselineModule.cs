@@ -117,7 +117,7 @@ namespace Nethermind.Baseline
             var txData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 ContractMerkleTree.InsertLeavesAbiSig,
-                new object[] {hashes});
+                new object[] { hashes });
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -194,7 +194,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint)leafIndex));
                 }
                 else
                 {
@@ -205,7 +205,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint) leafIndex, searchResult.Object.Number);
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint)leafIndex, searchResult.Object.Number);
                         result = ResultWrapper<BaselineTreeNode>.Success(leaf);
                     }
                 }
@@ -281,7 +281,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                var indexes = leafIndexes.Select(i => (uint) i).ToArray();
+                var indexes = leafIndexes.Select(i => (uint)i).ToArray();
                 if (blockParameter == null)
                 {
                     result = ResultWrapper<BaselineTreeNode[]>.Success(
@@ -436,7 +436,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint)leafIndex));
                 }
                 else
                 {
@@ -448,7 +448,7 @@ namespace Nethermind.Baseline
                     else
                     {
                         var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
-                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint) leafIndex));
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
                     }
                 }
             }
@@ -557,7 +557,7 @@ namespace Nethermind.Baseline
 
         private BaselineMetadata _metadata;
 
-        private byte[] _metadataKey = {0};
+        private byte[] _metadataKey = { 0 };
 
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
@@ -706,7 +706,7 @@ namespace Nethermind.Baseline
                         _disposableStack.Push(tracker);
                     }
                 }
-                
+
                 _trackingOverrides.TryAdd(trackedTree, false);
             }
             else
@@ -716,9 +716,9 @@ namespace Nethermind.Baseline
 
             return treeAdded;
         }
-        
+
         private ConcurrentDictionary<Address, bool> _trackingOverrides = new();
-        
+
         private bool TryRemoveTree(Address trackedTree)
         {
             if (_logger.IsWarn) _logger.Warn("Tree untracking has no effect for the moment.");
@@ -727,7 +727,7 @@ namespace Nethermind.Baseline
             // TODO: review if we can drop old databases on untracking
             // TODO: all these todos are fine for now if we do nothing on untrack
             // TODO: the only problem now is if we track, untrack, track again
-            
+
             return true;
         }
 

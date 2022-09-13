@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,12 +24,13 @@ namespace Nethermind.Blockchain.Filters
     {
         bool FilterExists(int filterId);
         IEnumerable<T> GetFilters<T>() where T : FilterBase;
+        T GetFilter<T>(int filterId) where T : FilterBase;
         BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true);
         PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true);
 
         LogFilter CreateLogFilter(
-            BlockParameter fromBlock, 
-            BlockParameter toBlock, 
+            BlockParameter fromBlock,
+            BlockParameter toBlock,
             object? address = null,
             IEnumerable<object>? topics = null,
             bool setId = true);

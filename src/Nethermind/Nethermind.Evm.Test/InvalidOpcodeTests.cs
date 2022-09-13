@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
         private static readonly Instruction[] HomesteadInstructions =
             FrontierInstructions.Union(
-                new[] {Instruction.DELEGATECALL}).ToArray();
+                new[] { Instruction.DELEGATECALL }).ToArray();
 
         private static readonly Instruction[] ByzantiumInstructions =
             FrontierInstructions.Union(
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
                 HomesteadInstructions.Union(
                     ByzantiumInstructions.Union(
                         ConstantinopleFixInstructions.Union(
-                            new[] {Instruction.SELFBALANCE, Instruction.CHAINID})))).ToArray();
+                            new[] { Instruction.SELFBALANCE, Instruction.CHAINID })))).ToArray();
 
         private static readonly Instruction[] BerlinInstructions =
             FrontierInstructions.Union(
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Test
                                 // }
                                 new Instruction[] { }
                             ))))).ToArray();
-        
+
         private static readonly Instruction[] LondonInstructions =
             FrontierInstructions.Union(
                 HomesteadInstructions.Union(
@@ -131,7 +131,8 @@ namespace Nethermind.Evm.Test
                                     new Instruction[]
                                         {
                                             Instruction.TLOAD,
-                                            Instruction.TSTORE
+                                            Instruction.TSTORE,
+                                            Instruction.PUSH0
                                         }
                                     )
                             )))))).ToArray();

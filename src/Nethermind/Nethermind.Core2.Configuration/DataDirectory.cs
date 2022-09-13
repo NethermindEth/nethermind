@@ -38,7 +38,7 @@ namespace Nethermind.Core2.Configuration
         }
 
         public string Setting { get; }
-        
+
         public string ResolvedPath { get; }
 
         private string Resolve(string setting)

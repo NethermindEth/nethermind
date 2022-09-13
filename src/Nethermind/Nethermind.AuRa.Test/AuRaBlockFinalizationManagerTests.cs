@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test
             _logManager = LimboLogs.Instance;
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
-            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC });
         }
 
         [Test]
@@ -60,7 +60,7 @@ namespace Nethermind.AuRa.Test
         {
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
             FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
-            
+
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager);
             finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
         }
@@ -82,13 +82,13 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                yield return new TestCaseData(10, long.MaxValue, new[] {TestItem.AddressA, TestItem.AddressB}, 1);
-                yield return new TestCaseData(10, long.MaxValue, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 1);
-                yield return new TestCaseData(10, long.MaxValue, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD}, 2);
-                
-                yield return new TestCaseData(10, 0, new[] {TestItem.AddressA}, 0);
-                yield return new TestCaseData(10, 0, new[] {TestItem.AddressA, TestItem.AddressB}, 1);
-                yield return new TestCaseData(10, 0, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 2);
+                yield return new TestCaseData(10, long.MaxValue, new[] { TestItem.AddressA, TestItem.AddressB }, 1);
+                yield return new TestCaseData(10, long.MaxValue, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 1);
+                yield return new TestCaseData(10, long.MaxValue, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD }, 2);
+
+                yield return new TestCaseData(10, 0, new[] { TestItem.AddressA }, 0);
+                yield return new TestCaseData(10, 0, new[] { TestItem.AddressA, TestItem.AddressB }, 1);
+                yield return new TestCaseData(10, 0, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 2);
                 yield return new TestCaseData(10, 0, TestItem.Addresses.Take(10).ToArray(), 6);
             }
         }
@@ -97,10 +97,10 @@ namespace Nethermind.AuRa.Test
         public void correctly_finalizes_blocks_in_chain(int chainLength, long twoThirdsMajorityTransition, Address[] blockCreators, int notFinalizedExpectedCount)
         {
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
-            
+
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
             HashSet<BlockHeader> finalizedBlocks = new();
-            
+
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager, twoThirdsMajorityTransition);
             finalizationManager.BlocksFinalized += (sender, args) =>
             {
@@ -109,7 +109,7 @@ namespace Nethermind.AuRa.Test
                     finalizedBlocks.Add(block);
                 }
             };
-            
+
             blockTreeBuilder.OfChainLength(chainLength, 0, 0, blockCreators);
 
             int start = 0;
@@ -125,7 +125,7 @@ namespace Nethermind.AuRa.Test
             finalizedBlocks.Count.Should().Be(chainLength - notFinalizedExpectedCount);
             isBlockFinalized.Should().BeEquivalentTo(expected);
         }
-        
+
         [Test]
         public void correctly_finalizes_blocks_in_already_in_chain_on_initialize()
         {
@@ -134,16 +134,16 @@ namespace Nethermind.AuRa.Test
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager);
 
             IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
-            result.Should().BeEquivalentTo(new[] {true, false});
+            result.Should().BeEquivalentTo(new[] { true, false });
         }
-        
-        [TestCase(2, 4, ExpectedResult = new[] {1, 3, 1, 0})]
-        [TestCase(1, 4, ExpectedResult = new[] {1, 3, 3, 1})]
-        [TestCase(4, 5, ExpectedResult = new[] {1, 3, 1, 0, 0})]
+
+        [TestCase(2, 4, ExpectedResult = new[] { 1, 3, 1, 0 })]
+        [TestCase(1, 4, ExpectedResult = new[] { 1, 3, 3, 1 })]
+        [TestCase(4, 5, ExpectedResult = new[] { 1, 3, 1, 0, 0 })]
         public int[] correctly_finalizes_blocks_on_reorganisations(int validators, int chainLength)
         {
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(TestItem.Addresses.Take(validators).ToArray());
-            
+
             void ProcessBlock(BlockTreeBuilder blockTreeBuilder1, int level, int index)
             {
                 Keccak blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
@@ -155,11 +155,11 @@ namespace Nethermind.AuRa.Test
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis);
 
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager);
-            
+
             blockTreeBuilder
                 .OfChainLength(out Block headBlock, chainLength, 1, 0, TestItem.Addresses.Take(validators).ToArray())
                 .OfChainLength(out Block alternativeHeadBlock, chainLength, 0, splitFrom: 2, TestItem.Addresses.Skip(validators).Take(validators).ToArray());
-            
+
             for (int i = 0; i < chainLength - 1; i++)
             {
                 ProcessBlock(blockTreeBuilder, i, 0);
@@ -171,7 +171,7 @@ namespace Nethermind.AuRa.Test
             }
 
             ProcessBlock(blockTreeBuilder, chainLength - 1, 0);
-            
+
             int[] finalizedBLocks = Enumerable.Range(0, chainLength)
                 .Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).BlockInfos.Select((b, j) => b.IsFinalized ? j + 1 : 0).Sum())
                 .ToArray();
@@ -182,15 +182,15 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                yield return new TestCaseData(2, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 0};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 8};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 3) {ExpectedResult = 7};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 4) {ExpectedResult = 0};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 2) {ExpectedResult = 8};
-                yield return new TestCaseData(100, TestItem.Addresses.Take(30).ToArray(), 30) {ExpectedResult = 70};
+                yield return new TestCaseData(2, new[] { TestItem.AddressA, TestItem.AddressB }, 2) { ExpectedResult = 0 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB }, 2) { ExpectedResult = 8 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 3) { ExpectedResult = 7 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 4) { ExpectedResult = 0 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 2) { ExpectedResult = 8 };
+                yield return new TestCaseData(100, TestItem.Addresses.Take(30).ToArray(), 30) { ExpectedResult = 70 };
             }
         }
-        
+
         [TestCaseSource(nameof(GetLastFinalizedByTests))]
         public long GetLastFinalizedBy_test(int chainLength, Address[] beneficiaries, int minForFinalization)
         {
@@ -208,19 +208,19 @@ namespace Nethermind.AuRa.Test
             Address[] validators = beneficiaries.Union(TestItem.Addresses.TakeLast(Math.Max(0, minForFinalization - 1) * 2 - beneficiaries.Length)).ToArray();
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(validators);
         }
-        
+
         public static IEnumerable GetFinalizationLevelTests
         {
             get
             {
-                yield return new TestCaseData(2, new[] {TestItem.AddressA, TestItem.AddressB}, 2, 2) {ExpectedResult = null};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB}, 2, 5) {ExpectedResult = 6};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 3, 5) {ExpectedResult = 7};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD}, 4, 5) {ExpectedResult = 8};
-                yield return new TestCaseData(100, TestItem.Addresses.Take(30).ToArray(), 30, 60) {ExpectedResult = 89};
+                yield return new TestCaseData(2, new[] { TestItem.AddressA, TestItem.AddressB }, 2, 2) { ExpectedResult = null };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB }, 2, 5) { ExpectedResult = 6 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }, 3, 5) { ExpectedResult = 7 };
+                yield return new TestCaseData(10, new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD }, 4, 5) { ExpectedResult = 8 };
+                yield return new TestCaseData(100, TestItem.Addresses.Take(30).ToArray(), 30, 60) { ExpectedResult = 89 };
             }
         }
-        
+
         [TestCaseSource(nameof(GetFinalizationLevelTests))]
         public long? GetFinalizationLevel_tests(int chainLength, Address[] beneficiaries, int minForFinalization, long level)
         {
@@ -242,29 +242,29 @@ namespace Nethermind.AuRa.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.BestKnownNumber.Returns(bestKnownBlock);
             AuRaBlockFinalizationManager finalizationManager = new(
-                blockTree, 
-                Substitute.For<IChainLevelInfoRepository>(), 
-                _blockProcessor, 
-                _validatorStore, 
-                _validSealerStrategy, 
+                blockTree,
+                Substitute.For<IChainLevelInfoRepository>(),
+                _blockProcessor,
+                _validatorStore,
+                _validSealerStrategy,
                 _logManager);
 
             return finalizationManager.GetFinalizationLevel(level);
         }
-        
+
         [TestCase(10, 4, 5, false)]
         [TestCase(10, 4, 5, true)]
         public void correctly_de_finalizes_blocks_on_block_reprocessing(int chainLength, int rerun, int validatorCount, bool twoThirdsMajorityTransition)
         {
             Address[] blockCreators = TestItem.Addresses.Take(validatorCount).ToArray();
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
-            
+
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
             AuRaBlockFinalizationManager finalizationManager = new(
-                blockTreeBuilder.TestObject, 
-                blockTreeBuilder.ChainLevelInfoRepository, 
-                _blockProcessor, 
-                _validatorStore, 
+                blockTreeBuilder.TestObject,
+                blockTreeBuilder.ChainLevelInfoRepository,
+                _blockProcessor,
+                _validatorStore,
                 _validSealerStrategy,
                 _logManager,
                 twoThirdsMajorityTransition ? 0 : long.MaxValue);
@@ -276,7 +276,7 @@ namespace Nethermind.AuRa.Test
                 .Select(i => blockTreeBuilder.TestObject.FindBlock(chainLength - i, BlockTreeLookupOptions.None))
                 .Reverse()
                 .ToList();
-                
+
             _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(blocks));
 
             int majority = (twoThirdsMajorityTransition ? (validatorCount - 1) * 2 / 3 : (validatorCount - 1) / 2) + 1;

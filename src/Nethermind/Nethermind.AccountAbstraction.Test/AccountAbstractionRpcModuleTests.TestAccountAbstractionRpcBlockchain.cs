@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Collections.Generic;
 using System.Linq;
@@ -85,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Test
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
             public Address[] EntryPointAddresses { get; private set; } = null!;
             public Address[] WhitelistedPayamsters { get; private set; } = null!;
-            
+
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
@@ -94,20 +94,20 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
-            
+
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
-            public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
-                {
-                    Enabled = true, 
-                    EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
-                    UserOperationPoolSize = 200,
-                    WhitelistedPaymasters = ""
-                };
+            public ManualGasLimitCalculator GasLimitCalculator = new() { GasLimit = 10_000_000 };
+            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
+            {
+                Enabled = true,
+                EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
+                UserOperationPoolSize = 200,
+                WhitelistedPaymasters = ""
+            };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private ISigner Signer { get; }
 
-            public override ILogManager LogManager => NUnitLogManager.Instance;
+            public override ILogManager LogManager => LimboLogs.Instance;
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
                 ITransactionComparerProvider transactionComparerProvider)
@@ -185,10 +185,11 @@ namespace Nethermind.AccountAbstraction.Test
                 }
 
                 EntryPointAddresses = entryPointContractAddresses.ToArray();
-                
+
                 IList<Address> whitelistedPaymasters = new List<Address>();
                 IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
-                foreach (string addressString in whitelistedPaymastersString){
+                foreach (string addressString in whitelistedPaymastersString)
+                {
                     bool parsed = Address.TryParse(
                         addressString,
                         out Address? whitelistedPaymaster);
@@ -196,8 +197,8 @@ namespace Nethermind.AccountAbstraction.Test
                 }
 
                 WhitelistedPayamsters = whitelistedPaymasters.ToArray();
-                
-                
+
+
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -233,7 +234,7 @@ namespace Nethermind.AccountAbstraction.Test
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
-                        SpecProvider, 
+                        SpecProvider,
                         Timestamper,
                         LogManager);
                 }
@@ -247,13 +248,13 @@ namespace Nethermind.AccountAbstraction.Test
                         BlockTree,
                         entryPoint!,
                         LogManager.GetClassLogger(),
-                        new PaymasterThrottler(), 
-                        LogFinder, 
-                        Signer, 
-                        State, 
+                        new PaymasterThrottler(),
+                        LogFinder,
+                        Signer,
+                        State,
                         SpecProvider,
-                        Timestamper, 
-                        UserOperationSimulator[entryPoint], 
+                        Timestamper,
+                        UserOperationSimulator[entryPoint],
                         new UserOperationSortedPool(
                             _accountAbstractionConfig.UserOperationPoolSize,
                             new CompareUserOperationsByDecreasingGasPrice(),

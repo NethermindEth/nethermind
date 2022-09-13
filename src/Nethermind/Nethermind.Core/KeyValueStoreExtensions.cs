@@ -25,7 +25,7 @@ namespace Nethermind.Core
         {
             return LikeABatch(keyValueStore, null);
         }
-        
+
         public static IBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore, Action? onDispose)
         {
             return new FakeBatch(keyValueStore, onDispose);

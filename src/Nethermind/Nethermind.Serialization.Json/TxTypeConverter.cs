@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Json
         public override TxType ReadJson(JsonReader reader, Type objectType, TxType existingValue, bool hasExistingValue,
             JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             return (TxType)Convert.ToByte(s, 16);
         }
     }

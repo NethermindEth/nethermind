@@ -21,7 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidBlockInterceptor: IBlockValidator
+public class InvalidBlockInterceptor : IBlockValidator
 {
     private IBlockValidator _baseValidator;
     private IInvalidChainTracker _invalidChainTracker;

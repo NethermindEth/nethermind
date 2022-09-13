@@ -27,23 +27,23 @@ namespace Nethermind.Network.Discovery.Test
         public void Same_length_distance()
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
-            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] {1, 2, 3}, new byte[] {1, 2, 3});
+            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2, 3 }, new byte[] { 1, 2, 3 });
             Assert.AreEqual(232, distance);
         }
-        
+
         [Test]
         public void Left_shorter_distance()
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
-            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] {1, 2}, new byte[] {1, 2, 3});
+            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2 }, new byte[] { 1, 2, 3 });
             Assert.AreEqual(240, distance);
         }
-        
+
         [Test]
         public void Right_shorter_distance()
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
-            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] {1, 2, 3}, new byte[] {1, 2});
+            int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2, 3 }, new byte[] { 1, 2 });
             Assert.AreEqual(240, distance);
         }
     }

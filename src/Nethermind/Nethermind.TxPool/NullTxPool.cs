@@ -34,6 +34,8 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
 
+        public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
+
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
 
         public void AddPeer(ITxPoolPeer peer) { }
@@ -54,6 +56,7 @@ namespace Nethermind.TxPool
 
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
         public UInt256 GetLatestPendingNonce(Address address) => 0;
+
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

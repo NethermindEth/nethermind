@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning
 
         public static IPersistenceStrategy IfBlockOlderThan(long length)
             => new ConstantInterval(length);
-        
+
         public static IPersistenceStrategy Or(this IPersistenceStrategy strategy, IPersistenceStrategy otherStrategy)
         {
             if (strategy is CompositePersistenceStrategy compositeStrategy)

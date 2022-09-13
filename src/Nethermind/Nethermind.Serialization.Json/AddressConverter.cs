@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
 
         public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             return string.IsNullOrEmpty(s) ? null : new Address(s);
         }
     }

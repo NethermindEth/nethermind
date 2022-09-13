@@ -60,28 +60,28 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 writer.WriteStartArray();
                 foreach (string stackItem in entry.Stack)
                 {
-                    writer.WriteValue(stackItem);    
+                    writer.WriteValue(stackItem);
                 }
-                
+
                 writer.WriteEndArray();
-                
+
                 writer.WritePropertyName("memory");
                 writer.WriteStartArray();
                 foreach (string memory in entry.Memory)
                 {
-                    writer.WriteValue(memory);    
+                    writer.WriteValue(memory);
                 }
                 writer.WriteEndArray();
-                
+
                 writer.WritePropertyName("storage");
                 writer.WriteStartObject();
                 foreach ((string storageIndex, string storageValue) in entry.SortedStorage)
                 {
                     writer.WriteProperty(storageIndex, storageValue);
                 }
-                
+
                 writer.WriteEndObject();
-                
+
                 writer.WriteEndObject();
             }
 

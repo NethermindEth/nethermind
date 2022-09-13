@@ -27,9 +27,9 @@ namespace Nethermind.Mev.Test
         [Test]
         public void All_json_rpc_methods_are_documented()
         {
-            JsonRpc.Test.StandardJsonRpcTests.ValidateDocumentation();   
+            JsonRpc.Test.StandardJsonRpcTests.ValidateDocumentation();
         }
-        
+
         [Test]
         public void All_metrics_are_described()
         {

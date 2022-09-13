@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,10 +38,10 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private const long OfGenesisBlock = 131_072;
-        
+
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            Calculate(parent.Difficulty, 
-                parent.Timestamp, 
+            Calculate(parent.Difficulty,
+                parent.Timestamp,
                 header.Timestamp,
                 header.Number,
                 parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 return (UInt256)spec.FixedDifficulty.Value;
             }
-            
+
             BigInteger baseIncrease = BigInteger.Divide((BigInteger)parentDifficulty, spec.DifficultyBoundDivisor);
             BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
@@ -79,24 +79,24 @@ namespace Nethermind.Consensus.Ethash
             {
                 return BigInteger.Max((parentHasUncles ? 2 : BigInteger.One) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
-            
-            if(spec.IsEip2Enabled)
+
+            if (spec.IsEip2Enabled)
             {
-                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
+                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);
             }
-            
+
             if (spec.IsTimeAdjustmentPostOlympic)
             {
-                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;                
+                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;
             }
-            
+
             return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
             blockNumber = blockNumber - spec.DifficultyBombDelay;
-            
+
             return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }

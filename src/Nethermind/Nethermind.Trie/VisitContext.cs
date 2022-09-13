@@ -49,8 +49,8 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext Clone() => (TrieVisitContext) MemberwiseClone();
-        
+        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
+
         public void Dispose()
         {
             _semaphore?.Dispose();

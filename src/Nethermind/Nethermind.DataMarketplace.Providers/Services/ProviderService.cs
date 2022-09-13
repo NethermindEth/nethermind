@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
         private readonly ConcurrentDictionary<string, INdmPlugin> _plugins =
             new ConcurrentDictionary<string, INdmPlugin>();
 
-        private static readonly long Eth = (long) Unit.Ether;
+        private static readonly long Eth = (long)Unit.Ether;
         private static readonly int ConsumedUnitsDifferenceLimit = 100;
 
         private readonly AbiSignature _depositAbiSig = new AbiSignature("deposit",
@@ -184,7 +184,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 return;
             }
 
-            _timer = new Timer {Interval = 5000};
+            _timer = new Timer { Interval = 5000 };
             _timer.Elapsed += OnTimeElapsed;
             _timer.Start();
         }
@@ -224,9 +224,9 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
         private void OnTimeElapsed(object sender, ElapsedEventArgs e)
             => GetConsumersAsync(new GetConsumers
-                {
-                    Results = int.MaxValue
-                })
+            {
+                Results = int.MaxValue
+            })
                 .ContinueWith(async t =>
                 {
                     var paymentClaimsResult = await _paymentClaimRepository.BrowseAsync(new GetPaymentClaims
@@ -332,7 +332,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                         {
                             continue;
                         }
-                        
+
                         if (_logger.IsInfo) _logger.Info($"Payment claim (id: {paymentClaim!.Id}) for deposit: '{paymentClaim!.DepositId}', transaction hash: '{currentTransaction.Hash}', gas price: {currentTransaction.GasPrice} wei, gas used: {transactionDetails.GasUsed}.");
 
                         TransactionVerifierResult verifierResult = await _transactionVerifier.VerifyAsync(transactionDetails);
@@ -351,11 +351,11 @@ namespace Nethermind.DataMarketplace.Providers.Services
                             continue;
                         }
 
-                        BigInteger? transactionCost = (BigInteger) currentTransaction.GasPrice * transactionDetails.GasUsed;
+                        BigInteger? transactionCost = (BigInteger)currentTransaction.GasPrice * transactionDetails.GasUsed;
                         if (transactionCost != null)
                         {
-                            string ethCost = ((decimal) transactionCost / Eth).ToString("0.0000");
-                            paymentClaim!.SetTransactionCost((UInt256) transactionCost);
+                            string ethCost = ((decimal)transactionCost / Eth).ToString("0.0000");
+                            paymentClaim!.SetTransactionCost((UInt256)transactionCost);
                             await _paymentClaimRepository.UpdateAsync(paymentClaim!);
                             if (_logger.IsInfo) _logger.Info($"Updated transaction cost: {transactionCost} wei ({ethCost} ETH) for payment claim : '{paymentClaim!.Id}' for deposit: '{paymentClaim!.DepositId}', transaction hash: '{currentTransaction.Hash}'.");
                         }
@@ -458,7 +458,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 return null;
             }
 
-            uint now = (uint) _timestamper.UnixTime.Seconds;
+            uint now = (uint)_timestamper.UnixTime.Seconds;
             uint consumedUnits = 0;
             if (consumer.DataAsset.UnitType == DataAssetUnitType.Time)
             {
@@ -467,15 +467,15 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 {
                     consumedUnits = consumer.DataRequest.Units;
                 }
-            } 
-            else 
+            }
+            else
             {
                 var sessions = await _sessionRepository.BrowseAsync(new GetProviderSessions
                 {
                     DepositId = consumer.DepositId,
                     Results = int.MaxValue
                 });
-                consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+                consumedUnits = sessions.Items.Any() ? (uint)sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             };
             consumer.SetConsumedUnits(consumedUnits);
 
@@ -488,7 +488,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             foreach (Consumer consumer in consumers.Items)
             {
                 uint consumedUnits = 0;
-                uint now = (uint) _timestamper.UnixTime.Seconds;
+                uint now = (uint)_timestamper.UnixTime.Seconds;
                 if (consumer.DataAsset.UnitType == DataAssetUnitType.Time)
                 {
                     consumedUnits = now - consumer.VerificationTimestamp;
@@ -496,15 +496,15 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     {
                         consumedUnits = consumer.DataRequest.Units;
                     }
-                } 
-                else 
+                }
+                else
                 {
                     var sessions = await _sessionRepository.BrowseAsync(new GetProviderSessions
                     {
                         DepositId = consumer.DepositId,
                         Results = int.MaxValue
                     });
-                    consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+                    consumedUnits = sessions.Items.Any() ? (uint)sessions.Items.Sum(s => s.ConsumedUnits) : 0;
                 };
                 consumer.SetConsumedUnits(consumedUnits);
             }
@@ -527,17 +527,17 @@ namespace Nethermind.DataMarketplace.Providers.Services
             }
 
             NdmConfig? config = await _configManager.GetAsync(_configId);
-            uint chainId = (uint) await _blockchainBridge.GetNetworkIdAsync();
+            uint chainId = (uint)await _blockchainBridge.GetNetworkIdAsync();
 
-            if(string.IsNullOrEmpty(config.ContractAddress))
+            if (string.IsNullOrEmpty(config.ContractAddress))
             {
-                if(_logger.IsError) _logger.Error("Contract address is not set in ndm config. Could not add data asset.");
+                if (_logger.IsError) _logger.Error("Contract address is not set in ndm config. Could not add data asset.");
                 return null;
             }
 
             var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _dataAssetAbiSig,
                 _providerAddress, name, description, unitPrice,
-                unitType.ToString(), (queryType ?? QueryType.Stream).ToString(), minUnits, maxUnits, new[] {rules.Expiry.Value}, config.ContractAddress, chainId);
+                unitType.ToString(), (queryType ?? QueryType.Stream).ToString(), minUnits, maxUnits, new[] { rules.Expiry.Value }, config.ContractAddress, chainId);
 
             Keccak id = Keccak.Compute(abiHash);
             if (await _dataAssetRepository.ExistsAsync(id))
@@ -831,7 +831,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 return false;
             }
 
-            uint upfrontUnits = (uint) (dataAsset.Rules.UpfrontPayment?.Value ?? 0);
+            uint upfrontUnits = (uint)(dataAsset.Rules.UpfrontPayment?.Value ?? 0);
             if (consumer is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Added a new consumer for deposit: '{depositId}', address: '{ndmPeer.ConsumerAddress}', timestamp: {verificationTimestamp}.");
@@ -858,7 +858,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 ConsumerAddress = ndmPeer.ConsumerAddress,
                 Results = int.MaxValue
             });
-            uint nodeConsumedUnits = (uint) nodeSessions.Items.Sum(s => s.ConsumedUnits);
+            uint nodeConsumedUnits = (uint)nodeSessions.Items.Sum(s => s.ConsumedUnits);
             if (_logger.IsInfo) _logger.Info($"Node '{ndmPeer.NodeId}' has consumed: {nodeConsumedUnits} units (declared {consumedUnitsFromConsumer}) for deposit: '{depositId}'.");
 
             if (ndmPeer.ConsumerAddress == null)
@@ -939,7 +939,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
             if (consumer!.DataAsset.UnitType == DataAssetUnitType.Time)
             {
-                uint sessionUnpaidUnits = (uint) (now - currentSession.StartTimestamp - currentSession.PaidUnits);
+                uint sessionUnpaidUnits = (uint)(now - currentSession.StartTimestamp - currentSession.PaidUnits);
                 currentSession.AddUnpaidUnits(sessionUnpaidUnits);
                 await _sessionRepository.UpdateAsync(currentSession);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: '{sessionUnpaidUnits}' for deposit: '{depositId}' based on time.");
@@ -1003,26 +1003,26 @@ namespace Nethermind.DataMarketplace.Providers.Services
             switch (dataAsset.QueryType)
             {
                 case QueryType.Document:
-                {
-                    await HandleDocumentAsync(plugin, consumer, client, dataArgs);
-                    return;
-                }
+                    {
+                        await HandleDocumentAsync(plugin, consumer, client, dataArgs);
+                        return;
+                    }
                 case QueryType.Query:
-                {
-                    await HandleQueryAsync(plugin, consumer, client, dataArgs);
-                    return;
-                }
+                    {
+                        await HandleQueryAsync(plugin, consumer, client, dataArgs);
+                        return;
+                    }
                 case QueryType.Stream:
-                {
-                    await HandleStreamAsync(plugin, peer, consumer, client, dataArgs);
-                    return;
-                }
+                    {
+                        await HandleStreamAsync(plugin, peer, consumer, client, dataArgs);
+                        return;
+                    }
                 default:
-                {
-                    if (_logger.IsError) _logger.Error($"Not supported data asset type: {dataAsset.QueryType}.");
-                    SendInvalidData(consumer.DepositId, InvalidDataReason.InternalError);
-                    return;
-                }
+                    {
+                        if (_logger.IsError) _logger.Error($"Not supported data asset type: {dataAsset.QueryType}.");
+                        SendInvalidData(consumer.DepositId, InvalidDataReason.InternalError);
+                        return;
+                    }
             }
         }
 
@@ -1296,12 +1296,12 @@ namespace Nethermind.DataMarketplace.Providers.Services
             switch (consumer.DataAsset.UnitType)
             {
                 case DataAssetUnitType.Time:
-                    uint now = (uint) _timestamper.UnixTime.Seconds;
+                    uint now = (uint)_timestamper.UnixTime.Seconds;
                     uint currentlyConsumedUnits = now - consumer.VerificationTimestamp;
                     uint currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
                         ? currentlyConsumedUnits - session.PaidUnits
                         : 0;
-                    session.SetConsumedUnits((uint) (now - session.StartTimestamp));
+                    session.SetConsumedUnits((uint)(now - session.StartTimestamp));
                     session.SetUnpaidUnits(currentlyUnpaidUnits);
                     break;
                 case DataAssetUnitType.Unit:
@@ -1351,12 +1351,12 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
             IEnumerable<ConsumerNode> consumerNodes = _sessionManager.GetConsumerNodes();
 
-            if(consumerNodes.Count() == 0)
+            if (consumerNodes.Count() == 0)
             {
-                if(_logger.IsInfo) _logger.Info($"No consumer nodes has been found.");
+                if (_logger.IsInfo) _logger.Info($"No consumer nodes has been found.");
 
                 return null;
-            } 
+            }
 
             foreach (ConsumerNode node in consumerNodes)
             {
@@ -1611,22 +1611,22 @@ namespace Nethermind.DataMarketplace.Providers.Services
         {
             if (plugin.Name == null)
             {
-                if(_logger.IsError) _logger.Error("Cannot initialize plugin that is missing name.");
+                if (_logger.IsError) _logger.Error("Cannot initialize plugin that is missing name.");
 
                 return Task.FromException(new ArgumentException($"Plugin is missing a name"));
             }
-            
+
             plugin.InitAsync(_logManager);
             bool isAdded = _plugins.TryAdd(plugin.Name.ToLowerInvariant(), plugin);
 
-            if(!isAdded)
+            if (!isAdded)
             {
-                if(_logger.IsError) _logger.Error($"Plugin {plugin.Name} was not added to the provider's plugins pool.");
+                if (_logger.IsError) _logger.Error($"Plugin {plugin.Name} was not added to the provider's plugins pool.");
 
                 return Task.FromException(new InvalidOperationException($"Plugin {plugin.Name} was not added to the providers's plugins pool"));
             }
 
-            if(_logger.IsInfo) _logger.Info($"{plugin.Name.ToLowerInvariant()} was added to the provider's plugins pool");
+            if (_logger.IsInfo) _logger.Info($"{plugin.Name.ToLowerInvariant()} was added to the provider's plugins pool");
             ShowPluginsPool();
 
             return Task.CompletedTask;
@@ -1656,7 +1656,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             if (_skipDepositVerification)
             {
                 if (_logger.IsInfo) _logger.Info($"Deposit verification disabled [id: '{depositId}', address: '{address}'].");
-                return (uint) _timestamper.UnixTime.Seconds;
+                return (uint)_timestamper.UnixTime.Seconds;
             }
 
             if (_logger.IsInfo) _logger.Info($"Verifying a deposit with id: '{depositId}' for an address: '{address}', required confirmations: {_requiredBlockConfirmations}.");
@@ -1746,15 +1746,15 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
         private void ShowPluginsPool()
         {
-            if(!_logger.IsInfo)
+            if (!_logger.IsInfo)
             {
                 return;
             }
 
             _logger.Info("Provider's data assets plugins: ");
-            foreach(var plugin in _plugins)
+            foreach (var plugin in _plugins)
             {
-               _logger.Info(plugin.Key); 
+                _logger.Info(plugin.Key);
             }
         }
     }

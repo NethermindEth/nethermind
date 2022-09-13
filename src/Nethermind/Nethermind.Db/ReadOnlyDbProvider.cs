@@ -26,7 +26,7 @@ namespace Nethermind.Db
         private readonly IDbProvider _wrappedProvider;
         private readonly bool _createInMemoryWriteStore;
         private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new(StringComparer.InvariantCultureIgnoreCase);
-        
+
         public ReadOnlyDbProvider(IDbProvider? wrappedProvider, bool createInMemoryWriteStore)
         {
             _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
@@ -35,7 +35,7 @@ namespace Nethermind.Db
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
-            
+
             foreach ((string key, IDb value) in _wrappedProvider.RegisteredDbs)
             {
                 RegisterReadOnlyDb(key, value);
@@ -56,10 +56,10 @@ namespace Nethermind.Db
         public DbModeHint DbMode => _wrappedProvider.DbMode;
 
         public IDictionary<string, IDb> RegisteredDbs => _wrappedProvider.RegisteredDbs;
-        
+
         public void ClearTempChanges()
-        {            
-            foreach(IReadOnlyDb readonlyDb in _registeredDbs.Values)
+        {
+            foreach (IReadOnlyDb readonlyDb in _registeredDbs.Values)
             {
                 readonlyDb.ClearTempChanges();
             }

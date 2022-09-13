@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Core.Specs
         /// This function handles change of the merge block
         /// </summary>
         void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null);
-        
+
         /// <summary>
         /// We have two different block numbers for merge transition:
         /// https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#definitions
@@ -39,7 +39,7 @@ namespace Nethermind.Core.Specs
         /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
         /// </summary>
         long? MergeBlockNumber { get; }
-        
+
         UInt256? TerminalTotalDifficulty { get; }
 
         /// <summary>

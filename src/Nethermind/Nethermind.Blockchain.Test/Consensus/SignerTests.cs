@@ -35,8 +35,8 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test]
         public void Throws_when_null_log_manager_in_constructor()
         {
-            Assert.Throws<ArgumentNullException>(() => new Signer(1, (PrivateKey) null, null));
-            Assert.Throws<ArgumentNullException>(() => new Signer(1, (ProtectedPrivateKey) null, null));
+            Assert.Throws<ArgumentNullException>(() => new Signer(1, (PrivateKey)null, null));
+            Assert.Throws<ArgumentNullException>(() => new Signer(1, (ProtectedPrivateKey)null, null));
         }
 
         [Test]
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             Signer signer = new(1, (PrivateKey)null, LimboLogs.Instance);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_set_signer_to_null()
         {
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.SetSigner((PrivateKey)null);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_set_signer_to_protected_null()
         {
@@ -72,14 +72,14 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.SetSigner((ProtectedPrivateKey)null);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Throws_when_trying_to_sign_with_a_null_key()
         {
             Signer signer = new(1, (PrivateKey)null, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => signer.Sign(Keccak.Zero));
         }
-        
+
         [Test]
         public async Task Test_signing()
         {

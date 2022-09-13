@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.Benchmarks.Evm
         private byte[] a = new byte[32];
         private byte[] b = new byte[32];
         private byte[] c = new byte[32];
-        
+
         [Benchmark(Baseline = true)]
         public void Current()
         {
@@ -47,7 +47,7 @@ namespace Nethermind.Benchmarks.Evm
             Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
             Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
         }
-        
+
         [Benchmark]
         public void Improved()
         {

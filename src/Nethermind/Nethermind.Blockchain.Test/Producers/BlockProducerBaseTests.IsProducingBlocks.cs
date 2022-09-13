@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 testRpc.BlockTree,
                 Substitute.For<IBlockProductionTrigger>(),
-                testRpc.Timestamper, 
+                testRpc.Timestamper,
                 testRpc.SpecProvider,
                 new MiningConfig(),
                 LimboLogs.Instance);
@@ -68,6 +68,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
+            IMiningConfig miningConfig = new MiningConfig();
             TestBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
@@ -77,14 +78,16 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                miningConfig);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
+            IMiningConfig miningConfig = new MiningConfig();
             MinedBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
@@ -95,10 +98,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                miningConfig);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task AuraTestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -117,10 +121,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 new AuRaConfig(),
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IMiningConfig>());
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -154,15 +159,15 @@ namespace Nethermind.Blockchain.Test.Producers
 
         private async Task AssertIsProducingBlocks(IBlockProducer blockProducer)
         {
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
             await blockProducer.Start();
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
             Thread.Sleep(5000);
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(1));
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(1000));
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(1));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(1000));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
             await blockProducer.StopAsync();
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
         }
     }
 }

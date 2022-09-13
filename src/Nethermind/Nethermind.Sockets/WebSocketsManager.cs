@@ -27,7 +27,7 @@ namespace Nethermind.Sockets
         public void AddModule(IWebSocketsModule module, bool isDefault = false)
         {
             _modules.TryAdd(module.Name, module);
-            
+
             if (isDefault)
             {
                 _defaultModule = module;

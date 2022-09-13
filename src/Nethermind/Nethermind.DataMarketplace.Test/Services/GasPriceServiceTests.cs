@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             act.Should().Throw<ArgumentException>()
                 .WithMessage($"Gas price type: {type} couldn't be updated (price is 0). (Parameter 'type')");
         }
-        
+
         [Test]
         public async Task update_async_should_set_default_types_if_client_returns_no_result()
         {
@@ -160,7 +160,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
 
-            UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
+            UInt256 GetGasPriceGwei(decimal gasPrice) => ((int)Math.Ceiling(gasPrice / 10)).GWei();
         }
 
         [TestCase("safelow")]
@@ -222,7 +222,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             });
             await _client.Received(20).GetAsync<GasPriceService.Result>(Arg.Any<string>());
         }
-        
+
         private class TestTimestamper : ITimestamper
         {
             public DateTime UtcNow { get; set; }

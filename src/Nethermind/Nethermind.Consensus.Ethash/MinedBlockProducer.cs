@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,8 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IMiningConfig miningConfig)
             : base(
                 txSource,
                 processor,
@@ -53,8 +54,9 @@ namespace Nethermind.Consensus.Ethash
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
-                logManager, 
-                new EthashDifficultyCalculator(specProvider))
+                logManager,
+                new EthashDifficultyCalculator(specProvider),
+                miningConfig)
         {
         }
     }

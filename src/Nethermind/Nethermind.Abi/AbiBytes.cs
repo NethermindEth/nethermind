@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ namespace Nethermind.Abi
 
         public int Length { get; }
 
-        public override string Name { get; } 
+        public override string Name { get; }
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
@@ -71,7 +71,7 @@ namespace Nethermind.Abi
             {
                 return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
             }
-            
+
             if (arg is Keccak hash && Length == 32)
             {
                 return Encode(hash.Bytes, packed);

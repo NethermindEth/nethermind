@@ -723,7 +723,7 @@ namespace Nethermind.Trie.Test
             for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
             {
                 byte[] key = new byte[32];
-                ((UInt256) accountIndex).ToBigEndian(key);
+                ((UInt256)accountIndex).ToBigEndian(key);
                 accounts[accountIndex] = key;
             }
 
@@ -841,7 +841,7 @@ namespace Nethermind.Trie.Test
             for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
             {
                 byte[] key = new byte[32];
-                ((UInt256) accountIndex).ToBigEndian(key);
+                ((UInt256)accountIndex).ToBigEndian(key);
                 accounts[accountIndex] = key;
             }
 
@@ -1072,7 +1072,7 @@ namespace Nethermind.Trie.Test
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                storageProvider.Get(new StorageCell(addresses[i], (UInt256) j));
+                                storageProvider.Get(new StorageCell(addresses[i], (UInt256)j));
                             }
                         }
                     }

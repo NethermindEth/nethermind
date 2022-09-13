@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -22,12 +23,33 @@ namespace Nethermind.Consensus
 {
     public class MiningConfig : IMiningConfig
     {
+        private byte[] _extraDataBytes = Encoding.UTF8.GetBytes("Nethermind");
+        private string _extraDataString = "Nethermind";
+
         public bool Enabled { get; set; } = false;
 
         public long? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei();
-        
+
         public bool RandomizedBlocks { get; set; }
+
+        public string ExtraData
+        {
+            get
+            {
+                return _extraDataString;
+            }
+            set
+            {
+                _extraDataString = value;
+                _extraDataBytes = Encoding.UTF8.GetBytes(_extraDataString);
+            }
+        }
+
+        public byte[] GetExtraDataBytes()
+        {
+            return _extraDataBytes;
+        }
     }
 }

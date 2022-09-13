@@ -27,9 +27,9 @@ namespace Nethermind.Facade.Proxy.Models
         public bool IsTrusted { get; set; }
         public bool IsStatic { get; set; }
         public string Enode { get; set; }
-        
+
         // details
-        
+
         public string ClientType { get; set; }
         public string EthDetails { get; set; }
         public string LastSignal { get; set; }

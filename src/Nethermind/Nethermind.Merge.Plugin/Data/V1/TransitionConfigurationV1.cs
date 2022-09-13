@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,12 +31,12 @@ public class TransitionConfigurationV1
     /// Maps on the TERMINAL_TOTAL_DIFFICULTY parameter of EIP-3675
     /// </summary>
     public UInt256? TerminalTotalDifficulty { get; set; }
-    
+
     /// <summary>
     /// Maps on TERMINAL_BLOCK_HASH parameter of EIP-3675
     /// </summary>
     public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
-    
+
     /// <summary>
     /// Maps on TERMINAL_BLOCK_NUMBER parameter of EIP-3675
     /// </summary>

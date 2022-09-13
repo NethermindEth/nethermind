@@ -19,9 +19,9 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Infrastructure")]
-[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
-[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Consumers.Test")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Infrastructure")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Consumers.Test")]
 namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class TransactionInfo : IEquatable<TransactionInfo>
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((TransactionInfo) obj);
+            return obj.GetType() == GetType() && Equals((TransactionInfo)obj);
         }
 
         public override int GetHashCode()

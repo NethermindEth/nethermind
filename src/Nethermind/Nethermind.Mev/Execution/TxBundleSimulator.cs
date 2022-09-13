@@ -75,14 +75,14 @@ namespace Nethermind.Mev.Execution
                 tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
 
                 success &= tracer.TransactionResults[i];
-                
+
                 totalGasFeePayment += tracer.TxFees[i];
                 if (!_txPool.IsKnown(tx.Hash))
                 {
                     eligibleGasFeePayment += tracer.TxFees[i];
                 }
             }
-            
+
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
@@ -109,11 +109,11 @@ namespace Nethermind.Mev.Execution
 
             private BundleTxTracer? _tracer;
             private Block? _block;
-            
+
             private UInt256? _beneficiaryBalanceBefore;
             private UInt256? _beneficiaryBalanceAfter;
             private int _index = 0;
-            
+
             public long GasUsed { get; private set; }
 
             public BundleBlockTracer(long gasLimit, Address beneficiary, int txCount)
@@ -136,13 +136,13 @@ namespace Nethermind.Mev.Execution
                     UInt256 beneficiaryBalanceAfter = _beneficiaryBalanceAfter ?? UInt256.Zero;
                     UInt256 beneficiaryBalanceBefore = _beneficiaryBalanceBefore ?? UInt256.Zero;
                     return beneficiaryBalanceAfter > (beneficiaryBalanceBefore + BundleFee)
-                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - BundleFee 
+                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - BundleFee
                         : UInt256.Zero;
                 }
             }
 
             public UInt256 Reward { get; private set; }
-            
+
             public BitArray TransactionResults { get; }
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
@@ -159,18 +159,18 @@ namespace Nethermind.Mev.Execution
             }
             public ITxTracer StartNewTxTrace(Transaction? tx)
             {
-                return tx is null 
-                    ? new BundleTxTracer(_beneficiary, null, -1) 
+                return tx is null
+                    ? new BundleTxTracer(_beneficiary, null, -1)
                     : _tracer = new BundleTxTracer(_beneficiary, tx, _index++);
             }
 
             public void EndTxTrace()
             {
                 GasUsed += _tracer!.GasSpent;
-                
+
                 _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-                
+
                 Transaction? tx = _tracer.Transaction;
                 if (tx is not null)
                 {
@@ -180,10 +180,10 @@ namespace Nethermind.Mev.Execution
                         BundleFee += txFee;
                         TxFees[_tracer.Index] = txFee;
                     }
-                    
-                    TransactionResults[_tracer.Index] = 
-                        _tracer.Success || 
-                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error == "revert");
+
+                    TransactionResults[_tracer.Index] =
+                        _tracer.Success ||
+                        (tx is BundleTransaction { CanRevert: true } && _tracer.Error == "revert");
                 }
 
                 if (GasUsed > _gasLimit)
@@ -191,7 +191,7 @@ namespace Nethermind.Mev.Execution
                     throw new OperationCanceledException("Block gas limit exceeded.");
                 }
             }
-            
+
             public void EndBlockTrace()
             {
             }
@@ -225,10 +225,10 @@ namespace Nethermind.Mev.Execution
             public long GasSpent { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
-            
+
             public bool Success { get; private set; }
             public string? Error { get; private set; }
-            
+
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
                 GasSpent = gasSpent;

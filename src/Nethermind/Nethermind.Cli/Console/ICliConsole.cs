@@ -25,7 +25,7 @@ namespace Nethermind.Cli.Console
         void WriteErrorLine(string errorMessage);
 
         void WriteLine(object objectToWrite);
-        
+
         void Write(object objectToWrite);
 
         void WriteCommentLine(object objectToWrite);

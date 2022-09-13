@@ -1,4 +1,4 @@
-﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -68,7 +68,7 @@ namespace Nethermind.Trie.Benchmark
             cache.Set(TestItem.KeccakB, new byte[0]);
             return cache;
         }
-        
+
         [Benchmark]
         public MemCountingCache With_3_items_cache_608()
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Trie.Benchmark
             cache.Set(TestItem.KeccakC, new byte[0]);
             return cache;
         }
-        
+
         [Benchmark]
         public MemCountingCache Post_dictionary_growth_cache_824_and_136_lost()
         {

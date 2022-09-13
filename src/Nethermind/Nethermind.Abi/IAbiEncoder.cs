@@ -26,7 +26,7 @@ namespace Nethermind.Abi
         /// <param name="arguments">Arguments of the Solidity method.</param>
         /// <returns>ABI encoded data.</returns>
         byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments);
-        
+
         /// <summary>
         /// Decodes ABI encoded data into a set of objects.
         /// </summary>

@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
                 success.Should().BeTrue();
             }
         }
-        
+
         /// <summary>
         /// https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
         /// </summary>

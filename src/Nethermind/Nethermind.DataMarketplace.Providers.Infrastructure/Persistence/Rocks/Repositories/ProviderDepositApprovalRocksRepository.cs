@@ -16,8 +16,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
     {
         private readonly IDb _database;
         private readonly IRlpDecoder<DepositApproval> _rlpDecoder;
-        private  IRlpStreamDecoder<DepositApproval> RlpStreamDecoder => (IRlpStreamDecoder<DepositApproval>)_rlpDecoder;
-        private  IRlpObjectDecoder<DepositApproval> RlpObjectDecoder => (IRlpObjectDecoder<DepositApproval>)_rlpDecoder;
+        private IRlpStreamDecoder<DepositApproval> RlpStreamDecoder => (IRlpStreamDecoder<DepositApproval>)_rlpDecoder;
+        private IRlpObjectDecoder<DepositApproval> RlpObjectDecoder => (IRlpObjectDecoder<DepositApproval>)_rlpDecoder;
 
         public ProviderDepositApprovalRocksRepository(IDb database, IRlpNdmDecoder<DepositApproval> rlpDecoder)
         {
