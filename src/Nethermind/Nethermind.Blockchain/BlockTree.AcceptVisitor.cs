@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain
                         }
                         else
                         {
-                            if (block.Header.TotalDifficulty is null || block.Header.TotalDifficulty == 0)
+                            if (visitor.CalculateTotalDifficultyIfMissing && (block.TotalDifficulty is null || block.TotalDifficulty == 0))
                             {
                                 if (_logger.IsTrace) _logger.Trace($"Setting TD for block {block.Number}. Old TD: {block.TotalDifficulty}.");
                                 SetTotalDifficulty(block.Header);
