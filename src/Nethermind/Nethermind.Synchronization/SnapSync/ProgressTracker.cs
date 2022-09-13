@@ -26,6 +26,11 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
 
+        // Speed calculation is a bit broken, so we don't set this too high until we fix that to prevent getting stuck
+        // on slow peer which might reduces overall overall throughput. This is still an improvement though.
+        private readonly TimeSpan _maxAccountRequestWait = TimeSpan.FromMilliseconds(200);
+        private readonly AutoResetEvent _accountRequestCompleted = new(false);
+
         private readonly ILogger _logger;
         private readonly IDb _db;
 
@@ -83,91 +88,50 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (AccountsToRefresh.Count > 0)
             {
-                LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
-
-                int queueLength = AccountsToRefresh.Count;
-                AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
-
-                for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out var acc); i++)
-                {
-                    paths[i] = acc;
-                }
-
-                Interlocked.Increment(ref _activeAccRefreshRequests);
-
-                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
-
-                return (request, false);
-
+                return CreateAccountRefreshRequest(request, rootHash);
             }
             else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
-                AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
-
-                LogRequest("AccountRange");
-
-                Interlocked.Increment(ref _activeAccountRequests);
-
-                request.AccountRangeRequest = range;
-
-                return (request, false);
+                return CreateAccountRangeRequest(rootHash, blockNumber, request);
             }
-            else if (NextSlotRange.TryDequeue(out StorageRange slotRange))
+
+            // Send request if batch is full
+            if (NextSlotRange.TryDequeue(out StorageRange slotRange))
             {
-                slotRange.RootHash = rootHash;
-                slotRange.BlockNumber = blockNumber;
+                return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
+            }
+            else if (StoragesToRetrieve.Count >= STORAGE_BATCH_SIZE)
+            {
+                return CreateStorageRangeRequest(rootHash, blockNumber, request);
+            }
+            else if (CodesToRetrieve.Count >= CODES_BATCH_SIZE)
+            {
+                return CreateCodesRequest(request);
+            }
 
-                LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
+            // If we can't fill batch, but we know there are more accounts to download, wait for the account request
+            // which would fill in more request. This increases overall throughput as it encourage larger batch.
+            // Even if there are idle peer, we want the best peer (the first one selected) to go to account request
+            // so that we can get account faster and fill the request queue faster.
+            if (MoreAccountsToRight && _accountRequestCompleted.WaitOne(_maxAccountRequestWait))
+            {
+                if (MoreAccountsToRight && _activeAccountRequests == 0)
+                {
+                    return CreateAccountRangeRequest(rootHash, blockNumber, request);
+                }
+            }
 
-                Interlocked.Increment(ref _activeStorageRequests);
-
-                request.StorageRangeRequest = slotRange;
-
-                return (request, false);
+            if (NextSlotRange.TryDequeue(out slotRange))
+            {
+                return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
             }
             else if (StoragesToRetrieve.Count > 0)
             {
-                // TODO: optimize this
-                List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
-
-                for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
-                {
-                    storagesToQuery.Add(storage);
-                }
-
-                StorageRange storageRange = new()
-                {
-                    RootHash = rootHash,
-                    Accounts = storagesToQuery.ToArray(),
-                    StartingHash = Keccak.Zero,
-                    BlockNumber = blockNumber
-                };
-
-                LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
-
-                Interlocked.Increment(ref _activeStorageRequests);
-
-                request.StorageRangeRequest = storageRange;
-
-                return (request, false);
+                return CreateStorageRangeRequest(rootHash, blockNumber, request);
             }
             else if (CodesToRetrieve.Count > 0)
             {
-                // TODO: optimize this
-                List<Keccak> codesToQuery = new(CODES_BATCH_SIZE);
-
-                for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out Keccak codeHash); i++)
-                {
-                    codesToQuery.Add(codeHash);
-                }
-
-                LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
-
-                Interlocked.Increment(ref _activeCodeRequests);
-
-                request.CodesRequest = codesToQuery.ToArray();
-
-                return (request, false);
+                return CreateCodesRequest(request);
             }
 
             bool rangePhaseFinished = IsSnapGetRangesFinished();
@@ -180,6 +144,101 @@ namespace Nethermind.Synchronization.SnapSync
             LogRequest(NO_REQUEST);
 
             return (null, IsSnapGetRangesFinished());
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateCodesRequest(SnapSyncBatch request)
+        {
+            // TODO: optimize this
+            List<Keccak> codesToQuery = new(CODES_BATCH_SIZE);
+
+            for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out Keccak codeHash); i++)
+            {
+                codesToQuery.Add(codeHash);
+            }
+
+            LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
+
+            Interlocked.Increment(ref _activeCodeRequests);
+
+            request.CodesRequest = codesToQuery.ToArray();
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateStorageRangeRequest(Keccak? rootHash, long blockNumber,
+            SnapSyncBatch request)
+        {
+            // TODO: optimize this
+            List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+
+            for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+            {
+                storagesToQuery.Add(storage);
+            }
+
+            StorageRange storageRange = new()
+            {
+                RootHash = rootHash,
+                Accounts = storagesToQuery.ToArray(),
+                StartingHash = Keccak.Zero,
+                BlockNumber = blockNumber
+            };
+
+            LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
+
+            Interlocked.Increment(ref _activeStorageRequests);
+
+            request.StorageRangeRequest = storageRange;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateStorageRangeRequest(StorageRange slotRange, Keccak? rootHash,
+            long blockNumber, SnapSyncBatch request)
+        {
+            slotRange.RootHash = rootHash;
+            slotRange.BlockNumber = blockNumber;
+
+            LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
+
+            Interlocked.Increment(ref _activeStorageRequests);
+
+            request.StorageRangeRequest = slotRange;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateAccountRangeRequest(Keccak? rootHash, long blockNumber,
+            SnapSyncBatch request)
+        {
+            AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+
+            LogRequest("AccountRange");
+
+            Interlocked.Increment(ref _activeAccountRequests);
+
+            request.AccountRangeRequest = range;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateAccountRefreshRequest(SnapSyncBatch request, Keccak? rootHash)
+        {
+            LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
+
+            int queueLength = AccountsToRefresh.Count;
+            AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
+
+            for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out var acc); i++)
+            {
+                paths[i] = acc;
+            }
+
+            Interlocked.Increment(ref _activeAccRefreshRequests);
+
+            request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
+
+            return (request, false);
         }
 
         public void EnqueueCodeHashes(ICollection<Keccak>? codeHashes)
@@ -254,6 +313,8 @@ namespace Nethermind.Synchronization.SnapSync
         public void ReportAccountRequestFinished()
         {
             Interlocked.Decrement(ref _activeAccountRequests);
+
+            _accountRequestCompleted.Set();
         }
 
         public bool IsSnapGetRangesFinished()
