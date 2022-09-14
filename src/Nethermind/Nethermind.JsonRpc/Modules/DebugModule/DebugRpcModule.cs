@@ -291,7 +291,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             {
                 return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
             }
-            var rlp = receipts.Select(tx => Rlp.Encode(tx).Bytes);
+            
+            var rlp = receipts.Select(tx => Rlp.Encode(tx, RlpBehaviors.Eip658Receipts).Bytes);
             return ResultWrapper<byte[][]>.Success(rlp.ToArray());
         }
 
