@@ -17,7 +17,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -110,12 +112,35 @@ namespace Nethermind.Serialization.Rlp
                         }
 
                         Type key = implementedInterface.GenericTypeArguments[0];
-                        if (!Decoders.ContainsKey(key))
+
+                        InjectDecoder(type, key, (newDecoderType, oldDecoderType) =>
                         {
-                            Decoders[key] = (IRlpDecoder) Activator.CreateInstance(type);
-                        }
+                            static bool CheckInterface(Type targetType, Type genericType0, Type GenericInterface)
+                                => targetType.GetInterfaces()
+                                                .Any(i => i.IsGenericType
+                                                    && i.GetGenericTypeDefinition() == typeof(IRlpValueDecoder<>)
+                                                    && i.GenericTypeArguments[0] == genericType0);
+
+                            var isOldIRlpValueDecoder = CheckInterface(oldDecoderType, key, typeof(IRlpValueDecoder<>)) ? 1 : 0;
+                            var isOldIRlpObjctDecoder = CheckInterface(oldDecoderType, key, typeof(IRlpObjectDecoder<>)) ? 2 : 0;
+                            var oldDecoderGrade = isOldIRlpObjctDecoder | isOldIRlpValueDecoder;
+
+                            var isNewIRlpValueDecoder = CheckInterface(newDecoderType, key, typeof(IRlpValueDecoder<>)) ? 1 : 0;
+                            var isNewIRlpObjctDecoder = CheckInterface(newDecoderType, key, typeof(IRlpObjectDecoder<>)) ? 2 : 0;
+                            var newDecoderGrade = isNewIRlpValueDecoder | isNewIRlpObjctDecoder;
+
+                            return newDecoderGrade > oldDecoderGrade;
+                        });
                     }
                 }
+            }
+        }
+
+        public static void InjectDecoder(Type type, Type key, Func<Type, Type, bool> overwriteIfTrue, params object?[]? args)
+        {
+            if (!Decoders.ContainsKey(key) || overwriteIfTrue(type, Decoders[key].GetType()))
+            {
+                Decoders[key] = (IRlpDecoder)Activator.CreateInstance(type, args);
             }
         }
 
@@ -182,8 +207,12 @@ namespace Nethermind.Serialization.Rlp
                 return Encode(new[] {rlp});
             }
 
-            IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
-            return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            IRlpObjectDecoder<T>? rlpObjectDecoder = GetObjectDecoder<T>();
+            if (rlpObjectDecoder is null) {
+                IRlpValueDecoder<T>? rlpValueDecoder = GetValueDecoder<T>();
+                return rlpValueDecoder is not null ? rlpValueDecoder.Encode(item) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            }
+            return rlpObjectDecoder.Encode(item, behaviors);
         }
 
         public static Rlp Encode<T>(T[]? items, RlpBehaviors behaviors = RlpBehaviors.None)

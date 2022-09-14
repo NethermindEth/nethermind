@@ -30,7 +30,8 @@ namespace Nethermind.Serialization.Rlp
 
         public static readonly ReceiptStorageDecoder Instance = new();
 
-        public ReceiptStorageDecoder(bool supportTxHash = true)
+        public ReceiptStorageDecoder() => new ReceiptStorageDecoder(true);
+        public ReceiptStorageDecoder(bool supportTxHash)
         {
             _supportTxHash = supportTxHash;
         }
