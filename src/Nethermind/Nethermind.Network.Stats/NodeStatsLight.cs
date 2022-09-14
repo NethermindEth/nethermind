@@ -33,7 +33,7 @@ namespace Nethermind.Stats
         // 0.5m means that the reported speed will be (oldSpeed + newSpeed)/2;
         // 0.25m here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
         // modification to account for jitter.
-        private decimal _latestSpeedWeight = 0.25m;
+        private readonly decimal _latestSpeedWeight;
 
         private decimal? _averageNodesTransferSpeed;
         private decimal? _averageHeadersTransferSpeed;
@@ -54,10 +54,11 @@ namespace Nethermind.Stats
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
 
-        public NodeStatsLight(Node node)
+        public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
         {
             _statCountersArray = new int[_statsLength];
             _statsParameters = StatsParameters.Instance;
+            _latestSpeedWeight = latestSpeedWeight;
             Node = node;
         }
 
@@ -198,12 +199,12 @@ namespace Nethermind.Stats
         {
             return (transferSpeedType switch
             {
-                TransferSpeedType.Latency => $"{_averageLatency ?? 0,5:0}",
-                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.Latency => $"{_averageLatency ?? -1,5:0}",
+                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? -1,5:0}",
                 _ => throw new ArgumentOutOfRangeException()
             });
         }

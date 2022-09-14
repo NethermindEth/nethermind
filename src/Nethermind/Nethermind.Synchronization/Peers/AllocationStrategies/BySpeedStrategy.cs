@@ -32,6 +32,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         private readonly Random _random = new();
 
         // Randomly pick a different peer that is not of the best speed. Encourage updating speed.
+        // Does not seems to matter much. But its here if you want to tweak it.
         private readonly double _recalculateSpeedProbability = 0.025;
 
         // Randomly pick a peer that has no speed to discover peer with better speed. This number will be multiplied by
