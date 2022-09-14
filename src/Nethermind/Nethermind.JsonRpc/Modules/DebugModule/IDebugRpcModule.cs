@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<byte[]> debug_getRawBlock(long blockNumber);
         
         [JsonRpcMethod(Description = "Get Raw Receipt format.")]
-        ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber);
+        ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber);
         
         [JsonRpcMethod(Description = "Get Raw Header format.")]
         ResultWrapper<byte[]> debug_getRawHeader(long blockNumber);

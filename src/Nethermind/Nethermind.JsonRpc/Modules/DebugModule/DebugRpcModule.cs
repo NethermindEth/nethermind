@@ -284,15 +284,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<byte[]>.Success(rlp.Bytes);
         }
 
-        public ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber)
+        public ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber)
         {
             var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockNumber));
             if(receipts == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
             }
-            var rlp = Rlp.Encode(receipts);
-            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+            var rlp = receipts.Select(tx => Rlp.Encode(tx).Bytes);
+            return ResultWrapper<byte[][]>.Success(rlp.ToArray());
         }
 
         public ResultWrapper<byte[]> debug_getRawBlock(long blockNumber)
