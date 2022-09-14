@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
+using Prometheus;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
@@ -29,8 +30,13 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         private readonly decimal _minDiffPercentageForSpeedSwitch;
         private readonly int _minDiffForSpeedSwitch;
         private readonly Random _random = new();
+
+        // Randomly pick a different peer that is not of the best speed. Encourage updating speed.
         private readonly double _recalculateSpeedProbability = 0.025;
-        private readonly double _tryNoSpeedProbability = 0.03;
+
+        // Randomly pick a peer that has no speed to discover peer with better speed. This number will be multiplied by
+        // the proportion of peers without speed, so the effective rate goes down as the number of peer with no speed goes down.
+        private readonly double _discoverSpeedProbability = 0.50;
 
         public BySpeedStrategy(
             TransferSpeedType speedType,
@@ -51,7 +57,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         {
             long nullSpeed = _priority ? -1 : long.MaxValue;
             List<PeerInfo> peersAsList = peers.ToList();
+
             long peerCount = peersAsList.Count();
+            long noPeerCount = peersAsList.Count(p => nodeStatsManager.GetOrAdd(p.SyncPeer.Node).GetAverageTransferSpeed(_speedType) == null);
+            double discoverSpeedProbability = _discoverSpeedProbability * noPeerCount / (peerCount == 0 ? 1.0 : (double) peerCount);
+
             long currentSpeed = currentPeer == null ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(_speedType) ?? nullSpeed;
             (PeerInfo? Info, long TransferSpeed) bestPeer = (currentPeer, currentSpeed);
 
@@ -65,12 +75,14 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;
 
-                if (speed == null && _random.NextDouble() < _tryNoSpeedProbability)
+                if (speed == null && _random.NextDouble() < discoverSpeedProbability)
                 {
+                    BySpeedStrategyForceDiscovery.WithLabels(_speedType.ToString()).Inc();
                     forceTake = true;
                 }
                 else if (recalculateSpeedEitherWay && _random.NextDouble() < (1.0 / peerCount))
                 {
+                    BySpeedStrategyForceRecalculate.WithLabels(_speedType.ToString()).Inc();
                     forceTake = true;
                 }
 
@@ -79,10 +91,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                     bestPeer = (info, averageTransferSpeed);
                 }
 
-                if (forceTake)
-                {
-                    break;
-                }
+                if (forceTake) break;
             }
 
             if (peerCount == 0)
