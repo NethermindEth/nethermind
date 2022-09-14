@@ -20,6 +20,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
+    [PreferenceDecoder("Conforms with Hive test expected results", byte.MaxValue)]
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
     {
         static ReceiptMessageDecoder()

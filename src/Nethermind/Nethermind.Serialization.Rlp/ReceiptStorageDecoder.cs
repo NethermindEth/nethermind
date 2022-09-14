@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
+    [PreferenceDecoder("Doesn't conforms with Hive test expected results", byte.MinValue)]
     public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
     {
         private readonly bool _supportTxHash;

@@ -115,21 +115,13 @@ namespace Nethermind.Serialization.Rlp
 
                         InjectDecoder(type, key, (newDecoderType, oldDecoderType) =>
                         {
-                            static bool CheckInterface(Type targetType, Type genericType0, Type GenericInterface)
-                                => targetType.GetInterfaces()
-                                                .Any(i => i.IsGenericType
-                                                    && i.GetGenericTypeDefinition() == typeof(IRlpValueDecoder<>)
-                                                    && i.GenericTypeArguments[0] == genericType0);
+                            static int? CheckDecorderPriority(Type targetType)
+                                => targetType.GetCustomAttribute<PreferenceDecoderAttribute>()?.priotity;
 
-                            var isOldIRlpValueDecoder = CheckInterface(oldDecoderType, key, typeof(IRlpValueDecoder<>)) ? 1 : 0;
-                            var isOldIRlpObjctDecoder = CheckInterface(oldDecoderType, key, typeof(IRlpObjectDecoder<>)) ? 2 : 0;
-                            var oldDecoderGrade = isOldIRlpObjctDecoder | isOldIRlpValueDecoder;
+                            var oldDecoderPriority = CheckDecorderPriority(oldDecoderType);
+                            var newDecoderPriority = CheckDecorderPriority(newDecoderType);
 
-                            var isNewIRlpValueDecoder = CheckInterface(newDecoderType, key, typeof(IRlpValueDecoder<>)) ? 1 : 0;
-                            var isNewIRlpObjctDecoder = CheckInterface(newDecoderType, key, typeof(IRlpObjectDecoder<>)) ? 2 : 0;
-                            var newDecoderGrade = isNewIRlpValueDecoder | isNewIRlpObjctDecoder;
-
-                            return newDecoderGrade > oldDecoderGrade;
+                            return newDecoderPriority > oldDecoderPriority;
                         });
                     }
                 }
