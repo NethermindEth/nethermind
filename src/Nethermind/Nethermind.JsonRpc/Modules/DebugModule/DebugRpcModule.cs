@@ -284,32 +284,32 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<byte[]>.Success(rlp.Bytes);
         }
 
-        public ResultWrapper<byte[]> debug_getRawReceipts(long blockNumber)
+        public ResultWrapper<byte[][]> debug_getRawReceipts(Keccak blockKec)
         {
-            var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockNumber));
+            var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockKec));
             if(receipts == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockKec}", ErrorCodes.ResourceNotFound);
             }
-            var rlp = Rlp.Encode(receipts);
-            return ResultWrapper<byte[]>.Success(rlp.Bytes);
+            var rlp = receipts.Select(tx => Rlp.Encode(tx).Bytes);
+            return ResultWrapper<byte[][]>.Success(rlp.ToArray());
         }
 
-        public ResultWrapper<byte[]> debug_getRawBlock(long blockNumber)
+        public ResultWrapper<byte[]> debug_getRawBlock(Keccak blockKec)
         {
-            var blockRLP = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
+            var blockRLP = _debugBridge.GetBlockRlp(new BlockParameter(blockKec));
             if ( blockRLP == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+                return ResultWrapper<byte[]>.Fail($"Block {blockKec} was not found", ErrorCodes.ResourceNotFound);    
             }
             return ResultWrapper<byte[]>.Success(blockRLP);
         } 
 
-        public ResultWrapper<byte[]> debug_getRawHeader(long blockNumber) {
-            var block = _debugBridge.GetBlock(new BlockParameter(blockNumber));
+        public ResultWrapper<byte[]> debug_getRawHeader(Keccak blockKec) {
+            var block = _debugBridge.GetBlock(new BlockParameter(blockKec));
             if (block == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+                return ResultWrapper<byte[]>.Fail($"Block {blockKec} was not found", ErrorCodes.ResourceNotFound);    
             }
             Rlp rlp = Rlp.Encode<BlockHeader>(block.Header);
             return ResultWrapper<byte[]>.Success(rlp.Bytes);
