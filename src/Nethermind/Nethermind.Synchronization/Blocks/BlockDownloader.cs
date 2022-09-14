@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,12 +34,17 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Prometheus;
 
 namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : SyncDispatcher<BlocksRequest?>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
+
+        // This includes both body and receipt
+        public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(6000);
+        public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(4000);
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -52,11 +58,10 @@ namespace Nethermind.Synchronization.Blocks
         private readonly Random _rnd = new();
 
         private bool _cancelDueToBetterPeer;
-        private AllocationWithCancellation _allocationWithCancellation;
+        private AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
         protected bool HasBetterPeer => _allocationWithCancellation.Cancellation.IsCancellationRequested;
 
         protected SyncBatchSize _syncBatchSize;
-        protected int _sinceLastTimeout;
         private readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
@@ -99,6 +104,8 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
+        private PeerInfo? _previousBestPeer = null;
+
         protected override async Task Dispatch(
             PeerInfo bestPeer,
             BlocksRequest? blocksRequest,
@@ -111,6 +118,12 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             if (!_blockTree.CanAcceptNewBlocks) return;
+
+            if (_previousBestPeer != bestPeer)
+            {
+                _syncBatchSize.Reset();
+            }
+            _previousBestPeer = bestPeer;
 
             try
             {
@@ -165,6 +178,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                Stopwatch sw = Stopwatch.StartNew();
                 BlockHeader?[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Keccak? startHeaderHash = headers[0]?.Hash;
@@ -185,12 +199,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 ancestorLookupLevel = 0;
-                _sinceLastTimeout++;
-                if (_sinceLastTimeout >= 2)
-                {
-                    // if peers are not timing out then we can try to be slightly more eager
-                    _syncBatchSize.Expand();
-                }
+                AdjustSyncBatchSize(sw.Elapsed);
 
                 for (int i = 1; i < headers.Length; i++)
                 {
@@ -294,6 +303,8 @@ namespace Nethermind.Synchronization.Blocks
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+
+                Stopwatch sw = Stopwatch.StartNew();
                 await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
@@ -302,11 +313,7 @@ namespace Nethermind.Synchronization.Blocks
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
-                _sinceLastTimeout++;
-                if (_sinceLastTimeout > 2)
-                {
-                    _syncBatchSize.Expand();
-                }
+                AdjustSyncBatchSize(sw.Elapsed);
 
                 Block[] blocks = context.Blocks;
                 Block blockZero = blocks[0];
@@ -414,7 +421,6 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (downloadTask.IsFaulted)
             {
-                _sinceLastTimeout = 0;
                 if (downloadTask.Exception?.Flatten().InnerExceptions.Any(x => x is TimeoutException) ?? false)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
@@ -451,7 +457,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, Math.Max(_syncBatchSize.Current, peer.MaxBodiesPerRequest()));
+                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
                 BlockBody[] result = getBodiesRequest.Result;
@@ -689,6 +695,25 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Adjust the sync batch size according to how much time it take to download the batch.
+        /// </summary>
+        /// <param name="downloadTime"></param>
+        protected void AdjustSyncBatchSize(TimeSpan downloadTime)
+        {
+            // We shrink the batch size to prevent timeout. Timeout are wasted bandwith.
+            if (downloadTime > SyncBatchDownloadTimeUpperBound)
+            {
+                _syncBatchSize.Shrink();
+            }
+
+            // We also want as high batch size as we can afford.
+            if (downloadTime < SyncBatchDownloadTimeLowerBound)
+            {
+                _syncBatchSize.Expand();
             }
         }
 

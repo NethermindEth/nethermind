@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -105,8 +106,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
-            if (_logger.IsTrace)
-                _logger.Trace(
+            if (_logger.IsDebug)
+                _logger.Debug(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
@@ -153,6 +154,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
+                Stopwatch sw = Stopwatch.StartNew();
                 await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
@@ -162,12 +164,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
-                _sinceLastTimeout++;
-                if (_sinceLastTimeout > 2)
-                {
-                    _syncBatchSize.Expand();
-
-                }
+                AdjustSyncBatchSize(sw.Elapsed);
 
                 blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;
