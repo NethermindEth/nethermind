@@ -130,7 +130,7 @@ namespace Nethermind.Merge.Plugin
 
         private void FixTransitionBlock() {
             // Special case during mainnet merge where if a transition block does not get processed through gossip
-            // it does not get marked as main causing some issue on getReceipt.
+            // it does not get marked as main causing some issue on eth_getLogs.
             Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
             Block? block = _api.BlockTree!.FindBlock(blockHash);
             if (block != null)
