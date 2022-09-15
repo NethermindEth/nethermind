@@ -311,8 +311,16 @@ public partial class BlockTreeTests
             private IChainLevelHelper? _chainLevelHelper;
             private IBeaconPivot _beaconPivot;
 
-            public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null, int splitVariant = 0, int splitFrom = 0)
-            {
+            public ScenarioBuilder WithBlockTrees(
+                int notSyncedTreeSize,
+                int syncedTreeSize = -1,
+                bool moveBlocksToMainChain = true,
+                UInt256? ttd = null,
+                int splitVariant = 0,
+                int splitFrom = 0,
+                int syncedSplitVariant = 0,
+                int syncedSplitFrom = 0
+            ) {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd != null) testSpecProvider.TerminalTotalDifficulty = ttd;
                 NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
@@ -329,7 +337,7 @@ public partial class BlockTreeTests
 
                 if (syncedTreeSize > 0)
                 {
-                    _syncedTreeBuilder = Build.A.BlockTree().OfChainLength(syncedTreeSize);
+                    _syncedTreeBuilder = Build.A.BlockTree().OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
                     SyncedTree = new(
                         _syncedTreeBuilder.BlocksDb,
                         _syncedTreeBuilder.HeadersDb,
