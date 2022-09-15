@@ -149,13 +149,13 @@ namespace Nethermind.Merge.Plugin
                     return;
                 }
 
-                _logger.Warn("Fixing transition block for mainnet terminal issue.");
                 if (index.Value != 0)
                 {
                     (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                    _api.ChainLevelInfoRepository.PersistLevel(block.Number, level);
                 }
 
-                _api.ChainLevelInfoRepository.PersistLevel(block.Number, level);
+                _api.ReceiptStorage!.EnsureCanonical(block);
             }
         }
 
