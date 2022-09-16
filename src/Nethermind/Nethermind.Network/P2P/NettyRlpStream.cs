@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P
 {
-    public class NettyRlpStream : RlpStream
+    public class NettyRlpStream : RlpStream, IDisposable
     {
         private readonly IByteBuffer _buffer;
 
@@ -100,5 +100,9 @@ namespace Nethermind.Network.P2P
         public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
+        public void Dispose()
+        {
+            _buffer.Release();
+        }
     }
 }
