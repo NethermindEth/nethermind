@@ -837,6 +837,36 @@ namespace Nethermind.Synchronization.Test
             await action.Should().ThrowAsync<EthSyncException>();
         }
 
+        [TestCase(DownloaderOptions.WithBodies)]
+        [TestCase(DownloaderOptions.None)]
+        public async Task Throws_on_incorrect_blockhash(DownloaderOptions downloaderOptions)
+        {
+            Context ctx = new();
+            BlockDownloader downloader = CreateBlockDownloader(ctx);
+
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+
+            Task<BlockHeader[]> buildHeadersResponse = null;
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.Consistent | Response.InvalidBlockHash));
+
+            Task<BlockBody[]> buildBlocksResponse = null;
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result);
+
+            PeerInfo peerInfo = new(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(downloaderOptions, 1), CancellationToken.None);
+
+            syncPeer.HeadNumber.Returns(2);
+            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions, 1), CancellationToken.None);
+            await action.Should().ThrowAsync<EthSyncException>().WithMessage("*invalid block hash*");
+        }
+
         [TestCase(32)]
         [TestCase(1)]
         public async Task Throws_on_incorrect_receipts_root(int threshold)
@@ -849,7 +879,7 @@ namespace Nethermind.Synchronization.Test
 
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
+                .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.Consistent | Response.IncorrectReceiptRoot | Response.WithTransactions));
 
             Task<BlockBody[]> buildBlocksResponse = null;
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
@@ -865,7 +895,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            await action.Should().ThrowAsync<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>().WithMessage("*receipt*");
         }
 
         private BlockDownloader CreateBlockDownloader(Context ctx)
@@ -890,7 +920,8 @@ namespace Nethermind.Synchronization.Test
             TimeoutOnFullBatch = 32,
             NoBody = 64,
             WithTransactions = 128,
-            IncorrectReceiptRoot = 256
+            IncorrectReceiptRoot = 256,
+            InvalidBlockHash = 512
         }
 
         private class Context
@@ -1157,9 +1188,23 @@ namespace Nethermind.Synchronization.Test
                     _headers[header.Hash] = header;
                 }
 
-                BlockHeadersMessage message = new(headers);
-                byte[] messageSerialized = _headersSerializer.Serialize(message);
-                return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
+                if (flags.HasFlag(Response.InvalidBlockHash))
+                {
+                    foreach (BlockHeader header in headers)
+                    {
+                        _headers[header.Hash].TxRoot = Keccak.Compute("something");
+                    }
+                }
+
+                // BlockHash get recomputed on deserialize. So we want
+                if (!flags.HasFlag(Response.InvalidBlockHash))
+                {
+                    BlockHeadersMessage message = new(headers);
+                    byte[] messageSerialized = _headersSerializer.Serialize(message);
+                    headers = _headersSerializer.Deserialize(messageSerialized).BlockHeaders;
+                }
+
+                return await Task.FromResult(headers);
             }
 
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();

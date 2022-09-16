@@ -443,9 +443,22 @@ namespace Nethermind.Synchronization.Blocks
             cancellation.ThrowIfCancellationRequested();
 
             BlockHeader[] headers = headersRequest.Result;
+            ValidateBlockHash(headers);
             ValidateSeals(headers, cancellation);
             ValidateBatchConsistencyAndSetParents(peer, headers);
             return headers;
+        }
+
+        private void ValidateBlockHash(BlockHeader[] headers)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                BlockHeader header = headers[i];
+                if (!HeaderValidator.ValidateHash(header))
+                {
+                    throw new EthSyncException("Received header with invalid block hash");
+                }
+            }
         }
 
         protected async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
