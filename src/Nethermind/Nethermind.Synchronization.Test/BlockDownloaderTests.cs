@@ -1196,7 +1196,7 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                // BlockHash get recomputed on deserialize. So we want
+                // BlockHash get recomputed on deserialize. So we want to skip to simulate cases where this does not happen.
                 if (!flags.HasFlag(Response.InvalidBlockHash))
                 {
                     BlockHeadersMessage message = new(headers);
