@@ -167,6 +167,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             return AddBlockResult.AlreadyKnown;
         }
 
+        if (!HeaderValidator.ValidateHash(header))
+        {
+            if (_logger.IsWarn)
+                _logger.Warn("Peer sent a header with invalid hash.");
+            return AddBlockResult.InvalidBlock;
+        }
+
         if (_logger.IsTrace)
             _logger.Trace(
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");

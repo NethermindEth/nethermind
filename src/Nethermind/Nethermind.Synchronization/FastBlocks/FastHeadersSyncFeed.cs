@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -555,6 +556,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual AddBlockResult InsertToBlockTree(BlockHeader header)
         {
+            if (!HeaderValidator.ValidateHash(header))
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn("Peer sent a header with invalid hash.");
+                return AddBlockResult.InvalidBlock;
+            }
+
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
