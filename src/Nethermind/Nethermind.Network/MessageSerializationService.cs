@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using DotNetty.Buffers;
 using Nethermind.Network.P2P;
@@ -35,7 +36,19 @@ namespace Nethermind.Network
             {
                 IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
                 byteBuffer.WriteBytes(bytes);
-                return zeroMessageSerializer.Deserialize(byteBuffer);
+                T result;
+                try
+                {
+                    result = zeroMessageSerializer.Deserialize(byteBuffer);
+                }
+                catch (Exception)
+                {
+                    byteBuffer.Release();
+                    throw;
+                }
+
+                byteBuffer.Release();
+                return result;
             }
 
             throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
