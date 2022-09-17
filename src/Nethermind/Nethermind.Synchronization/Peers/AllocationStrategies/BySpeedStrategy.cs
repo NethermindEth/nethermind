@@ -36,6 +36,8 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         private readonly double _recalculateSpeedProbability = 0.025;
 
         // If the number of peer with known speed is less than this, then always try new peer.
+        // The idea is that, if we have at least this amount of peers with known speed, at least one of them should
+        // be fast, but we don't want to spend more time trying out other peers.
         private readonly long _desiredPeersWithKnownSpeed = 10;
 
         public BySpeedStrategy(
