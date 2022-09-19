@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -24,6 +24,16 @@ namespace Nethermind.Trie
 {
     public class HexPrefix
     {
+        // flags for the first byte
+        private const int LeafFlag = 0x20;
+        private const int ExtensionFlag = 0x000;
+        private const int OddFlag = 0x10;
+
+        // nibbles
+        private const int LowNibbleMask = 0x0F;
+        private const int HighNibbleMask = 0xF0;
+        private const int NibbleSize = 16;
+
         [DebuggerStepThrough]
         public HexPrefix(bool isLeaf, params byte[] path)
         {
@@ -71,18 +81,18 @@ namespace Nethermind.Trie
         public byte[] ToBytes()
         {
             byte[] output = new byte[Path.Length / 2 + 1];
-            output[0] = (byte) (IsLeaf ? 0x20 : 0x000);
+            output[0] = (byte) (IsLeaf ? LeafFlag : ExtensionFlag);
             if (Path.Length % 2 != 0)
             {
-                output[0] += (byte) (0x10 + Path[0]);
+                output[0] += (byte) (OddFlag + Path[0]);
             }
 
             for (int i = 0; i < Path.Length - 1; i = i + 2)
             {
                 output[i / 2 + 1] =
                     Path.Length % 2 == 0
-                        ? (byte) (16 * Path[i] + Path[i + 1])
-                        : (byte) (16 * Path[i + 1] + Path[i + 2]);
+                        ? (byte) (NibbleSize * Path[i] + Path[i + 1])
+                        : (byte) (NibbleSize * Path[i + 1] + Path[i + 2]);
             }
 
             return output;
@@ -90,8 +100,8 @@ namespace Nethermind.Trie
 
         public static HexPrefix FromBytes(ReadOnlySpan<byte> bytes)
         {
-            HexPrefix hexPrefix = new(bytes[0] >= 32);
-            bool isEven = (bytes[0] & 16) == 0;
+            HexPrefix hexPrefix = new(bytes[0] >= LeafFlag);
+            bool isEven = (bytes[0] & OddFlag) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             hexPrefix.Path = new byte[nibblesCount];
             for (int i = 0; i < nibblesCount; i++)
@@ -99,11 +109,11 @@ namespace Nethermind.Trie
                 hexPrefix.Path[i] =
                     isEven
                         ? i % 2 == 0
-                            ? (byte) ((bytes[1 + i / 2] & 240) / 16)
-                            : (byte) (bytes[1 + i / 2] & 15)
+                            ? (byte) ((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize)
+                            : (byte) (bytes[1 + i / 2] & LowNibbleMask)
                         : i % 2 == 0
-                            ? (byte) (bytes[i / 2] & 15)
-                            : (byte) ((bytes[1 + i / 2] & 240) / 16);
+                            ? (byte) (bytes[i / 2] & LowNibbleMask)
+                            : (byte) ((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize);
             }
 
             return hexPrefix;
