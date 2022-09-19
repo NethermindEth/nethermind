@@ -38,8 +38,6 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
-        public bool IsBoundaryProofNode { get; set; }
-
         private TrieNode? _storageRoot;
         private static object _nullNode = new();
         private static TrieNodeDecoder _nodeDecoder = new();
@@ -66,16 +64,21 @@ namespace Nethermind.Trie
 
         public byte[]? FullRlp { get; internal set; }
 
-        private long _value = 0;
+        private long _value;
 
         private const long NodeTypeMask = 0b11;
         private const long DirtyMask = 0b100;
         private const int DirtyShift = 2;
         private const long PersistedMask = 0b1000;
         private const int PersistedShift = 3;
-        private const long HasLastSeenMask = 0b10000;
+        private const long HasLastSeenMask = 0b1_0000;
         private const int HasLastSeenShift = 4;
         private const int LastSeenShiftRight = 8;
+
+        private const long IsBoundaryProofNodeMask = 0b10_0000;
+        private const int IsBoundaryProofNodeShift = 5;
+
+        // 6, 7 bits are free to use
 
         public NodeType NodeType
         {
@@ -93,6 +96,12 @@ namespace Nethermind.Trie
         {
             get => (_value & PersistedMask) > 0;
             set => _value = (_value & ~PersistedMask) | (value ? (1L << PersistedShift) : 0L);
+        }
+
+        public bool IsBoundaryProofNode
+        {
+            get => (_value & IsBoundaryProofNodeMask) > 0;
+            set => _value = (_value & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
         }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
