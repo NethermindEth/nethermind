@@ -90,7 +90,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CancellationToken cancellation)
         {
             if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            {
+                if (_logger.IsDebug)
+                    _logger.Debug("Using pre merge block downloader");
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
+            }
 
             if (bestPeer == null)
             {
@@ -136,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 if (HasBetterPeer)
                 {
-                    if (_logger.IsDebug) _logger.Debug("-- Has better peer, stopping...");
+                    if (_logger.IsDebug) _logger.Debug("Has better peer, stopping");
                     break;
                 }
 
