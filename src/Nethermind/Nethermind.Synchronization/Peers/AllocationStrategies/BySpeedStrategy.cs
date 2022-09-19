@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
-using Prometheus;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
@@ -78,12 +77,10 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
                 if (speed == null && shouldDiscoverSpeed && _random.NextDouble() < 1.0 / noSpeedPeerCount)
                 {
-                    BySpeedStrategyForceDiscovery.WithLabels(_speedType.ToString()).Inc();
                     forceTake = true;
                 }
                 else if (shouldRediscoverSpeed && _random.NextDouble() < (1.0 / peerCount))
                 {
-                    BySpeedStrategyForceRecalculate.WithLabels(_speedType.ToString()).Inc();
                     forceTake = true;
                 }
 

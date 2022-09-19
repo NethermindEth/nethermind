@@ -34,7 +34,6 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Prometheus;
 
 namespace Nethermind.Synchronization.Blocks
 {
