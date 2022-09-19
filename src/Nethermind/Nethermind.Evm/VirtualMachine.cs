@@ -2160,14 +2160,16 @@ namespace Nethermind.Evm
                     }
                     case Instruction.PUSH0:
                     {
-                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        if (spec.IncludePush0Instruction)
                         {
-                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                            return CallResult.OutOfGasException;
+                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            stack.PushZero();
                         }
-
-                        stack.PushZero();
-
                         break;
                     }
                     case Instruction.PUSH1:

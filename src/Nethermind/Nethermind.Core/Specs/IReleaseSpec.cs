@@ -255,6 +255,12 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip1153Enabled { get; }
 
+
+        /// <summary>
+        /// PUSH0 instruction
+        /// </summary>
+        bool IsEip3855Enabled { get; }
+
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
@@ -328,6 +334,9 @@ namespace Nethermind.Core.Specs
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
         public bool BaseFeeEnabled => IsEip3198Enabled;
+
+        // EVM Related
+        public bool IncludePush0Instruction => IsEip3855Enabled;
 
         public Address? Eip1559FeeCollector => null;
 
