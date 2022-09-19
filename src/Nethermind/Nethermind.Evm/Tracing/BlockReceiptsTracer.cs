@@ -192,7 +192,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportBlockHash(Keccak blockHash) =>
             _currentTxTracer.ReportBlockHash(blockHash);
         
-        public void SetOperationMemory(List<string> memoryTrace) =>
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) =>
             _currentTxTracer.SetOperationMemory(memoryTrace);
         
         private ITxTracer _currentTxTracer = NullTxTracer.Instance;

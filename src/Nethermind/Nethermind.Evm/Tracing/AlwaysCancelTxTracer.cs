@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Tracing
         
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 
-        public void SetOperationMemory(List<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new OperationCanceledException(ErrorMessage);
 

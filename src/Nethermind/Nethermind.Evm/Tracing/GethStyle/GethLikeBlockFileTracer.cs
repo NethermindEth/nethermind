@@ -44,7 +44,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _options = options ?? throw new ArgumentNullException(nameof(options));
 
-        var hash = Bytes.ToHexString(_block.Hash.Bytes[..4], true);
+        var hash = _block.Hash.Bytes[..4].ToHexString(true);
 
         _fileNameFormat = Path.Combine(Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
 
@@ -68,7 +68,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         JsonSerializer.Serialize(_jsonWriter,
             new
             {
-                output = Bytes.ToHexString(trace.ReturnValue, true),
+                output = trace.ReturnValue.ToHexString(true),
                 gasUsed = $"0x{trace.Gas:x}",
                 time = _stopwatch.ElapsedTicks
             },
@@ -116,7 +116,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     private string GetFileName(Keccak txHash)
     {
-        var hash = Bytes.ToHexString(txHash.Bytes[..4], true);
+        var hash = txHash.Bytes[..4].ToHexString(true);
         var index = 0;
         var suffix = string.Create(8, new Random(),
             (chars, rand) =>

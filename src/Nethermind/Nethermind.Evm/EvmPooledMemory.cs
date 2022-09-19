@@ -214,21 +214,17 @@ namespace Nethermind.Evm
             return 0L;
         }
 
-        public List<string> GetTrace()
+        public IEnumerable<string> GetTrace()
         {
-            int traceLocation = 0;
-            List<string> memoryTrace = new();
-            if (_memory != null)
-            {
-                while ((ulong)traceLocation < Size)
-                {
-                    int sizeAvailable = Math.Min(WordSize, (int)Size - traceLocation);
-                    memoryTrace.Add(_memory.Slice(traceLocation, sizeAvailable).ToHexString());
-                    traceLocation = traceLocation + WordSize;
-                }
-            }
+            if (_memory == null)
+                yield break;
 
-            return memoryTrace;
+            for (int i = 0, size = (int)Size; i < size; i += WordSize)
+            {
+                int sizeAvailable = Math.Min(WordSize, size - i);
+
+                yield return _memory.Slice(i, sizeAvailable).ToHexString();
+            }
         }
 
         public void Dispose()

@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,9 +29,9 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        IsTracingStack = !options.DisableStack;
-        IsTracingMemory = options.EnableMemory;
+        IsTracingFullMemory = options.EnableMemory;
         IsTracingOpLevelStorage = !options.DisableStorage;
+        IsTracingStack = !options.DisableStack;
     }
 
     public bool IsTracingAccess => false;
@@ -43,7 +44,7 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
 
     public bool IsTracingInstructions => true;
 
-    public bool IsTracingMemory { get; protected set; }
+    public bool IsTracingMemory => true;
 
     public bool IsTracingOpLevelStorage { get; protected set; }
 
@@ -58,6 +59,8 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
     public bool IsTracingStorage => false;
 
     protected TEntry? CurrentTraceEntry { get; set; }
+
+    protected bool IsTracingFullMemory { get; }
 
     protected GethLikeTxTrace Trace { get; } = new();
 
@@ -106,10 +109,7 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
 
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
 
-    public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        // TODO?
-    }
+    public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
@@ -127,11 +127,15 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
 
     public void ReportStorageRead(StorageCell storageCell) => throw new NotSupportedException();
 
-    public virtual void SetOperationMemory(List<string> memoryTrace) => CurrentTraceEntry.Memory = memoryTrace;
+    public virtual void SetOperationMemory(IEnumerable<string> memoryTrace)
+    {
+        if (IsTracingFullMemory)
+            CurrentTraceEntry.Memory = memoryTrace.ToList();
+    }
 
     public virtual void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
 
-    public virtual void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+    public virtual void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = Math.Max(CurrentTraceEntry.Gas - gas, 0);
 
     public virtual void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace;
 

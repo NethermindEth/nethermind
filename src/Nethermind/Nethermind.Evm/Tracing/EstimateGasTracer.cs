@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
             throw new NotSupportedException();
         }

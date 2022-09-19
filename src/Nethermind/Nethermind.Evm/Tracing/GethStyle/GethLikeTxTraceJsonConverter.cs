@@ -46,15 +46,15 @@ internal class GethLikeTxTraceJsonConverter : JsonConverter<GethTxFileTraceEntry
         writer.WritePropertyName("gasCost");
         writer.WriteStringValue($"0x{value.GasCost:x}");
 
+        writer.WritePropertyName("memSize");
+        writer.WriteNumberValue((long)(value.MemorySize ?? 0));
+
         if ((value.Memory?.Count ?? 0) > 0)
         {
             var memory = string.Concat(value.Memory);
 
             writer.WritePropertyName("memory");
             writer.WriteStringValue($"0x{memory}");
-
-            writer.WritePropertyName("memSize");
-            writer.WriteNumberValue(memory.Length / 2);
         }
 
         if (value.Stack != null)

@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -639,9 +640,11 @@ public class VirtualMachine : IVirtualMachine
         void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
         {
             _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
+
             if (_txTracer.IsTracingMemory)
             {
-                _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
+                _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+                _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
             }
 
             if (_txTracer.IsTracingStack)
@@ -654,11 +657,6 @@ public class VirtualMachine : IVirtualMachine
         {
             if (traceOpcodes)
             {
-                if (_txTracer.IsTracingMemory)
-                {
-                    _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
-                }
-
                 _txTracer.ReportOperationRemainingGas(gasAvailable);
             }
         }
@@ -738,7 +736,7 @@ public class VirtualMachine : IVirtualMachine
         while (programCounter < code.Length)
         {
             Instruction instruction = (Instruction) code[programCounter];
-            // Console.WriteLine(instruction);
+            
             if (traceOpcodes)
             {
                 StartInstructionTrace(instruction, stack);

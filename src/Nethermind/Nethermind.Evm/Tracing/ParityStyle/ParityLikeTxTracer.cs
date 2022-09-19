@@ -322,7 +322,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
 
-        public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) => throw new NotSupportedException();
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
 
