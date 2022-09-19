@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Blocks
         public const int Min = 2;
         public const int Start = 32;
 
-        private const double AdjustmentFactor = 1.5;
+        public const double AdjustmentFactor = 1.5;
 
         public int Current { get; private set; }
 
@@ -55,6 +55,14 @@ namespace Nethermind.Synchronization.Blocks
 
             Current = Math.Min(Max, (int) Math.Ceiling(Current * AdjustmentFactor));
             if (_logger.IsDebug) _logger.Debug($"Changing sync batch size to {Current}");
+        }
+
+        public void ExpandUntilMax()
+        {
+            while (Current != Max)
+            {
+                Expand();
+            }
         }
 
         public void Shrink()

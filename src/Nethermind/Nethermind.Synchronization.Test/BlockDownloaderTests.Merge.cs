@@ -310,7 +310,8 @@ public partial class BlockDownloaderTests
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
             new ChainLevelHelper(blockTree, beaconPivot, new SyncConfig(),  LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            ctx.SyncBatchSize);
     }
 
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher, IBeaconPivot beaconPivot)

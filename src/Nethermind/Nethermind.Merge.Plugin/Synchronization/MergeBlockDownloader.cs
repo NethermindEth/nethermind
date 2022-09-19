@@ -54,8 +54,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ISyncProgressResolver _syncProgressResolver;
 
-        public MergeBlockDownloader(
-            IPoSSwitcher posSwitcher,
+        public MergeBlockDownloader(IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
@@ -68,10 +67,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
             ISyncProgressResolver syncProgressResolver,
-            ILogManager logManager)
+            ILogManager logManager,
+            SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, logManager),
-                betterPeerStrategy, logManager)
+                betterPeerStrategy, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

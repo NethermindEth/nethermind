@@ -74,7 +74,8 @@ namespace Nethermind.Synchronization.Blocks
             ISpecProvider? specProvider,
             IPeerAllocationStrategyFactory<BlocksRequest?> blockSyncPeerAllocationStrategyFactory,
             IBetterPeerStrategy betterPeerStrategy,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -87,7 +88,7 @@ namespace Nethermind.Synchronization.Blocks
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, logManager), _specProvider);
-            _syncBatchSize = new SyncBatchSize(logManager);
+            _syncBatchSize = syncBatchSize ?? new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
