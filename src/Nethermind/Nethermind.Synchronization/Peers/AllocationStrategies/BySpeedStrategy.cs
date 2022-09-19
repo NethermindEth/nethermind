@@ -32,24 +32,28 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         // Randomly pick a different peer that is not of the best speed. Encourage updating speed.
         // Does not seems to matter much. But its here if you want to tweak it.
-        private readonly double _recalculateSpeedProbability = 0.025;
+        private readonly double _recalculateSpeedProbability;
 
         // If the number of peer with known speed is less than this, then always try new peer.
         // The idea is that, if we have at least this amount of peers with known speed, at least one of them should
         // be fast, but we don't want to spend more time trying out other peers.
-        private readonly long _desiredPeersWithKnownSpeed = 10;
+        private readonly long _desiredPeersWithKnownSpeed;
 
         public BySpeedStrategy(
             TransferSpeedType speedType,
             bool priority,
             decimal minDiffPercentageForSpeedSwitch = 0.0m,
-            int minDiffForSpeedSwitch = 0
+            int minDiffForSpeedSwitch = 0,
+            double recalculateSpeedProbability = 0.025,
+            long desiredPeersWithKnownSpeed = 10
         )
         {
             _speedType = speedType;
             _priority = priority;
             _minDiffPercentageForSpeedSwitch = minDiffPercentageForSpeedSwitch;
             _minDiffForSpeedSwitch = minDiffForSpeedSwitch;
+            _recalculateSpeedProbability = recalculateSpeedProbability;
+            _desiredPeersWithKnownSpeed = desiredPeersWithKnownSpeed;
         }
 
         public bool CanBeReplaced => false;
@@ -68,6 +72,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             (PeerInfo? Info, long TransferSpeed) bestPeer = (currentPeer, currentSpeed);
             bool forceTake = false;
 
+            long peerLeft = peerCount;
             foreach (PeerInfo info in peersAsList)
             {
                 (this as IPeerAllocationStrategy).CheckAsyncState(info);
@@ -75,11 +80,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;
 
-                if (speed == null && shouldDiscoverSpeed && _random.NextDouble() < 1.0 / noSpeedPeerCount)
+                if (speed == null && shouldDiscoverSpeed)
                 {
                     forceTake = true;
                 }
-                else if (shouldRediscoverSpeed && _random.NextDouble() < (1.0 / peerCount))
+                else if (shouldRediscoverSpeed && _random.NextDouble() < (1.0 / peerLeft))
                 {
                     forceTake = true;
                 }
@@ -90,6 +95,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 }
 
                 if (forceTake) break;
+                peerLeft--;
             }
 
             if (peerCount == 0)
