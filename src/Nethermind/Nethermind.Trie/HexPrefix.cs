@@ -34,6 +34,7 @@ namespace Nethermind.Trie
         private const int LowNibbleMask = 0x0F;
         private const int HighNibbleMask = 0xF0;
         private const int NibbleSize = 16;
+        private const int NibbleShift = 4;
 
         [DebuggerStepThrough]
         public HexPrefix(bool isLeaf, params byte[] path)
@@ -138,6 +139,42 @@ namespace Nethermind.Trie
         public static bool PathsAreEqual(Span<byte> a, Span<byte> b)
         {
             return Bytes.AreEqual(a, b);
+        }
+
+        public static class RawPath
+        {
+            public static byte [] Combine(byte child, byte[] path)
+            {
+                bool isEven = (path[0] & OddFlag) == 0;
+
+                if (isEven)
+                {
+                    // there's one nibble in front empty, allocate the same
+                    byte[] result = new byte[path.Length];
+
+                    // copy whole
+                    Buffer.BlockCopy(path, 0, result, 0, path.Length);
+
+                    // overwrite first only with odd flag
+                    result[0] = (byte)(OddFlag | child);
+                    return result;
+                }
+                else
+                {
+                    // no empty nibble in 0th byte, allocate one bigger
+                    byte[] result = new byte[path.Length + 1];
+
+                    // copy all but 0th nibble to the new one, leaving 2 bytes first empty
+                    Buffer.BlockCopy(path, 1, result, 2, path.Length - 1);
+
+                    // the result is even, no need to write the first nibble, empty by allocs
+                    // result[0] = (byte)(0);
+
+                    // write two nibbles, the new one first then the previous one
+                    result[1] = (byte)((child << NibbleShift) | (path[0] & LowNibbleMask));
+                    return result;
+                }
+            }
         }
     }
 }

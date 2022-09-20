@@ -1,20 +1,22 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Trie.Test
 {
@@ -84,6 +86,22 @@ namespace Nethermind.Trie.Test
             Assert.AreEqual(nibble1, hexPrefix.Path[0]);
             Assert.AreEqual(nibble2, hexPrefix.Path[1]);
             Assert.AreEqual(nibble3, hexPrefix.Path[2]);
+        }
+
+        [TestCase(new byte[] { 1, 2 }, TestName = "Even nibble count")]
+        [TestCase(new byte[] { 3,4,5 }, TestName = "Odd nibble count")]
+        public void RawPath_Combine(byte[] path)
+        {
+            const byte child = 6;
+
+            // Extension, has no flag, easier to test
+            HexPrefix leaf1 = HexPrefix.Extension(child);
+            HexPrefix leaf2 = HexPrefix.Extension(path);
+
+            byte[] expected = HexPrefix.Extension(Bytes.Concat(leaf1.Path, leaf2.Path)).ToBytes();
+            byte[] combined = HexPrefix.RawPath.Combine(child, leaf2.ToBytes());
+
+            CollectionAssert.AreEqual(expected, combined);
         }
     }
 }
