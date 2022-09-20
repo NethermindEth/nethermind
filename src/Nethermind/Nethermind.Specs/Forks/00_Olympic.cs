@@ -37,6 +37,8 @@ namespace Nethermind.Specs.Forks
             IsEip3607Enabled = true;
             MaximumUncleCount = 2;
             Eip1559TransitionBlock = long.MaxValue;
+            ValidateChainId = true;
+            ValidateReceipts = true;
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
