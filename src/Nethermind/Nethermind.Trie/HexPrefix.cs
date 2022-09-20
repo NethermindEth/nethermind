@@ -28,6 +28,7 @@ namespace Nethermind.Trie
         private const int LeafFlag = 0x20;
         private const int ExtensionFlag = 0x000;
         private const int OddFlag = 0x10;
+        private const int OddShift = 4;
 
         // nibbles
         private const int LowNibbleMask = 0x0F;
@@ -72,8 +73,8 @@ namespace Nethermind.Trie
             get
             {
                 long unaligned = MemorySizes.SmallObjectOverhead +
-                                MemorySizes.Align(MemorySizes.ArrayOverhead + Path.Length) +
-                                1;
+                                 MemorySizes.Align(MemorySizes.ArrayOverhead + Path.Length) +
+                                 1;
                 return MemorySizes.Align(unaligned);
             }
         }
@@ -81,18 +82,18 @@ namespace Nethermind.Trie
         public byte[] ToBytes()
         {
             byte[] output = new byte[Path.Length / 2 + 1];
-            output[0] = (byte) (IsLeaf ? LeafFlag : ExtensionFlag);
+            output[0] = (byte)(IsLeaf ? LeafFlag : ExtensionFlag);
             if (Path.Length % 2 != 0)
             {
-                output[0] += (byte) (OddFlag + Path[0]);
+                output[0] += (byte)(OddFlag + Path[0]);
             }
 
             for (int i = 0; i < Path.Length - 1; i = i + 2)
             {
                 output[i / 2 + 1] =
                     Path.Length % 2 == 0
-                        ? (byte) (NibbleSize * Path[i] + Path[i + 1])
-                        : (byte) (NibbleSize * Path[i + 1] + Path[i + 2]);
+                        ? (byte)(NibbleSize * Path[i] + Path[i + 1])
+                        : (byte)(NibbleSize * Path[i + 1] + Path[i + 2]);
             }
 
             return output;
@@ -109,11 +110,11 @@ namespace Nethermind.Trie
                 hexPrefix.Path[i] =
                     isEven
                         ? i % 2 == 0
-                            ? (byte) ((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize)
-                            : (byte) (bytes[1 + i / 2] & LowNibbleMask)
+                            ? (byte)((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize)
+                            : (byte)(bytes[1 + i / 2] & LowNibbleMask)
                         : i % 2 == 0
-                            ? (byte) (bytes[i / 2] & LowNibbleMask)
-                            : (byte) ((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize);
+                            ? (byte)(bytes[i / 2] & LowNibbleMask)
+                            : (byte)((bytes[1 + i / 2] & HighNibbleMask) / NibbleSize);
             }
 
             return hexPrefix;
@@ -122,6 +123,21 @@ namespace Nethermind.Trie
         public override string ToString()
         {
             return ToBytes().ToHexString(false);
+        }
+
+        public static byte[] CombinePaths(byte[] nodePath, byte[] nextNodePath)
+        {
+            return Bytes.Concat(nodePath, nextNodePath);
+        }
+
+        public static byte[] CombinePaths(byte child, byte[] nextNodePath)
+        {
+            return Bytes.Concat(child, nextNodePath);
+        }
+
+        public static bool PathsAreEqual(Span<byte> a, Span<byte> b)
+        {
+            return Bytes.AreEqual(a, b);
         }
     }
 }
