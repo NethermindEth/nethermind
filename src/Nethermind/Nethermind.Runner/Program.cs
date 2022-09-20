@@ -158,8 +158,7 @@ namespace Nethermind.Runner
 
                 EthereumJsonSerializer serializer = new();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
-                string rocksDbVersion = DbOnTheRocks.GetRocksDbVersion();
-                if (_logger.IsInfo) _logger.Info($"RocksDb Version: {rocksDbVersion}");
+                if (_logger.IsInfo) _logger.Info($"RocksDb Version: {DbOnTheRocks.GetRocksDbVersion()}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
 

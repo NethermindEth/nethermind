@@ -545,7 +545,6 @@ public class DbOnTheRocks : IDbWithSpan
     {
         Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));
         Version? version = rocksDbAssembly?.GetName().Version;
-        string? versionString = version?.ToString(3);
-        return versionString;
+        return version?.ToString(3);
     }
 }
