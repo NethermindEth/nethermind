@@ -585,9 +585,8 @@ namespace Nethermind.Trie
                     ? 0
                     : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
             int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
-            int isDirtySize = 1;
-            int nodeTypeSize = 1;
-            /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
+
+            int valuesOverhead = 8;
 
             for (int i = 0; i < (_data?.Length ?? 0); i++)
             {
@@ -619,8 +618,7 @@ namespace Nethermind.Trie
                              fullRlpSize +
                              rlpStreamSize +
                              dataSize +
-                             isDirtySize +
-                             nodeTypeSize +
+                             valuesOverhead +
                              objectOverhead;
 
             return MemorySizes.Align(unaligned);
