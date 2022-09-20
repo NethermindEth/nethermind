@@ -50,7 +50,7 @@ public class SnapServer
     }
 
 
-    public byte[][]?  GetTrieNodes(byte[][][] pathSet, Keccak rootHash)
+    public byte[][]?  GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
     {
         int pathLength = pathSet.Length;
         List<byte[]> response = new ();
@@ -58,7 +58,7 @@ public class SnapServer
 
         for (int reqi = 0; reqi < pathLength; reqi++)
         {
-            var requestedPath = pathSet[reqi];
+            var requestedPath = pathSet[reqi].Group;
             switch (requestedPath.Length)
             {
                 case 0:
