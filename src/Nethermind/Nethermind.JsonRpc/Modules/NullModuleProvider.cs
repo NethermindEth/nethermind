@@ -34,15 +34,15 @@ namespace Nethermind.JsonRpc.Modules
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
         }
-        
+
         public JsonSerializer Serializer { get; } = new();
 
         public IReadOnlyCollection<JsonConverter> Converters => Array.Empty<JsonConverter>();
-        
+
         public IReadOnlyCollection<string> Enabled => Array.Empty<string>();
-        
+
         public IReadOnlyCollection<string> All => Array.Empty<string>();
-        
+
         public ModuleResolution Check(string methodName, JsonRpcContext context)
         {
             return ModuleResolution.Unknown;

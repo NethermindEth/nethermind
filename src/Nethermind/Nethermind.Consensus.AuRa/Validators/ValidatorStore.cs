@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -63,13 +63,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
         }
 
-        public PendingValidators PendingValidators {
+        public PendingValidators PendingValidators
+        {
             get
             {
                 var rlpStream = new RlpStream(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptySequence.Bytes);
                 return PendingValidatorsDecoder.Decode(rlpStream);
             }
-            set => _db.Set(PendingValidatorsKey,  PendingValidatorsDecoder.Encode(value).Bytes);
+            set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
         }
 
         private Address[] FindValidatorInfo(in long blockNumber)
@@ -101,4 +102,4 @@ namespace Nethermind.Consensus.AuRa.Validators
             return EmptyValidatorInfo;
         }
     }
-} 
+}

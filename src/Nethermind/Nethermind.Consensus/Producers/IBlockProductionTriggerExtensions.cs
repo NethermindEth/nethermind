@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Producers
             if (txPool == null) throw new ArgumentNullException(nameof(txPool));
             return trigger.ButOnlyWhen(() => txPool.GetPendingTransactionsCount() > 0);
         }
-        
+
         public static IBlockProductionTrigger ButOnlyWhen(this IBlockProductionTrigger? trigger, Func<bool> condition)
         {
             if (trigger == null) throw new ArgumentNullException(nameof(trigger));

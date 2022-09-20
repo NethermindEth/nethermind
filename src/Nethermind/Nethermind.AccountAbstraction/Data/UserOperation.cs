@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Data
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
-        
+
         public void CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
             RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
@@ -74,7 +74,7 @@ namespace Nethermind.AccountAbstraction.Data
             PaymasterData = PaymasterData,
             Signature = Signature!
         };
-        
+
         public Keccak? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }

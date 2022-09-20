@@ -25,14 +25,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(DataRequestResultMessage message)
             => Rlp.Encode(Rlp.Encode(message.DepositId),
-                Rlp.Encode((int) message.Result)).Bytes;
+                Rlp.Encode((int)message.Result)).Bytes;
 
         public DataRequestResultMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
-            var result = (DataRequestResult) context.DecodeUInt();
+            var result = (DataRequestResult)context.DecodeUInt();
 
             return new DataRequestResultMessage(depositId, result);
         }

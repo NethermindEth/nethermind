@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             dataAssetService.AddDiscovered(_closedAsset, peer);
             dataAssetService.AddDiscovered(_assetUnderMaintenance, peer);
             dataAssetService.AddDiscovered(_withKyc, peer);
-            
+
             _kycVerifier = Substitute.For<IKycVerifier>();
             ProviderService providerService = new ProviderService(providerRepository, notifier, LimboLogs.Instance);
             providerService.Add(peer);
@@ -126,7 +126,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             Keccak result = await _depositManager.MakeAsync(_asset.Id, _asset.MinUnits, _asset.MinUnits * _asset.UnitPrice, account, 20.GWei());
             result.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Can_make_deposit_with_kyc()
         {
@@ -135,7 +135,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             Keccak result = await _depositManager.MakeAsync(_withKyc.Id, _withKyc.MinUnits, _withKyc.MinUnits * _withKyc.UnitPrice, account, 20.GWei());
             result.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Cannot_make_deposit_when_kyc_is_not_satisfied()
         {

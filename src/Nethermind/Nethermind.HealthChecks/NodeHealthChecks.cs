@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.HealthChecks
     {
         private readonly INodeHealthService _nodeHealthService;
         private readonly ILogger _logger;
-        
+
         public NodeHealthCheck(
             INodeHealthService nodeHealthService,
             ILogManager logManager)
@@ -46,7 +46,7 @@ namespace Nethermind.HealthChecks
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
                 if (healthResult.Healthy)
                     return Task.FromResult(HealthCheckResult.Healthy(description));
-                
+
                 return Task.FromResult(HealthCheckResult.Unhealthy(description));
             }
             catch (Exception ex)
@@ -54,7 +54,7 @@ namespace Nethermind.HealthChecks
                 return Task.FromResult(new HealthCheckResult(context.Registration.FailureStatus, exception: ex));
             }
         }
-        
+
         private static string FormatMessages(IEnumerable<string> messages)
         {
             if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
@@ -65,7 +65,7 @@ namespace Nethermind.HealthChecks
                     return joined + ".";
                 }
             }
-            
+
             return string.Empty;
         }
     }

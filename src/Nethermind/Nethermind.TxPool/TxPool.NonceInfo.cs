@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
         internal class NonceInfo
         {
             public UInt256 Value { get; }
-            
+
             public Keccak? TransactionHash { get; private set; }
 
             public NonceInfo(in UInt256 value)

@@ -23,7 +23,7 @@ namespace Nethermind.Core
         private AddressComparer()
         {
         }
-            
+
         public static AddressComparer Instance { get; } = new();
 
         public int Compare(Address? x, Address? y)
@@ -32,12 +32,12 @@ namespace Nethermind.Core
             {
                 return y is null ? 0 : -1;
             }
-                
+
             if (y is null)
             {
                 return 1;
             }
-                
+
             for (int i = 0; i < Address.ByteLength; i++)
             {
                 if (x.Bytes[i] < y.Bytes[i])
@@ -50,8 +50,8 @@ namespace Nethermind.Core
                     return 1;
                 }
             }
-                
-                
+
+
             return 0;
         }
     }

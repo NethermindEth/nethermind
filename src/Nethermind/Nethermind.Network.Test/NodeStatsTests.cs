@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test
         public void TransferSpeedCaptureTest(TransferSpeedType speedType)
         {
             _nodeStats = new NodeStatsLight(_node);
-            
+
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 30);
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 140);
@@ -69,10 +69,10 @@ namespace Nethermind.Network.Test
         public async Task DisconnectDelayTest()
         {
             _nodeStats = new NodeStatsLight(_node);
-            
+
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before disconnect");
-            
+
             _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
@@ -81,15 +81,15 @@ namespace Nethermind.Network.Test
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
-        
+
         [Test]
         public async Task FailedConnectionDelayTest()
         {
             _nodeStats = new NodeStatsLight(_node);
-            
+
             var isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "before failure");
-            
+
             _nodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsTrue(isConnDelayed.Result, "just after failure");

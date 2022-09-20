@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public CompareTxByPriorityOnHead(
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
-            IBlockTree blockTree) 
+            IBlockTree blockTree)
             : base(sendersWhitelist, priorities)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

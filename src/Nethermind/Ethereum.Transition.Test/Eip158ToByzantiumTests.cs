@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -23,16 +23,20 @@ using NUnit.Framework;
 
 namespace Ethereum.Transition.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class Eip158ToByzantiumTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
-        {    
+        {
             await RunTest(test);
         }
-        
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP158ToByzantium");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP158ToByzantium");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }

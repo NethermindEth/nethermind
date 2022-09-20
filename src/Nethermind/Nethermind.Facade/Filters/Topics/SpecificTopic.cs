@@ -28,17 +28,17 @@ namespace Nethermind.Blockchain.Filters.Topics
         {
             _topic = topic;
         }
-        
+
         private Core.Bloom.BloomExtract BloomExtract => _bloomExtract ??= Bloom.GetExtract(_topic);
 
         public override bool Accepts(Keccak topic) => topic == _topic;
-        
+
         public override bool Accepts(ref KeccakStructRef topic) => topic == _topic;
 
         public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
-        
+
         public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
-        
+
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);
 
         public override bool Equals(object? obj)
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Filters.Topics
         }
 
         public override int GetHashCode() => _topic.GetHashCode();
-        
+
         public override string ToString() => _topic.ToString();
     }
 }

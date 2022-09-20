@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Test
         public void Throws_trie_exception_when_setting_value_on_branch()
         {
             TrieNode trieNode = new(NodeType.Branch);
-            Assert.Throws<TrieException>(() => trieNode.Value = new byte[] {1, 2, 3});
+            Assert.Throws<TrieException>(() => trieNode.Value = new byte[] { 1, 2, 3 });
         }
 
         [Test]
@@ -97,7 +97,7 @@ namespace Nethermind.Trie.Test
         public void Encoding_leaf_without_key_throws_trie_exception()
         {
             TrieNode trieNode = new(NodeType.Leaf);
-            trieNode.Value = new byte[] {1, 2, 3};
+            trieNode.Value = new byte[] { 1, 2, 3 };
             Assert.Throws<TrieException>(() => trieNode.RlpEncode(NullTrieNodeResolver.Instance));
         }
 
@@ -244,7 +244,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode tiniest = new(NodeType.Leaf);
             tiniest.Key = new HexPrefix(true, 5);
-            tiniest.Value = new byte[] {10};
+            tiniest.Value = new byte[] { 10 };
 
             TrieNode trieNode = new(NodeType.Branch);
             trieNode[11] = tiniest;
@@ -505,8 +505,8 @@ namespace Nethermind.Trie.Test
         {
             TrieNode node = new(NodeType.Branch);
             TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = new HexPrefix(true, new byte[] {1, 2, 3});
-            randomTrieNode.Value = new byte[] {1, 2, 3};
+            randomTrieNode.Key = new HexPrefix(true, new byte[] { 1, 2, 3 });
+            randomTrieNode.Value = new byte[] { 1, 2, 3 };
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, randomTrieNode);
@@ -852,7 +852,7 @@ namespace Nethermind.Trie.Test
             trieNode.GetChild(trieStore, 0);
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, 0).ResolveNode(trieStore));
         }
-        
+
         [Ignore("This does not fail on the build server")]
         [Test]
         public async Task Trie_node_is_not_thread_safe()
@@ -888,7 +888,7 @@ namespace Nethermind.Trie.Test
                 task.Start();
                 tasks.Add(task);
             }
-            
+
             Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
             await Task.CompletedTask;
         }
@@ -934,8 +934,8 @@ namespace Nethermind.Trie.Test
             for (int i = 0; i < 16; i++)
             {
                 TrieNode randomTrieNode = new(NodeType.Leaf);
-                randomTrieNode.Key = new HexPrefix(true, new byte[] {(byte)i, 2, 3});
-                randomTrieNode.Value = new byte[] {1, 2, 3};
+                randomTrieNode.Key = new HexPrefix(true, new byte[] { (byte)i, 2, 3 });
+                randomTrieNode.Value = new byte[] { 1, 2, 3 };
                 node.SetChild(i, randomTrieNode);
             }
 
@@ -956,7 +956,7 @@ namespace Nethermind.Trie.Test
             {
                 TiniestLeaf = new TrieNode(NodeType.Leaf);
                 TiniestLeaf.Key = new HexPrefix(true, 5);
-                TiniestLeaf.Value = new byte[] {10};
+                TiniestLeaf.Value = new byte[] { 10 };
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
                 HeavyLeaf.Key = new HexPrefix(true, new byte[20]);

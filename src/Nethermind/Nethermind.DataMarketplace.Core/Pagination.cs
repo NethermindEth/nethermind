@@ -44,7 +44,7 @@ namespace Nethermind.DataMarketplace.Core
                 results = 10;
             }
 
-            int totalPages = (int) Math.Ceiling((double) totalResults / results);
+            int totalPages = (int)Math.Ceiling((double)totalResults / results);
             int skip = (page - 1) * results;
             List<T> items = values.Skip(skip).Take(results).ToList();
 

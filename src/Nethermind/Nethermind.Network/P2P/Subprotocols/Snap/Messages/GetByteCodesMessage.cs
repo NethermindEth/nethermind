@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class GetByteCodesMessage: SnapMessageBase
+    public class GetByteCodesMessage : SnapMessageBase
     {
         public override int PacketType => SnapMessageCode.GetByteCodes;
 
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// Code hashes to retrieve the code for
         /// </summary>
         public Keccak[] Hashes { get; set; }
-        
+
         /// <summary>
         /// Soft limit at which to stop returning data
         /// </summary>

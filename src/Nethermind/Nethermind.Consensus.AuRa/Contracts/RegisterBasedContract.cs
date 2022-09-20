@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,8 +33,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             string registryKey,
-            AbiDefinition? abiDefinition = null) 
-            : base(abiEncoder, abiDefinition:abiDefinition)
+            AbiDefinition? abiDefinition = null)
+            : base(abiEncoder, abiDefinition: abiDefinition)
         {
             _registerContract = registerContract;
             _registryKey = registryKey;
@@ -50,9 +50,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             bool needUpdate = false;
             lock (_currentHashAddress)
             {
-                needUpdate = header != null && _currentHashAddress != header.Hash; 
+                needUpdate = header != null && _currentHashAddress != header.Hash;
             }
-            
+
             if (needUpdate)
             {
                 if (_registerContract.TryGetAddress(header, _registryKey, out Address contractAddress))

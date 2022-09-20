@@ -34,14 +34,14 @@ namespace Nethermind.Blockchain
                 DailyGrowth = dailyGrowth;
                 UpdateDate = updateDate;
             }
-            
+
             public long SizeAtUpdateDate { get; }
             public long DailyGrowth { get; }
             public DateTime UpdateDate { get; }
 
             public long Current => SizeAtUpdateDate + (DateTime.UtcNow - UpdateDate).Days * DailyGrowth;
         }
-        
+
         /// <summary>
         /// Size in bytes, daily growth rate and the date of manual update
         /// </summary>

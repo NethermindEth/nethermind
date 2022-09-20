@@ -13,7 +13,7 @@ namespace Nethermind.Api.Test
         {
             SinglePluginLoader<TestPlugin>.Instance.Load(LimboLogs.Instance);
         }
-        
+
         [Test]
         public void Returns_correct_plugin()
         {

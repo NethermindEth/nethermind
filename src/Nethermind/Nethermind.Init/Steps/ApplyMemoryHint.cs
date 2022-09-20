@@ -49,7 +49,7 @@ namespace Nethermind.Init.Steps
         public Task Execute(CancellationToken _)
         {
             MemoryHintMan memoryHintMan = new(_api.LogManager);
-            uint cpuCount = (uint) Environment.ProcessorCount;
+            uint cpuCount = (uint)Environment.ProcessorCount;
             if (_initConfig.MemoryHint.HasValue)
             {
                 memoryHintMan.SetMemoryAllowances(

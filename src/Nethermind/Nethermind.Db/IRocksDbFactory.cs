@@ -29,7 +29,7 @@ namespace Nethermind.Db
         /// <param name="rocksDbSettings">Setting to use for DB creation.</param>
         /// <returns>Standard DB.</returns>
         IDb CreateDb(RocksDbSettings rocksDbSettings);
-        
+
         /// <summary>
         /// Creates a column RocksDB.
         /// </summary>

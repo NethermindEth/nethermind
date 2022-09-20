@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -80,7 +80,7 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new (trieStore, codeDb, _logManager);
+            StateProvider stateProvider = new(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
@@ -131,7 +131,7 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
-//            Assert.Zero(differences.Count, "differences");
+            //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 

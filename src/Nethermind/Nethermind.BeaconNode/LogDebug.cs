@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,9 +24,9 @@ using Nethermind.Core2.P2p;
 namespace Nethermind.BeaconNode
 {
     internal static class LogDebug
-    { 
+    {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -47,8 +47,8 @@ namespace Nethermind.BeaconNode
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
-        
+
+
         // 6bxx debug
 
         // 60xx debug - worker
@@ -76,7 +76,7 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<string, Epoch, Root, Slot>(LogLevel.Debug,
                 new EventId(6004, nameof(PeerBehind)),
                 "Peer {PeerId} is behind, no need to sync (peer finalized epoch {FinalizedSlot}, head {PeerHeadRoot}, slot {PeerHeadSlot}).");
-        
+
         // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =
             LoggerMessage.Define<Deposit, BeaconState>(LogLevel.Debug,
@@ -87,12 +87,12 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<BeaconState, Slot>(LogLevel.Debug,
                 new EventId(6101, nameof(ProcessSlots)),
                 "Process slots for state {BeaconState} to {Slot}");
-        
+
         public static readonly Action<ILogger, Slot, BeaconState, Exception?> ProcessSlot =
             LoggerMessage.Define<Slot, BeaconState>(LogLevel.Debug,
                 new EventId(6102, nameof(ProcessSlot)),
                 "Process slot {Slot} for state {BeaconState}");
-        
+
         public static readonly Action<ILogger, ulong, Exception?> ProcessJustificationAndFinalization =
             LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6103, nameof(ProcessJustificationAndFinalization)),
@@ -107,8 +107,8 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<BeaconBlock, BeaconState>(LogLevel.Debug,
                 new EventId(6105, nameof(ProcessBlock)),
                 "Process block {BeaconBlock} for state {BeaconState}");
-        
-        public static readonly Action<ILogger, ulong, BeaconBlockHeader,  Exception?> ProcessingBlockHeader =
+
+        public static readonly Action<ILogger, ulong, BeaconBlockHeader, Exception?> ProcessingBlockHeader =
             LoggerMessage.Define<ulong, BeaconBlockHeader>(LogLevel.Debug,
                 new EventId(6106, nameof(ProcessingBlockHeader)),
                 "Processing block header for slot {Slot} setting header {BeaconBlockHeader}");
@@ -127,27 +127,27 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<ulong, BeaconBlockBody>(LogLevel.Debug,
                 new EventId(6109, nameof(ProcessOperations)),
                 "Process block operations for slot {Slot} from block body {BeaconBlockBody}");
-        
+
         public static readonly Action<ILogger, ProposerSlashing, Exception?> ProcessProposerSlashing =
             LoggerMessage.Define<ProposerSlashing>(LogLevel.Debug,
                 new EventId(6110, nameof(ProcessProposerSlashing)),
                 "Process operation proposer slashing {ProposerSlashing}");
-        
+
         public static readonly Action<ILogger, AttesterSlashing, Exception?> ProcessAttesterSlashing =
             LoggerMessage.Define<AttesterSlashing>(LogLevel.Debug,
                 new EventId(6111, nameof(ProcessAttesterSlashing)),
                 "Process operation attester slashing {AttesterSlashing}");
-        
+
         public static readonly Action<ILogger, Attestation, Exception?> ProcessAttestation =
             LoggerMessage.Define<Attestation>(LogLevel.Debug,
                 new EventId(6112, nameof(ProcessAttestation)),
                 "Process operation attestation {Attestation}.");
-        
+
         public static readonly Action<ILogger, VoluntaryExit, Exception?> ProcessVoluntaryExit =
             LoggerMessage.Define<VoluntaryExit>(LogLevel.Debug,
                 new EventId(6113, nameof(ProcessVoluntaryExit)),
                 "Process operation voluntary exit {VoluntaryExit}.");
-        
+
         public static readonly Action<ILogger, ulong, Exception?> ProcessRewardsAndPenalties =
             LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6114, nameof(ProcessRewardsAndPenalties)),
@@ -183,7 +183,7 @@ namespace Nethermind.BeaconNode
                 new EventId(6120, nameof(PenaltyForValidator)),
                 "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
 
-        
+
         public static readonly Action<ILogger, Root, BeaconBlock, Root, ValidatorIndex, bool, Exception?> VerifiedBlockSignature =
             LoggerMessage.Define<Root, BeaconBlock, Root, ValidatorIndex, bool>(LogLevel.Debug,
                 new EventId(6121, nameof(VerifiedBlockSignature)),

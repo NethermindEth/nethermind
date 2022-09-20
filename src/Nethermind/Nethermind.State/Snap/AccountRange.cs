@@ -22,7 +22,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Keccak RootHash { get;}
+        public Keccak RootHash { get; }
 
         /// <summary>
         /// Account hash of the first to retrieve

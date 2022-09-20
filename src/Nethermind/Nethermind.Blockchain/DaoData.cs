@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain
     public static class DaoData
     {
         public static readonly Address DaoWithdrawalAccount = new("bf4ed7b27f1d666546e30d74d50d173d20bca754");
-        
+
         public static readonly Address[] DaoAccounts = new Address[]
         {
             new("0xd4fe7bc31cedb7bfb8a345f31e668033056b2728"),

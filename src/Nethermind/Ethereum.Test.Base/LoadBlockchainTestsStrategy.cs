@@ -14,11 +14,11 @@ namespace Ethereum.Test.Base
             {
                 string testDirectory = GetBlockchainTestsDirectory();
 
-               testDirs = Directory.EnumerateDirectories(testDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
+                testDirs = Directory.EnumerateDirectories(testDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
-                testDirs = new[] {testsDirectoryName};
+                testDirs = new[] { testsDirectoryName };
             }
 
             List<BlockchainTest> testJsons = new();
@@ -34,7 +34,7 @@ namespace Ethereum.Test.Base
         {
             char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            
+
             return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}BlockchainTests";
         }
 
@@ -58,7 +58,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
+                    testsByName.Add(new BlockchainTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
                 }
             }
 

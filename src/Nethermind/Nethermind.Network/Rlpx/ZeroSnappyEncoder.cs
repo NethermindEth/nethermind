@@ -47,7 +47,7 @@ namespace Nethermind.Network.Rlpx
                 input.ReadableBytes,
                 output.Array,
                 output.ArrayOffset + output.WriterIndex);
-            
+
             input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
             output.SetWriterIndex(output.WriterIndex + length);
         }

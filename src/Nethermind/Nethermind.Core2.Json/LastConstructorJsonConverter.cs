@@ -33,7 +33,7 @@ namespace Nethermind.Core2.Json
         // NOTE: This will be built in to .NET 5.0
         // https://github.com/dotnet/runtime/blob/master/src/libraries/System.Text.Json/src/System/Text/Json/Serialization/Converters/Object/ObjectWithParameterizedConstructorConverter.cs
         // https://github.com/manne/obviously/tree/master/src/system.text.json
-        
+
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             EnsureNames(options);

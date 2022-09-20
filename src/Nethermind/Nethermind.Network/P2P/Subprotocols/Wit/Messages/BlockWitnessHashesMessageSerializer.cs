@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
                 foreach (Keccak keccak in message.Hashes)
                 {
                     nettyRlpStream.Encode(keccak);
-                }   
+                }
             }
         }
 
@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
             {
                 int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
                 contentLength = Rlp.LengthOfSequence(hashesContentLength) + Rlp.LengthOf(message.RequestId);
-                
+
             }
             return Rlp.LengthOfSequence(contentLength);
         }

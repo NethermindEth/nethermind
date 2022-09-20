@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Contracts.Json
     public class AbiDefinitionParser : IAbiDefinitionParser
     {
         private readonly JsonSerializer _serializer;
-        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>(); 
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>();
 
         public AbiDefinitionParser()
         {
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             jsonSerializerSettings.Converters.Add(new AbiDefinitionConverter());
             jsonSerializerSettings.Converters.Add(new AbiEventParameterConverter(_abiTypeFactories));
             jsonSerializerSettings.Converters.Add(new AbiParameterConverter(_abiTypeFactories));
-            jsonSerializerSettings.Converters.Add(new StringEnumConverter() {NamingStrategy = new LowerCaseNamingStrategy()});
+            jsonSerializerSettings.Converters.Add(new StringEnumConverter() { NamingStrategy = new LowerCaseNamingStrategy() });
             jsonSerializerSettings.Converters.Add(new AbiTypeConverter());
             jsonSerializerSettings.Formatting = Formatting.Indented;
             jsonSerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();

@@ -50,7 +50,7 @@ namespace Nethermind.State
         {
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return new byte[] {0};
+                return new byte[] { 0 };
             }
 
             Metrics.StorageTreeReads++;

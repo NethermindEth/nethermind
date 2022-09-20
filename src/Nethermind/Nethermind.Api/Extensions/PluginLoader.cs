@@ -49,7 +49,7 @@ namespace Nethermind.Api.Extensions
             foreach (Type embeddedPlugin in _embedded)
             {
                 if (logger.IsInfo) logger.Info($"  Found plugin type {embeddedPlugin}");
-                _pluginTypes.Add(embeddedPlugin);    
+                _pluginTypes.Add(embeddedPlugin);
             }
 
             string baseDir = string.Empty.GetApplicationResourcePath();

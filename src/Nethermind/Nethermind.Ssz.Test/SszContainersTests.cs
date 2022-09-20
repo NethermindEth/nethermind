@@ -42,7 +42,7 @@ namespace Nethermind.Ssz.Test
             "202122232425262728292a2b2c2d2e2f");
 
         public static BlsSignature TestSig1 = new BlsSignature(new byte[BlsSignature.Length]);
-        
+
         [SetUp]
         public void Setup()
         {
@@ -62,7 +62,7 @@ namespace Nethermind.Ssz.Test
                 128,
                 16,
                 16
-                );    
+                );
         }
 
         [Test]
@@ -73,7 +73,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             Fork decoded = Ssz.DecodeFork(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             Checkpoint decoded = Ssz.DecodeCheckpoint(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -93,13 +93,13 @@ namespace Nethermind.Ssz.Test
         public void Validator_there_and_back()
         {
             Validator container = new Validator(
-                TestKey1, 
-                Sha256.Bytes32OfAnEmptyString, 
-                Gwei.One, 
-                true, 
-                new Epoch(4), 
-                new Epoch(5), 
-                new Epoch(6), 
+                TestKey1,
+                Sha256.Bytes32OfAnEmptyString,
+                Gwei.One,
+                true,
+                new Epoch(4),
+                new Epoch(5),
+                new Epoch(6),
                 new Epoch(7)
                 );
 
@@ -109,7 +109,7 @@ namespace Nethermind.Ssz.Test
             decoded.ShouldBe(container);
             //Assert.AreEqual(container, decoded);
             Assert.AreEqual(7, decoded.WithdrawableEpoch.Number);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -131,7 +131,7 @@ namespace Nethermind.Ssz.Test
             Span<byte> encodedAgain = new byte[Ssz.AttestationDataLength];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -147,15 +147,15 @@ namespace Nethermind.Ssz.Test
 
             IndexedAttestation container = new IndexedAttestation(
                 new ValidatorIndex[3],
-                data, 
+                data,
                 TestSig1);
 
             Span<byte> encoded = new byte[Ssz.IndexedAttestationLength(container)];
             Ssz.Encode(encoded, container);
             IndexedAttestation decoded = Ssz.DecodeIndexedAttestation(encoded);
-            
+
             decoded.ShouldBe(container);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -178,9 +178,9 @@ namespace Nethermind.Ssz.Test
             Span<byte> encoded = new byte[Ssz.PendingAttestationLength(container)];
             Ssz.Encode(encoded, container);
             PendingAttestation? decoded = Ssz.DecodePendingAttestation(encoded);
-            
+
             decoded.ShouldBe(container);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -195,7 +195,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             Eth1Data decoded = Ssz.DecodeEth1Data(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -211,7 +211,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             DepositData decoded = Ssz.DecodeDepositData(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -243,7 +243,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             BeaconBlockHeader decoded = Ssz.DecodeBeaconBlockHeader(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -264,14 +264,14 @@ namespace Nethermind.Ssz.Test
 
             ProposerSlashing container = new ProposerSlashing(
                 new ValidatorIndex(1),
-                new SignedBeaconBlockHeader(header1, TestSig1), 
+                new SignedBeaconBlockHeader(header1, TestSig1),
                 new SignedBeaconBlockHeader(header2, TestSig1));
 
             Span<byte> encoded = new byte[Ssz.ProposerSlashingLength];
             Ssz.Encode(encoded, container);
             ProposerSlashing? decoded = Ssz.DecodeProposerSlashing(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -301,7 +301,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             AttesterSlashing? decoded = Ssz.DecodeAttesterSlashing(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -316,7 +316,7 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(2), Sha256.RootOfAnEmptyString));
 
             Attestation container = new Attestation(
-                new BitArray(new byte[] {1, 2, 3}),
+                new BitArray(new byte[] { 1, 2, 3 }),
                 data,
                 TestSig1);
 
@@ -324,7 +324,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             Attestation decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -345,7 +345,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -360,7 +360,7 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             VoluntaryExit? decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 
@@ -378,21 +378,21 @@ namespace Nethermind.Ssz.Test
                 eth1Data,
                 new Bytes32(new byte[32]),
                 Enumerable.Repeat(ProposerSlashing.Zero, 2).ToArray(),
-                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(), 
+                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(),
                 Enumerable.Repeat(Attestation.Zero, 4).ToArray(),
                 Enumerable.Repeat(zeroDeposit, 5).ToArray(),
-                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray() 
+                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray()
             );
 
             Span<byte> encoded = new byte[Ssz.BeaconBlockBodyLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlockBody decoded = Ssz.DecodeBeaconBlockBody(encoded);
-            
+
             AssertBeaconBlockBodyEqual(container, decoded);
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
-        
+
         [Test]
         public void Beacon_block_body_more_detailed()
         {
@@ -402,12 +402,12 @@ namespace Nethermind.Ssz.Test
                 Sha256.RootOfAnEmptyString,
                 new Checkpoint(new Epoch(2), Sha256.RootOfAnEmptyString),
                 new Checkpoint(new Epoch(3), Sha256.RootOfAnEmptyString));
-            
+
             Attestation attestation = new Attestation(
                 new BitArray(new byte[5]),
                 data,
                 TestSig1);
-            
+
             Ref<DepositData> depositData = new Ref<DepositData>(new DepositData(
                 TestKey1,
                 Sha256.Bytes32OfAnEmptyString,
@@ -441,14 +441,14 @@ namespace Nethermind.Ssz.Test
             deposits[2] = deposit;
 
             Bytes32 graffiti = new Bytes32(new byte[32]);
-            
+
             AttesterSlashing[] attesterSlashings = Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray();
             attesterSlashings[0] = slashing;
-            
+
             ProposerSlashing[] proposerSlashings = Enumerable.Repeat(ProposerSlashing.Zero, 10).ToArray();
 
             SignedVoluntaryExit[] signedVoluntaryExits = Enumerable.Repeat(SignedVoluntaryExit.Zero, 11).ToArray();
-            
+
             BeaconBlockBody body = new BeaconBlockBody(
                 TestSig1,
                 eth1Data,
@@ -459,7 +459,7 @@ namespace Nethermind.Ssz.Test
                 deposits,
                 signedVoluntaryExits
             );
-            
+
             byte[] encoded = new byte[Ssz.BeaconBlockBodyLength(body)];
             Ssz.Encode(encoded, body);
         }
@@ -478,10 +478,10 @@ namespace Nethermind.Ssz.Test
                 eth1Data,
                 new Bytes32(new byte[32]),
                 Enumerable.Repeat(ProposerSlashing.Zero, 2).ToArray(),
-                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(), 
+                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(),
                 Enumerable.Repeat(Attestation.Zero, 4).ToArray(),
                 Enumerable.Repeat(zeroDeposit, 5).ToArray(),
-                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray() 
+                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray()
             );
 
             BeaconBlock container = new BeaconBlock(
@@ -498,12 +498,12 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encodedAgain = new byte[Ssz.BeaconBlockLength(container)];
             Ssz.Encode(encodedAgain, decoded);
-            
+
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
-        
+
         [Test]
         public void Beacon_state_there_and_back()
         {
@@ -524,10 +524,10 @@ namespace Nethermind.Ssz.Test
                 eth1Data,
                 new Bytes32(new byte[32]),
                 Enumerable.Repeat(ProposerSlashing.Zero, 2).ToArray(),
-                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(), 
+                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(),
                 Enumerable.Repeat(Attestation.Zero, 4).ToArray(),
                 Enumerable.Repeat(zeroDeposit, 5).ToArray(),
-                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray() 
+                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray()
             );
 
             BeaconBlock beaconBlock = new BeaconBlock(
@@ -539,8 +539,8 @@ namespace Nethermind.Ssz.Test
             BeaconState container = new BeaconState(
                 123,
                 new Slot(1),
-                new Fork(new ForkVersion(new byte[] {0x05, 0x00, 0x00, 0x00}),
-                    new ForkVersion(new byte[] {0x07, 0x00, 0x00, 0x00}), new Epoch(3)),
+                new Fork(new ForkVersion(new byte[] { 0x05, 0x00, 0x00, 0x00 }),
+                    new ForkVersion(new byte[] { 0x07, 0x00, 0x00, 0x00 }), new Epoch(3)),
                 beaconBlockHeader,
                 Enumerable.Repeat(Root.Zero, Ssz.SlotsPerHistoricalRoot).ToArray(),
                 Enumerable.Repeat(Root.Zero, Ssz.SlotsPerHistoricalRoot).ToArray(),
@@ -554,12 +554,12 @@ namespace Nethermind.Ssz.Test
                 new Gwei[Ssz.EpochsPerSlashingsVector],
                 Enumerable.Repeat(PendingAttestation.Zero, 1).ToArray(),
                 Enumerable.Repeat(PendingAttestation.Zero, 11).ToArray(),
-                new BitArray(new byte[] {0x09}),
+                new BitArray(new byte[] { 0x09 }),
                 new Checkpoint(new Epoch(3), Sha256.RootOfAnEmptyString),
                 new Checkpoint(new Epoch(5), Sha256.RootOfAnEmptyString),
                 new Checkpoint(new Epoch(7), Sha256.RootOfAnEmptyString)
             );
-            
+
             JsonSerializerOptions options = new JsonSerializerOptions { WriteIndented = true };
             options.ConfigureNethermindCore2();
             TestContext.WriteLine("Original state: {0}", JsonSerializer.Serialize(container, options));
@@ -579,11 +579,11 @@ namespace Nethermind.Ssz.Test
 
             byte[] encodedArray = encoded.ToArray();
             byte[] encodedAgainArray = encodedAgain.ToArray();
-            
+
             encodedAgainArray.Length.ShouldBe(encodedArray.Length);
             //encodedAgainArray.ShouldBe(encodedArray);
             //Assert.True(Bytes.AreEqual(encodedAgain, encoded));
-            
+
             Merkle.Ize(out UInt256 root, container);
         }
 

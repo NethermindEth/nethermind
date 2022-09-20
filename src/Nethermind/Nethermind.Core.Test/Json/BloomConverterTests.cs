@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,13 +28,13 @@ namespace Nethermind.Core.Test.Json
         {
             TestConverter(null, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
         }
-        
+
         [Test]
         public void Empty_bloom()
         {
             TestConverter(Bloom.Empty, (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
         }
-        
+
         [Test]
         public void Full_bloom()
         {

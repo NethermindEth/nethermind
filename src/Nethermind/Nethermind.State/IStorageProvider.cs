@@ -30,7 +30,7 @@ namespace Nethermind.State
         /// <param name="storageCell"></param>
         /// <returns></returns>
         byte[] GetOriginal(StorageCell storageCell);
-        
+
         /// <summary>
         /// Get the persistent storage value at the specified storage cell
         /// </summary>
@@ -63,24 +63,24 @@ namespace Nethermind.State
         /// Reset all storage
         /// </summary>
         void Reset();
-        
+
         /// <summary>
         /// Commit persisent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
         void CommitTrees(long blockNumber);
-        
+
         /// <summary>
         /// Commit persistent storage
         /// </summary>
         void Commit();
-        
+
         /// <summary>
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
         void Commit(IStorageTracer stateTracer);
-        
+
         /// <summary>
         /// Creates a restartable snapshot.
         /// </summary>

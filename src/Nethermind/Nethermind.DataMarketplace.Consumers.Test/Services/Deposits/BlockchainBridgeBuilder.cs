@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 ecdsa,
                 new ChainHeadInfoProvider(specProvider, blockTree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId), 
+                new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,18 +26,18 @@ namespace Nethermind.Network.Enr
         /// A key string of the node record entry.
         /// </summary>
         public abstract string Key { get; }
-        
+
         internal int GetRlpLength()
         {
             return Rlp.LengthOf(Key) + GetRlpLengthOfValue();
         }
-        
+
         /// <summary>
         /// Needed for optimized RLP serialization.
         /// </summary>
         /// <returns></returns>
         protected abstract int GetRlpLengthOfValue();
-        
+
         /// <summary>
         /// Encodes the entry into an RLP stream. 
         /// </summary>
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Enr
             return Key.GetHashCode();
         }
     }
-    
+
     /// <summary>
     /// Single key, value pair entry in the ENR record content.
     /// </summary>

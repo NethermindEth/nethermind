@@ -10,7 +10,7 @@ namespace Nethermind.Crypto.Bls
         {
             LibResolver.Setup();
         }
-    
+
         [DllImport("shamatar")]
         private static extern unsafe uint eip196_perform_operation(
             byte operation,

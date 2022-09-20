@@ -38,17 +38,17 @@ namespace Nethermind.AuRa.Test.Transactions
             ITxSource innerSource = Substitute.For<ITxSource>();
             ITxSealer txSealer = Substitute.For<ITxSealer>();
             IStateReader stateReader = Substitute.For<IStateReader>();
-            
+
             BlockHeader parent = Build.A.BlockHeader.TestObject;
             long gasLimit = long.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
-            innerSource.GetTransactions(parent, gasLimit).Returns(new[] {poolTx, generatedTx});
-            
+            innerSource.GetTransactions(parent, gasLimit).Returns(new[] { poolTx, generatedTx });
+
             GeneratedTxSource txSource = new(innerSource, txSealer, stateReader, LimboLogs.Instance);
 
             txSource.GetTransactions(parent, gasLimit).ToArray();
-            
+
             txSealer.Received().Seal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
             txSealer.DidNotReceive().Seal(poolTx, Arg.Any<TxHandlingOptions>());
         }

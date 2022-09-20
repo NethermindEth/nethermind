@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -114,7 +114,7 @@ public class NodeRecordSigner : INodeRecordSigner
             int noSigContentLength = rlpStream.Length - rlpStream.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
-            RlpStream originalContentStream = new (originalContent);
+            RlpStream originalContentStream = new(originalContent);
             originalContentStream.StartSequence(noSigContentLength);
             originalContentStream.Write(rlpStream.Read(noSigContentLength));
             rlpStream.Position = startPosition;
@@ -141,7 +141,7 @@ public class NodeRecordSigner : INodeRecordSigner
         {
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
-        
+
         Keccak contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {
@@ -154,13 +154,13 @@ public class NodeRecordSigner : INodeRecordSigner
 
         CompressedPublicKey publicKeyA =
             _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, contentHash);
-        Signature sigB = new (nodeRecord.Signature!.Bytes, 1);
+        Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
         CompressedPublicKey publicKeyB =
             _ecdsa.RecoverCompressedPublicKey(sigB, contentHash);
-        
+
         CompressedPublicKey? reportedKey =
             nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
-        
+
         return publicKeyA.Equals(reportedKey) || publicKeyB.Equals(reportedKey);
     }
 }

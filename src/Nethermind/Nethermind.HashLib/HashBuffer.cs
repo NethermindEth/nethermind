@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ using System.Diagnostics;
 namespace Nethermind.HashLib
 {
     [DebuggerNonUserCode]
-    public class HashBuffer 
+    public class HashBuffer
     {
         private byte[] m_data;
         private int m_pos;
@@ -49,7 +49,7 @@ namespace Nethermind.HashLib
 
         public byte[] GetBytesZeroPadded()
         {
-            Array.Clear(m_data, m_pos, m_data.Length - m_pos); 
+            Array.Clear(m_data, m_pos, m_data.Length - m_pos);
             m_pos = 0;
             return m_data;
         }

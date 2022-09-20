@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly bool _allowReceiptIterator;
         private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new();
-        
+
         private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new();
 
         public InMemoryReceiptStorage(bool allowReceiptIterator = true)
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Receipts
                 EnsureCanonical(block);
             }
         }
-        
+
         public bool HasBlock(Keccak hash)
         {
             return _receipts.ContainsKey(hash);

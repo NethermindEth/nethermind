@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Test.Services
                     }
                 }
             };
-            
+
             _client.GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
             await _priceService.UpdateAsync(Currency);
             var priceInfo = _priceService.Get(Currency);

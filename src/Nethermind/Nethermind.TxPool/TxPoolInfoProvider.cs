@@ -48,7 +48,7 @@ namespace Nethermind.TxPool
 
                 foreach (var transaction in transactionsOrderedByNonce)
                 {
-                    ulong transactionNonce = (ulong) transaction.Nonce;
+                    ulong transactionNonce = (ulong)transaction.Nonce;
                     if (transaction.Nonce == expectedNonce)
                     {
                         pending.Add(transactionNonce, transaction);
@@ -56,7 +56,7 @@ namespace Nethermind.TxPool
                     }
                     else
                     {
-                        queued.Add(transactionNonce, transaction);    
+                        queued.Add(transactionNonce, transaction);
                     }
                 }
 

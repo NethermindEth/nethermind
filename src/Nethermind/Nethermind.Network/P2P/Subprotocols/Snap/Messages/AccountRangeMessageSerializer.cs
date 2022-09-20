@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class AccountRangeMessageSerializer : IZeroMessageSerializer<AccountRangeMessage>
     {
-        private readonly AccountDecoder _decoder = new (true);
+        private readonly AccountDecoder _decoder = new(true);
 
         public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             AccountRangeMessage message = new();
-            NettyRlpStream rlpStream = new (byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
 
             rlpStream.ReadSequenceLength();
 
@@ -84,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             return message;
         }
-        
+
         private PathWithAccount DecodePathWithRlpData(RlpStream stream)
         {
             stream.ReadSequenceLength();

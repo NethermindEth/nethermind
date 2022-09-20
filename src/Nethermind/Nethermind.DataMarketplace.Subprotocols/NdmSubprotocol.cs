@@ -203,7 +203,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw new SubprotocolException($"{Session.RemoteNodeId}" +
                                                $"No {nameof(HiReceived)} received prior to communication.");
             }
-            
+
             Logger.Warn($"GETTING MESSAGE: ndm.{NdmMessageCode.GetDescription(message.PacketType)}");
 
             MessageHandlers[message.PacketType](message);

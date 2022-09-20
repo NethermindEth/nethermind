@@ -48,13 +48,13 @@ namespace Nethermind.DataMarketplace.Initializers
             {
                 throw new ArgumentNullException(nameof(_initializerType), $"NDM initializer type cannot be null.");
             }
-            
+
             var name = _initializerType.Name;
-            if(!typeof(INdmInitializer).IsAssignableFrom(_initializerType))
+            if (!typeof(INdmInitializer).IsAssignableFrom(_initializerType))
             {
                 throw new MissingMethodException($"NDM initializer type: {_initializerType.Name}/{name} is not valid.", nameof(_initializerType));
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Loading NDM using the initializer: {name}");
             var instance = Activator.CreateInstance(_initializerType, _module, _consumersModule, _logManager);
             if (instance is INdmInitializer initializer)

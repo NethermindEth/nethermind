@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Core2.Json
         public static void ConfigureNethermindCore2(this JsonSerializerOptions options)
         {
             options.PropertyNamingPolicy = new JsonNamingPolicySnakeCase();
-            
+
             options.Converters.Add(new JsonConverterByteArrayPrefixedHex());
 
             options.Converters.Add(new JsonConverterBlsPublicKey());
@@ -42,7 +42,7 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());
             options.Converters.Add(new JsonConverterBitArray());
-            
+
             // Constructor converters
             options.Converters.Add(new LastConstructorJsonConverter<SyncingStatus>());
             options.Converters.Add(new LastConstructorJsonConverter<Syncing>());

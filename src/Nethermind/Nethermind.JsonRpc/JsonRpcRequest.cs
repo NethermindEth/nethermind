@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,16 +23,16 @@ namespace Nethermind.JsonRpc
     {
         public string JsonRpc { get; set; }
         public string Method { get; set; }
-        
+
         [JsonProperty(Required = Required.Default)]
         public string[]? Params { get; set; }
-        
+
         [JsonConverter(typeof(IdConverter))]
         public object Id { get; set; }
 
         public override string ToString()
         {
-            string paramsString =  Params == null ? string.Empty : $"{string.Join(",", Params)}";
+            string paramsString = Params == null ? string.Empty : $"{string.Join(",", Params)}";
             return $"ID {Id}, {Method}({paramsString})";
         }
     }

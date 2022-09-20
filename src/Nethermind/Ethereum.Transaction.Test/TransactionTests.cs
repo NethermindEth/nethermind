@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -98,7 +98,7 @@ namespace Ethereum.Transaction.Test
 
             return tests;
         }
-        
+
         [TestCaseSource(nameof(LoadTests), new object[] { "Address" })]
         public void Test_Address(TransactionTest test)
         {
@@ -187,8 +187,8 @@ namespace Ethereum.Transaction.Test
                 throw;
             }
 
-            bool useChainId = transaction.Signature.V > 28UL;            
-            
+            bool useChainId = transaction.Signature.V > 28UL;
+
             TxValidator validator = new(useChainId ? ChainId.Mainnet : 0UL);
 
             if (validTest != null)

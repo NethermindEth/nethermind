@@ -65,7 +65,7 @@ namespace Nethermind.Ssz
             {
                 return;
             }
-            
+
             if (span.Length != Ssz.ValidatorLength * containers.Length)
             {
                 ThrowTargetLength<Validator>(span.Length, Ssz.ValidatorLength);
@@ -76,7 +76,7 @@ namespace Nethermind.Ssz
                 Encode(span.Slice(i * Ssz.ValidatorLength, Ssz.ValidatorLength), containers[i]);
             }
         }
-        
+
         public static Validator[] DecodeValidators(Span<byte> span)
         {
             if (span.Length % Ssz.ValidatorLength != 0)

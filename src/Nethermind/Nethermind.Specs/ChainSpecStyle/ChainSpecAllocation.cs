@@ -24,7 +24,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainSpecAllocation()
         {
         }
-        
+
         public ChainSpecAllocation(UInt256 allocationValue)
         {
             Balance = allocationValue;
@@ -38,13 +38,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             Constructor = constructor;
             Storage = storage;
         }
-        
+
         public UInt256 Balance { get; set; }
-        
+
         public UInt256 Nonce { get; set; }
-        
+
         public byte[] Code { get; set; }
-        
+
         public byte[] Constructor { get; set; }
 
         public Dictionary<UInt256, byte[]> Storage { get; set; }

@@ -28,14 +28,14 @@ namespace Nethermind.Mev.Test
         {
             _ = new MevConfig();
         }
-        
+
         [Test]
         public void Disabled_by_default()
         {
             MevConfig mevConfig = new();
             mevConfig.Enabled.Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_enabled_and_disable()
         {

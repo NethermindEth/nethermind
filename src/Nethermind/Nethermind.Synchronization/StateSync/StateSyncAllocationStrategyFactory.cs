@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.StateSync
         private static readonly IPeerAllocationStrategy DefaultStrategy =
             new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true),
                 TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
-        
+
         public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
         }

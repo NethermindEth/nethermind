@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -109,7 +109,7 @@ namespace Nethermind.HashLib
             TransformFinalUInts(result);
             return result;
         }
-        
+
         public override void TransformFinalUInts(Span<uint> output)
         {
             Finish();
@@ -144,7 +144,7 @@ namespace Nethermind.HashLib
         {
             throw new NotSupportedException();
         }
-        
+
         protected virtual void GetResultUInts(Span<uint> result)
         {
             throw new NotSupportedException();

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,14 +32,14 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             MachineCode = code;
         }
-    
+
         public bool ValidateJump(int destination, bool isSubroutine)
         {
             if (_validJumpDestinations is null)
             {
                 CalculateJumpDestinations();
             }
-            
+
             if (destination < 0 || destination >= _validJumpDestinations.Length ||
                 (isSubroutine ? !_validJumpSubDestinations.Get(destination) : !_validJumpDestinations.Get(destination)))
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 {
                     _validJumpSubDestinations.Set(index, true);
                 }
-                
+
                 // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
                 if (instruction >= 0x60 && instruction <= 0x7f)
                 {

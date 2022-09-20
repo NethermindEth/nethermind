@@ -26,7 +26,7 @@ namespace Nethermind.Core2.Api
             ChainId = chainId;
             Fork = fork;
         }
-        
+
         public ulong ChainId { get; }
         public Fork Fork { get; }
     }

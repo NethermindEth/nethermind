@@ -16,10 +16,10 @@
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-//    "store": {
-//"key": "0x0",
-//"val": "0x486974636861696e"
-//},
+    //    "store": {
+    //"key": "0x0",
+    //"val": "0x486974636861696e"
+    //},
     public class ParityStorageChangeTrace
     {
         public byte[] Key { get; set; }

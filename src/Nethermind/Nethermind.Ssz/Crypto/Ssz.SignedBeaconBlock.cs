@@ -41,7 +41,7 @@ namespace Nethermind.Ssz
 
             // variable parts
             BeaconBlock message = DecodeBeaconBlock(span.Slice(messageDynamicOffset));
-            
+
             return new SignedBeaconBlock(message, signature);
         }
 
@@ -53,7 +53,7 @@ namespace Nethermind.Ssz
             int offset = 0;
             Encode(span, container, ref offset);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, SignedBeaconBlock container, ref int offset)
         {
@@ -62,7 +62,7 @@ namespace Nethermind.Ssz
             // Static
             Encode(span, Ssz.SignedBeaconBlockDynamicOffset, ref offset);
             Encode(span, container.Signature, ref offset);
-            
+
             // Variable
             Encode(span, container.Message, ref offset);
         }

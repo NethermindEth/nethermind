@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override void Serialize(IByteBuffer byteBuffer, GetByteCodesMessage message)
         {
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
-            
+
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.Hashes);
             rlpStream.Encode(message.Bytes);
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         protected override GetByteCodesMessage Deserialize(RlpStream rlpStream)
         {
-            GetByteCodesMessage message = new ();
+            GetByteCodesMessage message = new();
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();

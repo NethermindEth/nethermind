@@ -25,12 +25,12 @@ namespace Nethermind.Consensus.Transactions
             {
                 return txSource ?? EmptyTxSource.Instance;
             }
-            
+
             if (txSource is null)
             {
                 return secondTxSource;
             }
-            
+
             if (txSource is CompositeTxSource cts)
             {
                 cts.Then(secondTxSource);
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Transactions
                 return new CompositeTxSource(txSource, secondTxSource);
             }
         }
-        
+
         public static ITxSource ServeTxsOneByOne(this ITxSource source) => new OneByOneTxSource(source);
     }
 }

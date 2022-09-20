@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Trie
         public Nibble(char hexChar)
         {
             hexChar = char.ToUpper(hexChar);
-            _nibble = hexChar < 'A'? (byte) (hexChar - '0') : (byte) (10 + (hexChar - 'A'));
+            _nibble = hexChar < 'A' ? (byte)(hexChar - '0') : (byte)(10 + (hexChar - 'A'));
         }
 
         public Nibble(byte nibble)

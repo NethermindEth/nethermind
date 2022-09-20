@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             get => _claimedRefundTransactions;
             private set => _claimedRefundTransactions = new HashSet<TransactionInfo>(value);
         }
-        
+
         public TransactionInfo? ClaimedRefundTransaction { get; private set; }
         public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
@@ -123,7 +123,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             {
                 throw new InvalidOperationException($"Confirmation timestamp for deposit with id: '{Id}' cannot be 0.");
             }
-            
+
             ConfirmationTimestamp = timestamp;
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
             _transactions.Add(transaction);
         }
-        
+
         public void SetIncludedTransaction(Keccak transactionHash)
         {
             Transaction = _transactions.Single(t => t.Hash == transactionHash);
@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 {
                     continue;
                 }
-                
+
                 transaction.SetRejected();
             }
 
@@ -152,7 +152,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 Cancelled = true;
             }
         }
-        
+
         public void Reject()
         {
             Rejected = true;
@@ -182,7 +182,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
                 transaction.SetRejected();
             }
-            
+
             if (ClaimedRefundTransaction.Type == TransactionType.Cancellation)
             {
                 RefundCancelled = true;
@@ -193,7 +193,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         {
             RefundClaimed = true;
         }
-        
+
         public void SetConsumedUnits(uint units)
         {
             ConsumedUnits = units;
@@ -212,7 +212,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             {
                 timeLeftToClaimRefund = checked(Deposit.ExpiryTime - currentBlockTimestamp);
             }
-            catch(OverflowException)
+            catch (OverflowException)
             {
                 timeLeftToClaimRefund = 0;
             }
@@ -242,7 +242,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == this.GetType() && Equals((DepositDetails) obj);
+            return obj.GetType() == this.GetType() && Equals((DepositDetails)obj);
         }
 
         public override int GetHashCode()

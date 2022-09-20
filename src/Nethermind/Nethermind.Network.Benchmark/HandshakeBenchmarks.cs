@@ -57,7 +57,7 @@ namespace Nethermind.Network.Benchmarks
                 responses = new byte[6][];
                 _mod = mod;
                 _i = -1;
-            
+
                 // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
                 responses[0] = NetTestVectors.NonceA;
                 responses[1] = NetTestVectors.EphemeralKeyA.KeyBytes;
@@ -85,10 +85,10 @@ namespace Nethermind.Network.Benchmarks
 
             public void Dispose()
             {
-                
+
             }
         }
-        
+
         private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
@@ -132,13 +132,13 @@ namespace Nethermind.Network.Benchmarks
             Ack();
             Agree();
         }
-        
+
         [Benchmark]
         public void CurrentAuth()
         {
             Auth();
         }
-        
+
         [Benchmark]
         public void CurrentAuthAck()
         {

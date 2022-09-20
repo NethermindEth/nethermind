@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions)
         {
-            _stateReader.RunTreeVisitor(visitor,  stateRoot, visitingOptions);
+            _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
         }
 
         public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) != null;

@@ -132,11 +132,11 @@ namespace Nethermind.Synchronization.SnapSync
 
             Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
-            if(!dict.TryGetValue(expectedRootHash, out TrieNode root))
+            if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
-            
+
             Span<byte> leftBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];

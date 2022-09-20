@@ -28,9 +28,9 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager;
 
         private long _lastWiggleAtNumber;
-        
+
         private int _lastWiggle;
-        
+
         public WiggleRandomizer(ICryptoRandom cryptoRandom, ISnapshotManager snapshotManager)
         {
             _cryptoRandom = cryptoRandom;
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Clique
             {
                 return 0;
             }
-            
+
             if (header.Number != _lastWiggleAtNumber)
             {
                 int multiplier = _snapshotManager.GetOrCreateSnapshot(header.Number - 1, header.ParentHash!).Signers.Count / 2 + 1;

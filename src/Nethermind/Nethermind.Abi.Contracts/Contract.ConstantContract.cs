@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,9 +72,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// <returns></returns>
             public T Call<T>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                return (T) Call(parentHeader, function, sender, arguments)[0];
+                return (T)Call(parentHeader, function, sender, arguments)[0];
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
@@ -85,12 +85,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// <typeparam name="T1"></typeparam>
             /// <typeparam name="T2"></typeparam>
             /// <returns></returns>
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender,params object[] arguments)
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
                 var objects = Call(parentHeader, function, sender, arguments);
-                return ((T1) objects[0], (T2) objects[1]);
+                return ((T1)objects[0], (T2)objects[1]);
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 var result = Call(parentHeader, transaction);
                 return result;
             }
-            
+
             private Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
         }
     }

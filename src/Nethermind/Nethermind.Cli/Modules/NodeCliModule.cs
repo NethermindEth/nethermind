@@ -41,16 +41,16 @@ namespace Nethermind.Cli.Modules
             {
                 uri = uri + ":8545";
             }
-            
-            if (!uri.StartsWith("http://") && !uri.StartsWith("https://" ))
+
+            if (!uri.StartsWith("http://") && !uri.StartsWith("https://"))
             {
                 uri = "http://" + uri;
             }
-            
+
             NodeManager.SwitchUri(new Uri($"{uri}"));
             return uri;
         }
-        
+
         [CliFunction("node", "switchLocal")]
         public string SwitchLocal(string uri)
         {
@@ -58,25 +58,25 @@ namespace Nethermind.Cli.Modules
             NodeManager.SwitchUri(new Uri(uri));
             return uri;
         }
-        
+
         private static string? GetVariable(string name, string defaultValue)
         {
             string? value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
             return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
         }
-        
+
         [CliProperty("node", "address")]
         public string Address()
         {
             return new Enode(Enode() ?? string.Empty).Address.ToString();
         }
-        
+
         [CliProperty("node", "enode")]
         public string? Enode()
         {
             return NodeManager.Post<string>("net_localEnode").Result;
         }
-        
+
         [CliProperty("node", "uri")]
         public JsValue Uri()
         {

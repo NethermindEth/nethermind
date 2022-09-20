@@ -169,11 +169,11 @@ namespace Nethermind.Ssz
             offset += Ssz.EpochsPerSlashingsVector * Ssz.GweiLength;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset6);
-            
+
             int justificationBitsByteLength = (Ssz.JustificationBitsLength + 7) / 8;
             BitArray justificationBits = DecodeBitvector(span.Slice(offset, justificationBitsByteLength), Ssz.JustificationBitsLength);
             offset += justificationBitsByteLength;
-            
+
             Checkpoint previousJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
             Checkpoint currentJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
             Checkpoint finalizedCheckpoint = DecodeCheckpoint(span, ref offset);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,11 +22,11 @@ namespace Nethermind.BeaconNode.OApiClient
     internal static class LogDebug
     {
         // 64xx debug - validator
-        
+
         public static readonly Action<ILogger, string, int, Exception?> AttemptingConnectionToNode =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6494, nameof(AttemptingConnectionToNode)),
                 "Attempting connection to node '{NodeUrl}' (index {NodeUrlIndex}).");
-        
+
     }
 }

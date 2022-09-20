@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
-            if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
+            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
 
             _syncStatusList = new SyncStatusList(
                 _blockTree,
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (batch == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
                 }
 

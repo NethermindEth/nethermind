@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
-{   
+{
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevWallet : IWallet
     {
@@ -52,7 +52,7 @@ namespace Nethermind.Wallet
                 _isUnlocked.Add(key.Address, true);
                 _keySeed[31]++;
             }
-        } 
+        }
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -76,12 +76,12 @@ namespace Nethermind.Wallet
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
-            
+
             if (address is null || address == Address.Zero)
             {
                 return false;
             }
-            
+
             if (!_passwords.ContainsKey(address))
             {
                 if (_logger.IsError) _logger.Error("Account does not exist.");
@@ -96,7 +96,7 @@ namespace Nethermind.Wallet
 
             AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
             _isUnlocked[address] = true;
-            
+
             return true;
         }
 

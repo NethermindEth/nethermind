@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -83,12 +83,12 @@ namespace Nethermind.Network.Discovery.Test
         public async Task PingSentReceivedTest()
         {
             ResetMetrics();
-            
+
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
             {
                 FarAddress = _address2
             };
-            
+
             _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
@@ -97,11 +97,11 @@ namespace Nethermind.Network.Discovery.Test
             {
                 FarAddress = _address
             };
-            
+
             _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
-            
+
             AssertMetrics(258);
         }
 
@@ -110,12 +110,12 @@ namespace Nethermind.Network.Discovery.Test
         public async Task PongSentReceivedTest()
         {
             ResetMetrics();
-            
+
             PongMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _address2
             };
-            
+
             _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
@@ -127,21 +127,21 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
-            
+
             AssertMetrics(240);
         }
-        
+
         [Test]
         [Retry(5)]
         public async Task FindNodeSentReceivedTest()
         {
             ResetMetrics();
-            
+
             FindNodeMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _address2
             };
-            
+
             _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
@@ -150,11 +150,11 @@ namespace Nethermind.Network.Discovery.Test
             {
                 FarAddress = _address
             };
-            
+
             _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
-            
+
             AssertMetrics(216);
         }
 
@@ -163,12 +163,12 @@ namespace Nethermind.Network.Discovery.Test
         public async Task NeighborsSentReceivedTest()
         {
             ResetMetrics();
-            
+
             NeighborsMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
             {
                 FarAddress = _address2
             };
-            
+
             _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
@@ -177,11 +177,11 @@ namespace Nethermind.Network.Discovery.Test
             {
                 FarAddress = _address,
             };
-            
+
             _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
-            
+
             AssertMetrics(210);
         }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             Metrics.DiscoveryBytesSent = Metrics.DiscoveryBytesReceived = 0;
         }
-        
+
         private static void AssertMetrics(int value)
         {
             Metrics.DiscoveryBytesSent.Should().Be(value);

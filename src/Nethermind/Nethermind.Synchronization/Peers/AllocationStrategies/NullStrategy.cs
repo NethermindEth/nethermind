@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         public static IPeerAllocationStrategy Instance { get; } = new NullStrategy();
 
         public bool CanBeReplaced => false;
-        
+
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             return null;

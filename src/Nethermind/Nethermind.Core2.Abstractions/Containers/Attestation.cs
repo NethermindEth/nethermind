@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Containers
     public class Attestation : IEquatable<Attestation>
     {
         public static readonly Attestation Zero = new Attestation(new BitArray(0), AttestationData.Zero, BlsSignature.Zero);
-        
+
         public Attestation(BitArray aggregationBits, AttestationData data, BlsSignature signature)
         {
             AggregationBits = aggregationBits;
@@ -47,7 +47,7 @@ namespace Nethermind.Core2.Containers
         {
             return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
         }
-        
+
         public bool Equals(Attestation? other)
         {
             if (other is null ||
@@ -67,7 +67,7 @@ namespace Nethermind.Core2.Containers
             }
 
             return true;
-            
+
         }
 
         public override bool Equals(object? obj)

@@ -27,7 +27,7 @@ namespace Nethermind.Mev.Execution
 {
     public class CallTxBundleExecutor : TxBundleExecutor<TxsResults, BlockCallOutputTracer>
     {
-        
+
         public CallTxBundleExecutor(ITracerFactory tracer, ISpecProvider specProvider, ISigner? signer) : base(tracer, specProvider, signer)
         {
         }

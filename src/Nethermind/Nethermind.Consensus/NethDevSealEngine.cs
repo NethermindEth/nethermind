@@ -28,7 +28,7 @@ namespace Nethermind.Consensus
         {
             Address = address ?? Address.Zero;
         }
-        
+
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;

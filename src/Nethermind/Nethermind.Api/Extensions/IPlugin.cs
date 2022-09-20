@@ -23,15 +23,15 @@ namespace Nethermind.Api.Extensions
     public interface INethermindPlugin : IAsyncDisposable
     {
         string Name { get; }
-        
+
         string Description { get; }
-        
+
         string Author { get; }
 
         Task Init(INethermindApi nethermindApi);
 
         Task InitNetworkProtocol();
-        
+
         Task InitRpcModules();
     }
 }

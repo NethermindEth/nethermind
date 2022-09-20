@@ -225,7 +225,7 @@ public class DbOnTheRocks : IDbWithSpan
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
-//            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
+        //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
         WriteOptions = new WriteOptions();
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
@@ -393,7 +393,7 @@ public class DbOnTheRocks : IDbWithSpan
 
         // seems it has no performance impact
         return _db.Get(key) != null;
-//            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+        //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
     }
 
     public IBatch StartBatch()

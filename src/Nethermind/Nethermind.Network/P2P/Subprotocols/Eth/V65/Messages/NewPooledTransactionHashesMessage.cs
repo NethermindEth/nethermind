@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,8 +21,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
     public class NewPooledTransactionHashesMessage : HashesMessage
     {
-        public const int MaxCount = 2048; 
-        
+        public const int MaxCount = 2048;
+
         public override int PacketType { get; } = Eth65MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 

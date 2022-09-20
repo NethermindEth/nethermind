@@ -27,14 +27,14 @@ namespace Nethermind.Consensus.Processing
         public CompositeBlockPreprocessorStep(params IBlockPreprocessorStep[] recoverySteps)
         {
             if (recoverySteps == null) throw new ArgumentNullException(nameof(recoverySteps));
-            
+
             _recoverySteps = new LinkedList<IBlockPreprocessorStep>();
             for (int i = 0; i < recoverySteps.Length; i++)
             {
                 _recoverySteps.AddLast(recoverySteps[i]);
             }
         }
-        
+
         public void RecoverData(Block block)
         {
             foreach (IBlockPreprocessorStep recoveryStep in _recoverySteps)
@@ -42,12 +42,12 @@ namespace Nethermind.Consensus.Processing
                 recoveryStep.RecoverData(block);
             }
         }
-        
+
         public void AddFirst(IBlockPreprocessorStep blockPreprocessorStep)
         {
             _recoverySteps.AddFirst(blockPreprocessorStep);
         }
-        
+
         public void AddLast(IBlockPreprocessorStep blockPreprocessorStep)
         {
             _recoverySteps.AddLast(blockPreprocessorStep);

@@ -25,12 +25,12 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Mev.Source
 {
-    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long> 
+    public class BundleSortedPool : DistinctValueSortedPool<MevBundle, MevBundle, long>
     {
         public BundleSortedPool(int capacity, IComparer<MevBundle> comparer, ILogManager logManager)
-            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager) 
+            : base(capacity, comparer, EqualityComparer<MevBundle>.Default, logManager)
         {
-           
+
         }
 
         protected override IComparer<MevBundle> GetUniqueComparer(IComparer<MevBundle> comparer) //compares all the bundles to evict the worst one
@@ -42,7 +42,7 @@ namespace Nethermind.Mev.Source
         protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
         protected override MevBundle GetKey(MevBundle value) => value;
 
-        protected override IComparer<MevBundle> GetReplacementComparer(IComparer<MevBundle> comparer) => 
+        protected override IComparer<MevBundle> GetReplacementComparer(IComparer<MevBundle> comparer) =>
             CompareMevBundleBySequenceNumber.Default;
 
         protected override bool AllowSameKeyReplacement => true;

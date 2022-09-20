@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Discovery.Test
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
                     new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
-            _nodes = new[] {new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB,"192.168.1.19", 2)};
+            _nodes = new[] { new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB, "192.168.1.19", 2) };
 
             IFullDb nodeDb = new SimpleFilePublicKeyDb("Test", "test_db", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager);
@@ -90,7 +90,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving ping
             IPEndPoint address = new(IPAddress.Parse(Host), Port);
-            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) {FarAddress = address});
+            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
             await Task.Delay(500);
 
             // expecting to send pong
@@ -105,7 +105,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving pong
             ReceiveSomePong();
-            
+
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.AreEqual(1, nodes.Count());
@@ -121,7 +121,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving pong to have a node in the system
             ReceiveSomePong();
-            
+
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.AreEqual(1, nodes.Count());
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test
             FindNodeMsg msg = new(_publicKey, GetExpirationTime(), Build.A.PrivateKey.TestObject.PublicKey.Bytes);
             msg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(msg);
-            
+
             //expecting to respond with sending Neighbors
             _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Discovery.Test
                 {
                     INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node(TestItem.PublicKeyA, $"{a}.{b}.1.1", 8000));
                     manager?.SendPingAsync();
-                    
+
                     PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
                     pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), Port);
                     _discoveryManager.OnIncomingMsg(pongMsg);

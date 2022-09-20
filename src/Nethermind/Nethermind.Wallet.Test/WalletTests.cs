@@ -50,35 +50,35 @@ namespace Nethermind.Wallet.Test
                 switch (walletType)
                 {
                     case WalletType.KeyStore:
-                    {
-                        IKeyStoreConfig config = new KeyStoreConfig();
-                        config.KeyStoreDirectory = _keyStorePath.Path;
-                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        Wallet = new DevKeyStoreWallet(
-                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                            LimboLogs.Instance);
-                        break;
-                    }
+                        {
+                            IKeyStoreConfig config = new KeyStoreConfig();
+                            config.KeyStoreDirectory = _keyStorePath.Path;
+                            ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                            Wallet = new DevKeyStoreWallet(
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                LimboLogs.Instance);
+                            break;
+                        }
                     case WalletType.Memory:
-                    {
-                        Wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-                        break;
-                    }
+                        {
+                            Wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
+                            break;
+                        }
                     case WalletType.ProtectedKeyStore:
-                    {
-                        IKeyStoreConfig config = new KeyStoreConfig();
-                        config.KeyStoreDirectory = _keyStorePath.Path;
-                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
-                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                            new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
-                            Timestamper.Default,
-                            LimboLogs.Instance);
-                        wallet.SetupTestAccounts(3);
+                        {
+                            IKeyStoreConfig config = new KeyStoreConfig();
+                            config.KeyStoreDirectory = _keyStorePath.Path;
+                            ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                            ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
+                                Timestamper.Default,
+                                LimboLogs.Instance);
+                            wallet.SetupTestAccounts(3);
 
-                        Wallet = wallet;
-                        break;
-                    }
+                            Wallet = wallet;
+                            break;
+                        }
                     default:
                         throw new ArgumentOutOfRangeException(nameof(walletType), walletType, null);
                 }
@@ -138,7 +138,7 @@ namespace Nethermind.Wallet.Test
             for (int i = 1; i <= count; i++)
             {
                 byte[] keyBytes = new byte[32];
-                keyBytes[31] = (byte) i;
+                keyBytes[31] = (byte)i;
                 PrivateKey key = new PrivateKey(keyBytes);
                 TestContext.Write(key.Address.Bytes.ToHexString() + Environment.NewLine);
                 Assert.True(ctx.Wallet.GetAccounts().Any(a => a == key.Address), $"{i}");

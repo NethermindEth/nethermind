@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Json
             TestConverter(1L, (a, b) => a.Equals(b), converter);
             TestConverter(0L, (a, b) => a.Equals(b), converter);
         }
-        
+
         [TestCase((NumberConversion)99)]
         public void Unknown_not_supported(NumberConversion notSupportedConversion)
         {
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Json
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(10485760, result);
         }
-        
+
         [Test]
         public void Can_read_0x0()
         {
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Json
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(ulong.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_0x000()
         {
@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test.Json
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(ulong.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_0()
         {
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test.Json
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(ulong.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_1()
         {
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Json
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(null, result);
         }
-        
+
         [Test]
         public void Throws_on_negative_numbers()
         {

@@ -387,11 +387,11 @@ namespace Nethermind.Core.Crypto
             ComputeHash(input, output);
             return output;
         }
-        
+
         public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> input, Span<byte> output, int size = HASH_SIZE)
         {
             ComputeHash(input, output);
-        }        
+        }
 
         // compute a keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
@@ -400,7 +400,7 @@ namespace Nethermind.Core.Crypto
             {
                 throw new ArgumentException("Bad keccak use");
             }
-            
+
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
             Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
 
@@ -438,7 +438,7 @@ namespace Nethermind.Core.Crypto
             KeccakF(state);
             MemoryMarshal.AsBytes(state.Slice(0, HASH_SIZE / sizeof(ulong))).CopyTo(output);
         }
-        
+
         public void Update(Span<byte> array, int index, int size)
         {
             // Bounds checking.

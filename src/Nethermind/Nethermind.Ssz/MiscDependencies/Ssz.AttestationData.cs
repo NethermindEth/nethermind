@@ -47,7 +47,7 @@ namespace Nethermind.Ssz
             {
                 ThrowSourceLength<AttestationData>(span.Length, Ssz.AttestationDataLength);
             }
-            
+
             int offset = 0;
             AttestationData container = new AttestationData(
                 DecodeSlot(span, ref offset),
@@ -68,14 +68,14 @@ namespace Nethermind.Ssz
             AttestationData container = new AttestationData(slot, index, beaconBlockRoot, source, target);
             return container;
         }
-        
+
         private static void Encode(Span<byte> span, AttestationData? value, ref int offset)
         {
             if (value is null)
             {
                 return;
             }
-            
+
             Encode(span.Slice(offset, Ssz.AttestationDataLength), value);
             offset += Ssz.AttestationDataLength;
         }
