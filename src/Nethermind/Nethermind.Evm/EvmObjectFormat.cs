@@ -126,7 +126,7 @@ namespace Nethermind.Evm
             return null;
         }
 
-        public int codeStartOffset(EofHeader header) => header.DataSize > 0
+        public int codeStartOffset(EofHeader header) => header.DataSize == 0
                                                             ? 5 + EofMagicLength  // magic (2b) + version(1b) +  1 * (sectionId(1b) + sectionSize(2b)) + separator(1b) = magic (2b) + 5b
                                                             : 8 + EofMagicLength; // magic (2b) + version(1b) +  2 * (sectionId(1b) + sectionSize(2b)) + separator(1b) = magic (2b) + 8b
         public int codeEndOffset(EofHeader header)  => codeStartOffset(header) + header.CodeSize;
