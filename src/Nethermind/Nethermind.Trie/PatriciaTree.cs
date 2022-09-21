@@ -791,37 +791,33 @@ namespace Nethermind.Trie
             }
 
             int extensionLength = FindCommonPrefixLength(shorterPath, longerPath);
-            if (extensionLength == shorterPath.Length)
+            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
                 if (traverseContext.IsNodeRead)
                 {
                     return node.FullRlp;
                 }
-
-                if (extensionLength == longerPath.Length)
+                if (traverseContext.IsRead)
                 {
-                    if (traverseContext.IsRead)
-                    {
-                        return node.Value;
-                    }
-                    if (traverseContext.IsDelete)
-                    {
-                        ConnectNodes(null);
-                        return traverseContext.UpdateValue;
-                    }
-
-                    if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
-                    {
-                        TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                        ConnectNodes(withUpdatedValue);
-                        return traverseContext.UpdateValue;
-                    }
-
+                    return node.Value;
+                }
+                if (traverseContext.IsDelete)
+                {
+                    ConnectNodes(null);
                     return traverseContext.UpdateValue;
                 }
+
+                if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
+                {
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
+                    ConnectNodes(withUpdatedValue);
+                    return traverseContext.UpdateValue;
+                }
+
+                return traverseContext.UpdateValue;
             }
 
-            if (traverseContext.IsRead)
+            if (traverseContext.IsRead || traverseContext.IsNodeRead)
             {
                 return null;
             }
