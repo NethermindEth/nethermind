@@ -40,13 +40,10 @@
     "eip1014Transition": 0,
     "eip1052Transition": 0,
     "eip1283Transition": 0,
-    "eip152Transition": 0,
-    "eip1108Transition": 0,
     "eip1344Transition": 0,
     "eip1706Transition": 0,
     "eip1884Transition": 0,
     "eip2028Transition": 0,
-    "eip2565Transition": 0,
     "eip2929Transition": 0,
     "eip2930Transition": 0,
     "eip3198Transition": 0,
@@ -130,9 +127,7 @@
         "pricing": {
           "0": {
             "price": {
-              "modexp": {
-                "divisor": 20
-              }
+              "modexp2565": {}
             }
           }
         }
