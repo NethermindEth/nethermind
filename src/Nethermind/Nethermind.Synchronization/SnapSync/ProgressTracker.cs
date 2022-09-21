@@ -91,8 +91,9 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return CreateAccountRefreshRequest(request, rootHash);
             }
+
             // Essentially, although we always want to prioritize this request whenever possible, if the current queue is kinda full, we don't.
-            else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
+            if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
                 return CreateAccountRangeRequest(rootHash, blockNumber, request);
             }
@@ -102,11 +103,13 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
             }
-            else if (StoragesToRetrieve.Count >= STORAGE_BATCH_SIZE)
+
+            if (StoragesToRetrieve.Count >= STORAGE_BATCH_SIZE)
             {
                 return CreateStorageRangeRequest(rootHash, blockNumber, request);
             }
-            else if (CodesToRetrieve.Count >= CODES_BATCH_SIZE)
+
+            if (CodesToRetrieve.Count >= CODES_BATCH_SIZE)
             {
                 return CreateCodesRequest(request);
             }
@@ -127,11 +130,13 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
             }
-            else if (StoragesToRetrieve.Count > 0)
+
+            if (StoragesToRetrieve.Count > 0)
             {
                 return CreateStorageRangeRequest(rootHash, blockNumber, request);
             }
-            else if (CodesToRetrieve.Count > 0)
+
+            if (CodesToRetrieve.Count > 0)
             {
                 return CreateCodesRequest(request);
             }
