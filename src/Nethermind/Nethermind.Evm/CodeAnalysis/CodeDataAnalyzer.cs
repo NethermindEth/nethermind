@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,32 +24,40 @@ namespace Nethermind.Evm.CodeAnalysis
     {
         private byte[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
+        internal EofHeader? _header { get; set; }
 
         public CodeDataAnalyzer(byte[] code)
         {
             MachineCode = code;
+            if(MachineCode.IsEOFCode(out var header))
+            {
+                _header = header;
+            }
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
+            int codeSectSize    = _header?.CodeSize ?? MachineCode.Length;
+            int codeStartOffset = _header?.CodeStartIndex() ?? MachineCode.CodeStartIndex();
+            int adjustedDest    = destination + codeStartOffset;
             _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
 
-            if (destination < 0 || destination >= MachineCode.Length)
+            if (destination < 0 || destination >= codeSectSize)
             {
                 return false;
             }
 
-            if (!CodeDataAnalyzerHelper.IsCodeSegment(_codeBitmap, destination))
+            if (!CodeDataAnalyzerHelper.IsCodeSegment(_codeBitmap, adjustedDest))
             {
                 return false;
             }
 
             if (isSubroutine)
             {
-                return MachineCode[destination] == 0x5c;
+                return MachineCode[adjustedDest] == 0x5c;
             }
 
-            return MachineCode[destination] == 0x5b;
+            return MachineCode[adjustedDest] == 0x5b;
         }
     }
 
@@ -73,12 +81,17 @@ namespace Nethermind.Evm.CodeAnalysis
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the
             // bitvector outside the bounds of the actual code.
-            byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
+
+            int codeSize = code.CodeSize();
+            int codeStartOffset = code.CodeStartIndex();
+            int codeEndOffset = code.CodeEndIndex();
+
+            byte[] bitvec = new byte[codeSize / 8 + 1 + 4];
 
             byte push1 = 0x60;
             byte push32 = 0x7f;
 
-            for (int pc = 0; pc < code.Length;)
+            for (int pc = codeStartOffset; pc < codeEndOffset;)
             {
                 byte op = code[pc];
                 pc++;

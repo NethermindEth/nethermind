@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,20 +54,24 @@ namespace Nethermind.Evm.CodeAnalysis
             _validJumpDestinations = new BitArray(MachineCode.Length);
             _validJumpSubDestinations = new BitArray(MachineCode.Length);
 
-            int index = 0;
-            while (index < MachineCode.Length)
-            {
-                byte instruction = MachineCode[index];
+            int codeStartOffset = MachineCode.CodeStartIndex();
+            int codeEndOffset = MachineCode.CodeEndIndex();
+            int codeSectionSize = MachineCode.CodeSize();
 
+            int index = 0;
+            while (index < codeSectionSize)
+            {
+                byte instruction = MachineCode[index + codeStartOffset];
+                int adjustedIndex = index + codeStartOffset;
                 // JUMPDEST
                 if (instruction == 0x5b)
                 {
-                    _validJumpDestinations.Set(index, true);
+                    _validJumpDestinations.Set(adjustedIndex, true);
                 }
                 // BEGINSUB
                 else if (instruction == 0x5c)
                 {
-                    _validJumpSubDestinations.Set(index, true);
+                    _validJumpSubDestinations.Set(adjustedIndex, true);
                 }
                 
                 // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
