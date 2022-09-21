@@ -16,6 +16,8 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public static bool ValidateByteCode(this Span<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
+            if (_spec.IsEip3670Enabled)
+                return EofFormatChecker.ValidateInstructions(code, out header);
             if (_spec.IsEip3540Enabled)
                 return EofFormatChecker.ExtractHeader(code, out header);
             else

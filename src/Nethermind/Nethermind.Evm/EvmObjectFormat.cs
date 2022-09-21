@@ -116,7 +116,7 @@ namespace Nethermind.Evm
 
         public bool ValidateEofCode(Span<byte> code) => ExtractHeader(code, out _);
         public bool ValidateEofCode(byte[] code) => ExtractHeader(code, out _);
-
+        
         public (int StartOffset, int EndOffset)? ExtractCodeOffsets(byte[] code)
         {
             if(ExtractHeader(code, out var header))
@@ -138,5 +138,43 @@ namespace Nethermind.Evm
             return (strIndex, endIndex);
         }
 
+        public bool ValidateInstructions(Span<byte> code, out EofHeader header)
+        {
+            // check if code is EOF compliant
+            if(ExtractHeader(code, out header))
+            {
+                var (startOffset, endOffset) = ExtractCodeOffsets(header);
+                Instruction? opcode = null;
+                for (int i = startOffset; i < endOffset;)
+                {
+                    opcode = (Instruction)code[i];
+
+                    // validate opcode
+                    if (!Enum.IsDefined(typeof(Instruction), code[i]))
+                    {
+                        return false;
+                    }
+
+                    if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                    {
+                        i += code[i] - (int)Instruction.PUSH1 + 1;
+                    }
+                    i++;
+                }
+
+                // check if terminating opcode : STOP, RETURN, REVERT, INVALID, SELFDESTRUCT
+                switch (opcode)
+                {
+                    case Instruction.STOP:
+                    case Instruction.RETURN:
+                    case Instruction.REVERT:
+                    case Instruction.INVALID:
+                    case Instruction.SELFDESTRUCT:
+                        return true;
+                    default:
+                        return false;
+                }
+            } return false;
+        }
     }
 }
