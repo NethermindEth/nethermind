@@ -64,11 +64,11 @@ public class SnapServer
                 case 0:
                     return null;
                 case 1:
-                    var rlp = tree.Get(requestedPath[0], rootHash);
+                    var rlp = tree.GetNode(requestedPath[0], rootHash);
                     response.Add(rlp);
                     break;
                 default:
-                    byte[]? accBytes = tree.Get(requestedPath[0], rootHash);
+                    byte[]? accBytes = tree.GetNode(requestedPath[0], rootHash);
                     if (accBytes is null)
                     {
                         // TODO: how to deal with empty account when storage asked?
@@ -81,7 +81,7 @@ public class SnapServer
 
                     for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                     {
-                        var sRlp = sTree.Get(requestedPath[reqStorage]);
+                        var sRlp = sTree.GetNode(requestedPath[reqStorage]);
                         response.Add(sRlp);
                     }
                     break;
