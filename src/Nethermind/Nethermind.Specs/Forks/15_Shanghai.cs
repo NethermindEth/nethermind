@@ -85,5 +85,6 @@ namespace Nethermind.Specs.Forks
         public long Eip1559TransitionBlock => 12965000;
         public bool IsEip1153Enabled => true;
         public bool IsEip3540Enabled => true;
+        public bool IsEip3670Enabled => true;
     }
 }

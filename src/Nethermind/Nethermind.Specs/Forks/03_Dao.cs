@@ -83,5 +83,6 @@ namespace Nethermind.Specs.Forks
         public bool IsEip158IgnoredAccount(Address address) => false;
         public bool IsEip1153Enabled => false;
         public bool IsEip3540Enabled => false;
+        public bool IsEip3670Enabled => false;
     }
 }
