@@ -22,7 +22,7 @@ namespace Nethermind.Specs
 {
     public class ReleaseSpec : IReleaseSpec
     {
-        public string Name => "Custom";
+        public string Name { get; set; } = "Custom";
         public long MaximumExtraDataSize { get; set; }
         public long MaxCodeSize { get; set; }
         public long MinGasLimit { get; set; }
@@ -65,7 +65,7 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+        public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
         public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
@@ -77,5 +77,6 @@ namespace Nethermind.Specs
         public Address Eip1559FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public bool IsEip1153Enabled { get; set; }
+        public bool IsEip3675Enabled { get; set; } 
     }
 }

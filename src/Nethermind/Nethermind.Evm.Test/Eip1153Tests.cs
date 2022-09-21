@@ -30,7 +30,6 @@ namespace Nethermind.Evm.Test
     internal class Eip1153Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         /// <summary>
         /// Transient storage should be activated after Shanghai hardfork
