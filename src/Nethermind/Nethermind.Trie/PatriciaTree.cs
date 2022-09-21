@@ -446,7 +446,10 @@ namespace Nethermind.Trie
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
-
+            if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
+            {
+                return node.FullRlp;
+            }
             return node.NodeType switch
             {
                 NodeType.Branch => TraverseBranch(node, traverseContext),
@@ -874,10 +877,6 @@ namespace Nethermind.Trie
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
             int extensionLength = FindCommonPrefixLength(remaining, node.Path);
-            if (extensionLength == remaining.Length && traverseContext.IsNodeRead)
-            {
-                return node.FullRlp;
-            }
             if (extensionLength == node.Path.Length)
             {
                 traverseContext.CurrentIndex += extensionLength;
@@ -897,7 +896,7 @@ namespace Nethermind.Trie
                 return TraverseNode(next, traverseContext);
             }
 
-            if (traverseContext.IsRead)
+            if (traverseContext.IsRead || traverseContext.IsNodeRead)
             {
                 return null;
             }
