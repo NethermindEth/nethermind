@@ -2169,6 +2169,10 @@ namespace Nethermind.Evm
                             }
 
                             stack.PushZero();
+                        } else
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
                         }
                         break;
                     }
