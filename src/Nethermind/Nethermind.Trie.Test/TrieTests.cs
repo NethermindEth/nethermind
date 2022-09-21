@@ -206,6 +206,9 @@ namespace Nethermind.Trie.Test
                     "f851a0fc3531d07692f61463485d46bac9ad2785c14fc66929d156df6ffc8e7a298f0da0596473298079c2907c4de5a8646467ebb46d7b5066bce4dc0f653380fe958804808080808080808080808080808080");
             // geth output: f851a0fc3531d07692f61463485d46bac9ad2785c14fc66929d156df6ffc8e7a298f0da0596473298079c2907c4de5a8646467ebb46d7b5066bce4dc0f653380fe958804808080808080808080808080808080
 
+            byte[] rootNodeHash =
+                Bytes.FromHexString(
+                    "e98700000000000000a0651f4a047389788364f9da07e907614238cbbe902d722c9b3333a4300308a5ae");
 
             MemDb memDb = new();
             TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, _logManager);
@@ -216,7 +219,8 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit(0);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-
+            byte[] emptyByte = { };
+            checkTree.GetNode(emptyByte, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
             checkTree.GetNode(branchNodeKey1, patriciaTree.RootHash).Should().BeEquivalentTo(branchNodeValue1);
         }
 
