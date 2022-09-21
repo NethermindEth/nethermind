@@ -253,7 +253,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Warm COINBASE
         /// </summary>
-        bool IsEip3651Enabled => false;
+        bool IsEip3651Enabled { get; }
 
         /// <summary>
         /// Transient storage
