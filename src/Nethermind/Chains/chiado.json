@@ -52,7 +52,6 @@
     "eip1559Transition": 0,
     "eip1559BaseFeeMaxChangeDenominator": "0x8",
     "eip1559ElasticityMultiplier": "0x2",
-    "eip1559BaseFeeInitialValue": "0x3b9aca00",
     "eip1559FeeCollector": "0x1559000000000000000000000000000000000000",
     "eip1559FeeCollectorTransition": 0,
     "registrar": "0x6000000000000000000000000000000000000000",
@@ -67,7 +66,8 @@
       }
     },
     "difficulty": "0x20000",
-    "gasLimit": "0x989680"
+    "gasLimit": "0x989680",
+    "baseFeePerGas": "0x3b9aca00"
   },
   "accounts": {
     "0xb05590839d9472159a9eef2bd81c694fd84fff3b": {
