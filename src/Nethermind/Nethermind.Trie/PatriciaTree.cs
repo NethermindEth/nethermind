@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -51,7 +51,7 @@ namespace Nethermind.Trie
         /// when we decided to run some of the tree operations in parallel.
         /// </summary>
         private readonly Stack<StackedNode> _nodeStack = new();
-        
+
         private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
@@ -93,7 +93,7 @@ namespace Nethermind.Trie
             : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
-        
+
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager)
             : this(trieStore, EmptyTreeHash, false, true, logManager)
         {
@@ -126,7 +126,7 @@ namespace Nethermind.Trie
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
-            
+
             // TODO: cannot do that without knowing whether the owning account is persisted or not
             // RootRef?.MarkPersistedRecursively(_logger);
 
@@ -144,7 +144,7 @@ namespace Nethermind.Trie
                 throw new InvalidAsynchronousStateException(
                     $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
             }
-            
+
             if (!_allowCommits)
             {
                 throw new TrieException("Commits are not allowed on this trie.");
@@ -330,6 +330,27 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
+        public byte[]? GetNode(Span<byte> rawKey, Keccak? rootHash = null)
+        {
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                byte[] array = null;
+                Span<byte> nibbles = rawKey.Length <= 64
+                    ? stackalloc byte[nibblesCount]
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash, isNodeRead: true);
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                return result;
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+        }
+
+        [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
@@ -357,22 +378,28 @@ namespace Nethermind.Trie
             byte[]? updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Keccak? startRootHash = null)
+            Keccak? startRootHash = null,
+            bool isNodeRead = false)
         {
             if (isUpdate && startRootHash != null)
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
-            
+
 #if DEBUG
             if (nibblesCount != updatePath.Length)
             {
                 throw new Exception("Does it ever happen?");
             }
 #endif
-            
+
             TraverseContext traverseContext =
                 new(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+
+            if (isNodeRead)
+            {
+                traverseContext.IsNodeRead = true;
+            }
 
             // lazy stack cleaning after the previous update
             if (traverseContext.IsUpdate)
@@ -399,7 +426,7 @@ namespace Nethermind.Trie
                         HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
                         RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                     }
-                    
+
                     if(_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
                     result = traverseContext.UpdateValue;
                 }
@@ -479,7 +506,7 @@ namespace Nethermind.Trie
                                as a result of deleting one of the last two children */
                             /* case 1) - extension from branch
                                this is particularly interesting - we create an extension from
-                               the implicit path in the branch children positions (marked as P) 
+                               the implicit path in the branch children positions (marked as P)
                                P B B B B B B B B B B B B B B B
                                B X - - - - - - - - - - - - - -
                                case 2) - extended extension
@@ -764,27 +791,34 @@ namespace Nethermind.Trie
             }
 
             int extensionLength = FindCommonPrefixLength(shorterPath, longerPath);
-            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
+            if (extensionLength == shorterPath.Length)
             {
-                if (traverseContext.IsRead)
+                if (traverseContext.IsNodeRead)
                 {
-                    return node.Value;
+                    return node.FullRlp;
                 }
 
-                if (traverseContext.IsDelete)
+                if (extensionLength == longerPath.Length)
                 {
-                    ConnectNodes(null);
+                    if (traverseContext.IsRead)
+                    {
+                        return node.Value;
+                    }
+                    if (traverseContext.IsDelete)
+                    {
+                        ConnectNodes(null);
+                        return traverseContext.UpdateValue;
+                    }
+
+                    if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
+                    {
+                        TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
+                        ConnectNodes(withUpdatedValue);
+                        return traverseContext.UpdateValue;
+                    }
+
                     return traverseContext.UpdateValue;
                 }
-
-                if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
-                {
-                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue);
-                    return traverseContext.UpdateValue;
-                }
-
-                return traverseContext.UpdateValue;
             }
 
             if (traverseContext.IsRead)
@@ -844,6 +878,10 @@ namespace Nethermind.Trie
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
             int extensionLength = FindCommonPrefixLength(remaining, node.Path);
+            if (extensionLength == remaining.Length && traverseContext.IsNodeRead)
+            {
+                return node.FullRlp;
+            }
             if (extensionLength == node.Path.Length)
             {
                 traverseContext.CurrentIndex += extensionLength;
@@ -940,7 +978,8 @@ namespace Nethermind.Trie
             public Span<byte> UpdatePath { get; }
             public byte[]? UpdateValue { get; }
             public bool IsUpdate { get; }
-            public bool IsRead => !IsUpdate;
+            public bool IsNodeRead { get; set; }
+            public bool IsRead => !IsUpdate && !IsNodeRead;
             public bool IsDelete => IsUpdate && UpdateValue is null;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; set; }
@@ -967,6 +1006,7 @@ namespace Nethermind.Trie
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
+                IsNodeRead = false;
             }
 
             public override string ToString()
