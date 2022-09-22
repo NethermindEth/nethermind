@@ -387,18 +387,25 @@ namespace Nethermind.Trie.Pruning
 
         public void Prune()
         {
-            while (true)
+            Task.Run(() =>
             {
-                if (!_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                try
                 {
-                    break;
+                    while (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                    {
+                        PruneCache();
+
+                        if (!CanPruneCacheFurther())
+                        {
+                            break;
+                        }
+                    }
                 }
-
-                PruneCache();
-
-                if (CanPruneCacheFurther()) continue;
-                break;
-            }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+                }
+            });
         }
 
         private bool CanPruneCacheFurther()
