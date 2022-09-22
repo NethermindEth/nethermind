@@ -251,6 +251,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3607Enabled { get; }
 
         /// <summary>
+        /// Upgrade consensus to Proof-of-Stake
+        /// </summary>
+        bool IsEip3675Enabled { get; }
+
+        /// <summary>
         /// Warm COINBASE
         /// </summary>
         bool IsEip3651Enabled { get; }

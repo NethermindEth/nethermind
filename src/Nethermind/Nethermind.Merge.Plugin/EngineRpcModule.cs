@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes)
+        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
         {
             return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
         }
