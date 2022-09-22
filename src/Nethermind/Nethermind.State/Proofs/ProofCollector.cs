@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -33,7 +33,7 @@ namespace Nethermind.State.Proofs
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
         private HashSet<Keccak> _visitingFilter = new();
-        
+
         private List<byte[]> _proofBits = new();
 
         public ProofCollector(byte[] key)
@@ -41,7 +41,7 @@ namespace Nethermind.State.Proofs
             _key = key;
         }
 
-        
+
         public byte[][] BuildResult() => _proofBits.ToArray();
 
         public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
@@ -71,7 +71,7 @@ namespace Nethermind.State.Proofs
             Keccak childHash = node.GetChildHash(0);
             _visitingFilter.Add(childHash); // always accept so can optimize
 
-            _pathIndex += node.Path.Length;
+            _pathIndex += node.Key.Length;
         }
 
         protected virtual void AddProofBits(TrieNode node)

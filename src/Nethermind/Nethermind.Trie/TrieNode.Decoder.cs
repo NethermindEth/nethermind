@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -56,12 +56,12 @@ namespace Nethermind.Trie
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
                 Debug.Assert(item.Key != null,
                     "Extension key is null when encoding");
-                
-                byte[] keyBytes = item.Key.ToBytes();
+
+                byte[] keyBytes = HexPrefix.ToBytes(item.Key, false);
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef != null,
                     "Extension child is null when encoding.");
-                
+
                 nodeRef.ResolveKey(tree, false);
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
@@ -74,7 +74,7 @@ namespace Nethermind.Trie
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
                     // so |
                     // so |
-                    // so E - - - - - - - - - - - - - - - 
+                    // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
                     rlpStream.Write(nodeRef.FullRlp);
@@ -94,7 +94,7 @@ namespace Nethermind.Trie
                     throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
 
-                byte[] keyBytes = node.Key.ToBytes();
+                byte[] keyBytes = HexPrefix.ToBytes(node.Key, true);
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);

@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
-            
+
             Span<byte> leftBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
@@ -164,8 +164,8 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             node.SetChild(0, child);
 
-                            pathIndex += node.Path.Length;
-                            path.AddRange(node.Path);
+                            pathIndex += node.Key.Length;
+                            path.AddRange(node.Key);
                             proofNodesToProcess.Push((node, child, pathIndex, path));
                             sortedBoundaryList.Add(child);
                         }
