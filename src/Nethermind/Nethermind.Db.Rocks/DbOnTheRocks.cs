@@ -540,4 +540,11 @@ public class DbOnTheRocks : IDbWithSpan
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
+
+    public static string? GetRocksDbVersion()
+    {
+        Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));
+        Version? version = rocksDbAssembly?.GetName().Version;
+        return version?.ToString(3);
+    }
 }
