@@ -142,6 +142,9 @@ namespace Nethermind.Trie.Pruning
 
         private readonly DirtyNodesCache _dirtyNodes;
 
+        private bool _lastPersistedReachedReorgBoundary;
+        private Task _pruningTask = Task.CompletedTask;
+
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
@@ -733,9 +736,6 @@ namespace Nethermind.Trie.Pruning
                 _lastPersistedReachedReorgBoundary = true;
             }
         }
-
-        private bool _lastPersistedReachedReorgBoundary;
-        private Task _pruningTask = Task.CompletedTask;
 
         private void PersistOnShutdown()
         {
