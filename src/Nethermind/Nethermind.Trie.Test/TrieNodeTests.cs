@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -530,7 +530,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_a_tiny_leaf_is_correct()
         {
             Context ctx = new();
-            Assert.AreEqual(120, ctx.TiniestLeaf.GetMemorySize(false));
+            Assert.AreEqual(128, ctx.TiniestLeaf.GetMemorySize(false));
         }
 
         [Test]
@@ -544,7 +544,7 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, ctx.AccountLeaf);
             }
 
-            Assert.AreEqual(3152, node.GetMemorySize(true));
+            Assert.AreEqual(3280, node.GetMemorySize(true));
             Assert.AreEqual(208, node.GetMemorySize(false));
         }
 
@@ -567,7 +567,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(216, trieNode.GetMemorySize(true));
+            Assert.AreEqual(224, trieNode.GetMemorySize(true));
             Assert.AreEqual(96, trieNode.GetMemorySize(false));
         }
 
@@ -852,7 +852,7 @@ namespace Nethermind.Trie.Test
             trieNode.GetChild(trieStore, 0);
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, 0).ResolveNode(trieStore));
         }
-        
+
         [Ignore("This does not fail on the build server")]
         [Test]
         public async Task Trie_node_is_not_thread_safe()
@@ -888,7 +888,7 @@ namespace Nethermind.Trie.Test
                 task.Start();
                 tasks.Add(task);
             }
-            
+
             Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
             await Task.CompletedTask;
         }
