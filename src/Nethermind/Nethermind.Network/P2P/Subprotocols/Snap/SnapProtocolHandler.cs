@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
-        private static readonly byte[] _emptyBytes = { 0 };
+        private static readonly byte[] _rootNodePath = { 0 };
 
         private int _currentBytesLimit = MinBytesLimit;
 
@@ -288,7 +288,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             for (int i = 0; i < request.Paths.Length; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes, _emptyBytes } };
+                // we want the storage root for the account and {0} is the path to the root node
+                groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes, _rootNodePath } };
             }
 
             return groups;
