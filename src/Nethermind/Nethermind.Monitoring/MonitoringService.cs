@@ -68,7 +68,7 @@ namespace Nethermind.Monitoring
         {
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
-                MetricPusherOptions pusherOptions  = new MetricPusherOptions
+                MetricPusherOptions pusherOptions = new MetricPusherOptions
                 {
                     Endpoint = _pushGatewayUrl,
                     Job = _options.Job,
@@ -85,7 +85,7 @@ namespace Nethermind.Monitoring
                     }
                 };
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
-                
+
                 metricPusher.Start();
             }
             if (_exposePort != null)

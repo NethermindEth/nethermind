@@ -330,12 +330,12 @@ namespace Nethermind.Synchronization.Test
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
             Block newPostMergeBlock = Build.A.Block.WithDifficulty(0).WithParent(ctx.LocalBlockTree.Head).WithTotalDifficulty(ctx.LocalBlockTree.Head.TotalDifficulty).TestObject;
             ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
-            ctx.LocalBlockTree.UpdateMainChain(new[] {newPostMergeBlock} , true, true );
+            ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual( ctx.LocalBlockTree.BestSuggestedHeader!.Number, 10);
+            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 10);
             ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
             ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(newPostMergeBlock.Hash!);
             ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash);

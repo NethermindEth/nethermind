@@ -99,7 +99,7 @@ namespace Nethermind.Runner
             }
         }
 
-        private static ILogger GetCriticalLogger() 
+        private static ILogger GetCriticalLogger()
         {
             try
             {
