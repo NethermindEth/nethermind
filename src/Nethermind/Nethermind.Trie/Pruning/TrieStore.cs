@@ -387,25 +387,28 @@ namespace Nethermind.Trie.Pruning
 
         public void Prune()
         {
-            Task.Run(() =>
+            if (_pruningTask.IsCompleted)
             {
-                try
+                _pruningTask = Task.Run(() =>
                 {
-                    while (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                    try
                     {
-                        PruneCache();
-
-                        if (!CanPruneCacheFurther())
+                        while (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                         {
-                            break;
+                            PruneCache();
+
+                            if (!CanPruneCacheFurther())
+                            {
+                                break;
+                            }
                         }
                     }
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
-                }
-            });
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+                    }
+                });
+            }
         }
 
         private bool CanPruneCacheFurther()
@@ -732,6 +735,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         private bool _lastPersistedReachedReorgBoundary;
+        private Task _pruningTask = Task.CompletedTask;
 
         private void PersistOnShutdown()
         {
