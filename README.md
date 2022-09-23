@@ -1,185 +1,154 @@
-<img src="Nethermind.png" width="200">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/337518/184757509-5ac8a259-659a-42dd-a51c-cd093a41a0ad.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png">
+  <img alt="Nethermind" src="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png" height="64">
+</picture>
 
-# .NET Ethereum client
+# Nethermind Ethereum client
+
+[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml)
+[![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
+[![Follow us on Twitter](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow)](https://twitter.com/nethermindeth)
 
 Nethermind is a high-performance, highly configurable full Ethereum protocol client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, Ethash, and Proof-of-Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
 
-[![Documentation](https://img.shields.io/badge/GitBook-docs-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white)](https://docs.nethermind.io)
-[![Releases](https://img.shields.io/github/release/NethermindEth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/nethermind/nethermind?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/nethermind/nethermind)
-[![Codecov](https://img.shields.io/codecov/c/github/nethermindeth/nethermind?style=for-the-badge&logo=codecov&logoColor=white)](https://codecov.io/gh/NethermindEth/nethermind)
-[![Website](https://img.shields.io/website?down_color=lightgrey&down_message=offline&style=for-the-badge&up_color=brightgreen&up_message=online&url=https%3A%2F%2Fnethermind.io)](https://nethermind.io)
+## Documentation
 
-### :speaking_head:	Chats
-[![Discord](https://img.shields.io/discord/629004402170134531?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/GXJFaYk)
-[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg?style=for-the-badge&logo=gitter&logoColor=white)](https://gitter.im/nethermindeth/nethermind)
+Nethermind documentation is available at [docs.nethermind.io](https://docs.nethermind.io).
 
-### :loudspeaker:	Social
-[![Twitter Follow](https://img.shields.io/twitter/follow/nethermindeth?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/nethermindeth)
-[![LinkedIn Follow](https://img.shields.io/badge/LinkedIn-follow-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/nethermind)
-[![Medium Follow](https://img.shields.io/badge/Medium-articles-12100E?style=for-the-badge&logo=medium&logoColor=white)](https://medium.com/nethermind-eth)
+### Supported networks
+
+**`Mainnet`** **`Goerli`** **`Rinkeby`** **`Ropsten`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`** **`Kovan`**
 
 ## Download and run
 
-[![Windows](https://img.shields.io/badge/Windows-AMD64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](http://downloads.nethermind.io)
-[![Linux](https://img.shields.io/badge/Linux-AMD64/ARM64-FCC624?style=for-the-badge&logo=linux&logoColor=black)](http://downloads.nethermind.io)
-[![MacOS](https://img.shields.io/badge/MacOS-AMD64/ARM64-000000?style=for-the-badge&logo=apple&logoColor=white)](http://downloads.nethermind.io)
-
-### :chains: Currently supported list of networks
-
-| `Network  name`  | 
-| :------------    |
-| Mainnet          |
-| Goerli           |
-| Rinkeby          |
-| Ropsten          |
-| Sepolia          |
-| xDai (Gnosis)    |
-| Poacore          |
-| Sokol            |
-| EnergyWeb        |
-| Volta            |
-| Kovan            |
+Release builds are available on the [Releases page](https://github.com/nethermindeth/nethermind/releases) and at [downloads.nethermind.io](https://downloads.nethermind.io).
 
 #### Using PPA
-(Tested on Ubuntu Series: `Focal`, `Bionic`, `Xenial` and `Trusty`)
+
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
-1. `sudo apt install nethermind`
-1. To execute the launcher
-``nethermind``
-1. To execute the runner
-``nethermind --config mainnet_pruned``
+2. `sudo apt install nethermind`
+3. To run the launcher: `nethermind`
+4. To run the runner: `nethermind -c mainnet`
+
+_Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 
 #### Using Homebrew
+
 1. `brew tap nethermindeth/nethermind`
-1. `brew install nethermind`
-1. To execute the launcher
-``nethermind-launcher``
-1. To execute the runner
-``nethermind --config mainnet_pruned``
+2. `brew install nethermind`
+3. To run the launcher: `nethermind-launcher`
+4. To run the runner: `nethermind -c mainnet`
 
-# Build from Source
+## Docker image
 
-## :construction: Prerequisites 
+The official Docker images of Nethermind are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
 
-[![.NET SDK](https://img.shields.io/badge/SDK-6.0-512BD4?style=for-the-badge&logo=dotnet&logoColor=white
-)](https://dotnet.microsoft.com/en-us/download)
+### Get the digest of the Docker image
 
-### Windows
-
-* [Install .NET](https://www.microsoft.com/net/download)
-* You may need to install [this](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
-
-### Linux
-
-#### Ubuntu
-* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-ubuntu)
-* Install dependencies
-```sh
-sudo apt-get install libsnappy-dev libc6-dev libc6
-
-# Link libraries (only for Ubuntu >= 21.04)
-amd64 architecture: sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
-arm64/aarch64 architecture: sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so
-
-# Extra dependency for arm64/aarch64
-sudo apt-get install libgflags-dev
-
-```
-*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10*
-
-#### Debian
-* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian)
-* Install dependencies
-```sh
-sudo apt-get install libsnappy-dev libc6-dev libc6
-```
-*Tested on Debian 10 (9 not working)*
-
-#### CentOS
-* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-centos)
-* Install dependencies
-```sh
-sudo yum install -y glibc-devel bzip2-devel libzstd
-
-# Link libraries
-sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
-sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
-```
-*Tested on CentOS 8*
-
-#### Fedora
-* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-fedora)
-* Install dependencies
-```sh
-sudo yum install -y glibc-devel snappy libzstd
-
-# Link libraries
-sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
-sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
-# also required for Fedora 35
-sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
-```
-*Tested on Fedora 32*
-
-### macOS
-
-* [Install .NET](https://www.microsoft.com/net/download)
-* Install dependencies
-```sh
-brew install rocksdb gmp snappy lz4 zstd
-```
-
-* Apple Silicon (M1) users only: create symlink for homebrew dependencies
-```
-sudo ln -s `find /opt/homebrew/Cellar/snappy -name "libsnappy.dylib"` /usr/local/lib/libsnappy.dylib
-```
-
-## :building_construction: Build and Run
-
-```sh
-git clone https://github.com/NethermindEth/nethermind --recursive
-cd nethermind/src/Nethermind
-dotnet build Nethermind.sln -c Release
-cd Nethermind.Runner
-dotnet run -c Release --no-build --config mainnet
-```
-
-## :whale: Docker Image
-
-Official Nethermind docker images are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
-
-### Get digest of docker image
-
-In case of any docker image need to be updated in the repository, you can update the digest of this images with the next commands
+In case of any Docker image need to be updated in the repository, you can update the digest of these images as follows:
 
 ```sh
 docker inspect --format='{{index .RepoDigests 0}}' <image_name>
 ```
 
-The output must show the image digest, and then you can copy that output in the `FROM` tag inside the Dockerfile
+The output must show the image digest, and then you can copy that output to the `FROM` tag in the Dockerfile.
 
-## :test_tube: Test
+## Build from source
 
-If you want to run the Nethermind or Ethereum Foundation tests, then:
+### Prerequisites
+
+#### Windows
+
+-   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=windows)
+-   For some versions of Windows, you may need to install [Visual C++ Redistributable](https://docs.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+
+#### macOS
+
+-   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=macos)
+-   Install dependencies:
+
+    ```sh
+    brew install rocksdb gmp snappy lz4 zstd
+    ```
+
+#### Ubuntu
+
+-   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-ubuntu)
+-   Install dependencies:
+
+    ```sh
+    sudo apt-get install libsnappy-dev libc6-dev libc6
+    ```
+
+    An extra dependency for aarch64 (arm64):
+
+    ```sh
+    sudo apt-get install libgflags-dev
+    ```
+
+_Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10_
+
+#### Debian
+
+-   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-debian)
+-   Install dependencies:
+
+    ```sh
+    sudo apt-get install libsnappy-dev libc6-dev libc6
+    ```
+
+_Tested on Debian 10 (9 not working)_
+
+#### CentOS
+
+-   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-centos)
+-   Install dependencies:
+
+    ```sh
+    sudo yum install -y glibc-devel bzip2-devel libzstd
+
+    # Link libraries
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+    ```
+
+_Tested on CentOS 8_
+
+#### Fedora
+
+-   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-fedora)
+-   Install dependencies:
+
+    ```sh
+    sudo yum install -y glibc-devel snappy libzstd
+
+    # Link libraries
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+    ```
+
+_Tested on Fedora 32_
+
+### Build and run
+
 ```sh
-dotnet build Nethermind.sln -c Debug
-dotnet test Nethermind.sln
-
-dotnet build EthereumTests.sln -c Debug
-dotnet test EthereumTests.sln
+git clone https://github.com/nethermindeth/nethermind --recursive
+cd nethermind/src/Nethermind/Nethermind.Runner
+dotnet run -c release -- -c mainnet
 ```
 
-## :bricks:	IDE
+## Test
 
-[![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visual%20studio&logoColor=white)](https://visualstudio.microsoft.com/downloads)
-[![JetBrains Rider](https://img.shields.io/badge/Rider-000000?style=for-the-badge&logo=Rider&logoColor=white)](https://www.jetbrains.com/rider)
-[![Visual Studio Code](https://img.shields.io/badge/Visual_Studio_Code-0078D4?style=for-the-badge&logo=visual%20studio%20code&logoColor=white)](https://code.visualstudio.com/docs/other/dotnet)
+Run the Nethermind and/or Ethereum Foundation tests as follows:
 
-## :footprints:	Contributors welcome
-[![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/issues)
-[![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/graphs/contributors)
+```sh
+dotnet test Nethermind.sln -c debug
+dotnet test EthereumTests.sln -c debug
+```
+
+## Contributing
+
+BEFORE you start work on a feature or fix, please read and follow our [contribution guide](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
 ## License
-[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-GPL)
-[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-LGPL)
+
+Nethermind is an open-source software licensed under the [LGPL-3.0](https://github.com/nethermindeth/nethermind/blob/master/LICENSE-LGPL).

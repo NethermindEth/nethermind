@@ -214,6 +214,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfTheNodeDoesNotFinishStateSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+                            SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            return "fully syncing";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 {
                     _syncProgressSetups.Add(

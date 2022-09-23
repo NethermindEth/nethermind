@@ -15,29 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core;
+namespace Nethermind.Config;
 
-namespace Nethermind.Merge.Plugin;
-
-public class MergeProcessingRecoveryStep : IBlockPreprocessorStep
+public static class ExitCodes
 {
-    private readonly IPoSSwitcher _poSSwitcher;
+    // config errors 100...199
+    public const int NoEngineModule = 100;
 
-    public MergeProcessingRecoveryStep(
-        IPoSSwitcher poSSwitcher)
-    {
-        _poSSwitcher = poSSwitcher;
-    }
-
-    public void RecoverData(Block block)
-    {
-        block.Header.IsPostMerge = _poSSwitcher.IsPostMerge(block.Header);
-
-        if (block.Author is null && block.IsPostMerge)
-        {
-            block.Header.Author = block.Beneficiary;
-        }
-    }
+    public const int NoDownloadOldReceiptsOrBlocks = 101;
 }

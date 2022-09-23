@@ -308,7 +308,7 @@ namespace Nethermind.Merge.Plugin.Test
             chain.AddTransactions(txs);
             ExecutionPayloadV1 executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
             Keccak?[] blockHashes = { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
-            ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesV1(blockHashes).Result.Data;
+            ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
             ExecutionPayloadBodyV1Result[] expected = { new(Array.Empty<Transaction>()), new(txs) };
             payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }

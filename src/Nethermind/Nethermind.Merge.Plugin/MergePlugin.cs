@@ -23,9 +23,12 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
@@ -63,6 +66,16 @@ namespace Nethermind.Merge.Plugin
         public string Author => "Nethermind";
 
         public virtual bool MergeEnabled => _mergeConfig.Enabled;
+
+        private readonly IEnvironment _environment = new EnvironmentWrapper();
+
+        public MergePlugin() {}
+
+        public MergePlugin(IEnvironment? environment = null)
+        {
+            if (environment != null)
+                _environment = environment;
+        }
 
         public virtual Task Init(INethermindApi nethermindApi)
         {
@@ -108,9 +121,42 @@ namespace Nethermind.Merge.Plugin
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
+
+                FixTransitionBlock();
             }
 
             return Task.CompletedTask;
+        }
+
+        private void FixTransitionBlock() {
+            // Special case during mainnet merge where if a transition block does not get processed through gossip
+            // it does not get marked as main causing some issue on eth_getLogs.
+            Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
+            Block? block = _api.BlockTree!.FindBlock(blockHash);
+            if (block != null)
+            {
+                ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
+                if (level == null)
+                {
+                    _logger.Warn("Unable to fix transition block. Unable to find chain level info.");
+                    return;
+                }
+
+                int? index = level.FindBlockInfoIndex(blockHash);
+                if (index is null)
+                {
+                    _logger.Warn("Unable to fix transition block. Missing block info for the transition block.");
+                    return;
+                }
+
+                if (index.Value != 0)
+                {
+                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                    _api.ChainLevelInfoRepository.PersistLevel(block.Number, level);
+                }
+
+                _api.ReceiptStorage!.EnsureCanonical(block);
+            }
         }
 
         private void EnsureReceiptAvailable()
@@ -120,7 +166,8 @@ namespace Nethermind.Merge.Plugin
             {
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {
-                    throw new InvalidOperationException("Receipt and body must be available for merge to function");
+                    if (_logger.IsError) _logger.Error("Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync");
+                    _environment.Exit(ExitCodes.NoDownloadOldReceiptsOrBlocks);
                 }
             }
         }
@@ -162,7 +209,8 @@ namespace Nethermind.Merge.Plugin
 
             if (!hasEngineApiConfigured)
             {
-                throw new InvalidOperationException("No RPC module for engine api configured");
+                if (_logger.IsError) _logger.Error("Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples");
+                _environment.Exit(ExitCodes.NoEngineModule);
             }
         }
 
