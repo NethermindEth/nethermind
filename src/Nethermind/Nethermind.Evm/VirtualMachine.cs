@@ -2530,6 +2530,7 @@ namespace Nethermind.Evm
                             _logger.Trace($"dataLength {dataLength}");
                             _logger.Trace($"outputOffset {outputOffset}");
                             _logger.Trace($"outputLength {outputLength}");
+                            _logger.Trace($"isLittleEndian {BitConverter.IsLittleEndian}");
                         }
 
                         long gasExtra = 0L;
