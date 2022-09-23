@@ -144,6 +144,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
+        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -391,13 +392,16 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
-                        while (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                        while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                         {
-                            PruneCache();
-
-                            if (!CanPruneCacheFurther())
+                            lock (_dirtyNodes)
                             {
-                                break;
+                                PruneCache();
+
+                                if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
+                                {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -405,7 +409,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
-                });
+                }, _pruningTaskCancellationTokenSource.Token);
             }
         }
 
@@ -484,65 +488,60 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            lock (_dirtyNodes)
+
+            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            List<Keccak> toRemove = new(); // TODO: resettable
+            Dispose();
+
+            long newMemory = 0;
+            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
-                if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                List<TrieNode> toRemove = new(); // TODO: resettable
-
-                long newMemory = 0;
-                foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
+                if (node.IsPersisted)
                 {
-                    if (node.IsPersisted)
+                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                    if (node.Keccak is null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                        toRemove.Add(node);
-                        if (node.Keccak is null)
+                        node.ResolveKey(this, true); // TODO: hack
+                        if (node.Keccak != key)
                         {
-                            node.ResolveKey(this, true); // TODO: hack
-                            if (node.Keccak != key)
-                            {
-                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
-                            }
+                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
+                    }
+                    toRemove.Add(key);
 
-                        Metrics.PrunedPersistedNodesCount++;
-                    }
-                    else if (IsNoLongerNeeded(node))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                        toRemove.Add(node);
-                        if (node.Keccak is null)
-                        {
-                            throw new InvalidOperationException($"Removed {node}");
-                        }
-
-                        Metrics.PrunedTransientNodesCount++;
-                    }
-                    else
-                    {
-                        node.PrunePersistedRecursively(1);
-                        newMemory += node.GetMemorySize(false);
-                    }
+                    Metrics.PrunedPersistedNodesCount++;
                 }
-
-                foreach (TrieNode trieNode in toRemove)
+                else if (IsNoLongerNeeded(node))
                 {
-                    if (trieNode.Keccak is null)
+                    if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                    if (node.Keccak is null)
                     {
-                        throw new InvalidOperationException($"{trieNode} has a null key");
+                        throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    _dirtyNodes.Remove(trieNode.Keccak!);
+                    toRemove.Add(key);
+
+                    Metrics.PrunedTransientNodesCount++;
                 }
-
-                MemoryUsedByDirtyCache = newMemory;
-                Metrics.CachedNodesCount = _dirtyNodes.Count;
-
-                stopwatch.Stop();
-                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-                if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+                else
+                {
+                    node.PrunePersistedRecursively(1);
+                    newMemory += node.GetMemorySize(false);
+                }
             }
+
+            for (int index = 0; index < toRemove.Count; index++)
+            {
+                _dirtyNodes.Remove(toRemove[index]);
+            }
+
+            MemoryUsedByDirtyCache = newMemory;
+            Metrics.CachedNodesCount = _dirtyNodes.Count;
+
+            stopwatch.Stop();
+            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
         /// <summary>
@@ -553,6 +552,7 @@ namespace Nethermind.Trie.Pruning
         public void Dispose()
         {
             if (_logger.IsDebug) _logger.Debug("Disposing trie");
+            _pruningTaskCancellationTokenSource.Cancel();
             _pruningTask.Wait();
             PersistOnShutdown();
         }
