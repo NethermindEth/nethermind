@@ -40,10 +40,12 @@ namespace Nethermind.HealthChecks
 
         private ClHealthLogger _clHealthLogger;
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            _clHealthLogger.DisposeAsync();
-            return ValueTask.CompletedTask;
+            if (_clHealthLogger is not null)
+            {
+                await _clHealthLogger.DisposeAsync();
+            }
         }
 
         public string Name => "HealthChecks";
@@ -163,11 +165,10 @@ namespace Nethermind.HealthChecks
                 return Task.CompletedTask;
             }
 
-            public ValueTask DisposeAsync()
+            public async ValueTask DisposeAsync()
             {
-                _timer.DisposeAsync();
-
-                return ValueTask.CompletedTask;
+                await StopAsync(default);
+                await _timer.DisposeAsync();
             }
 
             private void ReportClStatus(object _)
