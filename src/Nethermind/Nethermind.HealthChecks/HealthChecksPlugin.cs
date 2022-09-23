@@ -61,12 +61,6 @@ namespace Nethermind.HealthChecks
 
             _logger = api.LogManager.GetClassLogger();
 
-            _nodeHealthService = new NodeHealthService(_api.SyncServer,
-                _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, _initConfig.IsMining);
-
-            _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
-
             return Task.CompletedTask;
         }
 
@@ -114,6 +108,10 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            _nodeHealthService = new NodeHealthService(_api.SyncServer,
+                _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
+                _api.EthSyncingInfo!, _api, _initConfig.IsMining);
+
             if (_healthChecksConfig.Enabled)
             {
                 HealthRpcModule healthRpcModule = new(_nodeHealthService);
@@ -123,6 +121,7 @@ namespace Nethermind.HealthChecks
 
             if (_api.SpecProvider!.TerminalTotalDifficulty != null)
             {
+                _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);
             }
 

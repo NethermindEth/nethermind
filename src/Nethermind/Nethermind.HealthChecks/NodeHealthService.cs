@@ -82,7 +82,7 @@ namespace Nethermind.HealthChecks
                 {
                     AddFullySyncMessage(messages);
                 }
-                CheckPeers(messages, netPeerCount);
+                bool hasPeers = CheckPeers(messages, netPeerCount);
 
                 bool clAlive = CheckClAlive();
 
@@ -91,7 +91,7 @@ namespace Nethermind.HealthChecks
                     AddClUnavailableMessage(messages);
                 }
 
-                healthy = !syncingResult.IsSyncing & clAlive;
+                healthy = !syncingResult.IsSyncing & clAlive & hasPeers;
             }
             else
             {
