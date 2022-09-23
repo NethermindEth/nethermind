@@ -29,7 +29,8 @@ namespace Nethermind.Trie.Test
         [SetUp]
         public void SetUp()
         {
-            _logManager = new NUnitLogManager(LogLevel.Trace);
+            _logManager = LimboLogs.Instance;
+            // new NUnitLogManager(LogLevel.Trace);
             _logger = _logManager.GetClassLogger();
         }
 
