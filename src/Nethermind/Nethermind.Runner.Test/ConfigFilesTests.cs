@@ -293,7 +293,7 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg", true)]
         [TestCase("ropsten.cfg", true)]
         [TestCase("rinkeby.cfg", false)]
-        [TestCase("sepolia.cfg", false)]
+        [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
         [TestCase("sokol.cfg", false)]
         [TestCase("kiln.cfg", false)]
