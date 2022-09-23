@@ -390,7 +390,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Prune()
         {
-            if (_pruningTask.IsCompleted)
+            if (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache) && _pruningTask.IsCompleted)
             {
                 _pruningTask = Task.Run(() =>
                 {
