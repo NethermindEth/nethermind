@@ -555,6 +555,7 @@ namespace Nethermind.Trie.Pruning
         public void Dispose()
         {
             if (_logger.IsDebug) _logger.Debug("Disposing trie");
+            _pruningTask.Wait();
             PersistOnShutdown();
         }
 
