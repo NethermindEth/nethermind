@@ -2526,6 +2526,10 @@ namespace Nethermind.Evm
                             _logger.Trace($"target {target}");
                             _logger.Trace($"value {callValue}");
                             _logger.Trace($"transfer value {transferValue}");
+                            _logger.Trace($"dataOffset {dataOffset}");
+                            _logger.Trace($"dataLength {dataLength}");
+                            _logger.Trace($"outputOffset {outputOffset}");
+                            _logger.Trace($"outputLength {outputLength}");
                         }
 
                         long gasExtra = 0L;
