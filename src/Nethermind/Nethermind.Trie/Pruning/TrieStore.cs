@@ -310,6 +310,8 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     CurrentPackage = null;
+                    Monitor.Exit(_dirtyNodes);
+                    Prune();
                 }
             }
             finally
@@ -376,14 +378,7 @@ namespace Nethermind.Trie.Pruning
                 return new TrieNode(NodeType.Unknown, hash);
             }
 
-            if (isReadOnly)
-            {
-                return _dirtyNodes.FromCachedRlpOrUnknown(hash);
-            }
-            else
-            {
-                return _dirtyNodes.FindCachedOrUnknown(hash);
-            }
+            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash);
         }
 
         public void Dump() => _dirtyNodes.Dump();
@@ -489,62 +484,65 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
-
-            long newMemory = 0;
-            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
+            lock (_dirtyNodes)
             {
-                if (node.IsPersisted)
+                if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                List<TrieNode> toRemove = new(); // TODO: resettable
+
+                long newMemory = 0;
+                foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    toRemove.Add(node);
-                    if (node.Keccak is null)
+                    if (node.IsPersisted)
                     {
-                        node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                        toRemove.Add(node);
+                        if (node.Keccak is null)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            node.ResolveKey(this, true); // TODO: hack
+                            if (node.Keccak != key)
+                            {
+                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            }
                         }
-                    }
 
-                    Metrics.PrunedPersistedNodesCount++;
-                }
-                else if (IsNoLongerNeeded(node))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                    toRemove.Add(node);
-                    if (node.Keccak is null)
+                        Metrics.PrunedPersistedNodesCount++;
+                    }
+                    else if (IsNoLongerNeeded(node))
                     {
-                        throw new InvalidOperationException($"Removed {node}");
+                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                        toRemove.Add(node);
+                        if (node.Keccak is null)
+                        {
+                            throw new InvalidOperationException($"Removed {node}");
+                        }
+
+                        Metrics.PrunedTransientNodesCount++;
+                    }
+                    else
+                    {
+                        node.PrunePersistedRecursively(1);
+                        newMemory += node.GetMemorySize(false);
+                    }
+                }
+
+                foreach (TrieNode trieNode in toRemove)
+                {
+                    if (trieNode.Keccak is null)
+                    {
+                        throw new InvalidOperationException($"{trieNode} has a null key");
                     }
 
-                    Metrics.PrunedTransientNodesCount++;
+                    _dirtyNodes.Remove(trieNode.Keccak!);
                 }
-                else
-                {
-                    node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false);
-                }
+
+                MemoryUsedByDirtyCache = newMemory;
+                Metrics.CachedNodesCount = _dirtyNodes.Count;
+
+                stopwatch.Stop();
+                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+                if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             }
-
-            foreach (TrieNode trieNode in toRemove)
-            {
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"{trieNode} has a null key");
-                }
-
-                _dirtyNodes.Remove(trieNode.Keccak!);
-            }
-
-            MemoryUsedByDirtyCache = newMemory;
-            Metrics.CachedNodesCount = _dirtyNodes.Count;
-
-            stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
         /// <summary>
@@ -598,7 +596,6 @@ namespace Nethermind.Trie.Pruning
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             AnnounceReorgBoundaries();
             DequeueOldCommitSets();
-            Prune();
 
             CurrentPackage = commitSet;
             Debug.Assert(ReferenceEquals(CurrentPackage, commitSet), $"Current {nameof(BlockCommitSet)} is not same as the new package just after adding");
@@ -695,6 +692,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (CurrentPackage is null)
             {
+                Monitor.Enter(_dirtyNodes);
                 CreateCommitSet(blockNumber);
             }
         }
