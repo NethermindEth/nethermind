@@ -399,7 +399,10 @@ public class DbOnTheRocks : IDbWithSpan
     public IBatch StartBatch()
     {
         IBatch batch = new RocksDbBatch(this);
-        _currentBatches.Add(batch);
+        lock (_currentBatches)
+        {
+            _currentBatches.Add(batch);
+        }
         return batch;
     }
 
@@ -429,7 +432,10 @@ public class DbOnTheRocks : IDbWithSpan
             }
 
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
-            _dbOnTheRocks._currentBatches.Remove(this);
+            lock (_dbOnTheRocks._currentBatches)
+            {
+                _dbOnTheRocks._currentBatches.Remove(this);
+            }
             _rocksBatch.Dispose();
         }
 
