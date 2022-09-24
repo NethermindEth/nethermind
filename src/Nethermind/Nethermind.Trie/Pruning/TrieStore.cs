@@ -492,8 +492,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<Keccak> toRemove = new(); // TODO: resettable
-            Dispose();
-
+            
             long newMemory = 0;
             foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
