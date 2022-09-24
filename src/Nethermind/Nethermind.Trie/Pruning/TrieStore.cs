@@ -312,7 +312,6 @@ namespace Nethermind.Trie.Pruning
 
                     CurrentPackage = null;
                     Monitor.Exit(_dirtyNodes);
-                    Prune();
                 }
             }
             finally
@@ -320,6 +319,8 @@ namespace Nethermind.Trie.Pruning
                 _currentBatch?.Dispose();
                 _currentBatch = null;
             }
+
+            Prune();
         }
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
