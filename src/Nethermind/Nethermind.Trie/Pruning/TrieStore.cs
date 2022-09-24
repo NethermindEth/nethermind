@@ -409,7 +409,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
-                }, _pruningTaskCancellationTokenSource.Token);
+                });
             }
         }
 
