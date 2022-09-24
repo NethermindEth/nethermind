@@ -20,7 +20,8 @@ namespace Nethermind.Trie.Test.Pruning
     [TestFixture]
     public class TreeStoreTests
     {
-        private ILogManager _logManager = new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
+        private ILogManager _logManager = LimboLogs.Instance;
+        //new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
 
         [SetUp]
         public void Setup()
