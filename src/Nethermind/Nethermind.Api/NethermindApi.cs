@@ -166,6 +166,7 @@ namespace Nethermind.Api
         public IRlpxHost? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public IRpcAuthentication? RpcAuthentication { get; set; }
+        public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
@@ -221,12 +222,12 @@ namespace Nethermind.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        
+
         public ISubscriptionFactory SubscriptionFactory { get; set; }
         public ProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>
-        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
+        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>.
         /// </summary>
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
