@@ -20,8 +20,8 @@ namespace Nethermind.Trie.Test.Pruning
     [TestFixture]
     public class TreeStoreTests
     {
-        private ILogManager _logManager = LimboLogs.Instance;
-        //new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
+        private readonly ILogManager _logManager = LimboLogs.Instance;
+            // new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
 
         [SetUp]
         public void Setup()
@@ -222,7 +222,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Dispatcher_will_always_try_to_clear_memory()
         {
-            using TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
+            TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
             for (int i = 0; i < 1024; i++)
             {
                 for (int j = 0; j < 1 + i % 3; j++)
