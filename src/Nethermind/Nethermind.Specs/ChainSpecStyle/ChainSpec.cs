@@ -88,6 +88,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public UInt256? ShanghaiTimestamp { get; set; }
+        public ulong? ShanghaiTimestamp { get; set; }
     }
 }
