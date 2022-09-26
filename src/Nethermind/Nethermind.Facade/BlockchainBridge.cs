@@ -335,7 +335,7 @@ namespace Nethermind.Facade
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction transaction = block.Transactions[i];
-                    TxReceipt? receipt = receipts[i];
+                    TxReceipt receipt = receipts[i];
                     transaction.SenderAddress ??= receipt.Sender ?? RecoverTxSender(transaction);
                 }
             }
