@@ -21,4 +21,18 @@ namespace Nethermind.State.Snap
         public Keccak Path { get; set; }
         public Account Account { get; set; }
     }
+
+    public class PathWithNode
+    {
+        public PathWithNode() { }
+
+        public PathWithNode(byte[] path, byte[] node)
+        {
+            Path = path;
+            Node = node;
+        }
+
+        public byte[] Path { get; set; }
+        public byte[] Node { get; set; }
+    }
 }
