@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -61,7 +61,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Epoch ComputeActivationExitEpoch(Epoch epoch)
         {
-            return (Epoch) (epoch + 1UL + _timeParameterOptions.CurrentValue.MaximumSeedLookahead);
+            return (Epoch)(epoch + 1UL + _timeParameterOptions.CurrentValue.MaximumSeedLookahead);
         }
 
         /// <summary>
@@ -70,14 +70,14 @@ namespace Nethermind.BeaconNode
         public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Bytes32 seed, ulong index,
             ulong count)
         {
-            ulong start = (ulong) indices.Count * index / count;
-            ulong end = (ulong) indices.Count * (index + 1) / count;
+            ulong start = (ulong)indices.Count * index / count;
+            ulong end = (ulong)indices.Count * (index + 1) / count;
             List<ValidatorIndex> shuffled = new List<ValidatorIndex>();
             for (ulong i = start; i < end; i++)
             {
                 ValidatorIndex shuffledLookup =
-                    ComputeShuffledIndex(new ValidatorIndex(i), (ulong) indices.Count, seed);
-                ValidatorIndex shuffledIndex = indices[(int) (ulong) shuffledLookup];
+                    ComputeShuffledIndex(new ValidatorIndex(i), (ulong)indices.Count, seed);
+                ValidatorIndex shuffledIndex = indices[(int)(ulong)shuffledLookup];
                 shuffled.Add(shuffledIndex);
             }
 
@@ -115,21 +115,21 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentException("Indices can not be empty", nameof(indices));
             }
 
-            ulong indexCount = (ulong) indices.Count;
+            ulong indexCount = (ulong)indices.Count;
             ValidatorIndex index = 0UL;
             Span<byte> randomInputBytes = stackalloc byte[40];
             seed.AsSpan().CopyTo(randomInputBytes);
             while (true)
             {
-                ValidatorIndex initialValidatorIndex = (ValidatorIndex) (index % indexCount);
+                ValidatorIndex initialValidatorIndex = (ValidatorIndex)(index % indexCount);
                 ValidatorIndex shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
-                ValidatorIndex candidateIndex = indices[(int) shuffledIndex];
+                ValidatorIndex candidateIndex = indices[(int)shuffledIndex];
 
                 BinaryPrimitives.WriteUInt64LittleEndian(randomInputBytes.Slice(32), index / 32);
                 Bytes32 randomHash = _cryptographyService.Hash(randomInputBytes);
-                byte random = randomHash.AsSpan()[(int) (index % 32)];
+                byte random = randomHash.AsSpan()[(int)(index % 32)];
 
-                Gwei effectiveBalance = state.Validators[(int) candidateIndex].EffectiveBalance;
+                Gwei effectiveBalance = state.Validators[(int)candidateIndex].EffectiveBalance;
                 if ((effectiveBalance * byte.MaxValue) >=
                     (_gweiValueOptions.CurrentValue.MaximumEffectiveBalance * random))
                 {
@@ -162,7 +162,7 @@ namespace Nethermind.BeaconNode
                 currentRound < _miscellaneousParameterOptions.CurrentValue.ShuffleRoundCount;
                 currentRound++)
             {
-                byte roundByte = (byte) (currentRound & 0xFF);
+                byte roundByte = (byte)(currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
                 Bytes32 pivotHash = _cryptographyService.Hash(pivotHashInput);
                 ReadOnlySpan<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
@@ -173,12 +173,12 @@ namespace Nethermind.BeaconNode
                 ValidatorIndex position = ValidatorIndex.Max(index, flip);
 
                 sourceHashInput[32] = roundByte;
-                BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint) position / 256);
+                BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint)position / 256);
                 Bytes32 source = _cryptographyService.Hash(sourceHashInput.ToArray());
 
-                byte flipByte = source.AsSpan()[(int) ((position % 256) / 8)];
+                byte flipByte = source.AsSpan()[(int)((position % 256) / 8)];
 
-                int flipBit = (flipByte >> (int) (position % 8)) % 2;
+                int flipBit = (flipByte >> (int)(position % 8)) % 2;
 
                 if (flipBit == 1)
                 {
@@ -203,7 +203,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return (Slot) (_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number);
+            return (Slot)(_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number);
         }
 
         /// <summary>
@@ -265,7 +265,7 @@ namespace Nethermind.BeaconNode
             IReadOnlyList<ValidatorIndex> attestingIndices = indexedAttestation.AttestingIndices;
 
             // Verify max number of indices
-            if ((ulong) attestingIndices.Count > miscellaneousParameters.MaximumValidatorsPerCommittee)
+            if ((ulong)attestingIndices.Count > miscellaneousParameters.MaximumValidatorsPerCommittee)
             {
                 if (_logger.IsWarn())
                     Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index,
@@ -302,7 +302,7 @@ namespace Nethermind.BeaconNode
             // TODO: BLS FastAggregateVerify (see spec)
 
             // Verify aggregate signature
-            IList<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey)
+            IList<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int)(ulong)x].PublicKey)
                 .ToList();
 
             Root attestationDataRoot = _cryptographyService.HashTreeRoot(indexedAttestation.Data);

@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-                
+
                 BlockTree blockTree = new(
                     blocksDb,
                     headersDb,
@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     {
                         new(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
                     });
-                    
+
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     OlympicSpecProvider.Instance,
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
-                
+
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree1.SuggestBlock(block3B); // expected to be head
 
             tree1.UpdateMainChain(block0);
-            
+
             BlockTree tree2 = new(
                 blocksDb,
                 headersDb,

@@ -70,9 +70,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 _peerManager,
                 LimboLogs.Instance);
             _handler.Init();
-            
-            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPools, new Address[] {});
-            
+
+            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPools, new Address[] { });
+
 
         }
 
@@ -90,7 +90,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             _handler.ProtocolVersion.Should().Be(0);
             _handler.MessageIdSpaceSize.Should().Be(4);
         }
-        
+
         [Test]
         public void Can_handle_user_operations_message()
         {
@@ -104,12 +104,12 @@ namespace Nethermind.AccountAbstraction.Test.Network
             UserOperationsMessage msg = new UserOperationsMessage(uOps);
             HandleZeroMessage(msg, AaMessageCode.UserOperations);
         }
-        
+
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             IByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg);
             uOpsPacket.ReadByte();
-            _handler!.HandleMessage(new ZeroPacket(uOpsPacket) {PacketType = (byte) messageCode});
+            _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
         }
     }
 }

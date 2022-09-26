@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -79,7 +79,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > cumulativeCost ? balance - cumulativeCost : 0);
 
             overflow |= spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
-            overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             overflow |= UInt256.AddOverflow(cost, cumulativeCost, out cumulativeCost);
             if (overflow)
@@ -88,7 +88,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
                 return AcceptTxResult.Int256Overflow;
             }
-            
+
             if (balance < cumulativeCost)
             {
                 if (_logger.IsTrace)

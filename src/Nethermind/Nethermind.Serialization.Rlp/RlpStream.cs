@@ -87,19 +87,19 @@ namespace Nethermind.Serialization.Rlp
                     // the single byte of content will be written without any prefix
                     break;
                 case < 56:
-                {
-                    byte smallPrefix = (byte)(contentLength + 128);
-                    WriteByte(smallPrefix);
-                    break;
-                }
+                    {
+                        byte smallPrefix = (byte)(contentLength + 128);
+                        WriteByte(smallPrefix);
+                        break;
+                    }
                 default:
-                {
-                    int lengthOfLength = Rlp.LengthOfLength(contentLength);
-                    byte prefix = (byte)(183 + lengthOfLength);
-                    WriteByte(prefix);
-                    WriteEncodedLength(contentLength);
-                    break;
-                }
+                    {
+                        int lengthOfLength = Rlp.LengthOfLength(contentLength);
+                        byte prefix = (byte)(183 + lengthOfLength);
+                        WriteByte(prefix);
+                        WriteEncodedLength(contentLength);
+                        break;
+                    }
             }
         }
 
@@ -208,7 +208,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
         }
-        
+
         public void Encode(Address? address)
         {
             if (address == null)
@@ -529,7 +529,7 @@ namespace Nethermind.Serialization.Rlp
             (int a, int b) = PeekPrefixAndContentLength();
             return a + b;
         }
-        
+
         public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
         {
             (int prefixLength, int contentLength) result;
@@ -575,7 +575,7 @@ namespace Nethermind.Serialization.Rlp
 
                 result = (lengthOfContentLength + 1, contentLength);
             }
-            
+
             return result;
         }
 
@@ -583,11 +583,11 @@ namespace Nethermind.Serialization.Rlp
         {
             int memorizedPosition = Position;
             (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
-            
+
             Position = memorizedPosition;
             return result;
         }
-        
+
         public int ReadSequenceLength()
         {
             int prefix = ReadByte();
@@ -796,7 +796,7 @@ namespace Nethermind.Serialization.Rlp
             int length = PeekNextRlpLength();
             return Peek(length);
         }
-        
+
         public Span<byte> Peek(int length)
         {
             Span<byte> item = Read(length);
@@ -1028,12 +1028,12 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] {0};
+                return new byte[] { 0 };
             }
 
             if (prefix < 128)
             {
-                return new[] {(byte)prefix};
+                return new[] { (byte)prefix };
             }
 
             if (prefix == 128)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,8 +77,10 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
                     // we need to guarantee the peer can have all the block prior to beacon pivot
                     continue;
                 }
-            } else if (info.HeadNumber < (blockTree.BestSuggestedBody?.Number ?? 0) + (_minBlocksAhead ?? 1)) {
-               continue;
+            }
+            else if (info.HeadNumber < (blockTree.BestSuggestedBody?.Number ?? 0) + (_minBlocksAhead ?? 1))
+            {
+                continue;
             }
 
             long averageTransferSpeed = GetSpeed(nodeStatsManager, info) ?? 0;

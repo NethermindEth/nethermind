@@ -33,7 +33,7 @@ namespace Nethermind.State.Proofs
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
         private HashSet<Keccak> _visitingFilter = new();
-        
+
         private List<byte[]> _proofBits = new();
 
         public ProofCollector(byte[] key)
@@ -41,7 +41,7 @@ namespace Nethermind.State.Proofs
             _key = key;
         }
 
-        
+
         public byte[][] BuildResult() => _proofBits.ToArray();
 
         public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
@@ -58,7 +58,7 @@ namespace Nethermind.State.Proofs
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
-            _visitingFilter.Add(node.GetChildHash((byte) Prefix[_pathIndex]));
+            _visitingFilter.Add(node.GetChildHash((byte)Prefix[_pathIndex]));
 
             _pathIndex++;
         }

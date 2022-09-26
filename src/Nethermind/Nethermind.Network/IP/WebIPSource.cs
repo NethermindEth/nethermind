@@ -32,21 +32,21 @@ namespace Nethermind.Network.IP
             _url = url;
             _logger = logManager.GetClassLogger<WebIPSource>();
         }
-        
+
         public Task<(bool, IPAddress)> TryGetIP()
         {
             try
             {
-                using HttpClient httpClient = new() {Timeout = TimeSpan.FromSeconds(3)};
-                if(_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
+                using HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(3) };
+                if (_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
                 string ip = httpClient.GetStringAsync(_url).Result.Trim();
-                if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");
+                if (_logger.IsDebug) _logger.Debug($"External ip: {ip}");
                 bool result = IPAddress.TryParse(ip, out IPAddress ipAddress);
                 return Task.FromResult(result && !ipAddress.IsInternal() ? (true, ipAddress) : (false, (IPAddress)null));
             }
             catch (Exception e)
             {
-                if(_logger.IsDebug) _logger.Error($"Error while getting external ip from {_url}", e);
+                if (_logger.IsDebug) _logger.Error($"Error while getting external ip from {_url}", e);
                 return Task.FromResult((false, (IPAddress)null));
             }
         }

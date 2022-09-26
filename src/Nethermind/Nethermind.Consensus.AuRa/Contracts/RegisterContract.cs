@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,18 +37,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public class RegisterContract : Contract, IRegisterContract
     {
         private static Address MissingAddress = Address.Zero;
-        private static readonly object[] MissingGetAddressResult = {MissingAddress};
-        
+        private static readonly object[] MissingGetAddressResult = { MissingAddress };
+
         /// <summary>
         /// Category of domain name service addresses
         /// </summary>
         private const string DnsAddressRecord = "A";
         private IConstantContract Constant { get; }
-        
+
         public RegisterContract(
-            IAbiEncoder abiEncoder, 
+            IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
@@ -71,6 +71,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
             Constant.Call<Address>(
-                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) {MissingContractResult = MissingGetAddressResult});
+                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
     }
 }

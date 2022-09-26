@@ -64,7 +64,7 @@ namespace Nethermind.Cli
 
             _currentClient = _clients[uri];
         }
-        
+
         public void SwitchClient(IJsonRpcClient client)
         {
             _currentClient = client;
@@ -73,7 +73,7 @@ namespace Nethermind.Cli
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
             JsValue returnValue = JsValue.Null;
-            
+
             try
             {
                 if (_currentClient is null)
@@ -95,7 +95,7 @@ namespace Nethermind.Cli
                     }
                     else
                     {
-                        returnValue = _jsonParser.Parse(resultString);    
+                        returnValue = _jsonParser.Parse(resultString);
                     }
                 }
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Cli
                     result = await _currentClient.Post<T>(method, parameters);
                     stopwatch.Stop();
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");   
+                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 }
             }
             catch (HttpRequestException e)

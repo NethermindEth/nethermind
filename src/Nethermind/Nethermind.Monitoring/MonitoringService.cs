@@ -29,7 +29,7 @@ namespace Nethermind.Monitoring
         private readonly IMetricsUpdater _metricsUpdater;
         private readonly ILogger _logger;
         private readonly Options _options;
-        
+
         private readonly int? _exposePort;
         private readonly string _nodeName;
         private readonly bool _pushEnabled;
@@ -57,7 +57,7 @@ namespace Nethermind.Monitoring
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
-            
+
             _logger = logManager == null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
@@ -68,7 +68,7 @@ namespace Nethermind.Monitoring
         {
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
-                MetricPusherOptions pusherOptions  = new MetricPusherOptions
+                MetricPusherOptions pusherOptions = new MetricPusherOptions
                 {
                     Endpoint = _pushGatewayUrl,
                     Job = _options.Job,
@@ -85,7 +85,7 @@ namespace Nethermind.Monitoring
                     }
                 };
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
-                
+
                 metricPusher.Start();
             }
             if (_exposePort != null)
@@ -101,7 +101,7 @@ namespace Nethermind.Monitoring
         {
             _metricsUpdater.RegisterMetrics(type);
         }
-        
+
         public Task StopAsync()
         {
             _metricsUpdater.StopUpdating();
@@ -109,7 +109,7 @@ namespace Nethermind.Monitoring
             return Task.CompletedTask;
         }
 
-        private Options GetOptions() 
+        private Options GetOptions()
             => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
 
         private string GetInstance()

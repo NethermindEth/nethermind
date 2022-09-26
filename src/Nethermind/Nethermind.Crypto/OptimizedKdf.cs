@@ -34,7 +34,7 @@ namespace Nethermind.Crypto
             counterData.AsSpan().CopyTo(dataToHash.AsSpan().Slice(0, 4));
             return dataToHash;
         }
-        
+
         /// <summary>
         /// Performs the NIST SP 800-56 Concatenation Key Derivation Function ("KDF") to derive a key of the specified desired length from a base key of arbitrary length.
         /// </summary>

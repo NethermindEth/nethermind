@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using BenchmarkDotNet.Attributes;
@@ -12,7 +12,7 @@ namespace Nethermind.EthereumTests.Benchmark
     [ShortRunJob()]
     public class EthereumTests : GeneralStateTestBase
     {
-        public static IEnumerable<string> TestFileSource() => Directory.EnumerateFiles(@"EthereumTestFiles", "*.json",  SearchOption.AllDirectories);
+        public static IEnumerable<string> TestFileSource() => Directory.EnumerateFiles(@"EthereumTestFiles", "*.json", SearchOption.AllDirectories);
 
         [Benchmark]
         [ArgumentsSource(nameof(TestFileSource))]
@@ -20,7 +20,7 @@ namespace Nethermind.EthereumTests.Benchmark
         {
             FileTestsSource source = new(testFile);
             var tests = source.LoadGeneralStateTests();
-        
+
             foreach (GeneralStateTest test in tests)
             {
                 RunTest(test);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public LogEntriesIterator(LogEntry[] logs)
         {
-            _decoderContext =new Rlp.ValueDecoderContext();
+            _decoderContext = new Rlp.ValueDecoderContext();
             _length = logs.Length;
             Index = -1;
             _logs = logs;
@@ -62,15 +62,15 @@ namespace Nethermind.Blockchain.Receipts
                     return true;
                 }
             }
-            
+
             current = new LogEntryStructRef();
             return false;
         }
-        
+
         public void Reset()
         {
             Index = -1;
-            
+
             if (_logs is null)
             {
                 _decoderContext.Position = 0;

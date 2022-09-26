@@ -34,7 +34,7 @@ namespace Nethermind.Vault
             _vaultWallet = vaultWallet ?? throw new ArgumentNullException(nameof(vaultWallet));
             _chainId = chainId;
         }
-        
+
         public async ValueTask Sign(Transaction tx)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);

@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 gasPriceTxFilter = CreateFilter(new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore), minGasPriceTxFilter);
             }
-            
+
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
             if (registrar != null)
             {
@@ -69,11 +69,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             return gasPriceTxFilter;
         }
-        
+
         private static ITxFilter CreateBaseAuRaTxFilter(
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider, 
+            ISpecProvider specProvider,
             ITxFilter baseTxFilter)
         {
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
@@ -86,34 +86,34 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             return baseTxFilter;
         }
-        
-        
+
+
         public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
             if (api.SpecProvider == null) throw new StepDependencyException(nameof(api.SpecProvider));
-            
+
             if (api.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
                 api.TxFilterCache ??= new PermissionBasedTxFilter.Cache();
-                
+
                 var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(api.AbiEncoder,
                         api.ChainSpec.Parameters.TransactionPermissionContract,
-                        api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTxProcessorSource, 
+                        api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
+                        readOnlyTxProcessorSource,
                         api.TransactionPermissionContractVersions,
                         api.LogManager,
                         api.SpecProvider),
                     api.TxFilterCache,
                     api.LogManager));
-                
+
                 return txPermissionFilter;
             }
 
             return null;
         }
-        
+
         public static ITxFilter CreateAuRaTxFilterForProducer(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
@@ -124,25 +124,25 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore, specProvider);
             ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
-                ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 
+                ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter)
                 : baseAuRaTxFilter;
         }
 
         public static ITxFilter CreateAuRaTxFilter(
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider, 
+            ISpecProvider specProvider,
             ITxFilter baseTxFilter)
         {
             ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(api, readOnlyTxProcessorSource, specProvider, baseTxFilter);
             ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter != null
-                ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter) 
+                ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter)
                 : baseAuRaTxFilter;
         }
 
         public static (TxPriorityContract? Contract, TxPriorityContract.LocalDataSource? DataSource) CreateTxPrioritySources(
-            IAuraConfig config, 
+            IAuraConfig config,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
@@ -152,9 +152,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource); 
+                txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);
             }
-            
+
             string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
             bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
             if (usesTxPriorityLocalData)
@@ -166,8 +166,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         }
 
         public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
-            AuRaNethermindApi api, 
-            TxPriorityContract? txPriorityContract, 
+            AuRaNethermindApi api,
+            TxPriorityContract? txPriorityContract,
             TxPriorityContract.LocalDataSource? localDataSource)
         {
             return txPriorityContract != null || localDataSource != null

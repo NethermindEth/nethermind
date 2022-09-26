@@ -111,7 +111,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             var session = GetConsumerSession();
             _depositProvider.GetAsync(receipt.DepositId).Returns(deposit);
             _sessionService.GetActive(receipt.DepositId).Returns(session);
-            _providerService.GetPeer(deposit.DataAsset.Provider.Address).Returns((INdmPeer) null);
+            _providerService.GetPeer(deposit.DataAsset.Provider.Address).Returns((INdmPeer)null);
             await _receiptService.SendAsync(receipt, 0, 0);
             _providerService.Received().GetPeer(deposit.DataAsset.Provider.Address);
             _receiptRequestValidator.DidNotReceive().IsValid(receipt, session.UnpaidUnits, session.ConsumedUnits,
@@ -137,11 +137,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 deposit.Deposit.Units);
             await _receiptRepository.Received().AddAsync(Arg.Is<DataDeliveryReceiptDetails>(x =>
                 x.Id == receiptId &&
-                x.SessionId == session.Id && 
+                x.SessionId == session.Id &&
                 x.DataAssetId == session.DataAssetId &&
                 x.ConsumerNodeId == _nodePublicKey &&
-                x.Request.Equals(receipt) && 
-                x.Timestamp == seconds && 
+                x.Request.Equals(receipt) &&
+                x.Timestamp == seconds &&
                 !x.IsClaimed));
             await _sessionRepository.Received().UpdateAsync(session);
             provider.Received().SendDataDeliveryReceipt(receipt.DepositId, Arg.Is<DataDeliveryReceipt>(x =>
@@ -151,7 +151,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.Signature.Equals(new Signature(1, 1, 27))));
 
         }
-        
+
         [Test]
         public async Task send_should_fail_if_recover_public_key_fails()
         {
@@ -175,11 +175,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             _ecdsa.Received().RecoverPublicKey(Arg.Any<Signature>(), Arg.Any<Keccak>());
             await _receiptRepository.Received().AddAsync(Arg.Is<DataDeliveryReceiptDetails>(x =>
                 x.Id == receiptId &&
-                x.SessionId == session.Id && 
+                x.SessionId == session.Id &&
                 x.DataAssetId == session.DataAssetId &&
                 x.ConsumerNodeId == _nodePublicKey &&
-                x.Request.Equals(receipt) && 
-                x.Timestamp == timestamp && 
+                x.Request.Equals(receipt) &&
+                x.Timestamp == timestamp &&
                 !x.IsClaimed));
             await _sessionRepository.Received().UpdateAsync(session);
             provider.Received().SendDataDeliveryReceipt(receipt.DepositId, Arg.Is<DataDeliveryReceipt>(x =>
@@ -230,13 +230,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         private static DepositDetails GetDepositDetails(uint timestamp = 0)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressA, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, timestamp);
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, timestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,
                 unitType, 0, 10, new DataAssetRules(new DataAssetRule(1)),
                 new DataAssetProvider(Address.Zero, "test"));
-        
+
         private static ConsumerSession GetConsumerSession()
             => new ConsumerSession(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB, TestItem.AddressA,
                 TestItem.PublicKeyA, TestItem.AddressB, TestItem.PublicKeyB, SessionState.Started,

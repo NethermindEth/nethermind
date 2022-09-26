@@ -19,7 +19,7 @@ using System;
 namespace Nethermind.Logging
 {
     public interface ILogger
-    {    
+    {
         void Info(string text);
         void Warn(string text);
         void Debug(string text);

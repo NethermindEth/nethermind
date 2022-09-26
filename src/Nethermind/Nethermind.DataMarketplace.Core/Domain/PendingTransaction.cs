@@ -21,7 +21,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public string ResourceId { get; }
         public string Type { get; }
         public TransactionInfo Transaction { get; }
-        
+
         public ResourceTransaction(string resourceId, string type, TransactionInfo transaction)
         {
             ResourceId = resourceId;

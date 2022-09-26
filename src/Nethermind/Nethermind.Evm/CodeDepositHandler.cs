@@ -24,7 +24,7 @@ namespace Nethermind.Evm
         private const byte InvalidStartingCodeByte = 0xEF;
         public static long CalculateCost(int byteCodeLength, IReleaseSpec spec)
         {
-            if (spec.LimitCodeSize  && byteCodeLength > spec.MaxCodeSize)
+            if (spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize)
                 return long.MaxValue;
 
             return GasCostOf.CodeDeposit * byteCodeLength;
@@ -34,7 +34,7 @@ namespace Nethermind.Evm
         {
             return spec.IsEip3541Enabled && output.Length >= 1 && output[0] == InvalidStartingCodeByte;
         }
-        
+
         public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> output)
         {
             return spec.IsEip3541Enabled && output.Length >= 1 && output.StartsWith(InvalidStartingCodeByte);

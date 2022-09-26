@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Json
     public class NullableBigIntegerConverter : JsonConverter<BigInteger?>
     {
         private BigIntegerConverter _bigIntegerConverter;
-        
+
         public NullableBigIntegerConverter()
             : this(NumberConversion.Hex)
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Json
             {
                 return null;
             }
-            
+
             return _bigIntegerConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
         }
     }

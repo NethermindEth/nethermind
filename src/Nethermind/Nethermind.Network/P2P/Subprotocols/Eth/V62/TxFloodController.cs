@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60);
         private long _notAcceptedSinceLastCheck;
         private readonly Random _random = new();
-        
+
         internal bool IsDowngraded { get; private set; }
 
         public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger)
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public void Report(bool accepted)
         {
             TryReset();
-            
+
             if (!accepted)
             {
                 _notAcceptedSinceLastCheck++;
@@ -62,7 +62,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 }
             }
         }
-        
+
         private void TryReset()
         {
             DateTime now = _timestamper.UtcNow;
@@ -71,7 +71,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _checkpoint = now;
                 _notAcceptedSinceLastCheck = 0;
                 IsDowngraded = false;
-                
+
             }
         }
 

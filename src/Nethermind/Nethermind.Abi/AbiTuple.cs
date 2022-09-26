@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,9 +32,9 @@ namespace Nethermind.Abi
 
         public AbiTuple(params AbiType[] elements) : this(elements, null)
         {
-            
+
         }
-        
+
         public AbiTuple(AbiType[] elements, string[]? names = null)
         {
             if (elements.Length > 8)
@@ -68,7 +68,7 @@ namespace Nethermind.Abi
                     yield return tuple[i];
                 }
             }
-            
+
             if (arg is ITuple input && input.Length == _elements.Length)
             {
                 byte[][] encodedItems = EncodeSequence(_elements.Length, _elements, GetEnumerable(input), packed);
@@ -102,7 +102,7 @@ namespace Nethermind.Abi
             Name = $"({string.Join(",", _elements.AsEnumerable())})";
             IsDynamic = _elements.Any(p => p.IsDynamic);
         }
-        
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);

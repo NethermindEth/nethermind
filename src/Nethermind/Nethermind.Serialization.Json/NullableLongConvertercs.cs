@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Json
     public class NullableLongConverter : JsonConverter<long?>
     {
         private LongConverter _longConverter;
-        
+
         public NullableLongConverter()
             : this(NumberConversion.Hex)
         {
@@ -40,7 +40,7 @@ namespace Nethermind.Serialization.Json
                 writer.WriteNull();
                 return;
             }
-            
+
             _longConverter.WriteJson(writer, value.Value, serializer);
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Json
             {
                 return null;
             }
-            
+
             return _longConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
         }
     }

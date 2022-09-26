@@ -34,8 +34,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
     {
         private readonly IDb _database;
         private readonly IRlpDecoder<DataAsset> _rlpDecoder;
-        private  IRlpStreamDecoder<DataAsset> RlpStreamDecoder => (IRlpStreamDecoder<DataAsset>)_rlpDecoder;
-        private  IRlpObjectDecoder<DataAsset> RlpObjectDecoder => (IRlpObjectDecoder<DataAsset>)_rlpDecoder;
+        private IRlpStreamDecoder<DataAsset> RlpStreamDecoder => (IRlpStreamDecoder<DataAsset>)_rlpDecoder;
+        private IRlpObjectDecoder<DataAsset> RlpObjectDecoder => (IRlpObjectDecoder<DataAsset>)_rlpDecoder;
 
         public DataAssetRocksRepository(IDb database, IRlpNdmDecoder<DataAsset> rlpDecoder)
         {

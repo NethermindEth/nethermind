@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 speedType = TransferSpeedType.Receipts;
             }
-            
+
             return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
         }
     }

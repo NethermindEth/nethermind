@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var paymentClaims = paymentClaimsBytes
                 .Select(b => paymentClaimsDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Payment claims") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Payment claims") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             if (!paymentClaims.Any())
             {
                 MessageBox.Query(40, 7, "Payment claims", "No data." +
@@ -55,7 +55,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var paymentClaimsDetailsWindow = new Window("Payment claim details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(paymentClaimsDetailsWindow);
 

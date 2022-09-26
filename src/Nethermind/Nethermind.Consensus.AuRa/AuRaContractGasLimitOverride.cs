@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
         private readonly IGasLimitCalculator _innerCalculator;
         private readonly ILogger _logger;
-        
+
         public AuRaContractGasLimitOverride(
             IList<IBlockGasLimitContract> contracts,
             Cache cache,
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
             _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
@@ -68,11 +68,11 @@ namespace Nethermind.Consensus.AuRa
             {
                 return gasLimit;
             }
-            
+
             if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract contract))
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
-                gasLimit = contractLimit.HasValue ? (long) contractLimit.Value : (long?) null;
+                gasLimit = contractLimit.HasValue ? (long)contractLimit.Value : (long?)null;
                 _cache.GasLimitCache.Set(parentHeader.Hash, gasLimit);
                 if (gasLimit.HasValue)
                 {
@@ -97,8 +97,8 @@ namespace Nethermind.Consensus.AuRa
             try
             {
                 var contractGasLimit = contract.BlockGasLimit(parent);
-                return contractGasLimit.HasValue && _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract && contractGasLimit < MinimalContractGasLimit 
-                    ? MinimalContractGasLimit 
+                return contractGasLimit.HasValue && _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract && contractGasLimit < MinimalContractGasLimit
+                    ? MinimalContractGasLimit
                     : contractGasLimit;
             }
             catch (AbiException e)
@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
         }
-        
+
         public class Cache
         {
             private const int MaxCacheSize = 10;

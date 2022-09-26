@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Nethermind.RocksDbExtractor.Modules.Data;
 using Nethermind.RocksDbExtractor.Modules.Main;
 using Terminal.Gui;

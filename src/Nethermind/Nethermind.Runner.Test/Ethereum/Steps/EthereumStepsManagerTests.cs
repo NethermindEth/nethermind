@@ -125,7 +125,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 }
             }
         }
-        
+
         private static T CreateApi<T>() where T : INethermindApi, new() =>
             new T()
             {

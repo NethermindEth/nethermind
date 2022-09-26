@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,14 +19,14 @@ namespace Nethermind.Core
     public class Result
     {
         public ResultType ResultType { get; set; }
-        
+
         public string? Error { get; set; }
 
         public static Result Fail(string error)
         {
-            return new() {ResultType = ResultType.Failure, Error = error};
+            return new() { ResultType = ResultType.Failure, Error = error };
         }
 
-        public static Result Success { get; } = new() {ResultType = ResultType.Success};
+        public static Result Success { get; } = new() { ResultType = ResultType.Success };
     }
 }

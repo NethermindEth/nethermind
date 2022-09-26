@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [SetUp]
         public void Initialize()
         {
-            _wallet = new DevWallet(new WalletConfig(),  LimboLogs.Instance);
+            _wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
             _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             _keyStore = Substitute.For<IKeyStore>();
         }
@@ -51,31 +51,31 @@ namespace Nethermind.JsonRpc.Test.Modules
             string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(a => $"\"{a.ToString()}\""));
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}],\"id\":67}}", serialized);
         }
-        
+
         [Test]
         public void Personal_import_raw_key()
         {
-            Address expectedAddress = new( "707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
+            Address expectedAddress = new("707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
             PrivateKey privateKey = new("a8fceb14d53045b1c8baedf7bc1f38b2540ce132ac28b1ec8b93b8113165abc0");
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
-            string serialized = RpcTest.TestSerializedRequest( rpcModule, "personal_importRawKey", privateKey.KeyBytes.ToHexString(), passphrase);
+            string serialized = RpcTest.TestSerializedRequest(rpcModule, "personal_importRawKey", privateKey.KeyBytes.ToHexString(), passphrase);
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedAddress.ToString()}\",\"id\":67}}", serialized);
             _keyStore.DeleteKey(expectedAddress);
         }
-        
+
         [Test]
         public void Personal_new_account()
         {
             int accountsBefore = _wallet.GetAccounts().Length;
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
-            string serialized = RpcTest.TestSerializedRequest( rpcModule, "personal_newAccount", passphrase);
+            string serialized = RpcTest.TestSerializedRequest(rpcModule, "personal_newAccount", passphrase);
             var accountsNow = _wallet.GetAccounts();
             Assert.AreEqual(accountsBefore + 1, accountsNow.Length, "length");
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}", serialized);
         }
-        
+
         [Test]
         [Ignore("Cannot reproduce GO signing yet")]
         public void Personal_ec_sign()
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeaf", "0x9b2055d370f73ec7d8a03e965129118dc8f5bf83");
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee1b\"}}", serialized);
         }
-        
+
         [Test]
         [Ignore("Cannot reproduce GO signing yet")]
         public void Personal_ec_recover()

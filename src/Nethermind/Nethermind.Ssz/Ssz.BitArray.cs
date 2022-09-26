@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Ssz
             value.CopyTo(bytes, 0);
             Encode(span, bytes);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BitArray value, ref int offset, ref int dynamicOffset)
         {
@@ -57,14 +57,14 @@ namespace Nethermind.Ssz
             bytes[byteLength - 1] |= (byte)(1 << (value.Length % 8));
             Encode(span, bytes);
         }
-        
+
         public static BitArray DecodeBitvector(ReadOnlySpan<byte> span, int vectorLength)
         {
             BitArray value = new BitArray(span.ToArray());
             value.Length = vectorLength;
             return value;
         }
-        
+
         public static BitArray DecodeBitlist(ReadOnlySpan<byte> span)
         {
             BitArray value = new BitArray(span.ToArray());

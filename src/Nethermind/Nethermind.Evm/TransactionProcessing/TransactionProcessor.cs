@@ -58,7 +58,7 @@ namespace Nethermind.Evm.TransactionProcessing
             /// Restore state after execution
             /// </summary>
             Restore = 2,
-            
+
             /// <summary>
             /// Skip potential fail checks
             /// </summary>
@@ -110,7 +110,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
-        
+
         public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);

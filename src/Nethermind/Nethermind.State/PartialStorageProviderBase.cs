@@ -41,7 +41,7 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected static readonly byte[] _zeroValue = {0};
+        protected static readonly byte[] _zeroValue = { 0 };
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
@@ -97,7 +97,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
-            
+
             if (snapshot == _currentPosition)
             {
                 return;
@@ -145,7 +145,7 @@ namespace Nethermind.State
                 _changes[_currentPosition] = kept;
                 _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
-            
+
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
                 _transactionChangesSnapshots.Pop();

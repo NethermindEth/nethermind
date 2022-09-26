@@ -43,7 +43,7 @@ namespace Nethermind.Benchmarks.Rlp
                 Serialization.Rlp.Rlp.Encode(Keccak.Compute("a")).Bytes.Concat(new byte[100000]).ToArray()
             };
         }
-        
+
         [IterationSetup]
         public void Setup()
         {

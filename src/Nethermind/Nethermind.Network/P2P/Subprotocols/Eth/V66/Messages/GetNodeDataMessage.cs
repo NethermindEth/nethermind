@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public GetNodeDataMessage()
         {
         }
-        
+
         public GetNodeDataMessage(long requestId, V63.Messages.GetNodeDataMessage ethMessage) : base(requestId, ethMessage)
         {
         }

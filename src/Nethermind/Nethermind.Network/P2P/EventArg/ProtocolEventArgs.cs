@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,13 +19,13 @@ namespace Nethermind.Network.P2P.EventArg
     public class ProtocolEventArgs : System.EventArgs
     {
         public int Version { get; }
-        
+
         public string ProtocolCode { get; }
 
         public ProtocolEventArgs(string protocolCode, int version)
         {
             Version = version;
             ProtocolCode = protocolCode;
-        }   
+        }
     }
 }

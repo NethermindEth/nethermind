@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                         uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
                         deposit.SetConsumedUnits(consumedUnits);
                     }
-                    
+
                     filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed && (d.ConsumedUnits < d.Deposit.Units) &&
                                                                    (!(d.EarlyRefundTicket is null) ||
                                                                     query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime

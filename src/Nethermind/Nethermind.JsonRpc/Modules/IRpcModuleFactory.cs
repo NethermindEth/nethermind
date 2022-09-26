@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules
     public interface IRpcModuleFactory<out T> where T : IRpcModule
     {
         T Create();
-        
+
         IReadOnlyCollection<JsonConverter> GetConverters();
     }
 }

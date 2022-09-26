@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     public class RpcMethodFilterTests
     {
         private const string FilePath = "path";
-        
+
         [TestCase("eth_.*", "eth_blocknumber", true)]
         [TestCase("eth_.*", "debug_blocknumber", false)]
         [TestCase("parity_.*", "parity_trace", true)]
@@ -36,18 +36,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IFileSystem fileSystemSub = Substitute.For<IFileSystem>();
             fileSystemSub.File.Exists(FilePath).Returns(true);
-            fileSystemSub.File.ReadLines(FilePath).Returns(new[] {regex});
+            fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
             filter.AcceptMethod(methodName).Should().Be(expectedResult);
         }
-        
+
         [Test]
         public void Test_multiple_lines()
         {
             IFileSystem fileSystemSub = Substitute.For<IFileSystem>();
             fileSystemSub.File.Exists(FilePath).Returns(true);
-            fileSystemSub.File.ReadLines(FilePath).Returns(new[] {"eth*", "debug*"});
+            fileSystemSub.File.ReadLines(FilePath).Returns(new[] { "eth*", "debug*" });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
             filter.AcceptMethod("eth_blockNumber").Should().BeTrue();
@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IFileSystem fileSystemSub = Substitute.For<IFileSystem>();
             fileSystemSub.File.Exists(FilePath).Returns(true);
-            fileSystemSub.File.ReadLines(FilePath).Returns(new[] {regex});
+            fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
             filter.AcceptMethod(method).Should().Be(expectedResult);

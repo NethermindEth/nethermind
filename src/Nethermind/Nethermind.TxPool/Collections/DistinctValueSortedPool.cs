@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Collections
             int capacity,
             IComparer<TValue> comparer,
             IEqualityComparer<TValue> distinctComparer,
-            ILogManager logManager) 
+            ILogManager logManager)
             : base(capacity, comparer)
         {
             // ReSharper disable once VirtualMemberCallInConstructor
@@ -61,7 +61,7 @@ namespace Nethermind.TxPool.Collections
             {
                 TryRemove(oldKvp.Key);
             }
-            
+
             base.InsertCore(key, value, groupKey);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
@@ -72,8 +72,8 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary.Remove(value);
             return base.Remove(key, value);
         }
-        
-        protected virtual bool AllowSameKeyReplacement => false; 
+
+        protected virtual bool AllowSameKeyReplacement => false;
 
         protected override bool CanInsert(TKey key, TValue value)
         {
@@ -85,12 +85,12 @@ namespace Nethermind.TxPool.Collections
                 if (isDuplicate)
                 {
                     bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
-                    
+
                     if (_logger.IsTrace && !isHigher)
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-                    
+
                     return isHigher;
                 }
 

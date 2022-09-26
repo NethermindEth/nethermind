@@ -22,7 +22,7 @@ using Nethermind.Int256;
 namespace Nethermind.Specs.Forks
 {
     public class Dao : Homestead
-    {   
+    {
         private static IReleaseSpec _instance;
 
         protected Dao()

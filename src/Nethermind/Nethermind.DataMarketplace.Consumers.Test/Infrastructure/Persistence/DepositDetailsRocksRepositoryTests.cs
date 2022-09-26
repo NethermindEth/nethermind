@@ -217,7 +217,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 100 });
             Assert.IsTrue(result.Items.Count == 1);
         }
-        
+
         [Test]
         public async Task eligable_to_refund_will_return_when_time_deposit_is_not_consumed_and_timestamp_is_equals_to_asset_expiry()
         {
@@ -272,8 +272,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true });
 
-            Assert.IsTrue(result.Items.Count == 0); 
-        } 
+            Assert.IsTrue(result.Items.Count == 0);
+        }
 
         [Test]
         public async Task eligable_to_refund_will_not_return_when_time_deposit_is_consumed_and_timestamp_is_less_than_asset_expiry()
@@ -303,13 +303,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits { EligibleToRefund = true, CurrentBlockTimestamp = 100 });
             Assert.IsTrue(result.Items.Count == 0);
         }
-        
+
         [Test]
         public async Task eligable_to_refund_will_return_when_unit_deposit_has_early_refund_ticket_set()
         {
             var depositDetails = CreateDeposit(DataAssetUnitType.Unit);
 
-            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1,2,37)));
+            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1, 2, 37)));
 
             await repository.AddAsync(depositDetails);
 
@@ -324,7 +324,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         {
             var depositDetails = CreateDeposit(DataAssetUnitType.Unit);
 
-            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1,2,37)));
+            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1, 2, 37)));
 
             depositDetails.SetRefundClaimed();
 
@@ -356,7 +356,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
         {
             var depositDetails = CreateDeposit(DataAssetUnitType.Time);
 
-            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1,2,37)));
+            depositDetails.SetEarlyRefundTicket(new EarlyRefundTicket(depositDetails.Deposit.Id, claimableAfter: 50, new Signature(1, 2, 37)));
 
             depositDetails.SetRefundClaimed();
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,13 +43,13 @@ namespace Nethermind.Mev.Data
             (int contentLength, int txLength, int revertingTxLength) = GetContentLength();
             RlpStream stream = new(contentLength);
             stream.StartSequence(contentLength);
-            
+
             stream.StartSequence(txLength);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 stream.Encode(bundle.Transactions[i].Hash);
             }
-            
+
             stream.Encode(bundle.BlockNumber);
             stream.Encode(bundle.MinTimestamp);
             stream.Encode(bundle.MaxTimestamp);
@@ -59,7 +59,7 @@ namespace Nethermind.Mev.Data
             {
                 stream.Encode(bundle.RevertingTxHashes[i]);
             }
-            
+
             return stream;
         }
     }

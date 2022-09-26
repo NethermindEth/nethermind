@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -129,11 +129,11 @@ namespace Ethereum.Test.Base
             TrieStore trieStore = new(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             MemDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
             IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
@@ -206,7 +206,7 @@ namespace Ethereum.Test.Base
                 {
                     result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
                 }
-                else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
+                else if (!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
                 {
                     result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
                 }
@@ -279,11 +279,11 @@ namespace Ethereum.Test.Base
             stopwatch?.Stop();
 
             List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
-//            if (differences.Any())
-//            {
-//                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
-//                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
-//            }
+            //            if (differences.Any())
+            //            {
+            //                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
+            //                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
+            //            }
 
             Assert.Zero(differences.Count, "differences");
 
@@ -328,7 +328,7 @@ namespace Ethereum.Test.Base
         {
             if (test.PostStateRoot != null)
             {
-                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> {"state root mismatch"} : Enumerable.Empty<string>().ToList();
+                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
@@ -359,8 +359,8 @@ namespace Ethereum.Test.Base
                 }
 
                 bool accountExists = stateProvider.AccountExists(acountAddress);
-                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?) null;
-                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?) null;
+                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?)null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?)null;
 
                 if (accountState.Balance != balance)
                 {

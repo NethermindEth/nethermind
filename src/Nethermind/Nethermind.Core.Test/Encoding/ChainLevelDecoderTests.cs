@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,20 +35,20 @@ namespace Nethermind.Core.Test.Encoding
             BlockInfo blockInfo2 = new(TestItem.KeccakB, 2);
             blockInfo2.WasProcessed = false;
 
-            ChainLevelInfo chainLevelInfo = new(true, new[] {blockInfo, blockInfo2});
+            ChainLevelInfo chainLevelInfo = new(true, new[] { blockInfo, blockInfo2 });
             chainLevelInfo.HasBlockOnMainChain = true;
 
             Rlp rlp = Rlp.Encode(chainLevelInfo);
 
             ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
-            
+
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
         }
-        
+
         [Test]
         public void Can_handle_nulls()
         {

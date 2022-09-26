@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,11 +34,11 @@ namespace Nethermind.Blockchain.Test
             BlockHeader parentWithTotalDiff = Build.A.BlockHeader.WithTotalDifficulty(1).TestObject;
             BlockHeader child = Build.A.BlockHeader.WithParent(parent).TestObject;
             parent.TotalDifficulty.Should().BeNull(); // just to avoid the testing rig change without this test being updated
-            
+
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindHeader(child.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(parent);
             blockFinder.FindHeader(child.ParentHash, BlockTreeLookupOptions.None).Returns(parentWithTotalDiff);
-            
+
             blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().Be(parent);
             blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be((UInt256?)UInt256.One);
         }

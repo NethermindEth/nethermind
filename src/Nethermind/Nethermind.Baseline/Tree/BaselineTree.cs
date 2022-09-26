@@ -55,14 +55,14 @@ namespace Nethermind.Baseline.Tree
         public long LastBlockWithLeaves { get; private set; }
 
         public void MemorizePastCount(long blockNumber, uint count)
-        { 
-            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+        {
+            if (_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
         }
-        
+
         public void MemorizeCurrentCount(Keccak blockHash, long blockNumber, uint count)
-        { 
-            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+        {
+            if (_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
             Metadata.SaveCurrentBlockInDb(blockHash, blockNumber);
             LastBlockWithLeaves = blockNumber;
@@ -78,7 +78,7 @@ namespace Nethermind.Baseline.Tree
         internal static Keccak ZeroHash = Keccak.Zero;
 
         private ILogger _logger;
-        
+
         public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength, ILogger logger)
         {
             _logger = logger;
@@ -143,8 +143,8 @@ namespace Nethermind.Baseline.Tree
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();
-            
-            if(_logger.IsInfo) _logger.Info(
+
+            if (_logger.IsInfo) _logger.Info(
                 $"Initialized tree {_dbPrefix.ToHexString()} with count {Count}, last block hash {LastBlockDbHash} and last block with leaves {LastBlockWithLeaves}.");
         }
 
@@ -317,9 +317,9 @@ namespace Nethermind.Baseline.Tree
                     }
                     else
                     {
-                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);    
+                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
                     }
-                    
+
                     Index parentIndex = index.Parent();
                     SaveValue(parentIndex, parentHash);
                 }

@@ -38,9 +38,9 @@ namespace Nethermind.Wallet
             _logger = logManager?.GetClassLogger<AccountUnlocker>() ?? throw new ArgumentNullException(nameof(logManager));
             _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
         }
-        
+
         public void UnlockAccounts()
-        { 
+        {
             for (int i = 0; i < _config.UnlockAccounts.Length; i++)
             {
                 string unlockAccount = _config.UnlockAccounts[i];

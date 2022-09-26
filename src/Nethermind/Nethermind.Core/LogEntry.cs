@@ -32,7 +32,7 @@ namespace Nethermind.Core
         public Keccak[] Topics { get; }
         public byte[] Data { get; }
     }
-    
+
     public ref struct LogEntryStructRef
     {
         public LogEntryStructRef(AddressStructRef address, Span<byte> data, Span<byte> topicsRlp)

@@ -33,22 +33,22 @@ namespace Nethermind.Core
         {
             return new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
         }
-        
+
         public UnixTime(DateTime dateTime) : this(new DateTimeOffset(dateTime))
         {
         }
-        
+
         public UnixTime(DateTimeOffset dateTime)
         {
             _offset = dateTime;
         }
 
-        public ulong Seconds => (ulong) SecondsLong;
-        
-        public ulong Milliseconds => (ulong) MillisecondsLong;
-        
+        public ulong Seconds => (ulong)SecondsLong;
+
+        public ulong Milliseconds => (ulong)MillisecondsLong;
+
         public long SecondsLong => _offset.ToUnixTimeSeconds();
-        
+
         public long MillisecondsLong => _offset.ToUnixTimeMilliseconds();
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] PaymasterData { get; set; }
         public byte[] Signature { get; set; }
     }
-    
+
     public class UserOperationAbiPacker
     {
         private readonly AbiEncoder _abiEncoder = new AbiEncoder();

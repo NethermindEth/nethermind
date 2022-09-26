@@ -32,7 +32,7 @@ namespace Nethermind.State
         void DeleteAccount(Address address);
 
         void CreateAccount(Address address, in UInt256 balance);
-        
+
         void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec, bool isGenesis = false);

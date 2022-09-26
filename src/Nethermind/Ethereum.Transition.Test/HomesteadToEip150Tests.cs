@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -29,11 +29,14 @@ namespace Ethereum.Transition.Test
     {
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
-        {    
+        {
             await RunTest(test);
         }
-        
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcHomesteadToEIP150");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcHomesteadToEIP150");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }

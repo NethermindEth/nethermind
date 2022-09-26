@@ -43,7 +43,7 @@ namespace Nethermind.KeyStore.Test
         {
             _config = new KeyStoreConfig();
             _config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
-            
+
             _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
@@ -68,7 +68,7 @@ namespace Nethermind.KeyStore.Test
 
         [Test]
         public void Test2Test()
-        {           
+        {
             var testModel = _testsModel.Test2;
             RunTest(testModel);
         }
@@ -86,7 +86,7 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
-        
+
         [Test]
         public void MyCryptoTest()
         {
@@ -124,7 +124,7 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
             public KeyStoreTestModel MyCrypto { get; set; }
-            
+
             public KeyStoreTestModel Sealer0 { get; set; }
         }
 
@@ -134,8 +134,8 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreItem KeyData { get; set; }
             public string Password { get; set; }
             public string Priv { get; set; }
-            
+
             public string Address { get; set; }
         }
-    } 
+    }
 }

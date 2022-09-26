@@ -46,9 +46,9 @@ namespace Nethermind.Clique.Test
         private readonly Address _signer1 = new("0x7ffc57839b00206d1ad20c69a1981b489f772031");
         private readonly Address _signer2 = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
         private readonly Address _signer3 = new("0x42eb768f2244c8811c63729a21a3569731535f06");
-        
+
         private BlockTree _blockTree;
-        
+
         [OneTimeSetUp]
         public void Setup_chain()
         {
@@ -92,7 +92,7 @@ namespace Nethermind.Clique.Test
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer2));
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer3));
         }
-        
+
         [Test]
         public void Can_calculate_clique_header_hash()
         {
@@ -105,7 +105,7 @@ namespace Nethermind.Clique.Test
 
         [Test]
         public void Recognises_signer_turn()
-        {           
+        {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = CliqueTests.GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
@@ -115,15 +115,15 @@ namespace Nethermind.Clique.Test
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer3));
             // Block 2
-            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer1));
-            Assert.IsTrue(manager.IsInTurn(snapshot,2, _signer2));
-            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer3));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 2, _signer1));
+            Assert.IsTrue(manager.IsInTurn(snapshot, 2, _signer2));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 2, _signer3));
             // Block 3
-            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer1));
-            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer2));
-            Assert.IsTrue(manager.IsInTurn(snapshot,3, _signer3));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 3, _signer1));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 3, _signer2));
+            Assert.IsTrue(manager.IsInTurn(snapshot, 3, _signer3));
         }
-        
+
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader

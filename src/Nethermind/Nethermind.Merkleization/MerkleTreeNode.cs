@@ -27,7 +27,7 @@ namespace Nethermind.Merkleization
             Hash = hash;
             Index = index;
         }
-        
+
         public Bytes32 Hash { get; }
         public ulong Index { get; } // 32bit index for 32 depth of a tree
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -32,7 +32,7 @@ namespace Nethermind.State.Test.Runner
         Always,
         Never
     }
-    
+
     public class StateTestsRunner : GeneralStateTestBase, IStateTestRunner
     {
         private readonly ITestSourceLoader _testsSource;
@@ -61,7 +61,7 @@ namespace Nethermind.State.Test.Runner
             {
                 Console.Error.WriteLine(_serializer.Serialize(entry));
             }
-            
+
             Console.Error.WriteLine(_serializer.Serialize(txTrace.Result));
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
@@ -89,12 +89,12 @@ namespace Nethermind.State.Test.Runner
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
                     txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork);
-                    WriteErr(txTrace);    
+                    WriteErr(txTrace);
                 }
-                
+
                 results.Add(result);
             }
-            
+
             WriteOut(results);
 
             Console.ReadLine();

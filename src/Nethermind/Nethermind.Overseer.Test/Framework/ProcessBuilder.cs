@@ -28,7 +28,7 @@ namespace Nethermind.Overseer.Test.Framework
     {
         public NethermindProcessWrapper Create(string name, string workingDirectory, string config, string dbPath, int httpPort, int p2pPort, string nodeKey, string bootnode)
         {
-            var process = new Process {EnableRaisingEvents = true};
+            var process = new Process { EnableRaisingEvents = true };
             process.ErrorDataReceived += ProcessOnErrorDataReceived;
             process.OutputDataReceived += ProcessOnOutputDataReceived;
             process.Exited += ProcessOnExited;
@@ -44,13 +44,13 @@ namespace Nethermind.Overseer.Test.Framework
             {
                 arguments = $"{arguments} --Discovery.Bootnodes {bootnode}";
             }
-            
+
             process.StartInfo.Arguments = arguments;
             process.StartInfo.UseShellExecute = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             process.StartInfo.CreateNoWindow = false;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
-            
-            return new NethermindProcessWrapper(name, process, httpPort, new PrivateKey(nodeKey).Address,  $"enode://{new PrivateKey(nodeKey).PublicKey.ToString(false)}@127.0.0.1:{p2pPort}",new JsonRpcClient($"http://localhost:{httpPort}"));
+
+            return new NethermindProcessWrapper(name, process, httpPort, new PrivateKey(nodeKey).Address, $"enode://{new PrivateKey(nodeKey).PublicKey.ToString(false)}@127.0.0.1:{p2pPort}", new JsonRpcClient($"http://localhost:{httpPort}"));
         }
 
         private static void ProcessOnExited(object sender, EventArgs eventArgs)

@@ -128,7 +128,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits? query)
         {
-            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
+            uint timestamp = (uint)_timestamper.UnixTime.Seconds;
             PagedResult<DepositDetails> deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
             {
                 Results = int.MaxValue
@@ -140,7 +140,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
-            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
+            uint timestamp = (uint)_timestamper.UnixTime.Seconds;
             DepositDetails? deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit is null
@@ -150,11 +150,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null)
         {
-            if(deposit.DataAssetId == null)
+            if (deposit.DataAssetId == null)
             {
                 return ResultWrapper<Keccak>.Fail("Deposit couldn't be made - asset ID unknown.");
             }
-            
+
             Keccak? depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
                 gasPrice);
 
@@ -288,7 +288,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<UInt256>> ndm_getRefundGasPrice()
             => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentRefundGasPriceAsync());
-        
+
         public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateDepositGasPrice(Keccak depositId,
             UInt256 gasPrice)
             => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(new UpdatedTransactionInfoForRpc(
@@ -298,7 +298,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             UInt256 gasPrice)
             => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(new UpdatedTransactionInfoForRpc(
                 await _transactionsService.UpdateRefundGasPriceAsync(depositId, gasPrice)));
-        
+
         public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_cancelDeposit(Keccak depositId)
             => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(
                 new UpdatedTransactionInfoForRpc(await _transactionsService.CancelDepositAsync(depositId)));
@@ -314,7 +314,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<IEnumerable<ResourceTransactionForRpc>>.Success(transactions
                 .Select(t => new ResourceTransactionForRpc(t)));
         }
-        
+
         public async Task<ResultWrapper<IEnumerable<ResourceTransactionForRpc>>> ndm_getAllConsumerTransactions()
         {
             IEnumerable<ResourceTransaction> transactions = await _transactionsService.GetAllTransactionsAsync();

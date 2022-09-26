@@ -132,7 +132,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSession retrieved = await repository.GetAsync(session.Id);
             retrieved.Should().BeEquivalentTo(session);
         }
-        
+
         [Test]
         public async Task Previous_of_first()
         {
@@ -142,7 +142,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSession retrieved = await repository.GetPreviousAsync(_cases[0]);
             retrieved.Should().BeNull();
         }
-        
+
         [Test]
         public async Task Previous_of_second()
         {
@@ -153,7 +153,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSession retrieved = await repository.GetPreviousAsync(_cases[1]);
             retrieved.Should().BeEquivalentTo(_cases[0]);
         }
-        
+
         [Test]
         public void Null_query_throws()
         {
@@ -161,7 +161,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSessionRocksRepository repository = new ConsumerSessionRocksRepository(db, new ConsumerSessionDecoder());
             Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
-        
+
         [Test]
         public async Task Previous_of_non_persisted()
         {
@@ -170,7 +170,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSession retrieved = await repository.GetPreviousAsync(_cases[1]);
             retrieved.Should().BeNull();
         }
-        
+
         [Test]
         public async Task Specific_browse()
         {
@@ -178,7 +178,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             ConsumerSessionRocksRepository repository = new ConsumerSessionRocksRepository(db, new ConsumerSessionDecoder());
             await repository.AddAsync(_cases[1]);
             await repository.AddAsync(_cases[0]);
-            
+
             GetConsumerSessions query = new GetConsumerSessions();
             query.ConsumerAddress = _cases[0].ConsumerAddress;
             query.DepositId = _cases[0].DepositId;
@@ -186,7 +186,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             query.ConsumerNodeId = _cases[0].ConsumerNodeId;
             query.DataAssetId = _cases[0].DataAssetId;
             query.ProviderNodeId = _cases[0].ProviderNodeId;
-            
+
             PagedResult<ConsumerSession> retrieved = await repository.BrowseAsync(query);
             retrieved.Items.Should().ContainEquivalentOf(_cases[0]);
             retrieved.Items.Should().HaveCount(1);

@@ -28,7 +28,7 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 CumulativeGasUsed { get; set; }
         public Address From { get; set; }
         public UInt256 GasUsed { get; set; }
-        
+
         public UInt256 EffectiveGasPrice { get; set; }
         public LogModel[] Logs { get; set; }
         public byte[]? LogsBloom { get; set; }

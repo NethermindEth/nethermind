@@ -37,15 +37,15 @@ namespace Nethermind.Network.Rlpx
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
+            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
             _currentContextId = contextId;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
+            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
 
             bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
             bool isFirst = totalPacketSize.HasValue || !isChunked;
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
-        
+
         internal struct FrameInfo
         {
             public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
@@ -61,7 +61,7 @@ namespace Nethermind.Network.Rlpx
             public int Size { get; }
             public int TotalPacketSize { get; }
             public int Padding => Frame.CalculatePadding(Size);
-            
+
             public int PayloadSize => Size + Padding;
         }
     }

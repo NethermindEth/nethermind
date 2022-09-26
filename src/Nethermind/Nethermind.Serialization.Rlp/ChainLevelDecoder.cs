@@ -28,12 +28,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(ChainLevelInfo)}");
             }
-            
+
             if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
-            
+
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
             bool hasMainChainBlock = rlpStream.DecodeBool();
 
@@ -70,7 +70,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
                 }
             }
-            
+
             Rlp[] elements = new Rlp[2];
             elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
             elements[1] = Rlp.Encode(item.BlockInfos);

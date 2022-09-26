@@ -62,7 +62,7 @@ namespace Nethermind.EthStats
 
             if (!_isOn)
             {
-               
+
                 if (!initConfig.WebSocketsEnabled)
                 {
                     _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");

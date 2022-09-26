@@ -33,7 +33,7 @@ namespace Nethermind.Mev.Data
             long gasUsed,
             bool success,
             UInt256 bundleFee,
-            UInt256 coinbasePayments, 
+            UInt256 coinbasePayments,
             UInt256 eligibleGasFeePayment)
         {
             Bundle = bundle;
@@ -45,11 +45,11 @@ namespace Nethermind.Mev.Data
         }
 
         public UInt256 CoinbasePayments { get; }
-        
+
         public UInt256 BundleFee { get; }
-        
+
         public UInt256 EligibleGasFeePayment { get; }
-        
+
         public UInt256 Profit => BundleFee + CoinbasePayments;
 
         public MevBundle Bundle { get; }
@@ -57,7 +57,7 @@ namespace Nethermind.Mev.Data
         public bool Success { get; }
 
         public long GasUsed { get; }
-        
+
         public UInt256 BundleScoringProfit => EligibleGasFeePayment + CoinbasePayments;
 
         public UInt256 BundleAdjustedGasPrice => BundleScoringProfit / (UInt256)GasUsed;

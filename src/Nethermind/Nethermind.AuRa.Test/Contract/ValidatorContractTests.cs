@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider = Substitute.For<IStateProvider>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
-        
+
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
@@ -66,15 +66,15 @@ namespace Nethermind.AuRa.Test.Contract
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void finalize_change_should_call_correct_transaction()
         {
             SystemTransaction expectation = new()
             {
-                Value = 0, 
-                Data = new byte[] {0x75, 0x28, 0x62, 0x11},
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"), 
+                Value = 0,
+                Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
+                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,
@@ -82,7 +82,7 @@ namespace Nethermind.AuRa.Test.Contract
                 Nonce = 0
             };
             expectation.Hash = expectation.CalculateHash();
-            
+
             ValidatorContract contract = new(
                 _transactionProcessor,
                 AbiEncoder.Instance,
@@ -90,13 +90,13 @@ namespace Nethermind.AuRa.Test.Contract
                 _stateProvider,
                 _readOnlyTxProcessorSource,
                 new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            
+
             contract.FinalizeChange(_block.Header);
-            
+
             _transactionProcessor.Received().Execute(
                 Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
         }
-        
+
         private static bool IsEquivalentTo(object expected, object item)
         {
             try

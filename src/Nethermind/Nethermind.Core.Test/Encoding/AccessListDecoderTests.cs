@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,9 +78,9 @@ namespace Nethermind.Core.Test.Encoding
             data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes2);
             AccessList accessList = new(data,
-                new Queue<object>(new List<object> {TestItem.AddressA, (UInt256)1, TestItem.AddressB, (UInt256)2}));
+                new Queue<object>(new List<object> { TestItem.AddressA, (UInt256)1, TestItem.AddressB, (UInt256)2 }));
             yield return ("with order queue", accessList);
-            
+
             indexes = new HashSet<UInt256>();
             indexes2 = new HashSet<UInt256>();
             data = new Dictionary<Address, IReadOnlySet<UInt256>>();
@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Encoding
             data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes2);
             accessList = new AccessList(data,
-                new Queue<object>(new List<object> {TestItem.AddressA, (UInt256)1, (UInt256)1, TestItem.AddressB, (UInt256)2, TestItem.AddressB, (UInt256)2}));
+                new Queue<object>(new List<object> { TestItem.AddressA, (UInt256)1, (UInt256)1, TestItem.AddressB, (UInt256)2, TestItem.AddressB, (UInt256)2 }));
             yield return ("with order queue and duplicates", accessList);
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test.Encoding
                 decoded!.Data.Should().BeEquivalentTo(testCase.AccessList.Data, testCase.TestName);
             }
         }
-        
+
         [Test]
         public void Get_length_returns_1_for_null()
         {

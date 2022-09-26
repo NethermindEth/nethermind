@@ -21,11 +21,11 @@ namespace Nethermind.Cli.Modules
     public class CliFunctionAttribute : Attribute
     {
         public string ObjectName { get; }
-        
+
         public string FunctionName { get; }
-        
+
         public string? Description { get; set; }
-        
+
         public string? ResponseDescription { get; set; }
 
         public string? ExampleResponse { get; set; }

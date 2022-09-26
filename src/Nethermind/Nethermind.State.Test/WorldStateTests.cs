@@ -61,13 +61,13 @@ namespace Nethermind.Store.Test
 
             stateProvider.TakeSnapshot().Returns(1);
             storageProvider.TakeSnapshot().Returns(new Snapshot.Storage(2, 3));
-            
+
             Snapshot snapshot = worldState.TakeSnapshot();
             snapshot.StateSnapshot.Should().Be(1);
             snapshot.StorageSnapshot.PersistentStorageSnapshot.Should().Be(2);
             snapshot.StorageSnapshot.TransientStorageSnapshot.Should().Be(3);
         }
-        
+
         [Test]
         public void When_taking_a_snapshot_can_specify_transaction_boundary()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test
             _ = worldState.TakeSnapshot(true);
             storageProvider.Received().TakeSnapshot(true);
         }
-        
+
         [Test]
         public void Can_restore_snapshot()
         {

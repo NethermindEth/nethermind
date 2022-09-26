@@ -52,6 +52,6 @@ namespace Nethermind.Peering.Mothra
             int peerLength, byte* dataPtr, int dataLength);
 
         [DllImport(DllName, EntryPoint = "libp2p_start", CallingConvention = CallingConvention.Cdecl)]
-        public static extern unsafe void Start([In] [Out] string[] args, int length);
+        public static extern unsafe void Start([In][Out] string[] args, int length);
     }
 }
