@@ -21,10 +21,13 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
@@ -101,6 +104,118 @@ public class SnapServer
         }
 
         return response.ToArray();
+    }
+
+    public (PathWithNode[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
+    {
+        // TODO: use the ITreeVisitor interface instead
+        (PathWithNode[]? nodes, long _, bool _) = GetNodesFromTrieBruteForce(rootHash, startingHash, limitHash, byteLimit);
+        StateTree tree = new(_store, _logManager);
+
+        // TODO: add error handling when proof is null
+        AccountProofCollector accountProofCollector = new(nodes[0].Path);
+        tree.Accept(accountProofCollector, rootHash);
+        byte[][] firstProof = accountProofCollector.BuildResult().Proof;
+
+        // TODO: add error handling when proof is null
+        accountProofCollector = new AccountProofCollector(nodes[^1].Path);
+        tree.Accept(accountProofCollector, rootHash);
+        byte[][] lastProof = accountProofCollector.BuildResult().Proof;
+
+        List<byte[]> proofs = new();
+        proofs.AddRange(firstProof);
+        proofs.AddRange(lastProof);
+        // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
+        // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
+        // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
+        return (nodes, proofs.ToArray());
+    }
+
+    public (PathWithNode[], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak startingHash, Keccak limitHash, long byteLimit)
+    {
+        long responseSize = 0;
+        StateTree tree = new(_store, _logManager);
+        List <PathWithNode> responseNodes = new();
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            if (responseSize > byteLimit)
+            {
+                break;
+            }
+            var storageRoot = accounts[i].Account.StorageRoot;
+
+            // TODO: this is a very very very very bad idea - find a way to know which nodes are present easily
+            (PathWithNode[]? nodes, long innerResponseSize, bool stopped) = GetNodesFromTrieBruteForce(storageRoot, startingHash, limitHash, byteLimit - responseSize);
+            responseNodes.AddRange(nodes);
+            if (stopped || startingHash != Keccak.Zero)
+            {
+                // generate proof
+                // TODO: add error handling when proof is null
+                AccountProofCollector accountProofCollector = new(nodes[0].Path);
+                tree.Accept(accountProofCollector, storageRoot);
+                byte[][]? firstProof = accountProofCollector.BuildResult().Proof;
+
+                // TODO: add error handling when proof is null
+                accountProofCollector = new AccountProofCollector(nodes[^1].Path);
+                tree.Accept(accountProofCollector, storageRoot);
+                byte[][]? lastProof = accountProofCollector.BuildResult().Proof;
+
+                List<byte[]> proofs = new();
+                proofs.AddRange(firstProof);
+                proofs.AddRange(lastProof);
+                // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
+                // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
+                // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
+                return (responseNodes.ToArray(), proofs.ToArray());
+            }
+            responseSize += innerResponseSize;
+        }
+        return (responseNodes.ToArray(), null);
+    }
+
+
+    // this is a very bad idea
+    private (PathWithNode[], long, bool) GetNodesFromTrieBruteForce(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
+    {
+        // TODO: incase of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
+
+        long responseSize = 0;
+        bool stopped = false;
+        PatriciaTree tree = new(_store, _logManager);
+        List<PathWithNode> nodes = new ();
+
+        UInt256 startHashNum = new(startingHash.Bytes, true);
+        UInt256 endHashNum = new(limitHash.Bytes, true);
+        UInt256 itr = startHashNum;
+        Span<byte> key = itr.ToBigEndian();
+
+        while (true)
+        {
+            if (itr > endHashNum)
+            {
+                break;
+            }
+
+            if (responseSize > byteLimit)
+            {
+                stopped = true;
+                break;
+            }
+
+            itr.ToBigEndian(key);
+
+            var blob = tree.GetNode(key, rootHash);
+
+            if (blob is not null)
+            {
+                PathWithNode result = new(key.ToArray(), blob);
+                nodes.Add(result);
+                responseSize += 32 + blob.Length;
+            }
+            itr++;
+        }
+
+        return (nodes.ToArray(), responseSize, stopped);
     }
 
 }
