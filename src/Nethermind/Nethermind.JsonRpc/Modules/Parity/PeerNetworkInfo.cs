@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         [JsonProperty("localAddress", Order = 0)]
         public string LocalAddress { get; set; }
-        
+
         [JsonProperty("remoteAddress", Order = 1)]
         public string RemoteAddress { get; set; }
     }

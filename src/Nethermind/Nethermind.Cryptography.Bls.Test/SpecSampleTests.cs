@@ -25,8 +25,8 @@ namespace Nethermind.Cryptography.Bls.Test
     public class SpecSampleTests
     {
         // NOTE: This is not every test from the spec, just a sample of them for initial checking
-     
-                [DataTestMethod]
+
+        [DataTestMethod]
         [DynamicData(nameof(SignTestData), DynamicDataSourceType.Method)]
         public void Sign(string testName, byte[] privateKey, byte[] messageData, byte[] expected)
         {

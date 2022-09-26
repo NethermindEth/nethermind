@@ -67,7 +67,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            
+
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA");
@@ -126,7 +126,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            
+
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deployBytecode(
@@ -154,7 +154,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            
+
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
@@ -290,7 +290,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getCommit(receipt.ContractAddress, (UInt256) uint.MaxValue + 1);
+            var result = await baselineModule.baseline_getCommit(receipt.ContractAddress, (UInt256)uint.MaxValue + 1);
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -338,7 +338,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] {0, 1});
+            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] { 0, 1 });
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -363,7 +363,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] {0, 1});
+            var result = await baselineModule.baseline_getCommits(receipt.ContractAddress, new UInt256[] { 0, 1 });
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -387,7 +387,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             var result = await baselineModule.baseline_getCommits(
-                receipt.ContractAddress, new UInt256[] {0, (UInt256) uint.MaxValue + 1});
+                receipt.ContractAddress, new UInt256[] { 0, (UInt256)uint.MaxValue + 1 });
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -470,8 +470,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
 
-            
-            stateReader.GetCode(Arg.Any<Keccak>(), TestItem.AddressC).Returns(new byte[] {255});
+
+            stateReader.GetCode(Arg.Any<Keccak>(), TestItem.AddressC).Returns(new byte[] { 255 });
             var result = await baselineModule.baseline_track(TestItem.AddressC);
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -497,7 +497,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                     random.NextBytes(bytes);
                     Address address = new(bytes);
 
-                    stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(new byte[] {255});
+                    stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(new byte[] { 255 });
                     var result = baselineModule.baseline_track(address).Result; // safe to invoke Result here
                     result.Result.ResultType.Should().Be(ResultType.Success);
                 }
@@ -522,17 +522,17 @@ namespace Nethermind.Baseline.Test.JsonRpc
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             Address treeAddress = await Deploy(testRpc, baselineModule);
-            
-            var result =  await baselineModule.baseline_track(treeAddress);
+
+            var result = await baselineModule.baseline_track(treeAddress);
             result.Result.ResultType.Should().Be(ResultType.Success);
-            
+
             result = await baselineModule.baseline_track(treeAddress);
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.Result.Error.Should().NotBeNull();
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
         }
-        
+
         [Test]
         public async Task track_untrack_track_works()
         {
@@ -541,18 +541,18 @@ namespace Nethermind.Baseline.Test.JsonRpc
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             Address treeAddress = await Deploy(testRpc, baselineModule);
-            
+
             var result = await baselineModule.baseline_track(treeAddress);
             result.Result.ResultType.Should().Be(ResultType.Success);
             result = await baselineModule.baseline_untrack(treeAddress);
             result.Result.ResultType.Should().Be(ResultType.Success);
             result = await baselineModule.baseline_track(treeAddress);
             result.Result.ResultType.Should().Be(ResultType.Success);
-            
+
             var countResult = await baselineModule.baseline_getCount(treeAddress);
             countResult.Result.ResultType.Should().Be(ResultType.Success);
         }
-        
+
         [Test]
         public async Task track_untrack_will_cause_tracking_checks_to_start_failing()
         {
@@ -561,17 +561,17 @@ namespace Nethermind.Baseline.Test.JsonRpc
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             Address treeAddress = await Deploy(testRpc, baselineModule);
-            
+
             var result = await baselineModule.baseline_track(treeAddress);
             result.Result.ResultType.Should().Be(ResultType.Success);
             result = await baselineModule.baseline_untrack(treeAddress);
             var keccakResult = await baselineModule.baseline_insertCommit(TestItem.Addresses[0], TestItem.AddressC, Keccak.Zero);
             keccakResult.Result.ResultType.Should().Be(ResultType.Failure);
-            
+
             keccakResult = await baselineModule.baseline_insertCommits(TestItem.Addresses[0], TestItem.AddressC, Keccak.Zero);
             keccakResult.Result.ResultType.Should().Be(ResultType.Failure);
         }
-        
+
         [Test]
         public async Task untrack_fails_when_not_tracked()
         {
@@ -610,12 +610,12 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             for (int i = 0; i < trackedCount; i++)
             {
-                stateReader.GetCode(null, null).ReturnsForAnyArgs(new byte[] {255});
+                stateReader.GetCode(null, null).ReturnsForAnyArgs(new byte[] { 255 });
                 await baselineModule.baseline_track(TestItem.Addresses[i]);
             }
 
             var result = (await baselineModule.baseline_getTracked());
-            result.Data.Length.Should().Be((int) trackedCount);
+            result.Data.Length.Should().Be((int)trackedCount);
         }
 
         [TestCase(0u)]
@@ -644,7 +644,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             for (int i = 0; i < trackedCount; i++)
             {
-                stateReader.GetCode(null, null).ReturnsForAnyArgs(new byte[] {255});
+                stateReader.GetCode(null, null).ReturnsForAnyArgs(new byte[] { 255 });
                 await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
             }
 
@@ -662,7 +662,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 new DisposableStack());
 
             var resultRestored = await restored.baseline_getTracked();
-            resultRestored.Data.Length.Should().Be((int) trackedCount);
+            resultRestored.Data.Length.Should().Be((int)trackedCount);
         }
 
         [Test]
@@ -738,10 +738,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
             {
                 throw new InvalidOperationException($"Receipt is null in task {taskId}");
             }
-            
+
             Address contract = receipt.ContractAddress;
             Console.WriteLine($"Task {taskId} operating on contract {contract}");
-            
+
             await baselineModule.baseline_track(contract);
 
             for (int i = 0; i < 16; i++)
@@ -765,11 +765,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
                     Console.WriteLine($"Verified at {contract}, task {taskId}, iteration {i}, root {root}");
                 }
             }
-            
+
             Console.WriteLine($"Finishing task {taskId}");
         }
-            
-            
+
+
         [Test, Ignore("Not running well on CI")]
         public async Task Parallel_calls()
         {
@@ -777,11 +777,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
             using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(
                 SealEngineType.NethDev).Build(spec, 100000.Ether());
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
-;            
+            ;
             for (int i = 0; i < 255; i++)
             {
                 testRpc.TestWallet.UnlockAccount(TestItem.Addresses[i], new SecureString());
-                await testRpc.AddFunds(TestItem.Addresses[i], 100.Ether());    
+                await testRpc.AddFunds(TestItem.Addresses[i], 100.Ether());
             }
 
             // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -805,7 +805,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                     }
                 }
             });
-            
+
             await Task.WhenAny(Task.Delay(30000), Task.WhenAll(tasks)).ContinueWith(t =>
             {
                 foreach (Task task in tasks)
@@ -833,7 +833,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 testRpc.BlockProcessor,
                 new DisposableStack());
         }
-        
+
         private class BaseLineRpcBlockchain : TestRpcBlockchain
         {
             protected override async Task AddBlocksOnStart()

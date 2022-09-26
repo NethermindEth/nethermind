@@ -23,16 +23,16 @@ namespace Nethermind.Synchronization.Blocks
             Options = options;
             NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToBeIgnored;
         }
-        
+
         public BlocksRequest(DownloaderOptions options)
         {
             Options = options;
         }
-        
+
         public BlocksRequest()
         {
         }
-        
+
         public int? NumberOfLatestBlocksToBeIgnored { get; }
         public DownloaderOptions Options { get; }
 

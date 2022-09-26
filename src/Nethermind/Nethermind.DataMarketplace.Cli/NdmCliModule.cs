@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.CLi
             tx.Value = 0;
             tx.Data = Bytes.FromHexString(ContractData.GetInitCode(new Address(address)));
             tx.Gas = 2000000;
-            tx.GasPrice = (UInt256) (Engine.JintEngine.GetValue("gasPrice").AsNumber());
+            tx.GasPrice = (UInt256)(Engine.JintEngine.GetValue("gasPrice").AsNumber());
             tx.From = new Address(address);
 
             Keccak txHash = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.CLi
             {
                 return null;
             }
-            
+
             JsValue receipt = null;
             while (receipt == JsValue.Null)
             {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.CLi
 
             return receipt;
         }
-        
+
         [CliFunction("ndm", "recognize")]
         public string Recognize(string data)
         {
@@ -65,27 +65,27 @@ namespace Nethermind.DataMarketplace.CLi
             {
                 return "Deposit";
             }
-            
+
             if (data.StartsWith(ContractData.ClaimPaymentAbiSig.Address.ToHexString()))
             {
                 return "ClaimPayment";
             }
-            
+
             if (data.StartsWith(ContractData.ClaimRefundSig.Address.ToHexString()))
             {
                 return "ClaimRefund";
             }
-            
+
             if (data.StartsWith(ContractData.ClaimEarlyRefundSig.Address.ToHexString()))
             {
                 return "ClaimEarlyRefund";
             }
-            
+
             if (data.StartsWith(ContractData.VerifyDepositAbiSig.Address.ToHexString()))
             {
                 return "VerifyDeposit";
             }
-            
+
             if (data.StartsWith(ContractData.DepositBalanceAbiSig.Address.ToHexString()))
             {
                 return "DepositBalance";
@@ -93,7 +93,7 @@ namespace Nethermind.DataMarketplace.CLi
 
             return data;
         }
-        
+
         public NdmCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }

@@ -49,13 +49,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Goerli (shadow fork)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c goerli_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Hacknet v2": {
       "commandName": "Project",
       "commandLineArgs": "-c hacknet_v2 -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
@@ -119,13 +112,6 @@
     "Mainnet (archive)": {
       "commandName": "Project",
       "commandLineArgs": "-c mainnet_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Mainnet (shadow fork)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c mainnet_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             _bloomDb = new MemDb();
             _fileStoreFactory = new InMemoryDictionaryFileStoreFactory();
         }
-        
+
         [TestCase(0, 0)]
         [TestCase(1, 1)]
         [TestCase(0, 10)]
@@ -77,9 +77,9 @@ namespace Nethermind.Blockchain.Test.Bloom
 
             for (long i = 1; i < 11; i++)
             {
-                storage.Store(i, Core.Bloom.Empty);    
+                storage.Store(i, Core.Bloom.Empty);
             }
-            
+
             return storage.ContainsRange(from, to);
         }
 
@@ -87,27 +87,27 @@ namespace Nethermind.Blockchain.Test.Bloom
         {
             get
             {
-                IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int) expectedFound).Select(i => (long) i);
-                var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier*LevelMultiplier + LevelMultiplier*LevelMultiplier*LevelMultiplier;
-                
-                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
-                var count = bucketItems*Buckets;
+                IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(i => (long)i);
+                var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
+
+                var bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
+                var count = bucketItems * Buckets;
                 var maxIndex = count - 1;
                 yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
                 yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
                 yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
-                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier), searchesPerBucket - 1); // skips highest level
-                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
-                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
+                yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1); // skips highest level
+                yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
+                yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
             }
         }
 
         [TestCaseSource(nameof(GetBloomsTestCases))]
         public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<long> expectedBlocks, long expectedBloomsChecked)
         {
-            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}});
-            long bloomsChecked = 0; 
-            
+            var storage = CreateBloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } });
+            long bloomsChecked = 0;
+
             var bloomEnumeration = storage.GetBlooms(from, to);
             IList<long> ranges = new List<long>();
             foreach (Core.Bloom unused in bloomEnumeration)
@@ -122,21 +122,21 @@ namespace Nethermind.Blockchain.Test.Bloom
             ranges.Should().BeEquivalentTo(expectedBlocks);
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
-        
-        [TestCase(1, 10, new long[] {4}, new[] {4})]
-        [TestCase(0, 4, new long[] {4}, new[] {4})]
-        [TestCase(1, 10, new long[] {1, 4, 6, 8}, new[] {4})]
-        [TestCase(1, 10, new long[] {4, 6, 8}, new[] {4, 4})]
-        [TestCase(1, 10, new long[] {4, 8, 16, 32}, new[] {4, 4})]
-        [TestCase(1, 48, new long[] {4, 8, 16, 32}, new[] {4, 4})]
-        [TestCase(5, 60, new long[] {4, 8, 49}, new[] {8, 3})]
-        [TestCase(1, 120, new long[] {4, 8, 64, 65}, new[] {4, 4, 4})]
-        [TestCase(0, 120, new long[] {0, 1, 2, 3, 5, 7, 11, 120}, new[] {9, 3})]
+
+        [TestCase(1, 10, new long[] { 4 }, new[] { 4 })]
+        [TestCase(0, 4, new long[] { 4 }, new[] { 4 })]
+        [TestCase(1, 10, new long[] { 1, 4, 6, 8 }, new[] { 4 })]
+        [TestCase(1, 10, new long[] { 4, 6, 8 }, new[] { 4, 4 })]
+        [TestCase(1, 10, new long[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
+        [TestCase(1, 48, new long[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
+        [TestCase(5, 60, new long[] { 4, 8, 49 }, new[] { 8, 3 })]
+        [TestCase(1, 120, new long[] { 4, 8, 64, 65 }, new[] { 4, 4, 4 })]
+        [TestCase(0, 120, new long[] { 0, 1, 2, 3, 5, 7, 11, 120 }, new[] { 9, 3 })]
         public void Can_find_bloom_with_fromBlock_offset(long from, long to, long[] blocksSet, int[] levels)
         {
-            BloomStorage storage = CreateBloomStorage(new BloomConfig {IndexLevelBucketSizes = levels});
+            BloomStorage storage = CreateBloomStorage(new BloomConfig { IndexLevelBucketSizes = levels });
             Core.Bloom bloom = new();
-            byte[] bytes = {1, 2, 3};
+            byte[] bytes = { 1, 2, 3 };
             bloom.Set(bytes);
             foreach (long blockNumber in blocksSet)
             {
@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain.Test.Bloom
                 }
                 storage.Store(blockNumber, bloom);
             }
-            
+
             IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
             IList<long> foundBlocks = new List<long>(blocksSet.Length);
             foreach (Core.Bloom b in bloomEnumeration)
@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         {
             var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             var bucketItems = storage.MaxBucketSize * Buckets;
-            
+
             for (long i = 0; i < bucketItems; i++)
             {
                 storage.Store(i, Core.Bloom.Empty);
@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [Test]
         public void Can_safely_insert_concurrently()
         {
-            _config.IndexLevelBucketSizes = new[]{byte.MaxValue + 1};
+            _config.IndexLevelBucketSizes = new[] { byte.MaxValue + 1 };
             var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
             Core.Bloom expectedBloom = new();
             for (int i = 0; i <= byte.MaxValue; i++)

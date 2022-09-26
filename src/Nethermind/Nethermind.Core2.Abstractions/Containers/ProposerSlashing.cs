@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Core2.Containers
         {
             return $"P:{ProposerIndex} for B1:({SignedHeader1})";
         }
-        
+
         public bool Equals(ProposerSlashing other)
         {
             return ProposerIndex == other.ProposerIndex &&

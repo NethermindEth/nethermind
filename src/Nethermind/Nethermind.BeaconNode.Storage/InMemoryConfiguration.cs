@@ -19,7 +19,7 @@ namespace Nethermind.BeaconNode.Storage
     public class InMemoryConfiguration
     {
         public bool LogBlockJson { get; set; }
-        
+
         public bool LogBlockStateJson { get; set; }
     }
 }

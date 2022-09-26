@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,13 +38,13 @@ namespace Nethermind.Blockchain.Test.Producers
                     _eip1559FeeCollector = address;
                     return this;
                 }
-                
+
                 public ScenarioBuilder AssertNewBlockFeeCollected(UInt256 expectedFeeCollected, params Transaction[] transactions)
                 {
                     _antecedent = AssertNewBlockFeeCollectedAsync(expectedFeeCollected, transactions);
                     return this;
                 }
-                
+
                 private async Task<ScenarioBuilder> AssertNewBlockFeeCollectedAsync(UInt256 expectedFeeCollected, params Transaction[] transactions)
                 {
                     await ExecuteAntecedentIfNeeded();
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 }
             }
         }
-        
+
         [Test]
         public async Task FeeCollector_should_collect_burned_fees_when_eip1559_and_fee_collector_are_set()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockFeeCollected(4500000.GWei());
             await scenario.Finish();
         }
-        
+
         [Test]
         public async Task FeeCollector_should_not_collect_burned_fees_when_eip1559_is_not_set()
         {
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockFeeCollected(0);
             await scenario.Finish();
         }
-        
+
         [Test]
         public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
         {

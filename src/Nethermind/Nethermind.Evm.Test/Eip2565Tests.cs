@@ -34,16 +34,16 @@ namespace Nethermind.Evm.Test
         public void Simple_routine([Random(int.MinValue, int.MaxValue, 100)] int seed)
         {
             Random random = new(seed);
-            byte[] data = random.NextBytes(3*64);
+            byte[] data = random.NextBytes(3 * 64);
             string randomInput = string.Format("{0}{0}{0}{1}", Length64, data.ToHexString());
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
-            
+
             (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance);
 #pragma warning disable 618
             (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
 #pragma warning restore 618
-            
+
             Assert.AreEqual(gmpPair.Item1.ToArray(), bigIntPair.Item1.ToArray());
         }
 

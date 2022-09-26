@@ -42,8 +42,8 @@ namespace Nethermind.Ethash.Test
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
         }
-        
-        
+
+
         [Test]
         public void CalculateOlympic_should_returns_expected_results()
         {
@@ -53,7 +53,7 @@ namespace Nethermind.Ethash.Test
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
         }
-        
+
         [Test]
         public void CalculateBerlin_should_returns_expected_results()
         {
@@ -63,7 +63,7 @@ namespace Nethermind.Ethash.Test
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
         }
-        
+
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
@@ -73,7 +73,7 @@ namespace Nethermind.Ethash.Test
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 Berlin.Instance, London.Instance);
         }
-        
+
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
@@ -83,7 +83,7 @@ namespace Nethermind.Ethash.Test
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
         }
-        
+
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
@@ -104,12 +104,12 @@ namespace Nethermind.Ethash.Test
             firstHardForkSpecProvider.GetSpec(Arg.Any<long>()).Returns(firstHardfork);
             EthashDifficultyCalculator firstHardforkDifficultyCalculator = new(firstHardForkSpecProvider);
             UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
-            
+
             ISpecProvider secondHardforkSpecProvider = Substitute.For<ISpecProvider>();
             secondHardforkSpecProvider.GetSpec(Arg.Any<long>()).Returns(secondHardfork);
             EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
             UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
-            
+
             Assert.AreNotEqual(firstHardforkResult, secondHardforkResult);
         }
     }

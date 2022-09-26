@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,10 +32,10 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
         _blockProductionTrigger = blockProductionTrigger;
         _timeout = timeout;
     }
-    
+
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock, 
-        BlockHeader parentHeader, 
+        Block currentBestBlock,
+        BlockHeader parentHeader,
         PayloadAttributes payloadAttributes) =>
         new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes);
 }

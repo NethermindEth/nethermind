@@ -26,14 +26,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(DataAssetStateChangedMessage message)
             => Rlp.Encode(Rlp.Encode(message.DataAssetId),
-                Rlp.Encode((int) message.State)).Bytes;
+                Rlp.Encode((int)message.State)).Bytes;
 
         public DataAssetStateChangedMessage Deserialize(byte[] bytes)
         {
             RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             Keccak? dataAssetId = context.DecodeKeccak();
-            DataAssetState state = (DataAssetState) context.DecodeInt();
+            DataAssetState state = (DataAssetState)context.DecodeInt();
 
             return new DataAssetStateChangedMessage(dataAssetId, state);
         }

@@ -94,22 +94,22 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public Address? ProviderAddress { get; set; }
         public IConsumerService ConsumerService { get; set; }
         public IAccountService AccountService { get; set; }
-        public IRlpDecoder<DataAsset>? DataAssetRlpDecoder { get; set;}
-        public IDepositService? DepositService { get; set;}
-        public GasPriceService? GasPriceService { get; set;}
-        public TransactionService? TransactionService { get; set;}
-        public INdmNotifier? NdmNotifier { get; set;}
+        public IRlpDecoder<DataAsset>? DataAssetRlpDecoder { get; set; }
+        public IDepositService? DepositService { get; set; }
+        public GasPriceService? GasPriceService { get; set; }
+        public TransactionService? TransactionService { get; set; }
+        public INdmNotifier? NdmNotifier { get; set; }
         public INdmAccountUpdater NdmAccountUpdater { get; set; }
-        public INdmDataPublisher? NdmDataPublisher { get; set;}
-        public IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set;}
-        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set;}
-        public INdmBlockchainBridge? BlockchainBridge { get; set;}
+        public INdmDataPublisher? NdmDataPublisher { get; set; }
+        public IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set; }
+        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
+        public INdmBlockchainBridge? BlockchainBridge { get; set; }
         public IHttpClient? HttpClient { get; set; }
         public IMongoProvider? MongoProvider { get; set; }
         public IDbProvider? RocksProvider { get; set; }
         public IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; }
         public IJsonRpcClientProxy? JsonRpcClientProxy { get; set; }
-        
+
         public INdmConfig? NdmConfig { get; set; } // strange way of overriding NDM config
         public string BaseDbPath { get; set; } // strange way of adding NDM
 
@@ -193,7 +193,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.RocksDbFactory = value;
         }
 
-        public IMemDbFactory? MemDbFactory 
+        public IMemDbFactory? MemDbFactory
         {
             get => _nethermindApi.MemDbFactory;
             set => _nethermindApi.MemDbFactory = value;
@@ -234,13 +234,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.FilterStore;
             set => _nethermindApi.FilterStore = value;
         }
-        
+
         public IFilterManager FilterManager
         {
             get => _nethermindApi.FilterManager;
             set => _nethermindApi.FilterManager = value;
         }
-        
+
         public IGrpcServer? GrpcServer
         {
             get => _nethermindApi.GrpcServer;
@@ -264,8 +264,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.IpResolver;
             set => _nethermindApi.IpResolver = value;
         }
-        
-        public IJsonSerializer EthereumJsonSerializer         
+
+        public IJsonSerializer EthereumJsonSerializer
         {
             get => _nethermindApi.EthereumJsonSerializer;
             set => _nethermindApi.EthereumJsonSerializer = value;
@@ -279,23 +279,23 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
         public ILogFinder LogFinder
         {
-            get => _nethermindApi.LogFinder; 
+            get => _nethermindApi.LogFinder;
             set => _nethermindApi.LogFinder = value;
         }
 
 
-        public ILogManager LogManager         
+        public ILogManager LogManager
         {
             get => _nethermindApi.LogManager;
             set => _nethermindApi.LogManager = value;
         }
-        
+
         public IKeyValueStoreWithBatching? MainStateDbWithCache
         {
             get => _nethermindApi.MainStateDbWithCache;
             set => _nethermindApi.MainStateDbWithCache = value;
         }
-        
+
         public IMessageSerializationService MessageSerializationService => _nethermindApi.MessageSerializationService;
         public IGossipPolicy GossipPolicy
         {
@@ -393,7 +393,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
-        public string SealEngineType              
+        public string SealEngineType
         {
             get => _nethermindApi.SealEngineType;
             set => _nethermindApi.SealEngineType = value;
@@ -441,7 +441,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.StateProvider = value;
         }
 
-        public IReadOnlyStateProvider? ChainHeadStateProvider         
+        public IReadOnlyStateProvider? ChainHeadStateProvider
         {
             get => _nethermindApi.ChainHeadStateProvider;
             set => _nethermindApi.ChainHeadStateProvider = value;
@@ -479,13 +479,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.TransactionProcessor;
             set => _nethermindApi.TransactionProcessor = value;
         }
-        
+
         public ITrieStore? TrieStore
         {
             get => _nethermindApi.TrieStore;
             set => _nethermindApi.TrieStore = value;
         }
-        
+
         public IReadOnlyTrieStore? ReadOnlyTrieStore
         {
             get => _nethermindApi.ReadOnlyTrieStore;
@@ -516,7 +516,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.WitnessRepository = value;
         }
 
-        public IHealthHintService? HealthHintService        
+        public IHealthHintService? HealthHintService
         {
             get => _nethermindApi.HealthHintService;
             set => _nethermindApi.HealthHintService = value;
@@ -524,7 +524,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
         public TxValidator? TxValidator
         {
-            get => _nethermindApi.TxValidator; 
+            get => _nethermindApi.TxValidator;
             set => _nethermindApi.TxValidator = value;
         }
 
@@ -533,13 +533,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.FinalizationManager;
             set => _nethermindApi.FinalizationManager = value;
         }
-        
+
         public IGasLimitCalculator GasLimitCalculator
         {
             get => _nethermindApi.GasLimitCalculator;
             set => _nethermindApi.GasLimitCalculator = value;
         }
-        
+
         public IBlockProducerEnvFactory BlockProducerEnvFactory
         {
             get => _nethermindApi.BlockProducerEnvFactory;
@@ -551,7 +551,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.GasPriceOracle;
             set => _nethermindApi.GasPriceOracle = value;
         }
-        public IEthSyncingInfo? EthSyncingInfo        
+        public IEthSyncingInfo? EthSyncingInfo
         {
             get => _nethermindApi.EthSyncingInfo;
             set => _nethermindApi.EthSyncingInfo = value;
@@ -598,9 +598,9 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.OriginalSignerKey;
             set => _nethermindApi.OriginalSignerKey = value;
         }
-        
+
         public IList<IPublisher> Publishers => _nethermindApi.Publishers;
-        
+
         public IReadOnlyList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
 
         public IBlockchainBridge CreateBlockchainBridge()

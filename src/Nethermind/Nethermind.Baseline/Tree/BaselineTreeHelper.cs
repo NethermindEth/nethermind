@@ -46,9 +46,9 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode[] GetHistoricalLeaves(BaselineTree tree, uint[] leafIndexes, long blockNumber)
         {
-            if(_logger.IsWarn) _logger.Warn(
+            if (_logger.IsWarn) _logger.Warn(
                 $"Retrieving historical leaves of {tree} with index {string.Join(", ", leafIndexes)} for block {blockNumber}");
-            
+
             var historicalCount = tree.GetBlockCount(blockNumber);
             BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
 
@@ -70,8 +70,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTreeNode GetHistoricalLeaf(BaselineTree tree, uint leafIndex, long blockNumber)
         {
-            if(_logger.IsWarn) _logger.Warn($"Retrieving historical leaf of {tree} with index {leafIndex} for block {blockNumber}");
-            
+            if (_logger.IsWarn) _logger.Warn($"Retrieving historical leaf of {tree} with index {leafIndex} for block {blockNumber}");
+
             var historicalCount = tree.GetBlockCount(blockNumber);
             if (historicalCount <= leafIndex)
             {
@@ -83,20 +83,20 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree CreateHistoricalTree(Address address, long blockNumber)
         {
-            if(_logger.IsWarn) _logger.Warn($"Building historical tree at {address} for block {blockNumber}");
+            if (_logger.IsWarn) _logger.Warn($"Building historical tree at {address} for block {blockNumber}");
             var readOnlyMain = new ReadOnlyDb(_mainDb, true);
             var readOnlyMetadata = new ReadOnlyDb(_metadataBaselineDb, true);
             var historicalTree = new ShaBaselineTree(readOnlyMain, readOnlyMetadata, address.Bytes, BaselineModule.TruncationLength, _logger);
             var endIndex = historicalTree.Count;
             var historicalCount = historicalTree.GetBlockCount(blockNumber);
-            if(_logger.IsWarn) _logger.Warn($"Historical count of {historicalTree} for block {blockNumber} is {historicalCount}");
+            if (_logger.IsWarn) _logger.Warn($"Historical count of {historicalTree} for block {blockNumber} is {historicalCount}");
 
             if (endIndex - historicalCount > 0)
             {
-                if(_logger.IsWarn) _logger.Warn($"Deleting {endIndex - historicalCount} from {historicalTree}");
+                if (_logger.IsWarn) _logger.Warn($"Deleting {endIndex - historicalCount} from {historicalTree}");
                 historicalTree.Delete(endIndex - historicalCount, false);
                 historicalTree.CalculateHashes(historicalCount, endIndex);
-                if(_logger.IsWarn) _logger.Warn($"After deleting from {historicalTree} root is {historicalTree.Root}");
+                if (_logger.IsWarn) _logger.Warn($"After deleting from {historicalTree} root is {historicalTree.Root}");
             }
 
             return historicalTree;
@@ -104,8 +104,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree RebuildEntireTree(Address treeAddress, Keccak blockHash)
         {
-            if(_logger.IsWarn) _logger.Warn($"Rebuilding entire tree from {treeAddress} at {blockHash}");
-            
+            if (_logger.IsWarn) _logger.Warn($"Rebuilding entire tree from {treeAddress} at {blockHash}");
+
             BaselineTree baselineTree = new ShaBaselineTree(_mainDb, _metadataBaselineDb, treeAddress.Bytes, BaselineModule.TruncationLength, _logger);
             var trie = BuildTree(baselineTree, treeAddress, new BlockParameter(0L), new BlockParameter(blockHash));
             return trie;
@@ -113,8 +113,8 @@ namespace Nethermind.Baseline.Tree
 
         public BaselineTree BuildTree(BaselineTree baselineTree, Address treeAddress, BlockParameter blockFrom, BlockParameter blockTo)
         {
-            if(_logger.IsWarn) _logger.Warn($"Build {baselineTree} from {blockFrom} to {blockTo}");
-            
+            if (_logger.IsWarn) _logger.Warn($"Build {baselineTree} from {blockFrom} to {blockTo}");
+
             var initCount = baselineTree.Count;
             LogFilter insertLeavesFilter = new LogFilter(
                 0,
@@ -156,8 +156,8 @@ namespace Nethermind.Baseline.Tree
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    
-                    if(_logger.IsWarn) _logger.Warn($"Inserting leaf into {baselineTree} in block {currentBlockNumber}");
+
+                    if (_logger.IsWarn) _logger.Warn($"Inserting leaf into {baselineTree} in block {currentBlockNumber}");
                     baselineTree.Insert(leafHash, false);
                     ++count;
                 }
@@ -166,7 +166,7 @@ namespace Nethermind.Baseline.Tree
                     for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                        if(_logger.IsWarn) _logger.Warn($"Inserting leaf {i} into {baselineTree} in block {currentBlockNumber}");
+                        if (_logger.IsWarn) _logger.Warn($"Inserting leaf {i} into {baselineTree} in block {currentBlockNumber}");
                         baselineTree.Insert(leafHash, false);
                         ++count;
                     }

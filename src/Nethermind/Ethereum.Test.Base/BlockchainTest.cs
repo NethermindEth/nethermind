@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -41,8 +41,8 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Keccak? PostStateRoot { get; set; }
-        public bool SealEngineUsed { get; set; }    
-        public string? LoadFailure { get; set; }    
+        public bool SealEngineUsed { get; set; }
+        public string? LoadFailure { get; set; }
 
         public override string? ToString()
         {

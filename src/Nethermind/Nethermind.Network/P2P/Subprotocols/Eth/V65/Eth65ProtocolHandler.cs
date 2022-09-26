@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes.ToArray());
-            
+
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
@@ -125,7 +125,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return new PooledTransactionsMessage(txs);
         }
-        
+
         public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             if (sendFullTx)
@@ -133,7 +133,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 base.SendNewTransactions(txs, true);
                 return;
             }
-            
+
             using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
@@ -143,7 +143,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     SendMessage(hashes);
                     hashes.Clear();
                 }
-                
+
                 if (tx.Hash is not null)
                 {
                     hashes.Add(tx.Hash);
@@ -156,7 +156,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 SendMessage(hashes);
             }
         }
-        
+
         private void SendMessage(IReadOnlyList<Keccak> hashes)
         {
             NewPooledTransactionHashesMessage msg = new(hashes);

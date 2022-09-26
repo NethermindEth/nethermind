@@ -25,10 +25,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         [JsonProperty("version", Order = 0)]
         public byte Version { get; set; }
-        
+
         [JsonProperty("difficulty", Order = 1)]
         public UInt256 Difficulty { get; set; }
-        
+
         [JsonProperty("head", Order = 2)]
         public Keccak HeadHash { get; set; }
     }

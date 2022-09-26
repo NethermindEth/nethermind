@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = 0;
         }
-        
+
         [Test]
         public void before_istanbul()
         {

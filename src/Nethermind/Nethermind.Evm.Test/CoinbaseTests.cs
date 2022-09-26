@@ -27,12 +27,12 @@ namespace Nethermind.Evm.Test
         protected override long BlockNumber => RinkebySpecProvider.SpuriousDragonBlockNumber;
 
         private bool _setAuthor;
-        
+
         protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= new SenderRecipientAndMiner();
             Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
-            if(_setAuthor) block.Header.Author = TestItem.AddressC;
+            if (_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = senderRecipientAndMiner.Recipient;
             return block;
         }
@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Test
         public void When_author_set_coinbase_return_author()
         {
             _setAuthor = true;
-            
+
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.COINBASE)
                 .PushData(0)
@@ -49,15 +49,15 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            
+
             AssertStorage(0, TestItem.AddressC);
         }
-        
+
         [Test]
         public void When_author_no_set_coinbase_return_beneficiary()
         {
             _setAuthor = false;
-            
+
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.COINBASE)
                 .PushData(0)
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            
+
             AssertStorage(0, TestItem.AddressB);
         }
     }

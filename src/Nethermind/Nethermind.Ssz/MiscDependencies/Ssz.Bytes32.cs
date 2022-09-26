@@ -29,7 +29,7 @@ namespace Nethermind.Ssz
         {
             return span.ToArray();
         }
-        
+
         public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span)
         {
             return new Bytes32(span);

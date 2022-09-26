@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,9 +24,9 @@ namespace Nethermind.Precompiles.Benchmark
 {
     public class ModExpBenchmark : PrecompileBenchmarkBase
     {
-        protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile.Instance};
+        protected override IEnumerable<IPrecompile> Precompiles => new[] { ModExpPrecompile.Instance };
         protected override string InputsDirectory => "modexp";
-        
+
         [Benchmark]
         public (ReadOnlyMemory<byte>, bool) BigInt()
         {

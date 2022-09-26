@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,12 +25,12 @@ namespace Nethermind.Cryptography
     {
         //#define BLS_ETH_MODE_OLD 0
         //#define BLS_ETH_MODE_LATEST 1
-        
+
         public const int BLS_ETH_MODE_OLD = 0;
         public const int BLS_ETH_MODE_DRAFT_05 = 1; // 2020/Jan/30
         public const int BLS_ETH_MODE_DRAFT_06 = 2; // 2020/Mar/15
         public const int BLS_ETH_MODE_LATEST = 1;
-        
+
         // 	MCL_BLS12_381 = 5,
         public const int MCL_BLS12_381 = 5;
 
@@ -65,7 +65,7 @@ namespace Nethermind.Cryptography
 
         private const int MCLBN_FR_UNIT_SIZE = 4;
 
-        
+
         /*
             all msg[i] has the same msgSize byte, so msgVec must have (msgSize * n) byte area
             verify prod e(H(pubVec[i], msgToG2[i]) == e(P, sig)
@@ -74,7 +74,7 @@ namespace Nethermind.Cryptography
         //BLS_DLL_API int blsAggregateVerifyNoCheck(const blsSignature *sig, const blsPublicKey *pubVec, const void *msgVec, mclSize msgSize, mclSize n);
         [DllImport(DllName, EntryPoint = "blsAggregateVerifyNoCheck")]
         public static extern unsafe int AggregateVerifyNoCheck(ref BlsSignature sig, BlsPublicKey[] pubVec, byte* msgVec, int msgSize, int n);
-        
+
         // verify(sig, sum of pubVec[0..n], msg)
         //BLS_DLL_API int blsFastAggregateVerify(const blsSignature *sig, const blsPublicKey *pubVec, mclSize n, const void *msg, mclSize msgSize);
         [DllImport(DllName, EntryPoint = "blsFastAggregateVerify")]
@@ -125,11 +125,11 @@ namespace Nethermind.Cryptography
         [DllImport(DllName, EntryPoint = "blsSecretKeySerialize")]
         public static extern unsafe int SecretKeySerialize(byte* buf, int maxBufSize, ref BlsSecretKey sec);
 
-	    // use new eth 2.0 spec
-	    // @return 0 if success
-	    // @remark
-	    // this functions and the spec may change until it is fixed
-	    // the size of message <= 32
+        // use new eth 2.0 spec
+        // @return 0 if success
+        // @remark
+        // this functions and the spec may change until it is fixed
+        // the size of message <= 32
         //#define BLS_ETH_MODE_OLD 0
         //#define BLS_ETH_MODE_LATEST 1
         //        BLS_DLL_API int blsSetETHmode(int mode);
@@ -148,7 +148,7 @@ namespace Nethermind.Cryptography
         // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
         //[DllImport(DllName, EntryPoint = "blsSecretKeySetByCSPRNG")]
         //public static extern int SecretKeySetByCSPRNG(out BlsSecretKey sec);
-        
+
         // calculate the has of m and sign the hash
         // BLS_DLL_API void blsSign(blsSignature* sig, const blsSecretKey* sec, const void* m, mclSize size);
         [DllImport(DllName, EntryPoint = "blsSign")]
@@ -188,7 +188,7 @@ namespace Nethermind.Cryptography
         // BLS_DLL_API int blsVerify(const blsSignature* sig, const blsPublicKey* pub, const void* m, mclSize size);
         [DllImport(DllName, EntryPoint = "blsVerify")]
         public static extern unsafe int Verify(ref BlsSignature sig, ref BlsPublicKey pub, byte* m, int size);
-        
+
         //verify aggSig with pubVec[0, n) and hVec[0, n)
         //e(aggSig, Q) = prod_i e(hVec[i], pubVec[i])
         //return 1 if valid
@@ -196,7 +196,7 @@ namespace Nethermind.Cryptography
         //BLS_DLL_API int blsVerifyAggregatedHashes(const blsSignature* aggSig, const blsPublicKey* pubVec, const void* hVec, size_t sizeofHash, mclSize n);
         [DllImport(DllName, EntryPoint = "blsVerifyAggregatedHashes")]
         public static extern unsafe int VerifyAggregateHashes(ref BlsSignature aggSig, BlsPublicKey[] pubVec, byte* hVec, int sizeofHash, int n);
-        
+
         //pubVec is an array of size n
         //hashWithDomain is an array of size (40 * n)
         //BLS_DLL_API int blsVerifyAggregatedHashWithDomain(const blsSignature *aggSig, const blsPublicKey *pubVec, const unsigned char hashWithDomain[][40], mclSize n);

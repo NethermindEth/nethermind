@@ -72,9 +72,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
             return messageCode == DataRequestResult
                    || messageCode == EthRequested;
         }
-        
+
         private static Dictionary<int, string>? _descriptions;
-        
+
         public static string? GetDescription(int messageCode)
         {
             if (_descriptions == null)

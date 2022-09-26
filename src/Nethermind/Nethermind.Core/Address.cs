@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,14 +30,14 @@ namespace Nethermind.Core
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
-        
+
         public static Address Zero { get; } = new(new byte[ByteLength]);
         public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
-        
+
         public byte[] Bytes { get; }
 
         public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
-        
+
         public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
@@ -158,9 +158,9 @@ namespace Nethermind.Core
                 return true;
             }
 
-            return obj.GetType() == GetType() && Equals((Address) obj);
+            return obj.GetType() == GetType() && Equals((Address)obj);
         }
-        
+
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes.AsSpan(16, 4));
 
         public static bool operator ==(Address? a, Address? b)
@@ -176,37 +176,37 @@ namespace Nethermind.Core
         public static bool operator !=(Address? a, Address? b) => !(a == b);
 
         public AddressStructRef ToStructRef() => new(Bytes);
-        
+
         public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
-        
+
         private class AddressTypeConverter : TypeConverter
         {
-            public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value) => 
+            public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value) =>
                 value is string stringValue ? new Address(stringValue) : base.ConvertFrom(context, culture, value);
 
-            public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType) => 
-                destinationType == typeof(string) && value != null 
-                    ? ((Address)value).ToString() 
+            public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType) =>
+                destinationType == typeof(string) && value != null
+                    ? ((Address)value).ToString()
                     : base.ConvertTo(context, culture, value, destinationType);
 
-            public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) => 
+            public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) =>
                 sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
 
-            public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) => 
+            public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) =>
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
     }
-    
+
     public ref struct AddressStructRef
     {
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
-        
+
         public Span<byte> Bytes { get; }
 
         public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
-        
+
         public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
@@ -286,19 +286,19 @@ namespace Nethermind.Core
                 return false;
             }
 
-            return obj.GetType() == typeof(Address) && Equals((Address) obj);
+            return obj.GetType() == typeof(Address) && Equals((Address)obj);
         }
-        
+
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public static bool operator ==(AddressStructRef a, Address? b) => a.Equals(b);
 
         public static bool operator !=(AddressStructRef a, Address? b) => !(a == b);
-        
+
         public static bool operator ==(Address? a, AddressStructRef b) => b.Equals(a);
 
         public static bool operator !=(Address? a, AddressStructRef b) => !(a == b);
-        
+
         public static bool operator ==(AddressStructRef a, AddressStructRef b) => a.Equals(b);
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);

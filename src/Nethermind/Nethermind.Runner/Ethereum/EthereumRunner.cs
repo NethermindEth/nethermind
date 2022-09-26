@@ -56,9 +56,9 @@ namespace Nethermind.Runner.Ethereum
         {
             yield return typeof(IStep).Assembly;
             yield return GetType().Assembly;
-            IEnumerable<IInitializationPlugin> enabledInitializationPlugins = 
+            IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
                 _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
-            
+
             foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
             {
                 yield return initializationPlugin.GetType().Assembly;

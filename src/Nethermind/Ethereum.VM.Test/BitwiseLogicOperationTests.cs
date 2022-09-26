@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -31,11 +31,11 @@ namespace Ethereum.VM.Test
         {
             Assert.True(RunTest(test).Pass);
         }
-        
-        public static IEnumerable<GeneralStateTest> LoadTests() 
-        { 
+
+        public static IEnumerable<GeneralStateTest> LoadTests()
+        {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmBitwiseLogicOperation");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
         }
     }
 }

@@ -30,12 +30,12 @@ namespace Nethermind.Trie
         {
             _builder.Clear();
         }
-        
+
         public bool ShouldVisit(Keccak nextNode)
         {
             return true;
-        }        
-        
+        }
+
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
@@ -47,15 +47,15 @@ namespace Nethermind.Trie
                 _builder.AppendLine(trieVisitContext.IsStorage ? "STORAGE TREE" : "STATE TREE");
             }
         }
-        
+
         private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
-        
+
         private string GetIndent(int level) => new('+', level * 2);
         private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:x2} ";
-        
+
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetIndent(trieVisitContext.Level) }{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
+            _builder.AppendLine($"{GetIndent(trieVisitContext.Level)}{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
@@ -69,7 +69,7 @@ namespace Nethermind.Trie
         }
 
         private AccountDecoder decoder = new();
-        
+
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";

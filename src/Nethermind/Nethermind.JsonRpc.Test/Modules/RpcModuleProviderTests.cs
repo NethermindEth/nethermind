@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -70,9 +70,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig config = new();
             _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
-            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] {regex});
+            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
             _moduleProvider = new RpcModuleProvider(_fileSystem, config, LimboLogs.Instance);
-            
+
             SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
 
-            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http,  false, new[] { "net" });
+            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
 
             ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
             Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);

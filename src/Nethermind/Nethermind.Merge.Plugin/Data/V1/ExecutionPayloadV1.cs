@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -91,16 +91,16 @@ namespace Nethermind.Merge.Plugin.Data.V1
                 return false;
             }
         }
-        
+
         public Keccak ParentHash { get; set; } = null!;
         public Address FeeRecipient { get; set; }
         public Keccak StateRoot { get; set; } = null!;
         public Keccak ReceiptsRoot { get; set; } = null!;
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak PrevRandao { get; set; } = Keccak.Zero;
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
         public long GasLimit { get; set; }
@@ -108,10 +108,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public ulong Timestamp { get; set; }
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak? BlockHash { get; set; } = null!;
-        
+
         /// <summary>
         /// Array of transaction objects, each object is a byte list (DATA) representing TransactionType || TransactionPayload or LegacyTransaction as defined in EIP-2718
         /// </summary>
@@ -135,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             {
                 transactions[i] = Rlp.Decode<Transaction>(Transactions[i], RlpBehaviors.SkipTypedWrapping);
             }
-            
+
             return transactions;
         }
     }

@@ -39,11 +39,11 @@ namespace Nethermind.Synchronization.Test
         public static Account Account1;
         public static Account Account2;
         public static Account Account3;
-        
-        public static readonly byte[] Code0 = {0, 0};
-        public static readonly byte[] Code1 = {0, 1};
-        public static readonly byte[] Code2 = {0, 2};
-        public static readonly byte[] Code3 = {0, 3};
+
+        public static readonly byte[] Code0 = { 0, 0 };
+        public static readonly byte[] Code1 = { 0, 1 };
+        public static readonly byte[] Code2 = { 0, 2 };
+        public static readonly byte[] Code3 = { 0, 3 };
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public static void InitOnce()
@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Test
             {
                 // _logger = new ConsoleAsyncLogger(LogLevel.Debug);
                 // _logManager = new OneLoggerLogManager(_logger);
-                
+
                 // this setup is just for finding the storage root
                 StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance));
                 Keccak storageRoot = remoteStorageTree.RootHash;
@@ -330,14 +330,14 @@ namespace Nethermind.Synchronization.Test
         {
             StorageTree remoteStorageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-            remoteStorageTree.Set((UInt256) 1, new byte[] {1});
-            remoteStorageTree.Set((UInt256) 2, new byte[] {2});
-            remoteStorageTree.Set((UInt256) 3, new byte[] {3});
-            remoteStorageTree.Set((UInt256) 4, new byte[] {4});
-            remoteStorageTree.Set((UInt256) 1005, new byte[] {5});
-            remoteStorageTree.Set((UInt256) 1006, new byte[] {6});
-            remoteStorageTree.Set((UInt256) 1007, new byte[] {7});
-            remoteStorageTree.Set((UInt256) 1008, new byte[] {8});
+            remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
+            remoteStorageTree.Set((UInt256)2, new byte[] { 2 });
+            remoteStorageTree.Set((UInt256)3, new byte[] { 3 });
+            remoteStorageTree.Set((UInt256)4, new byte[] { 4 });
+            remoteStorageTree.Set((UInt256)1005, new byte[] { 5 });
+            remoteStorageTree.Set((UInt256)1006, new byte[] { 6 });
+            remoteStorageTree.Set((UInt256)1007, new byte[] { 7 });
+            remoteStorageTree.Set((UInt256)1008, new byte[] { 8 });
 
             remoteStorageTree.Commit(0);
             return remoteStorageTree;

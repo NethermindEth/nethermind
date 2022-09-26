@@ -30,7 +30,7 @@ namespace Nethermind.KeyStore
         {
             _addressToFileMapper = addressToFileMapper ?? throw new ArgumentNullException(nameof(addressToFileMapper));
         }
-        
+
         public override SecureString GetPassword(Address address)
         {
             string fileName = _addressToFileMapper(address);

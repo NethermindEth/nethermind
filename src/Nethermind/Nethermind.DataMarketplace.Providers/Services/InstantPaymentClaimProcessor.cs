@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return null;
             }
-            
+
             paymentClaim.SetTransactionCost(0);
             await _repository.UpdateAsync(paymentClaim);
             if (_logger.IsWarn) _logger.Warn($"NDM provider instantly verified payment claim (id: '{paymentClaim.Id}') for deposit: '{depositId}'.");

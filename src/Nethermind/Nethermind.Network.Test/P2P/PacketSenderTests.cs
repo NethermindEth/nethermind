@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,14 +38,14 @@ namespace Nethermind.Network.Test.P2P
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
-            
+
             PacketSender packetSender = new(serializer, LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(PingMessage.Instance);
 
             context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
-        
+
         [Test]
         public void Does_not_try_to_send_on_inactive_channel()
         {
@@ -56,8 +56,8 @@ namespace Nethermind.Network.Test.P2P
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
-            
-            PacketSender packetSender = new(serializer ,LimboLogs.Instance);
+
+            PacketSender packetSender = new(serializer, LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(PingMessage.Instance);
 

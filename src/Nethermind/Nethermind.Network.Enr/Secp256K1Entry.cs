@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ public class Secp256K1Entry : EnrContentEntry<CompressedPublicKey>
     public Secp256K1Entry(CompressedPublicKey publicKey) : base(publicKey) { }
 
     public override string Key => EnrContentKey.Secp256K1;
-    
+
     protected override int GetRlpLengthOfValue()
     {
         return CompressedPublicKey.LengthInBytes + 1;

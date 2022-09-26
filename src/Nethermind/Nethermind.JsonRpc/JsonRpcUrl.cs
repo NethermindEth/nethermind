@@ -84,9 +84,9 @@ namespace Nethermind.JsonRpc
                 isAuthenticated = false;
             }
 
-            JsonRpcUrl result = new (uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules);
+            JsonRpcUrl result = new(uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules);
 
-           return result;
+            return result;
         }
 
         public bool IsAuthenticated { get; }

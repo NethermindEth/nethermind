@@ -43,7 +43,7 @@ namespace Nethermind.Db.FullPruning
 
         // current main DB, will be written to and will be main source for reading
         private IDb _currentDb;
-        
+
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress
         private PruningContext? _pruningContext;
@@ -67,8 +67,8 @@ namespace Nethermind.Db.FullPruning
                 {
                     Duplicate(_pruningContext.CloningDb, key, value);
                 }
-                
-                return value; 
+
+                return value;
             }
             set
             {
@@ -119,7 +119,7 @@ namespace Nethermind.Db.FullPruning
 
         // inner DB's can be deleted in the future and
         // we cannot expose a DB that will potentially be later deleted
-        public IDb Innermost => this; 
+        public IDb Innermost => this;
 
         // we need to flush both DB's
         public void Flush()
@@ -141,7 +141,7 @@ namespace Nethermind.Db.FullPruning
         public bool CanStartPruning => _pruningContext is null; // we can start pruning only if no pruning is in progress
 
         public bool TryStartPruning(out IPruningContext context) => TryStartPruning(true, out context);
-        
+
         /// <inheritdoc />
         public virtual bool TryStartPruning(bool duplicateReads, out IPruningContext context)
         {
@@ -151,7 +151,7 @@ namespace Nethermind.Db.FullPruning
                 clonedDbSettings.DeleteOnStart = true;
                 return clonedDbSettings;
             }
-            
+
             // create new pruning context with new sub DB and try setting it as current
             // returns true when new pruning is started
             // returns false only on multithreaded access, returns started pruning context then
@@ -166,10 +166,10 @@ namespace Nethermind.Db.FullPruning
 
             return false;
         }
-        
+
         /// <inheritdoc />
         public string GetPath(string basePath) => _settings.DbPath.GetApplicationResourcePath(basePath);
-        
+
         /// <inheritdoc />
         public string InnerDbName => _currentDb.Name;
 
@@ -241,14 +241,14 @@ namespace Nethermind.Db.FullPruning
                         // if the context was not committed, then pruning failed and we delete the cloned DB
                         CloningDb.Clear();
                     }
-                    
+
                     CancellationTokenSource.Dispose();
                     Metrics.StateDbPruning = 0;
                     _disposed = true;
                 }
             }
         }
-        
+
         /// <summary>
         /// Batch that duplicates writes to the current DB and the cloned DB batches.
         /// </summary>
@@ -259,8 +259,8 @@ namespace Nethermind.Db.FullPruning
             private readonly FullPruningDb _db;
 
             public DuplicatingBatch(
-                IBatch batch, 
-                IBatch clonedBatch, 
+                IBatch batch,
+                IBatch clonedBatch,
                 FullPruningDb db)
             {
                 _batch = batch;

@@ -74,9 +74,9 @@ namespace Nethermind.State
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
-        
+
         [DebuggerStepThrough]
-        public Rlp? Set(Keccak keccak, Account? account) 
+        public Rlp? Set(Keccak keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 

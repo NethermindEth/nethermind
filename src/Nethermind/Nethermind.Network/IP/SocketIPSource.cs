@@ -30,7 +30,7 @@ namespace Nethermind.Network.IP
         {
             _logger = logManager.GetClassLogger<SocketIPSource>();
         }
-        
+
         public async Task<(bool, IPAddress)> TryGetIP()
         {
             try
@@ -44,7 +44,7 @@ namespace Nethermind.Network.IP
             }
             catch (SocketException)
             {
-                if(_logger.IsError) _logger.Error($"Error while getting local ip from socket. You can set a manual override via config {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)}");
+                if (_logger.IsError) _logger.Error($"Error while getting local ip from socket. You can set a manual override via config {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)}");
                 return (false, null);
             }
         }

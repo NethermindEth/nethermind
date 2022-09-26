@@ -33,7 +33,7 @@ namespace Nethermind.Ssz.Test
         private Bytes32[] _testLeaves = new Bytes32[32];
         private const ulong _nodeIndexOfTheFirstLeaf = (1ul << MerkleTree.TreeHeight) - 1ul;
         private const ulong _lastNodeIndex = (1ul << (MerkleTree.TreeHeight + 1)) - 2ul;
-        private const uint _lastLeafIndex = (uint) ((1ul << MerkleTree.TreeHeight) - 1u);
+        private const uint _lastLeafIndex = (uint)((1ul << MerkleTree.TreeHeight) - 1u);
         private const uint _lastRow = MerkleTree.TreeHeight;
 
         [OneTimeSetUp]
@@ -42,12 +42,12 @@ namespace Nethermind.Ssz.Test
             for (int i = 0; i < _testLeaves.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i] = (byte) (i + 1);
+                bytes[i] = (byte)(i + 1);
                 _testLeaves[i] = Bytes32.Wrap(bytes);
             }
         }
 
-        private MerkleTree BuildATree(IKeyValueStore<ulong,byte[]> keyValueStore = null)
+        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]> keyValueStore = null)
         {
             return new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Ssz.Test
                 MerkleTree.GetLeafIndex(nodeIndex).Should().Be(leafIndex.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue, ulong.MinValue)]
         [TestCase(1u, uint.MinValue, 1ul)]
         [TestCase(1u, 1u, 2ul)]
@@ -103,7 +103,7 @@ namespace Nethermind.Ssz.Test
                 MerkleTree.GetNodeIndex(row, indexAtRow).Should().Be(nodeIndex.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, ulong.MinValue, uint.MinValue)]
         [TestCase(1u, ulong.MinValue, null)]
         [TestCase(1u, 1ul, uint.MinValue)]
@@ -129,7 +129,7 @@ namespace Nethermind.Ssz.Test
                 MerkleTree.GetIndexAtRow(row, nodeIndex).Should().Be(indexAtRow.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue)]
         [TestCase(1u, 1u)]
         [TestCase(2u, 1u)]
@@ -148,7 +148,7 @@ namespace Nethermind.Ssz.Test
                 MerkleTree.GetRow(nodeIndex).Should().Be(expectedRow.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue, null)]
         [TestCase(1u, uint.MinValue, 1u)]
         [TestCase(2u, uint.MinValue, 1u)]
@@ -170,7 +170,7 @@ namespace Nethermind.Ssz.Test
                 MerkleTree.GetSiblingIndex(row, expectedSiblingIndex.Value).Should().Be(indexAtRow);
             }
         }
-        
+
         [TestCase(uint.MinValue, null)]
         [TestCase(1u, uint.MinValue)]
         [TestCase(2u, uint.MinValue)]
@@ -240,7 +240,7 @@ namespace Nethermind.Ssz.Test
 
             for (int i = 0; i < leafCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
             MerkleTree baselineTreeRestored = BuildATree(memDb);
@@ -259,7 +259,7 @@ namespace Nethermind.Ssz.Test
                 baselineTree.Count.Should().Be(i + 1);
             }
         }
-        
+
         [TestCase(1u)]
         [TestCase(2u)]
         [TestCase(23u)]
@@ -268,9 +268,9 @@ namespace Nethermind.Ssz.Test
             MerkleTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
-            
+
             IList<Bytes32> proof = baselineTree.GetProof(0);
             proof.Should().HaveCount(MerkleTree.TreeHeight + 1);
 
@@ -286,7 +286,7 @@ namespace Nethermind.Ssz.Test
                 }
             }
         }
-        
+
         [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
@@ -296,7 +296,7 @@ namespace Nethermind.Ssz.Test
             MerkleTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
             for (int i = 0; i < nodesCount; i++)
@@ -304,7 +304,7 @@ namespace Nethermind.Ssz.Test
                 baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
             }
         }
-        
+
         [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
@@ -314,10 +314,10 @@ namespace Nethermind.Ssz.Test
             MerkleTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
-            var leafIndexes = Enumerable.Range(0, (int) nodesCount).Select(l => (uint) l).ToArray();
+            var leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(l => (uint)l).ToArray();
             var result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {

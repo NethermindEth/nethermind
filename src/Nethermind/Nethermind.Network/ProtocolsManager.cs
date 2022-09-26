@@ -113,7 +113,7 @@ namespace Nethermind.Network
 
         private void SessionDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
@@ -137,7 +137,7 @@ namespace Nethermind.Network
 
         private void SessionInitialized(object sender, EventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             InitProtocol(session, Protocol.P2P, session.P2PVersion, true);
         }
 
@@ -269,7 +269,7 @@ namespace Nethermind.Network
                     else
                     {
                         _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] {new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler)}),
+                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] { new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler) }),
                             (node, dict) =>
                         {
                             dict[session.SessionId] = handler;
@@ -292,7 +292,7 @@ namespace Nethermind.Network
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
-                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs) args;
+                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
                 if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
 
                 if (handler.ProtocolVersion >= 5)

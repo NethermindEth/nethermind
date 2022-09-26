@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
 
         public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             return s is null ? null : new Bloom(Bytes.FromHexString(s));
         }
     }

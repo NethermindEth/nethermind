@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == this.GetType() && Equals((CanceledTransactionInfo) obj);
+            return obj.GetType() == this.GetType() && Equals((CanceledTransactionInfo)obj);
         }
 
         public override int GetHashCode()

@@ -64,14 +64,14 @@ Nethermind metrics can be consumed by Prometheus/Grafana if configured in Metric
                     // for some reasons it could be null
                     continue;
                 }
-                
+
                 string metricsCategoryName = metricsType.FullName.Replace("Nethermind.", "").Replace(".Metrics", "");
                 descriptionsBuilder.Append($@"
 {metricsCategoryName}
 {string.Empty.PadLeft(metricsCategoryName.Length, '^')}
 
 ");
-                
+
                 var properties = metricsType.GetProperties(BindingFlags.Public | BindingFlags.Static);
                 foreach (PropertyInfo methodInfo in properties.OrderBy(p => p.Name))
                 {

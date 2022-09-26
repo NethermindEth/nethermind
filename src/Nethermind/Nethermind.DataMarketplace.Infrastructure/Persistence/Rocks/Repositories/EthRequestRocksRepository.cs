@@ -36,7 +36,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             _database = database;
             _rlpDecoder = rlpDecoder;
         }
-        
+
         public Task<EthRequest?> GetLatestAsync(string host)
         {
             var requestsBytes = _database.GetAllValues().ToArray();
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         public Task AddAsync(EthRequest request) => AddOrUpdateAsync(request);
 
         public Task UpdateAsync(EthRequest request) => AddOrUpdateAsync(request);
-        
+
         public Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
         {
             var requestsBytes = _database.GetAllValues().ToArray();
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             {
                 requests[i] = Decode(requestsBytes[i]);
             }
-            
+
             var totalValue = UInt256.Zero;
             totalValue = requests.Where(r => r.RequestedAt.Date == date.Date)
                 .Aggregate(totalValue, (current, request) => current + request.Value);

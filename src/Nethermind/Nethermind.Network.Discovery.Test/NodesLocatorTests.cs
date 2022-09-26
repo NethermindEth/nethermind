@@ -47,9 +47,9 @@ namespace Nethermind.Network.Discovery.Test
         {
             NetworkConfig networkConfig = new();
             networkConfig.ExternalIp = IPAddress.Broadcast.ToString();
-            
+
             _masterNode = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
-            DiscoveryConfig config = new() {DiscoveryNewCycleWaitTime = 1};
+            DiscoveryConfig config = new() { DiscoveryNewCycleWaitTime = 1 };
             NodeDistanceCalculator distanceCalculator = new(config);
             _nodeTable = new NodeTable(distanceCalculator, config, networkConfig, LimboLogs.Instance);
             EvictionManager evictionManager = new(_nodeTable, LimboLogs.Instance);
@@ -62,7 +62,7 @@ namespace Nethermind.Network.Discovery.Test
                     nodeStatsManager,
                     new NodeRecord(),
                     config,
-                    Timestamper.Default, 
+                    Timestamper.Default,
                     LimboLogs.Instance);
             DiscoveryManager manager = new(
                 managerFactory,
@@ -70,9 +70,9 @@ namespace Nethermind.Network.Discovery.Test
                 new NetworkStorage(new MemDb(), LimboLogs.Instance),
                 config,
                 LimboLogs.Instance);
-            _nodesLocator = new NodesLocator(_nodeTable, manager, config, LimboLogs.Instance);   
+            _nodesLocator = new NodesLocator(_nodeTable, manager, config, LimboLogs.Instance);
         }
-        
+
         [Test]
         public async Task Can_locate_nodes_when_no_nodes()
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Network.Discovery.Test
             _nodeTable!.Initialize(_masterNode!.Id);
             await _nodesLocator.LocateNodesAsync(CancellationToken.None);
         }
-        
+
         [TestCase(1)]
         [TestCase(256)]
         [TestCase(1024)]
@@ -94,10 +94,10 @@ namespace Nethermind.Network.Discovery.Test
                 Node node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000 + i);
                 _nodeTable.AddNode(node);
             }
-            
+
             await _nodesLocator.LocateNodesAsync(CancellationToken.None);
         }
-        
+
         [Test]
         public void Throws_when_uninitialized()
         {

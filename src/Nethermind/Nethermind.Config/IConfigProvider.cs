@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,14 +17,14 @@
 namespace Nethermind.Config
 {
     public interface IConfigProvider
-    {    
+    {
         /// <summary>
         /// Gets a parsed configuration type. It contains the data from all the config sources combined.
         /// </summary>
         /// <typeparam name="T">Type of the configuration interface.</typeparam>
         /// <returns>The configuration object.</returns>
         T GetConfig<T>() where T : IConfig;
-        
+
         /// <summary>
         /// Gets the value exactly in the format of the configuration data source.
         /// </summary>

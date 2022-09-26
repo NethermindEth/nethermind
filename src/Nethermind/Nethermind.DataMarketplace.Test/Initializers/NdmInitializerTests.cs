@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _ndmConsumersModule = Substitute.For<INdmConsumersModule>();
             _configProvider = Substitute.For<IConfigProvider>();
             _enableUnsecuredDevWallet = false;
-            _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
+            _ndmConfig = new NdmConfig { Enabled = true, StoreConfigInDatabase = false };
             _initConfig = Substitute.For<IInitConfig>();
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
             _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, LimboLogs.Instance);
@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             ndmApi.AccountService = Substitute.For<IAccountService>();
             ndmApi.NdmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
             ndmApi.Enode = new Enode(TestItem.PublicKeyA, IPAddress.Any, 30303);
-            
+
             await _ndmInitializer.InitAsync(ndmApi);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_initConfig.BaseDbPath, _ndmConfig.DatabasePath));
         }

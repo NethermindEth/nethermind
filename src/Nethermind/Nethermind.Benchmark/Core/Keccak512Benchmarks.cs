@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Benchmarks.Core
     public class Keccak512Benchmarks
     {
         private static HashLib.Crypto.SHA3.Keccak512 _hash = HashFactory.Crypto.SHA3.CreateKeccak512();
-        
+
         private byte[] _a;
 
         private byte[][] _scenarios =
@@ -52,13 +52,13 @@ namespace Nethermind.Benchmarks.Core
         {
             throw new NotImplementedException();
         }
-        
+
         [Benchmark]
         public byte[] Current()
         {
             return Keccak512.Compute(_a).Bytes;
         }
-        
+
         [Benchmark]
         public byte[] HashLib()
         {

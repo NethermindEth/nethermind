@@ -29,17 +29,17 @@ namespace Nethermind.Merkleization
     {
         public bool IsKthBitSet(int k)
         {
-            return (_filled & ((ulong) 1 << k)) != 0;
+            return (_filled & ((ulong)1 << k)) != 0;
         }
 
         public void SetKthBit(int k)
         {
-            _filled |= (ulong) 1 << k;
+            _filled |= (ulong)1 << k;
         }
 
         public void UnsetKthBit(int k)
         {
-            _filled &= ~((ulong) 1 << k);
+            _filled &= ~((ulong)1 << k);
         }
 
         private Span<UInt256> _chunks;
@@ -453,7 +453,7 @@ namespace Nethermind.Merkleization
             Merkle.Ize(out _chunks[^1], value);
             Feed(_chunks[^1]);
         }
-        
+
         public void Feed(Ref<DepositData> value)
         {
             if (value.Root is null)
@@ -462,7 +462,7 @@ namespace Nethermind.Merkleization
                 {
                     return;
                 }
-                
+
                 Merkle.Ize(out _chunks[^1], value);
                 value.Root = new Root(_chunks[^1]);
                 Feed(_chunks[^1]);
@@ -616,7 +616,7 @@ namespace Nethermind.Merkleization
             CalculateRoot(out UInt256 result);
             return result;
         }
-        
+
         public void CalculateRoot(out UInt256 root)
         {
             int lowestSet = 0;

@@ -23,7 +23,7 @@ namespace Nethermind.Cli.Modules
         public string ObjectName { get; }
         public string PropertyName { get; }
         public string? Description { get; set; }
-        
+
         public string? ResponseDescription { get; set; }
 
         public string? ExampleResponse { get; set; }
@@ -33,7 +33,7 @@ namespace Nethermind.Cli.Modules
             ObjectName = objectName;
             PropertyName = propertyName;
         }
-        
+
         public override string ToString()
         {
             return $"{ObjectName}.{PropertyName}{(Description == null ? "" : $" {Description}")}";

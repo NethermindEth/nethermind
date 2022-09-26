@@ -26,7 +26,7 @@ namespace Nethermind.Core
         /// EIP-2718 transaction type
         /// </summary>
         public TxType TxType { get; set; }
-        
+
         /// <summary>
         ///     EIP-658
         /// </summary>
@@ -40,10 +40,10 @@ namespace Nethermind.Core
         public Address? Sender { get; set; }
         public Address? ContractAddress { get; set; }
         public Address? Recipient { get; set; }
-        
+
         [Todo(Improve.Refactor, "Receipt tracer?")]
         public byte[]? ReturnValue { get; set; }
-        
+
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
@@ -65,7 +65,7 @@ namespace Nethermind.Core
         /// EIP-2718 transaction type
         /// </summary>
         public TxType TxType { get; set; }
-        
+
         /// <summary>
         ///     EIP-658
         /// </summary>
@@ -89,14 +89,14 @@ namespace Nethermind.Core
         public KeccakStructRef PostTransactionState;
 
         public BloomStructRef Bloom;
-        
+
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
         public Span<byte> LogsRlp { get; set; }
-        
+
         public LogEntry[]? Logs { get; }
-        
+
         public string? Error { get; set; }
 
         public TxReceiptStructRef(TxReceipt receipt)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,14 +26,14 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Pending = new(BlockParameterType.Pending);
 
         public static BlockParameter Latest = new(BlockParameterType.Latest);
-        
+
         public static BlockParameter Finalized = new(BlockParameterType.Finalized);
-        
+
         public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
         public long? BlockNumber { get; }
-        
+
         public Keccak? BlockHash { get; }
 
         public bool RequireCanonical { get; }
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Find
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((BlockParameter) obj);
+            return Equals((BlockParameter)obj);
         }
 
         public override int GetHashCode() => HashCode.Combine(Type, BlockNumber, BlockHash, RequireCanonical);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,11 +78,12 @@ namespace Nethermind.Network.Rlpx
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(auth.Data.Length);
                 buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(buffer);
-                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);            }
+                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
+            }
             else
             {
-                _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
-                _session.RemotePort = ((IPEndPoint) context.Channel.RemoteAddress).Port;   
+                _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
+                _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
             }
 
             CheckHandshakeInitTimeout().ContinueWith(x =>
@@ -226,7 +227,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                delayCancellation.Cancel();    
+                delayCancellation.Cancel();
             }
         }
     }

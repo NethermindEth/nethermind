@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
         {
             Rlp rlp = Rlp.Encode(message.TxReceipts.Select(
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                             n => n == null
                                 ? Rlp.OfEmptySequence
                                 : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
-            
+
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.Encode(rlp);
         }
@@ -52,11 +52,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
             if (byteBuffer.Array.Length == 0 || byteBuffer.Array.First() == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
-            
+
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public int GetLength(ReceiptsMessage message, out int contentLength)
         {
             contentLength = 0;
-            
+
             for (int i = 0; i < message.TxReceipts.Length; i++)
             {
                 TxReceipt?[]? txReceipts = message.TxReceipts[i];
@@ -94,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
 
             }
-            
+
             return Rlp.LengthOfSequence(contentLength);
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
                 new SyncConfig(),
                 LimboLogs.Instance);
-            
+
             _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
                 txPool,
                 Substitute.For<ITxSender>(),
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
-                Substitute.For<IEthSyncingInfo>()),		
+                Substitute.For<IEthSyncingInfo>()),
                  1, 1000);
         }
 
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await _modulePool.GetModule(false);
             Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
         }
-        
+
         [Test]
         public async Task Ensure_returning_shared_does_not_change_concurrency()
         {

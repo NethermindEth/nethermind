@@ -55,17 +55,17 @@ namespace Nethermind.Evm.Benchmark
 
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
-            
+
             _stateProvider = new StateProvider(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            
+
             _storageProvider = new StorageProvider(trieStore, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
-            
+
             _worldState = new WorldState(_stateProvider, _storageProvider);
 
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
-            
+
             _environment = new ExecutionEnvironment
             {
                 ExecutingAccount = Address.Zero,

@@ -38,7 +38,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 
             var window = new Window("Consumer deposit approvals")
             {
-                X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                X = 0,
+                Y = 10,
+                Width = Dim.Fill(),
+                Height = Dim.Fill()
             };
             if (!depositApprovals.Any())
             {
@@ -58,7 +61,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var depositApprovalDetailsWindow = new Window("Deposit approval details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(depositApprovalDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

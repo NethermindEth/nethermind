@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             _subprotocol.ChangeHostConsumerAddress(TestItem.AddressC);
             _subprotocol.ChangeHostProviderAddress(TestItem.AddressD);
         }
-        
+
         [Test]
         public void Can_init()
         {
@@ -122,7 +122,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
         public void Smoke_for_send_enable_data_stream()
         {
             BuildSubprotocol();
-            _subprotocol.SendEnableDataStream(Keccak.Zero, "client", new string[] {"a"});
+            _subprotocol.SendEnableDataStream(Keccak.Zero, "client", new string[] { "a" });
         }
 
         [Test]
@@ -157,7 +157,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             TestBeforeHi(new DataAssetDataMessage(Keccak.OfAnEmptySequenceRlp, "client", "data", 1));
             TestBeforeHi(new DataAssetMessage(dataAsset));
             TestBeforeHi(new DataAssetRemovedMessage(Keccak.OfAnEmptyString));
-            TestBeforeHi(new DataAssetsMessage(new[] {dataAsset, dataAsset}));
+            TestBeforeHi(new DataAssetsMessage(new[] { dataAsset, dataAsset }));
 
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             TestBeforeHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
@@ -174,16 +174,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             TestBeforeHi(new DataAvailabilityMessage(Keccak.OfAnEmptyString, DataAvailability.DataDeliveryReceiptNotProvided));
 
             TestBeforeHi(new DataDeliveryReceiptMessage(Keccak.OfAnEmptyString, new DataDeliveryReceipt(StatusCodes.Error, 1, 2, signature)));
-            TestBeforeHi(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] {4}, Address.SystemUser, TestItem.AddressA, signature), 5));
+            TestBeforeHi(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] { 4 }, Address.SystemUser, TestItem.AddressA, signature), 5));
             TestBeforeHi(new DataRequestResultMessage(Keccak.OfAnEmptyString, DataRequestResult.DepositUnverified));
             TestBeforeHi(new DataStreamDisabledMessage(Keccak.OfAnEmptyString, "client"));
-            TestBeforeHi(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            TestBeforeHi(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             TestBeforeHi(new DepositApprovalConfirmedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
             TestBeforeHi(new DepositApprovalRejectedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
-            TestBeforeHi(new DepositApprovalsMessage(new DepositApproval[] {new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed)}));
+            TestBeforeHi(new DepositApprovalsMessage(new DepositApproval[] { new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed) }));
             TestBeforeHi(new DisableDataStreamMessage(Keccak.OfAnEmptyString, "client"));
             TestBeforeHi(new EarlyRefundTicketMessage(new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, signature), RefundReason.InvalidDataAsset));
-            TestBeforeHi(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            TestBeforeHi(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             TestBeforeHi(new EthRequestedMessage(new FaucetResponse(FaucetRequestStatus.FaucetDisabled, FaucetRequestDetails.Empty)));
             TestBeforeHi(new FinishSessionMessage(Keccak.OfAnEmptyString));
             TestBeforeHi(new GetDataAssetsMessage());
@@ -191,7 +191,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             TestBeforeHi(new GraceUnitsExceededMessage(Keccak.EmptyTreeHash, 1, 2));
             TestBeforeHi(new InvalidDataMessage(Keccak.OfAnEmptyString, InvalidDataReason.InvalidResult));
             TestBeforeHi(new ProviderAddressChangedMessage(Address.SystemUser));
-            TestBeforeHi(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
+            TestBeforeHi(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] { new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature) })));
             TestBeforeHi(new RequestDepositApprovalMessage(Keccak.OfAnEmptyString, Address.SystemUser, "kyc"));
             TestBeforeHi(new RequestEthMessage(Address.SystemUser, UInt256.One));
             TestBeforeHi(new SessionFinishedMessage(session));
@@ -209,7 +209,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             SmokeTestAfterHi(new DataAssetDataMessage(Keccak.OfAnEmptySequenceRlp, "client", "data", 1));
             SmokeTestAfterHi(new DataAssetMessage(dataAsset));
             SmokeTestAfterHi(new DataAssetRemovedMessage(Keccak.OfAnEmptyString));
-            SmokeTestAfterHi(new DataAssetsMessage(new[] {dataAsset, dataAsset}));
+            SmokeTestAfterHi(new DataAssetsMessage(new[] { dataAsset, dataAsset }));
 
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             SmokeTestAfterHi(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
@@ -226,16 +226,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             SmokeTestAfterHi(new DataAvailabilityMessage(Keccak.OfAnEmptyString, DataAvailability.DataDeliveryReceiptNotProvided));
 
             SmokeTestAfterHi(new DataDeliveryReceiptMessage(Keccak.OfAnEmptyString, new DataDeliveryReceipt(StatusCodes.Error, 1, 2, signature)));
-            SmokeTestAfterHi(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] {4}, Address.SystemUser, TestItem.AddressA, signature), 5));
+            SmokeTestAfterHi(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] { 4 }, Address.SystemUser, TestItem.AddressA, signature), 5));
             SmokeTestAfterHi(new DataRequestResultMessage(Keccak.OfAnEmptyString, DataRequestResult.DepositUnverified));
             SmokeTestAfterHi(new DataStreamDisabledMessage(Keccak.OfAnEmptyString, "client"));
-            SmokeTestAfterHi(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            SmokeTestAfterHi(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             SmokeTestAfterHi(new DepositApprovalConfirmedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
             SmokeTestAfterHi(new DepositApprovalRejectedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
-            SmokeTestAfterHi(new DepositApprovalsMessage(new DepositApproval[] {new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed)}));
+            SmokeTestAfterHi(new DepositApprovalsMessage(new DepositApproval[] { new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed) }));
             SmokeTestAfterHi(new DisableDataStreamMessage(Keccak.OfAnEmptyString, "client"));
             SmokeTestAfterHi(new EarlyRefundTicketMessage(new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, signature), RefundReason.InvalidDataAsset));
-            SmokeTestAfterHi(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            SmokeTestAfterHi(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             SmokeTestAfterHi(new EthRequestedMessage(new FaucetResponse(FaucetRequestStatus.FaucetDisabled, FaucetRequestDetails.Empty)));
             SmokeTestAfterHi(new FinishSessionMessage(Keccak.OfAnEmptyString));
             SmokeTestAfterHi(new GetDataAssetsMessage());
@@ -243,7 +243,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             SmokeTestAfterHi(new GraceUnitsExceededMessage(Keccak.EmptyTreeHash, 1, 2));
             SmokeTestAfterHi(new InvalidDataMessage(Keccak.OfAnEmptyString, InvalidDataReason.InvalidResult));
             SmokeTestAfterHi(new ProviderAddressChangedMessage(Address.SystemUser));
-            SmokeTestAfterHi(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
+            SmokeTestAfterHi(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] { new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature) })));
             SmokeTestAfterHi(new RequestDepositApprovalMessage(Keccak.OfAnEmptyString, Address.SystemUser, "kyc"));
             SmokeTestAfterHi(new RequestEthMessage(Address.SystemUser, UInt256.One));
             SmokeTestAfterHi(new SessionFinishedMessage(session));

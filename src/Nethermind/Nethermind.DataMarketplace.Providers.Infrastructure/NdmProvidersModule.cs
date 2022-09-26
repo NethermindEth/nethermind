@@ -46,9 +46,9 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
 {
     public class NdmProvidersModule : INdmModule
     {
-        private readonly INdmApi _api;   
+        private readonly INdmApi _api;
         private IProviderService? _providerService;
-        private IReportService? _reportService; 
+        private IReportService? _reportService;
         private IProviderTransactionsService? _providerTransactionsService;
         private IProviderGasLimitsService? _providerGasLimitsService;
         private IGasPriceService? _gasPriceService;
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
 
         public NdmProvidersModule(INdmApi api)
         {
-           _api = api ?? throw new ArgumentNullException(nameof(api)); 
+            _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
         public async Task InitAsync()
@@ -78,17 +78,17 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             {
                 if (logger.IsWarn) logger.Warn("*** NDM provider background services are disabled ***");
             }
-            
+
             if (disableSendingPaymentClaimTransaction)
             {
                 if (logger.IsWarn) logger.Warn("*** NDM provider sending payment claim transaction is disabled ***");
             }
-            
+
             if (instantPaymentClaimVerificationEnabled)
             {
                 if (logger.IsWarn) logger.Warn("*** NDM provider instant payment claim verification is enabled ***");
             }
-            
+
             var blockchainBridge = _api.BlockchainBridge;
             var ndmConfig = _api.NdmConfig;
             var txPool = _api.TxPool;
@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     {
                         throw new InvalidOperationException("Failed to initialize Mongo DB for NDM");
                     }
-                    
+
                     consumerRepository = new ConsumerMongoRepository(database);
                     dataAssetRepository = new DataAssetMongoRepository(database);
                     depositApprovalRepository = new ProviderDepositApprovalMongoRepository(database);
@@ -164,7 +164,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             var depositHandlerFactory = new DepositNodesHandlerFactory();
 
             _providerThresholdsService = new ProviderThresholdsService(_api.ConfigManager, ndmConfig.Id, logManager);
-            
+
             var receiptsPolicies = new ReceiptsPolicies(_providerThresholdsService);
 
             IPaymentClaimProcessor paymentClaimProcessor = new PaymentClaimProcessor(_gasPriceService,
@@ -203,11 +203,11 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                 paymentClaimRepository, timestamper, logManager);
 
             _providerGasLimitsService = new ProviderGasLimitsService(paymentService);
-            
-            IWebSocketsModule ndmWebSocketsModule = _api.WebSocketsManager.GetModule("ndm"); 
+
+            IWebSocketsModule ndmWebSocketsModule = _api.WebSocketsManager.GetModule("ndm");
             _api.NdmAccountUpdater = ndmConfig.ProviderColdWalletAddress != null
                                                                         ? new NdmAccountUpdater(ndmWebSocketsModule, _providerService.GetAddress(), _api.MainBlockProcessor, _api.StateProvider, new Address(ndmConfig.ProviderColdWalletAddress))
-                                                                        : new NdmAccountUpdater(ndmWebSocketsModule ,_providerService.GetAddress(), _api.MainBlockProcessor, _api.StateProvider);
+                                                                        : new NdmAccountUpdater(ndmWebSocketsModule, _providerService.GetAddress(), _api.MainBlockProcessor, _api.StateProvider);
         }
 
         public void InitRpcModule()
@@ -220,14 +220,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
 
         public IProviderService GetProviderService()
         {
-            if(_providerService == null)
+            if (_providerService == null)
             {
                 throw new NullReferenceException("Provider service does not exist - remember to initialize module first");
             }
 
             return _providerService;
         }
-    
+
 
         private static void AddDecoders()
         {
@@ -235,7 +235,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             PaymentClaimDecoder.Init();
             ProviderSessionDecoder.Init();
         }
-        
+
         private static bool HasEnabledVariable(string name)
             => Environment.GetEnvironmentVariable($"NDM_PROVIDER_{name.ToUpperInvariant()}")?.ToLowerInvariant() is "true";
     }

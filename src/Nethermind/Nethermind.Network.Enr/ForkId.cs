@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,12 +27,12 @@ public struct ForkId
         ForkHash = forkHash;
         NextBlock = nextBlock;
     }
-    
+
     /// <summary>
     /// Hash of a list of the past fork block numbers.
     /// </summary>
     public byte[] ForkHash { get; set; }
-    
+
     /// <summary>
     /// Block number of the next known fork (or 0 if no fork is expected).
     /// </summary>

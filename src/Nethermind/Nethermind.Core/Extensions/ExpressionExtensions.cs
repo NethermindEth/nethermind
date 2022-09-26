@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,10 +35,10 @@ namespace Nethermind.Core.Extensions
                 ExpressionType.MemberAccess => lambda.Body as MemberExpression,
                 _ => throw new ArgumentException($"Only {typeof(LambdaExpression)} too complex", nameof(method))
             };
-            
+
             return memberExpr!;
         }
-        
+
         /// <summary>
         /// Convert a lambda expression for a getter into a setter
         /// </summary>

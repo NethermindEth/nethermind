@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,18 +29,18 @@ namespace Nethermind.Blockchain.Contracts.Json
         public override void WriteJson(JsonWriter writer, AbiDefinition value, JsonSerializer serializer)
         {
             writer.WriteStartArray();
-            
+
             foreach (AbiBaseDescription item in value.Items)
             {
                 serializer.Serialize(writer, item);
             }
-            
+
             writer.WriteEndArray();
         }
-        
+
         private readonly string _nameTokenName = nameof(AbiBaseDescription<AbiParameter>.Name).ToLowerInvariant();
         private readonly string _typeTokenName = nameof(AbiBaseDescription<AbiParameter>.Type).ToLowerInvariant();
-        
+
         public override AbiDefinition ReadJson(
             JsonReader reader,
             Type objectType,
@@ -50,14 +50,14 @@ namespace Nethermind.Blockchain.Contracts.Json
         {
             JToken topLevelToken = JToken.Load(reader);
             existingValue ??= new AbiDefinition();
-            
+
             JToken abiToken;
             if (topLevelToken.Type == JTokenType.Object)
             {
                 abiToken = topLevelToken["abi"];
                 byte[] bytecode = Bytes.FromHexString(topLevelToken["bytecode"]?.Value<string>() ?? string.Empty);
                 byte[] deployedBytecode = Bytes.FromHexString(topLevelToken["deployedBytecode"]?.Value<string>() ?? string.Empty);
-                existingValue.SetBytecode(bytecode);   
+                existingValue.SetBytecode(bytecode);
                 existingValue.SetDeployedBytecode(deployedBytecode);
             }
             else
@@ -73,9 +73,9 @@ namespace Nethermind.Blockchain.Contracts.Json
                 {
                     continue;
                 }
-                
+
                 AbiDescriptionType type = FastEnum.Parse<AbiDescriptionType>(typeToken.Value<string>(), true);
-                
+
                 if (type == AbiDescriptionType.Event)
                 {
                     AbiEventDescription abiEvent = new();

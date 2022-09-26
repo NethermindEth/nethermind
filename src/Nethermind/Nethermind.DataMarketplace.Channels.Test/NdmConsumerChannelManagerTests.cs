@@ -52,10 +52,10 @@ namespace Nethermind.DataMarketplace.Channels.Test
             {
                 channel.Pull(Keccak.Zero).Should().NotBeNull();
             }
-            
+
             channel.Pull(Keccak.Zero).Should().BeNull();
         }
-        
+
         [Test]
         public async Task Can_publish_on_various_channel_types()
         {
@@ -68,12 +68,12 @@ namespace Nethermind.DataMarketplace.Channels.Test
                 new GrpcNdmConsumerChannel(Substitute.For<IGrpcServer>()),
                 new NdmWebSocketsConsumerChannel(client),
             };
-            
-            ((JsonRpcNdmConsumerChannel) channels[0]).Pull(Keccak.Zero).Should().BeNull();
+
+            ((JsonRpcNdmConsumerChannel)channels[0]).Pull(Keccak.Zero).Should().BeNull();
 
             for (int i = 0; i < 3; i++)
             {
-                manager.Add(channels[i]);    
+                manager.Add(channels[i]);
             }
 
             channels[0].Type.Should().Be(NdmConsumerChannelType.JsonRpc);
@@ -81,14 +81,14 @@ namespace Nethermind.DataMarketplace.Channels.Test
 
             await manager.PublishAsync(Keccak.Zero, "client1", "data1");
             await manager.PublishAsync(Keccak.Zero, "client2", "data2");
-            
+
             for (int i = 0; i < 3; i++)
             {
-                manager.Remove(channels[i]);    
+                manager.Remove(channels[i]);
             }
 
             await manager.PublishAsync(Keccak.Zero, "client3", "data3");
-            
+
             for (int i = 0; i < 3; i++)
             {
                 await client.Received().SendAsync(Arg.Is<SocketsMessage>(wm => wm.Client == "client1"));
@@ -96,9 +96,9 @@ namespace Nethermind.DataMarketplace.Channels.Test
                 await client.DidNotReceive().SendAsync(Arg.Is<SocketsMessage>(wm => wm.Client == "client3"));
             }
 
-            ((JsonRpcNdmConsumerChannel) channels[0]).Pull(Keccak.Zero).Should().NotBeNull();
-            ((JsonRpcNdmConsumerChannel) channels[0]).Pull(Keccak.Zero).Should().NotBeNull();
-            ((JsonRpcNdmConsumerChannel) channels[0]).Pull(Keccak.Zero).Should().BeNull();
+            ((JsonRpcNdmConsumerChannel)channels[0]).Pull(Keccak.Zero).Should().NotBeNull();
+            ((JsonRpcNdmConsumerChannel)channels[0]).Pull(Keccak.Zero).Should().NotBeNull();
+            ((JsonRpcNdmConsumerChannel)channels[0]).Pull(Keccak.Zero).Should().BeNull();
         }
     }
 }

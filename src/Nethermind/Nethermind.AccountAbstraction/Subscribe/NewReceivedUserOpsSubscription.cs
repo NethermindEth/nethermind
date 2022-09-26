@@ -32,12 +32,12 @@ namespace Nethermind.AccountAbstraction.Subscribe
     {
         private readonly IUserOperationPool[] _userOperationPoolsToTrack;
         private readonly bool _includeUserOperations;
-    
+
         public NewReceivedUserOpsSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, 
-            IDictionary<Address, IUserOperationPool>? userOperationPools, 
-            ILogManager? logManager, 
-            UserOperationSubscriptionParam? userOperationSubscriptionParam = null) 
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IDictionary<Address, IUserOperationPool>? userOperationPools,
+            ILogManager? logManager,
+            UserOperationSubscriptionParam? userOperationSubscriptionParam = null)
             : base(jsonRpcDuplexClient)
         {
             if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
@@ -62,17 +62,17 @@ namespace Nethermind.AccountAbstraction.Subscribe
                 // use all pools
                 _userOperationPoolsToTrack = userOperationPools.Values.ToArray();
             }
-        
+
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             foreach (var pool in _userOperationPoolsToTrack)
             {
                 pool.NewReceived += OnNewReceived;
             }
-        
-            if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will track newReceivedUserOperations");
+
+            if (_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will track newReceivedUserOperations");
         }
-    
+
         private void OnNewReceived(object? sender, UserOperationEventArgs e)
         {
             ScheduleAction(() =>
@@ -87,7 +87,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
                     result = CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, EntryPoint = e.EntryPoint });
                 }
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");
+                if (_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");
             });
         }
 
@@ -100,7 +100,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
                 pool.NewReceived -= OnNewReceived;
             }
             base.Dispose();
-            if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will no longer track newReceivedUserOperations");
+            if (_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will no longer track newReceivedUserOperations");
         }
     }
 }

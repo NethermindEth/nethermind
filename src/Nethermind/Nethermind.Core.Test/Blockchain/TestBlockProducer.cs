@@ -58,7 +58,7 @@ namespace Nethermind.Core.Test.Blockchain
                 ConstantDifficulty.One)
         {
         }
-        
+
         private BlockHeader? _blockParent = null;
 
         public BlockHeader? BlockParent

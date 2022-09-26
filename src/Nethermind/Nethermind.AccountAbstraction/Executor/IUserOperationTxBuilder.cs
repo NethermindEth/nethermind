@@ -26,18 +26,18 @@ namespace Nethermind.AccountAbstraction.Executor
     public interface IUserOperationTxBuilder
     {
         Transaction BuildTransaction(
-            long gaslimit, 
-            byte[] callData, 
-            Address sender, 
+            long gaslimit,
+            byte[] callData,
+            Address sender,
             BlockHeader parent,
-            IReleaseSpec spec, 
+            IReleaseSpec spec,
             UInt256 nonce,
             bool systemTransaction);
 
         Transaction BuildTransactionFromUserOperations(
             IEnumerable<UserOperation> userOperations,
-            BlockHeader parent, 
-            long gasLimit, 
+            BlockHeader parent,
+            long gasLimit,
             UInt256 nonce,
             IReleaseSpec spec);
 

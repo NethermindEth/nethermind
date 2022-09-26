@@ -84,10 +84,10 @@ namespace Nethermind.BeaconNode.OApi.Controllers
                 // "The attestation failed validation, but was successfully broadcast anyway. It was not integrated into the beacon node's database."
                 Core2.Api.StatusCode.BroadcastButFailedValidation => Accepted(),
                 Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
-                    statusCode: (int) apiResponse.StatusCode),
+                    statusCode: (int)apiResponse.StatusCode),
                 Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
-                    statusCode: (int) apiResponse.StatusCode),
-                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+                    statusCode: (int)apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int)apiResponse.StatusCode)
             };
         }
     }
