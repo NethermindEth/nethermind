@@ -321,7 +321,7 @@ namespace Nethermind.State.Proofs
             bool isPathMatched = true;
             for (int i = _pathTraversalIndex; i < node.Key.Length + _pathTraversalIndex; i++)
             {
-                if ((byte)path[i] != node.Path[i - _pathTraversalIndex])
+                if ((byte)path[i] != node.Key[i - _pathTraversalIndex])
                 {
                     isPathMatched = false;
                     break;
