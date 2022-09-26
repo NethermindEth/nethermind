@@ -13,6 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="ConcurrentHashSet" Version="1.3.0" />
       <PackageReference Include="FastEnum" Version="1.7.0" />
       <PackageReference Include="RocksDB" Version="6.29.3.26014" />
     </ItemGroup>
