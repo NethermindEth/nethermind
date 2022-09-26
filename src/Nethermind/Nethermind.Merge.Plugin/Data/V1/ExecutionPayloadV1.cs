@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             PrevRandao = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
             ExtraData = block.ExtraData!;
-            Timestamp = (ulong)block.Timestamp; // Timestamp should be changed to ulong across entire Nethermind code?
+            Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
         }
 
