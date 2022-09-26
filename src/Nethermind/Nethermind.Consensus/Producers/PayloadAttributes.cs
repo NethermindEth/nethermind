@@ -24,11 +24,11 @@ namespace Nethermind.Consensus.Producers
     public class PayloadAttributes
     {
         public ulong Timestamp { get; set; }
-        
+
         public Keccak PrevRandao { get; set; }
-        
+
         public Address SuggestedFeeRecipient { get; set; }
-        
+
         /// <summary>
         /// GasLimit
         /// </summary>
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
         /// Only used for MEV-Boost
         /// </remarks>
         public long? GasLimit { get; set; }
-        
+
         public override string ToString()
         {
             return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";

@@ -77,11 +77,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 if (propertyInfo.PropertyType == typeof(long))
                 {
-                    transitionBlocks.Add((long) propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters));
+                    transitionBlocks.Add((long)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters));
                 }
                 else if (propertyInfo.PropertyType == typeof(long?))
                 {
-                    var optionalTransition = (long?) propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
+                    var optionalTransition = (long?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
                     if (optionalTransition != null)
                     {
                         transitionBlocks.Add(optionalTransition.Value);
@@ -95,7 +95,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
 
-            foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long,long>>())
+            foreach (KeyValuePair<long, long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
             {
                 transitionBlocks.Add(bombDelay.Key);
             }
@@ -107,7 +107,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlocks)
             {
                 ReleaseSpec releaseSpec = new();
-                releaseSpec.MaximumUncleCount = (int) (releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2); 
+                releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
                 releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;
                 releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
@@ -154,14 +154,14 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip3541Enabled = (_chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3607Enabled = (_chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
+                releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
                 releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
                 releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
 
                 if (_chainSpec.Ethash != null)
                 {
-                    foreach (KeyValuePair<long,UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
+                    foreach (KeyValuePair<long, UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
                     {
                         if (blockReward.Key <= releaseStartBlock)
                         {
@@ -169,7 +169,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                         }
                     }
 
-                    foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
+                    foreach (KeyValuePair<long, long> bombDelay in _chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
                     {
                         if (bombDelay.Key <= releaseStartBlock)
                         {
@@ -187,7 +187,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ReleaseSpec releaseSpec = new();
                 releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             }
-            
+
             MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
@@ -213,7 +213,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? transition.Release
                     : null;
 
-        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) => 
+        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) =>
             blockNumber.CompareTo(transition.BlockNumber);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
