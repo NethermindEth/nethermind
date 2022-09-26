@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -38,7 +39,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     private bool _isDisposed;
 
-    private readonly HashSet<IBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
     internal WriteOptions? WriteOptions { get; private set; }
@@ -429,7 +430,7 @@ public class DbOnTheRocks : IDbWithSpan
             }
 
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
-            _dbOnTheRocks._currentBatches.Remove(this);
+            _dbOnTheRocks._currentBatches.TryRemove(this);
             _rocksBatch.Dispose();
         }
 

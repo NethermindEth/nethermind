@@ -147,7 +147,9 @@ namespace Nethermind.KeyStore
                     int r = kdfParams.R.Value;
                     int p = kdfParams.P.Value;
                     int n = kdfParams.N.Value;
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, null, kdfParams.DkLen);
+                    // ComputeDerivedKey uses too little stack size in case of multithread processing, which may cause stack overflow.
+                    // Switch to single thread if "cost" is too high, see Scrypt.ThreadSMixCalls internals
+                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, n > 8192 ? 1 : null, kdfParams.DkLen);
                     break;
                 case "pbkdf2":
                     int c = kdfParams.C.Value;
