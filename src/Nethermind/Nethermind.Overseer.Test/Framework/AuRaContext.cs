@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,10 +32,10 @@ namespace Nethermind.Overseer.Test.Framework
             {
                 ReadBlockAuthor(i);
             }
-            
+
             return this;
         }
-        
+
         public AuRaContext ReadBlockNumber()
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
@@ -43,14 +43,14 @@ namespace Nethermind.Overseer.Test.Framework
                 () => client.PostAsync<long>("eth_blockNumber"), stateUpdater: (s, r) => s.BlocksCount = r.Result
             );
         }
-        
+
         private AuRaContext ReadBlockAuthor(long blockNumber)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc("Read block", "eth_getBlockByNumber",
-                () => client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {blockNumber, false}),
+                () => client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { blockNumber, false }),
                 stateUpdater: (s, r) => s.Blocks.Add(
-                    Convert.ToInt64(r.Result["number"].Value<string>(), 16), 
+                    Convert.ToInt64(r.Result["number"].Value<string>(), 16),
                     (r.Result["miner"].Value<string>(), Convert.ToInt64(r.Result["step"].Value<string>(), 16))));
         }
     }

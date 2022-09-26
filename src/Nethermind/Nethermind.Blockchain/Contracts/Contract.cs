@@ -62,9 +62,9 @@ namespace Nethermind.Blockchain.Contracts
             ContractAddress = contractAddress;
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
         }
-        
+
         protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
-            where T : Transaction, new() => 
+            where T : Transaction, new() =>
             GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
 
         protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Contracts
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
             };
-                
+
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Transaction.</returns>
         protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
-        
+
         /// <summary>
         /// Generates transaction.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
         protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
-            => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);        
+            => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>
         /// Helper method that actually does the actual call to <see cref="ITransactionProcessor"/>.
@@ -184,9 +184,9 @@ namespace Nethermind.Blockchain.Contracts
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
-            
+
             CallOutputTracer tracer = new();
-            
+
             try
             {
                 if (callAndRestore)
@@ -197,14 +197,14 @@ namespace Nethermind.Blockchain.Contracts
                 {
                     transactionProcessor.Execute(transaction, header, tracer);
                 }
-                
+
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
                 throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned an exception '{e.Message}' at block {header.Number}.", e);
             }
-           
+
             if (failure)
             {
                 throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
@@ -235,7 +235,7 @@ namespace Nethermind.Blockchain.Contracts
 
         protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Keccak[] topics)
         {
-            Keccak[] eventNameTopic = {AbiDefinition.GetEvent(eventName).GetHash()};
+            Keccak[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
             return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
         }

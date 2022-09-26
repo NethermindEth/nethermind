@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         {
             _simdDisabled = simdDisabled;
         }
-        
+
         [Test]
         public void Gt()
         {
@@ -47,11 +47,11 @@ namespace Nethermind.Evm.Test
             {
                 Machine.DisableSimdInstructions();
             }
-            
+
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0ff");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
-            
+
             byte[] code = Prepare.EvmCode
                 .PushData(a)
                 .PushData(b)
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
-        
+
         [Test]
         public void Lt()
         {
@@ -71,11 +71,11 @@ namespace Nethermind.Evm.Test
             {
                 Machine.DisableSimdInstructions();
             }
-            
+
             byte[] a = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] b = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
-            
+
             byte[] code = Prepare.EvmCode
                 .PushData(a)
                 .PushData(b)
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
-        
+
         [Test]
         public void Eq()
         {
@@ -95,11 +95,11 @@ namespace Nethermind.Evm.Test
             {
                 Machine.DisableSimdInstructions();
             }
-            
+
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
-            
+
             byte[] code = Prepare.EvmCode
                 .PushData(a)
                 .PushData(b)
@@ -111,18 +111,18 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
-        
+
         private void AssertCmp(TestAllTracerWithOutput receipt, string result)
         {
             AssertCmp(receipt, Bytes.FromHexString(result));
         }
-        
+
         private void AssertCmp(TestAllTracerWithOutput receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
         }
-        
+
         private const long ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset;
         private const long NonZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet;
     }

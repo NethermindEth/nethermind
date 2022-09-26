@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
                 return DataRequestResult.DepositUnconfirmed;
             }
 
-            if (deposit.IsExpired((uint) _timestamper.UnixTime.Seconds))
+            if (deposit.IsExpired((uint)_timestamper.UnixTime.Seconds))
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is expired.'");
 
@@ -105,16 +105,16 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
                 DepositId = depositId,
                 Results = int.MaxValue
             });
-            var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+            var consumedUnits = sessions.Items.Any() ? (uint)sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             var dataRequest = CreateDataRequest(deposit);
             if (_logger.IsInfo) _logger.Info($"Sending data request for deposit with id: '{depositId}', consumed units: {consumedUnits}, address: '{dataRequest.Consumer}'.");
             var result = await providerPeer.SendDataRequestAsync(dataRequest, consumedUnits);
             if (_logger.IsInfo) _logger.Info($"Received data request result: '{result}' for data asset: '{dataRequest.DataAssetId}', deposit: '{depositId}', consumed units: {consumedUnits}, address: '{dataRequest.Consumer}'.");
             await _consumerNotifier.SendDataRequestResultAsync(depositId, result);
-            
+
             return result;
         }
-        
+
         private DataRequest CreateDataRequest(DepositDetails deposit)
             => _dataRequestFactory.Create(deposit.Deposit, deposit.DataAsset.Id, deposit.DataAsset.Provider.Address,
                 deposit.Consumer, deposit.Pepper);

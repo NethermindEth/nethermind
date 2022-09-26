@@ -22,14 +22,14 @@ using provide.Model.Vault;
 namespace Nethermind.Vault.JsonRpc
 {
     [RpcModule(ModuleType.Vault)]
-    public interface IVaultModule: IRpcModule
+    public interface IVaultModule : IRpcModule
     {
         [JsonRpcMethod(
             Description = "Displays a list of Vaults",
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<string[]>> vault_listVaults();
-        
+
         [JsonRpcMethod(
             Description = "Creates a Vault",
             IsSharable = false,
@@ -89,7 +89,7 @@ namespace Nethermind.Vault.JsonRpc
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
-        
+
         [JsonRpcMethod(
             Description = "Sets the API token used when talking to the Vault Service",
             IsSharable = false,

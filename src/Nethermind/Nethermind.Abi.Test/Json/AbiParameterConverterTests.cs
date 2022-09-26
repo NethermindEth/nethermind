@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,11 +31,11 @@ namespace Nethermind.Abi.Test.Json
         {
             get
             {
-                object[] GetTestData(string type, AbiType abiType, params object[] components) => 
-                    new object[] {type, abiType, null, components};
-                
-                object[] GetTestDataWithException(string type, Exception exception, object[] components = null) => 
-                    new object[] {type, null, exception, components};
+                object[] GetTestData(string type, AbiType abiType, params object[] components) =>
+                    new object[] { type, abiType, null, components };
+
+                object[] GetTestDataWithException(string type, Exception exception, object[] components = null) =>
+                    new object[] { type, null, exception, components };
 
                 yield return new TestCaseData(GetTestData("int", AbiType.Int256));
                 yield return new TestCaseData(GetTestData("UINT", AbiType.UInt256));
@@ -58,14 +58,14 @@ namespace Nethermind.Abi.Test.Json
                 yield return new TestCaseData(GetTestData("string", AbiType.String));
                 yield return new TestCaseData(GetTestData("int[]", new AbiArray(AbiType.Int256)));
                 yield return new TestCaseData(GetTestData("string[5]", new AbiFixedLengthArray(AbiType.String, 5)));
-                
+
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple(Array.Empty<AbiType>())));
-                yield return new TestCaseData(GetTestData("tuple", 
-                    new AbiTuple(new AbiType[] {AbiType.Int256}),
-                    new {name = "property", type = "int"}));
-                
-                yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(), 
-                    new {name = "c", type = "int32"}));
+                yield return new TestCaseData(GetTestData("tuple",
+                    new AbiTuple(new AbiType[] { AbiType.Int256 }),
+                    new { name = "property", type = "int" }));
+
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(),
+                    new { name = "c", type = "int32" }));
                 yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
@@ -79,16 +79,16 @@ namespace Nethermind.Abi.Test.Json
         [TestCaseSource(nameof(TypeTestCases))]
         public void Can_read_json(string type, AbiType expectedType, Exception expectedException, object[] components)
         {
-            List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() {new AbiTypeFactory(new AbiTuple<CustomAbiType>())};
+            List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() { new AbiTypeFactory(new AbiTuple<CustomAbiType>()) };
             var converter = new AbiParameterConverter(abiTypeFactories);
-            var model = new {name = "theName", type, components};
+            var model = new { name = "theName", type, components };
             string json = JsonConvert.SerializeObject(model);
             using (var jsonReader = new JsonTextReader(new StringReader(json)))
             {
                 try
                 {
                     var result = converter.ReadJson(jsonReader, typeof(AbiParameter), null, false, new JsonSerializer());
-                    var expectation = new AbiParameter() {Name = "theName", Type = expectedType};
+                    var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
                     expectedException.Should().BeNull();
                     result.Should().BeEquivalentTo(expectation);
                 }

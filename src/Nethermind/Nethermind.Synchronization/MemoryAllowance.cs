@@ -21,6 +21,6 @@ namespace Nethermind.Synchronization
 {
     public static class MemoryAllowance
     {
-        public static ulong FastBlocksMemory = (ulong) 128.MB();
+        public static ulong FastBlocksMemory = (ulong)128.MB();
     }
 }

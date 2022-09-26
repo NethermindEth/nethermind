@@ -57,7 +57,7 @@ namespace Nethermind.Vault.Test
 
         private void SetUp()
         {
-            var vaultFilePath =  Path.Combine(TestDir, _vaultConfig.VaultKeyFile);
+            var vaultFilePath = Path.Combine(TestDir, _vaultConfig.VaultKeyFile);
             if (!File.Exists(vaultFilePath))
             {
                 File.Create(vaultFilePath).Close();

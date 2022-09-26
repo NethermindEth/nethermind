@@ -33,13 +33,13 @@ namespace Nethermind.JsonRpc.Data
             Address = address;
             StorageKeys = storageKeys?.ToArray() ?? Array.Empty<UInt256>();
         }
-        
+
         public Address Address { get; set; }
-        
+
         [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
         public UInt256[]? StorageKeys { get; set; }
 
-        public static AccessListItemForRpc[] FromAccessList(AccessList accessList) => 
+        public static AccessListItemForRpc[] FromAccessList(AccessList accessList) =>
             accessList.Data.Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value)).ToArray();
 
         public static AccessList ToAccessList(AccessListItemForRpc[] accessList)

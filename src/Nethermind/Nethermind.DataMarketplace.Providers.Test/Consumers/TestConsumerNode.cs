@@ -11,7 +11,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
         public ConsumerNode Node { get; }
         public IEnumerable<DataDeliveryReceiptDetails> Receipts => _receipts;
         public IEnumerable<ProviderSession> Sessions => Node.Sessions;
-        
+
 
         public TestConsumerNode(int id, ConsumerNode node)
         {

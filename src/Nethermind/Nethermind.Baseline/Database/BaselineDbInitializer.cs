@@ -35,7 +35,7 @@ namespace Nethermind.Baseline.Database
             IBaselineConfig baselineConfig,
             IRocksDbFactory rocksDbFactory,
             IMemDbFactory memDbFactory)
-            : base (dbProvider, rocksDbFactory, memDbFactory)
+            : base(dbProvider, rocksDbFactory, memDbFactory)
         {
             _baselineConfig = baselineConfig ?? throw new ArgumentNullException(nameof(baselineConfig));
         }
@@ -44,27 +44,27 @@ namespace Nethermind.Baseline.Database
             RegisterDb(
                 new RocksDbSettings(
                     GetTitleDbName(BaselineDbNames.BaselineTree), BaselineDbNames.BaselineTree)
-            {
-                CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
-                WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
-                WriteBufferSize = _baselineConfig.BaselineTreeDbWriteBufferSize,
+                {
+                    CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeDbCacheIndexAndFilterBlocks,
+                    BlockCacheSize = _baselineConfig.BaselineTreeDbBlockCacheSize,
+                    WriteBufferNumber = _baselineConfig.BaselineTreeDbWriteBufferNumber,
+                    WriteBufferSize = _baselineConfig.BaselineTreeDbWriteBufferSize,
 
-                UpdateReadMetrics = () => Metrics.BaselineTreeDbReads++,
-                UpdateWriteMetrics = () => Metrics.BaselineTreeDbWrites++,
-            });
+                    UpdateReadMetrics = () => Metrics.BaselineTreeDbReads++,
+                    UpdateWriteMetrics = () => Metrics.BaselineTreeDbWrites++,
+                });
             RegisterDb(
                 new RocksDbSettings(
                     GetTitleDbName(BaselineDbNames.BaselineTreeMetadata), BaselineDbNames.BaselineTreeMetadata)
-            {
-                CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeMetadataDbCacheIndexAndFilterBlocks,
-                BlockCacheSize = _baselineConfig.BaselineTreeMetadataDbBlockCacheSize,
-                WriteBufferNumber = _baselineConfig.BaselineTreeMetadataDbWriteBufferNumber,
-                WriteBufferSize = _baselineConfig.BaselineTreeMetadataDbWriteBufferSize,
+                {
+                    CacheIndexAndFilterBlocks = _baselineConfig.BaselineTreeMetadataDbCacheIndexAndFilterBlocks,
+                    BlockCacheSize = _baselineConfig.BaselineTreeMetadataDbBlockCacheSize,
+                    WriteBufferNumber = _baselineConfig.BaselineTreeMetadataDbWriteBufferNumber,
+                    WriteBufferSize = _baselineConfig.BaselineTreeMetadataDbWriteBufferSize,
 
-                UpdateReadMetrics = () => Metrics.BaselineTreeMetadataDbReads++,
-                UpdateWriteMetrics = () => Metrics.BaselineTreeMetadataDbWrites++,
-            });
+                    UpdateReadMetrics = () => Metrics.BaselineTreeMetadataDbReads++,
+                    UpdateWriteMetrics = () => Metrics.BaselineTreeMetadataDbWrites++,
+                });
 
             await InitAllAsync();
         }

@@ -39,7 +39,7 @@ namespace Nethermind.Core2.Crypto
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Bytes32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
+        public static readonly Bytes32 OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
 
         /*
         /// <summary>
@@ -47,14 +47,14 @@ namespace Nethermind.Core2.Crypto
         /// </summary>
         public static Bytes32 EmptyTreeHash = InternalCompute(new byte[] {128});
         */
-        
+
         /*
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
         public static Bytes32 Zero { get; } = Bytes32.Zero;
         */
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
         {
@@ -88,7 +88,7 @@ namespace Nethermind.Core2.Crypto
 
             return InternalCompute(input);
         }
-        
+
         // public static void ComputeInPlace(Span<byte> input)
         // {
         //     if (input == null || input.Length == 0)
@@ -104,7 +104,7 @@ namespace Nethermind.Core2.Crypto
         {
             return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }
-        
+
         private static Bytes32 InternalCompute(ReadOnlySpan<byte> input)
         {
             return new Bytes32(Hash.ComputeBytes(input).GetBytes());

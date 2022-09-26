@@ -274,7 +274,9 @@ namespace Nethermind.Mev.Test
                 Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
                 MevBundleRpc mevBundleRpc = new()
                 {
-                    BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes
+                    BlockNumber = blockNumber,
+                    Txs = bundleBytes,
+                    RevertingTxHashes = revertingTxHashes
                 };
                 ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);
                 resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);

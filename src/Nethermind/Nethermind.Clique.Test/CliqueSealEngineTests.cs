@@ -72,31 +72,31 @@ namespace Nethermind.Clique.Test
             _blockTree = Build.A.BlockTree().TestObject;
             Block genesisBlock = GetRinkebyGenesis();
             MineBlock(_blockTree, genesisBlock);
-            
+
             Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
             block1.Header.ParentHash = genesisBlock.Hash;
             BuildSealer(1, db).SealBlock(block1, CancellationToken.None).Wait();
             block1.Header.Hash = block1.CalculateHash();
             MineBlock(_blockTree, block1);
-            
+
             Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
             block2.Header.ParentHash = block1.Hash;
             BuildSealer(2, db).SealBlock(block2, CancellationToken.None).Wait();
             block2.Header.Hash = block2.CalculateHash();
             MineBlock(_blockTree, block2);
-            
+
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
             block3.Header.ParentHash = block2.Hash;
             BuildSealer(3, db).SealBlock(block3, CancellationToken.None).Wait();
             block3.Header.Hash = block3.CalculateHash();
             MineBlock(_blockTree, block3);
-            
+
             Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
             block4.Header.ParentHash = block3.Hash;
             BuildSealer(4, db).SealBlock(block4, CancellationToken.None).Wait();
             block4.Header.Hash = block4.CalculateHash();
             MineBlock(_blockTree, block4);
-            
+
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
             block5.Header.ParentHash = block4.Hash;
             BuildSealer(5, db).SealBlock(block5, CancellationToken.None).Wait();
@@ -104,11 +104,11 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block5);
             _lastBlock = block5;
             // Init snapshot db
-            
-            
+
+
             // Select in-turn signer
             int currentBlock = 6;
-            
+
             BuildSealer(currentBlock, db);
         }
 
@@ -148,13 +148,13 @@ namespace Nethermind.Clique.Test
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
-            Block genesis = new(header);            
+            Block genesis = new(header);
             genesis.Header.Bloom = Bloom.Empty;
             genesis.Header.Hash = genesis.CalculateHash();
 
             // this would need to be loaded from rinkeby chainspec to include allocations
-//            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
-            
+            //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+
             genesis.Header.Hash = genesis.Header.CalculateHash();
             return genesis;
         }
@@ -167,7 +167,7 @@ namespace Nethermind.Clique.Test
             {
                 extraDataString.Append(_signers[i].Address.ToString(false, false));
             }
-            
+
             extraDataString.Append("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             return extraDataString.ToString();
         }

@@ -30,9 +30,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Test
         {
             DataAssetRuleDecoder.Init();
             DataAssetRules rules = new DataAssetRules(new DataAssetRule(1), null);
-            
+
             DataAssetRulesDecoder decoder = new DataAssetRulesDecoder();
-            decoder.Decode(decoder.Encode(rules).Bytes.AsRlpStream()).Should().BeEquivalentTo(rules); 
+            decoder.Decode(decoder.Encode(rules).Bytes.AsRlpStream()).Should().BeEquivalentTo(rules);
         }
     }
 }

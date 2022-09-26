@@ -238,11 +238,11 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
-                (MergeTestBlockchain) await Build(specProvider, null);
+                (MergeTestBlockchain)await Build(specProvider, null);
         }
     }
 
-    internal class TestBlockProcessorInterceptor: IBlockProcessor
+    internal class TestBlockProcessorInterceptor : IBlockProcessor
     {
         private readonly IBlockProcessor _blockProcessorImplementation;
         public int DelayMs { get; set; }

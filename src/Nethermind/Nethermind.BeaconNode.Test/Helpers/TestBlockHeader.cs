@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             Domain domain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconProposer, Epoch.None);
             Root signingRoot = beaconChainUtility.ComputeSigningRoot(headerRoot, domain);
             BlsSignature signature = TestSecurity.BlsSign(signingRoot, privateKey);
-            
+
             return new SignedBeaconBlockHeader(header, signature);
         }
     }

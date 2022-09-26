@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test
             PublicKey publicKey = new(bytes);
             Assert.AreEqual(bytes, publicKey.Bytes);
         }
-        
+
         [Test]
         public void Address_is_correct()
         {
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test
         public void Same_address_is_returned_when_called_twice()
         {
             byte[] bytes = new byte[64];
-            PublicKey publicKey =  new(bytes);
+            PublicKey publicKey = new(bytes);
             Address address1 = publicKey.Address;
             Address address2 = publicKey.Address;
             Assert.AreSame(address1, address2);
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Test
             // ReSharper disable once ObjectCreationAsStatement
             new PublicKey(bytes);
         }
-        
+
         [Test]
         [Explicit]
         public void Generate_Keys()

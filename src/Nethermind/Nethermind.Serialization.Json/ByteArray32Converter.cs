@@ -34,12 +34,12 @@ namespace Nethermind.Serialization.Json
             bool hasExistingValue,
             JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             if (s is null)
             {
                 return null;
             }
-            
+
             return Bytes.FromHexString(s);
         }
     }

@@ -168,7 +168,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     {
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
-                    
+
                     return blockContext.CurrentBestBlock;
                 }
             }

@@ -47,7 +47,7 @@ namespace Nethermind.AuRa.Test.Validators
                     ValidatorType = AuRaParameters.ValidatorType.List,
                     Addresses = address
                 }, _validSealerStrategy, Substitute.For<IValidatorStore>(), logManager, 1);
-            
+
             return validator;
         }
 
@@ -55,12 +55,12 @@ namespace Nethermind.AuRa.Test.Validators
         {
             get
             {
-                yield return new TestCaseData(TestItem.AddressA, 0L) {ExpectedResult = true};
-                yield return new TestCaseData(TestItem.AddressA, 1L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressB, 1L) {ExpectedResult = true};
-                yield return new TestCaseData(TestItem.AddressB, 0L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressC, 0L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressC, 1L) {ExpectedResult = false};
+                yield return new TestCaseData(TestItem.AddressA, 0L) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressA, 1L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressB, 1L) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressB, 0L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 0L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 1L) { ExpectedResult = false };
             }
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length.Should().Be(validatorCount);
         }
-        
+
         [TestCase(1, ExpectedResult = 1)]
         [TestCase(2, ExpectedResult = 2)]
         [TestCase(3, ExpectedResult = 2)]
@@ -86,17 +86,17 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(9, ExpectedResult = 5)]
         [TestCase(10, ExpectedResult = 6)]
         [TestCase(100, ExpectedResult = 51)]
-        public int should_get_min_sealers_for_finalization(int validatorCount) => 
+        public int should_get_min_sealers_for_finalization(int validatorCount) =>
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.MinSealersForFinalization();
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
             LimboLogs logManager = LimboLogs.Instance;
-            Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1); 
+            Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentException_on_empty_addresses()
         {

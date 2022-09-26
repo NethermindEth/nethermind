@@ -51,17 +51,17 @@ namespace Nethermind.Synchronization.Blocks
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
-        
+
         public static int MaxHeadersPerRequest(this PeerInfo peer)
         {
             return peer.PeerClientType switch
             {
-               NodeClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
-               NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
-               NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
-               NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
-               NodeClientType.OpenEthereum => ParitySyncLimits.MaxHeaderFetch,
-               NodeClientType.Unknown => 192,
+                NodeClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
+                NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+                NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+                NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.OpenEthereum => ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.Unknown => 192,
                 _ => throw new ArgumentOutOfRangeException()
             };
         }

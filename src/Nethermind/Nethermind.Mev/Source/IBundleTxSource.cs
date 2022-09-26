@@ -28,7 +28,7 @@ namespace Nethermind.Mev.Source
     public class BundleTxSource : ITxSource
     {
         private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
-        
+
         private readonly IBundleSource _bundleSource;
         private readonly ITimestamper _timestamper;
         private readonly TimeSpan _timeout;

@@ -54,10 +54,10 @@ namespace Ethereum.Test.Base
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new GeneralStateTest {Name = _fileName, LoadFailure = $"Failed to load: {e}"}, 1);
+                return Enumerable.Repeat(new GeneralStateTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
             }
         }
-        
+
         public IEnumerable<BlockchainTest> LoadBlockchainTests()
         {
             try
@@ -73,12 +73,12 @@ namespace Ethereum.Test.Base
                 }
 
                 string json = File.ReadAllText(_fileName, Encoding.Default);
-                
+
                 return JsonToEthereumTest.ConvertToBlockchainTests(json);
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e}"}, 1);
+                return Enumerable.Repeat(new BlockchainTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }, 1);
             }
         }
     }

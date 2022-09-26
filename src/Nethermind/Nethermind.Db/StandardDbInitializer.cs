@@ -28,8 +28,8 @@ namespace Nethermind.Db
         private readonly bool _fullPruning;
 
         public StandardDbInitializer(
-            IDbProvider? dbProvider, 
-            IRocksDbFactory? rocksDbFactory, 
+            IDbProvider? dbProvider,
+            IRocksDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
             IFileSystem? fileSystem = null,
             bool fullPruning = false)

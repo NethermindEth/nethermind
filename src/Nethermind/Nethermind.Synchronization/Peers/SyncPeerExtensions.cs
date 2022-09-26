@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.Peers
         // Check if OpenEthereum supports GetNodeData
         private static readonly Version _openEthereumSecondRemoveGetNodeDataVersion = new(3, 3, 3);
         private static readonly Version _openEthereumFirstRemoveGetNodeDataVersion = new(3, 1, 0);
-        
+
         public static bool SupportsAllocation(this PeerInfo peerInfo, AllocationContexts contexts)
         {
             if ((contexts & AllocationContexts.State) != 0 // only for State allocations 
@@ -44,9 +44,9 @@ namespace Nethermind.Synchronization.Peers
 
             return true;
         }
-        
+
         private static readonly Regex _openEthereumVersionRegex = new(@"OpenEthereum\/([a-zA-z-0-9]*\/)*v(?<version>(?<mainVersion>[0-9]\.[0-9]\.[0-9])-?(rc\.(?<rc>[0-9]*))?)", RegexOptions.Compiled);
-        
+
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {
             if (peer.ClientType == NodeClientType.OpenEthereum)
@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.Peers
                     return version;
                 }
             }
-            
+
             releaseCandidate = 0;
             return null;
         }

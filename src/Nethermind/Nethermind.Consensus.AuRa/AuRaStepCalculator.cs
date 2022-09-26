@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa
             _stepDurations = CreateStepDurations(stepDurations);
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
-        
+
         public long CurrentStep
         {
             get
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa
         }
 
         public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInTicks);
-        
+
         public TimeSpan TimeToStep(long step)
         {
             var epoch = _timestamper.UnixTime;
@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa
                 var timeToNextStep = new TimeSpan(GetTimeToNextStepInTicks(epoch, currentStepInfo));
                 return timeToNextStep + TimeSpan.FromSeconds(currentStepInfo.StepDuration * (step - currentStep - 1));
             }
-            
+
         }
 
         public long CurrentStepDuration
@@ -91,17 +91,17 @@ namespace Nethermind.Consensus.AuRa
         }
 
         private StepDurationInfo GetStepInfo(long timestampInSeconds) =>
-            _stepDurations.TryGetForActivation(timestampInSeconds, out var currentStepInfo) 
-                ? currentStepInfo 
+            _stepDurations.TryGetForActivation(timestampInSeconds, out var currentStepInfo)
+                ? currentStepInfo
                 : throw new InvalidOperationException($"Couldn't find state step duration information at timestamp {timestampInSeconds}");
 
-        private void ValidateStepDurations(IDictionary<long,long> stepDurations)
+        private void ValidateStepDurations(IDictionary<long, long> stepDurations)
         {
             if (stepDurations?.ContainsKey(0) != true)
             {
                 throw new ArgumentException("Authority Round step 0 duration is undefined.");
             }
-            
+
             if (stepDurations.Any(s => s.Value == 0))
             {
                 throw new ArgumentException("Authority Round step duration cannot be 0.");
@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.AuRa
             foreach (var key in stepDurations.Keys.ToArray())
             {
                 const ushort maxValue = UInt16.MaxValue;
-                
+
                 if (stepDurations[key] > maxValue)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Step duration is too high ({stepDurations[key]}), setting it to {maxValue}");
@@ -118,8 +118,8 @@ namespace Nethermind.Consensus.AuRa
                 }
             }
         }
-        
-        private IList<StepDurationInfo> CreateStepDurations(IDictionary<long,long> stepDurations)
+
+        private IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
         {
             StepDurationInfo[] result = new StepDurationInfo[stepDurations.Count];
             KeyValuePair<long, long> firstStep = stepDurations.First();
@@ -135,13 +135,13 @@ namespace Nethermind.Consensus.AuRa
             }
             return result;
         }
-        
+
         private class StepDurationInfo : IActivatedAt
         {
             public StepDurationInfo(long transitionStep, long transitionTimestamp, long stepDuration)
             {
                 const long millisecondsInSecond = 1000;
-                
+
                 TransitionStep = transitionStep;
                 TransitionTimestamp = transitionTimestamp;
                 StepDuration = stepDuration;

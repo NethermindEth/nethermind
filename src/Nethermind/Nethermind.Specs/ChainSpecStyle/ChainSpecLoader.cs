@@ -87,13 +87,13 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 return null;
             }
-            
+
             long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
             {
                 bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
                 return GetTransitions(builtInName, GetForExpectedPricing);
             }
-            
+
             long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
             {
                 bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) != null;
@@ -236,17 +236,17 @@ namespace Nethermind.Specs.ChainSpecStyle
             static AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
             {
                 AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();
-                AuRaParameters.Validator validator = new() {ValidatorType = validatorType};
+                AuRaParameters.Validator validator = new() { ValidatorType = validatorType };
                 switch (validator.ValidatorType)
                 {
                     case AuRaParameters.ValidatorType.List:
                         validator.Addresses = validatorJson.List;
                         break;
                     case AuRaParameters.ValidatorType.Contract:
-                        validator.Addresses = new[] {validatorJson.SafeContract};
+                        validator.Addresses = new[] { validatorJson.SafeContract };
                         break;
                     case AuRaParameters.ValidatorType.ReportingContract:
-                        validator.Addresses = new[] {validatorJson.Contract};
+                        validator.Addresses = new[] { validatorJson.Contract };
                         break;
                     case AuRaParameters.ValidatorType.Multi:
                         if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
@@ -325,12 +325,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
-            
+
             if (!string.IsNullOrEmpty(customEngineType))
             {
                 chainSpec.SealEngineType = customEngineType;
             }
-            
+
             if (string.IsNullOrEmpty(chainSpec.SealEngineType))
             {
                 throw new NotSupportedException("unknown seal engine in chainspec");
@@ -362,14 +362,14 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                     : UInt256.Zero;
 
-            
+
             BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 beneficiary,
                 difficulty,
                 0,
-                (long) gasLimit,
+                (long)gasLimit,
                 timestamp,
                 extraData);
 
@@ -377,12 +377,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
             genesisHeader.Bloom = Bloom.Empty;
             genesisHeader.MixHash = mixHash;
-            genesisHeader.Nonce = (ulong) nonce;
+            genesisHeader.Nonce = (ulong)nonce;
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
             genesisHeader.BaseFeePerGas = baseFee;
-            
+
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
 
@@ -404,7 +404,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     continue;
                 }
-                
+
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,

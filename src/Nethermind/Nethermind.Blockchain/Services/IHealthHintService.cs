@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,14 +22,14 @@ namespace Nethermind.Blockchain.Services
         public const int ProcessingSafetyMultiplier = 4;
 
         public static ulong? InfinityHint = null;
-        
+
         public const int EthashStandardProcessingPeriod = 15;
-        
+
         public const int EthashProcessingSafetyMultiplier = 12;
 
         public const int ProducingSafetyMultiplier = 2;
     }
-    
+
     public interface IHealthHintService
     {
         /// <summary>
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Services
         /// </summary>
         /// <returns><value>null</value> if we cannot assume processing interval, otherwise returns the number of seconds for maximum time without processed block</returns>
         ulong? MaxSecondsIntervalForProcessingBlocksHint();
-        
+
         /// <summary>
         /// Get producing time assumption based on the network.
         /// </summary>

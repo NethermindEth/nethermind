@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             ITxSource source = Substitute.For<ITxSource>();
             source.GetTransactions(null, 0).Returns(new Transaction[5]);
-            
+
             ITxSource oneByOne = source.ServeTxsOneByOne();
             oneByOne.GetTransactions(null, 0).Count().Should().Be(1);
 

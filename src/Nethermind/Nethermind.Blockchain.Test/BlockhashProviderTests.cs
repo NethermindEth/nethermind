@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test
             Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
-        
+
         [Test]
         public void Can_lookup_up_to_256_before_soon_after_fast_sync()
         {
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test
             Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
-        
+
         [Test]
         public void Can_lookup_up_to_256_before_some_blocks_after_fast_sync()
         {
@@ -105,12 +105,12 @@ namespace Nethermind.Blockchain.Test
                 tree.UpdateMainChain(current);
                 current = Build.A.Block.WithParent(current).TestObject;
             }
-            
+
             long lookupNumber = current.Number - 256;
             Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
-        
+
         [Test]
         public void Can_handle_non_main_chain_in_fast_sync()
         {
@@ -125,9 +125,9 @@ namespace Nethermind.Blockchain.Test
                 tree.UpdateMainChain(current);
                 current = Build.A.Block.WithParent(current).TestObject;
             }
-            
+
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            
+
             Keccak result = provider.GetBlockhash(current.Header, 509);
             Assert.NotNull(result);
         }

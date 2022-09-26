@@ -21,9 +21,9 @@ namespace Nethermind.Config
     public class ConfigItemAttribute : Attribute
     {
         public string Description { get; set; }
-        
+
         public string DefaultValue { get; set; }
-        
+
         public bool HiddenFromDocs { get; set; }
 
         public bool DisabledForCli { get; set; }

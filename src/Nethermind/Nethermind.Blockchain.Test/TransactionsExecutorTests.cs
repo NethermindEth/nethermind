@@ -92,13 +92,13 @@ namespace Nethermind.Blockchain.Test
                     twoTransactionSelectedDueToWrongNonce.Transactions.OrderBy(t => t.Nonce).Take(2));
                 yield return new TestCaseData(twoTransactionSelectedDueToWrongNonce).SetName(
                     "Two transaction selected due to wrong nonce");
-                
+
                 ProperTransactionsSelectedTestCase missingAddressState = ProperTransactionsSelectedTestCase.Default;
                 missingAddressState.MissingAddresses.Add(TestItem.AddressA);
                 yield return new TestCaseData(missingAddressState).SetName("Missing address state");
 
                 ProperTransactionsSelectedTestCase complexCase = new()
-                    {
+                {
                     AccountStates =
                     {
                         {TestItem.AddressA, (1000, 1)},
@@ -143,14 +143,14 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 complexCase.ExpectedSelectedTransactions.AddRange(
-                    new[] {7, 3, 4, 0, 2, 1}.Select(i => complexCase.Transactions[i]));
+                    new[] { 7, 3, 4, 0, 2, 1 }.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
-                
+
                 ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                    AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
@@ -163,14 +163,14 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 baseFeeBalanceCheck.ExpectedSelectedTransactions.AddRange(
-                    new[] {1, 2 }.Select(i => baseFeeBalanceCheck.Transactions[i]));
+                    new[] { 1, 2 }.Select(i => baseFeeBalanceCheck.Transactions[i]));
                 yield return new TestCaseData(baseFeeBalanceCheck).SetName("Legacy transactions: two transactions selected because of account balance");
-                
+
                 ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
@@ -185,7 +185,7 @@ namespace Nethermind.Blockchain.Test
                     {
                         Eip1559Enabled = true,
                         BaseFee = 5,
-                        AccountStates = {{TestItem.AddressA, (400, 1)}},
+                        AccountStates = { { TestItem.AddressA, (400, 1) } },
                         Transactions =
                         {
                             Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
@@ -208,13 +208,13 @@ namespace Nethermind.Blockchain.Test
             StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            
+
             IReleaseSpec spec = new ReleaseSpec()
             {
                 IsEip1559Enabled = testCase.Eip1559Enabled
             };
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
-            
+
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<ITxTracer>()))
                 .Do(info =>
@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.Test
                     stateProvider.SubtractFromBalance(tx.SenderAddress!,
                         tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
                 });
-            
+
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
@@ -258,15 +258,15 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.Commit(Homestead.Instance);
                 stateProvider.CommitTree(0);
             }
-            
+
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
                 new(
-                    transactionProcessor, 
-                    stateProvider, 
-                    storageProvider, 
-                    specProvider, 
+                    transactionProcessor,
+                    stateProvider,
+                    storageProvider,
+                    specProvider,
                     LimboLogs.Instance);
-            
+
             SetAccountStates(testCase.MissingAddresses);
 
             BlockReceiptsTracer receiptsTracer = new();

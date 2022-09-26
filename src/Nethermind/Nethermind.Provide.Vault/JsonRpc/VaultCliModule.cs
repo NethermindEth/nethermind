@@ -24,7 +24,7 @@ namespace Nethermind.Vault.JsonRpc
     [CliModule("vault")]
     public class VaultCliModule : CliModuleBase
     {
-        public VaultCliModule(ICliEngine engine, INodeManager nodeManager) 
+        public VaultCliModule(ICliEngine engine, INodeManager nodeManager)
             : base(engine, nodeManager)
         {
         }
@@ -34,7 +34,7 @@ namespace Nethermind.Vault.JsonRpc
             "vault_listVaults").Result;
 
         [CliFunction("vault", "createVault")]
-         public object CreateVault(string name, string description) => NodeManager.PostJint(
+        public object CreateVault(string name, string description) => NodeManager.PostJint(
              "vault_createVault",
              new provide.Model.Vault.Vault()
              {

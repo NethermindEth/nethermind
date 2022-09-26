@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ namespace Nethermind.BeaconNode.Test
         public static IServiceCollection BuildTestServiceCollection(bool useBls = true, bool useStore = false)
         {
             var services = new ServiceCollection();
-            
+
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("Development/appsettings.json")
@@ -55,14 +55,15 @@ namespace Nethermind.BeaconNode.Test
             services.AddLogging(configure =>
             {
                 configure.SetMinimumLevel(LogLevel.Trace);
-                configure.AddConsole(options => { 
+                configure.AddConsole(options =>
+                {
                     options.Format = ConsoleLoggerFormat.Systemd;
                     options.DisableColors = true;
                     options.IncludeScopes = true;
                     options.TimestampFormat = " HH':'mm':'sszz ";
                 });
             });
-            
+
             services.ConfigureBeaconChain(configuration);
             services.AddBeaconNode(configuration);
 
@@ -84,7 +85,7 @@ namespace Nethermind.BeaconNode.Test
             services.AddSingleton<INetworkPeering>(networkPeering);
 
             services.AddTransient<IFileSystem, MockFileSystem>();
-            
+
             return services;
         }
 

@@ -30,16 +30,16 @@ namespace Nethermind.JsonRpc.Modules
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        
+
         private readonly List<string> _modules = new();
         private readonly List<string> _enabledModules = new();
 
         private readonly Dictionary<string, ResolvedMethodInfo> _methods
             = new(StringComparer.InvariantCulture);
-        
+
         private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
             = new();
-        
+
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
@@ -48,13 +48,13 @@ namespace Nethermind.JsonRpc.Modules
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
-                if(_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
+                if (_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
         }
 
         public JsonSerializer Serializer { get; } = new();
-        
+
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
         public IReadOnlyCollection<string> Enabled => _enabledModules;
@@ -66,18 +66,18 @@ namespace Nethermind.JsonRpc.Modules
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute == null)
             {
-                if(_logger.IsWarn) _logger.Warn(
+                if (_logger.IsWarn) _logger.Warn(
                     $"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
             }
-            
+
             string moduleType = attribute.ModuleType;
 
-            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
+            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m));
             _modules.Add(moduleType);
 
             IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
-            ((List<JsonConverter>) Converters).AddRange(poolConverters);
+            ((List<JsonConverter>)Converters).AddRange(poolConverters);
 
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
@@ -141,7 +141,7 @@ namespace Nethermind.JsonRpc.Modules
                     return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
                 });
         }
-        
+
         private class ResolvedMethodInfo
         {
             public ResolvedMethodInfo(
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules
                 ReadOnly = readOnly;
                 Availability = availability;
             }
-            
+
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public bool ReadOnly { get; }

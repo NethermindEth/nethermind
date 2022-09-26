@@ -23,7 +23,7 @@ namespace Nethermind.EthStats.Messages
     public class BlockMessage : IMessage
     {
         public string? Id { get; set; }
-        
+
         public Block Block { get; }
 
         public BlockMessage(Block block)

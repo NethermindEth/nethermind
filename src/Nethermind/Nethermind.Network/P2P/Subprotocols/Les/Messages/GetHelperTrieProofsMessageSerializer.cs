@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
-    public class GetHelperTrieProofsMessageSerializer: IZeroMessageSerializer<GetHelperTrieProofsMessage>
+    public class GetHelperTrieProofsMessageSerializer : IZeroMessageSerializer<GetHelperTrieProofsMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, GetHelperTrieProofsMessage message)
         {
@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             {
                 innerLength += Rlp.LengthOfSequence(GetRequestLength(request));
             }
-            int contentLength = Rlp.LengthOf(message.RequestId) + 
+            int contentLength = Rlp.LengthOf(message.RequestId) +
                 Rlp.LengthOfSequence(innerLength);
 
             int totalLength = Rlp.LengthOfSequence(contentLength);
@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         private int GetRequestLength(HelperTrieRequest request)
         {
-            return 
+            return
                 Rlp.LengthOf((int)request.SubType) +
                 Rlp.LengthOf(request.SectionIndex) +
                 Rlp.LengthOf(request.Key) +
@@ -71,7 +71,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             GetHelperTrieProofsMessage message = new();
             rlpStream.ReadSequenceLength();
             message.RequestId = rlpStream.DecodeLong();
-            message.Requests = rlpStream.DecodeArray(stream => { 
+            message.Requests = rlpStream.DecodeArray(stream =>
+            {
                 HelperTrieRequest request = new();
                 stream.ReadSequenceLength();
                 request.SubType = (HelperTrieType)stream.DecodeInt();

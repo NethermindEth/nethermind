@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         public override int PacketType { get; } = Eth62MessageCode.Transactions;
         public override string Protocol { get; } = "eth";
-        
+
         public IList<Transaction> Transactions { get; }
 
         public TransactionsMessage(IList<Transaction> transactions)

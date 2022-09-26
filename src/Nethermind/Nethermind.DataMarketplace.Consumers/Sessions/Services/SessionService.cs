@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             }
 
             if (_logger.IsWarn) _logger.Warn($"Active session for deposit: '{depositId}' was not found.");
-            
+
             return null;
         }
 
@@ -82,8 +82,8 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
                 return;
             }
-            
-            if(session.StartTimestamp < deposit.ConfirmationTimestamp)
+
+            if (session.StartTimestamp < deposit.ConfirmationTimestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', session timestamp {session.StartTimestamp} is before deposit confirmation timestamp {deposit.ConfirmationTimestamp}.");
                 return;
@@ -95,7 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 if (_logger.IsWarn) _logger.Warn($"Inconsistent data - data asset ID on deposit is '{dataAssetId}' while on session is '{session.DataAssetId}'.");
                 return;
             }
-            
+
             DataAsset? dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
             if (dataAsset is null)
             {
@@ -108,7 +108,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 if (_logger.IsWarn) _logger.Warn($"Data asset: '{dataAssetId}' is unavailable, state: {dataAsset.State}.");
                 return;
             }
-            
+
             if (session.ProviderAddress == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Session: '{session.Id}' for '{session.DepositId}' cannot be started because of the unknown provider address.");
@@ -126,13 +126,13 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 DepositId = session.DepositId,
                 Results = int.MaxValue
             });
-            
-            uint consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+
+            uint consumedUnits = sessions.Items.Any() ? (uint)sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             if (_logger.IsInfo) _logger.Info($"Starting the session: '{session.Id}' for deposit: '{session.DepositId}'. Settings consumed units - provider: {session.StartUnitsFromProvider}, consumer: {consumedUnits}.");
             ConsumerSession consumerSession = ConsumerSession.From(session);
             consumerSession.Start(session.StartTimestamp);
             ConsumerSession? previousSession = await _sessionRepository.GetPreviousAsync(consumerSession);
-            uint upfrontUnits = (uint) (deposit.DataAsset.Rules.UpfrontPayment?.Value ?? 0);
+            uint upfrontUnits = (uint)(deposit.DataAsset.Rules.UpfrontPayment?.Value ?? 0);
             if (upfrontUnits > 0 && previousSession is null)
             {
                 consumerSession.AddUnpaidUnits(upfrontUnits);
@@ -145,10 +145,10 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 consumerSession.AddUnpaidUnits(unpaidUnits);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: {unpaidUnits} for session: '{session.Id}' from previous session: '{previousSession.Id}'.");
             }
-            
+
             if (deposit.DataAsset.UnitType == DataAssetUnitType.Time)
             {
-                uint unpaidTimeUnits = (uint) consumerSession.StartTimestamp - deposit.ConfirmationTimestamp;
+                uint unpaidTimeUnits = (uint)consumerSession.StartTimestamp - deposit.ConfirmationTimestamp;
                 consumerSession.AddUnpaidUnits(unpaidTimeUnits);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: '{unpaidTimeUnits}' for deposit: '{session.DepositId}' based on time.");
             }
@@ -158,7 +158,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             await _consumerNotifier.SendSessionStartedAsync(session.DepositId, session.Id);
             if (_logger.IsInfo) _logger.Info($"Started a session with id: '{session.Id}' for deposit: '{session.DepositId}', address: '{deposit.Consumer}'.");
         }
-        
+
         public async Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true)
         {
             if (removePeer)
@@ -171,14 +171,14 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 if (_logger.IsWarn) _logger.Warn($"Provider node: '{provider.NodeId}' has no address assigned.");
                 return;
             }
-            
+
             Keccak depositId = session.DepositId;
             ConsumerSession? consumerSession = GetActive(depositId);
             if (consumerSession is null)
             {
                 return;
             }
-            
+
             _sessions.TryRemove(session.DepositId, out _);
             ulong timestamp = session.FinishTimestamp;
             consumerSession.Finish(session.State, timestamp);
@@ -186,7 +186,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             await _consumerNotifier.SendSessionFinishedAsync(session.DepositId, session.Id);
             if (_logger.IsInfo) _logger.Info($"Finished a session: '{session.Id}' for deposit: '{depositId}', provider: '{provider.ProviderAddress}', state: '{session.State}', timestamp: {timestamp}.");
         }
-        
+
         public async Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true)
         {
             if (_logger.IsInfo) _logger.Info($"Finishing {_sessions.Count} session(s) with provider: '{provider.ProviderAddress}'.");
@@ -194,7 +194,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             {
                 _providerService.Remove(provider.NodeId);
             }
-            
+
             if (provider.ProviderAddress is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider node: '{provider.NodeId}' has no address assigned.");
@@ -239,7 +239,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             if (provider is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider node: '{session.ProviderNodeId}' was not found.");
-                
+
                 return null;
             }
 
@@ -250,7 +250,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
 
         private void SetActiveSession(ConsumerSession session)
         {
-            _sessions.TryRemove(session.DepositId, out _);            
+            _sessions.TryRemove(session.DepositId, out _);
             _sessions.TryAdd(session.DepositId, session);
         }
     }

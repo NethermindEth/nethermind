@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Producers
     {
         private class ProducerUnderTest : BlockProducerBase
         {
-            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProductionTrigger blockProductionTrigger, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper,  ILogManager logManager)
+            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProductionTrigger blockProductionTrigger, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ILogManager logManager)
                 : base(txSource, processor, sealer, blockTree, blockProductionTrigger, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, logManager, new TimestampDifficultyCalculator())
             {
             }
@@ -53,19 +53,19 @@ namespace Nethermind.Blockchain.Test.Producers
             public Block Prepare(BlockHeader header) => PrepareBlock(header);
 
             protected override bool IsRunning() => true;
-            
+
             private class TimestampDifficultyCalculator : IDifficultyCalculator
             {
                 public UInt256 Calculate(BlockHeader header, BlockHeader parent) => header.Timestamp;
             }
         }
-        
+
         [Test]
         public void Time_passing_does_not_break_the_block()
         {
             ITimestamper timestamper = new IncrementalTimestamper();
             ProducerUnderTest producerUnderTest = new(
-                EmptyTxSource.Instance, 
+                EmptyTxSource.Instance,
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
@@ -78,13 +78,13 @@ namespace Nethermind.Blockchain.Test.Producers
             Block block = producerUnderTest.Prepare();
             new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
         }
-        
+
         [Test]
         public void Parent_timestamp_is_used_consistently()
         {
             ITimestamper timestamper = new IncrementalTimestamper(DateTime.UnixEpoch, TimeSpan.FromSeconds(1));
             ProducerUnderTest producerUnderTest = new(
-                EmptyTxSource.Instance, 
+                EmptyTxSource.Instance,
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,

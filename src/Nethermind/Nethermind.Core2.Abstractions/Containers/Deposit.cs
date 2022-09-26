@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,16 +32,16 @@ namespace Nethermind.Core2.Containers
             Data = data;
         }
 
-        public Ref<DepositData> Data { get; } 
+        public Ref<DepositData> Data { get; }
 
         [DebuggerHidden]
         public IReadOnlyList<Bytes32> Proof => _proof.AsReadOnly();
 
         public override string ToString()
-        {           
+        {
             return $"I:{Proof[^1].ToString().Substring(0, 12)} P:{Data.Item.PublicKey.ToString().Substring(0, 12)} A:{Data.Item.Amount}";
         }
-        
+
         public bool Equals(Deposit other)
         {
             return Data.Equals(other.Data)

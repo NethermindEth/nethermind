@@ -27,7 +27,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
 {
     public static class Eth1BridgeServiceCollectionExtensions
     {
-        private static readonly byte[] DefaultEth1BlockHash = Enumerable.Repeat((byte) 0x42, 32).ToArray();
+        private static readonly byte[] DefaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
 
         public static void AddBeaconNodeEth1Bridge(this IServiceCollection services, IConfiguration configuration)
         {

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
@@ -11,7 +11,7 @@ namespace Nethermind.Precompiles.Benchmark
         {
             Evm.Precompiles.Snarks.Shamatar.Bn256MulPrecompile.Instance
         };
-        
+
         protected override string InputsDirectory => "bnmul";
     }
 }

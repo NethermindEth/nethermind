@@ -23,9 +23,9 @@ namespace Nethermind.AccountAbstraction.Source
     public class CompareUserOperationByNonce : IComparer<UserOperation?>
     {
         public static readonly CompareUserOperationByNonce Instance = new();
-        
+
         private CompareUserOperationByNonce() { }
-        
+
         public int Compare(UserOperation? x, UserOperation? y)
         {
             if (ReferenceEquals(x, y)) return 0;

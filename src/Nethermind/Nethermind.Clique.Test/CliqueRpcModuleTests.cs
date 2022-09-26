@@ -54,19 +54,19 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
                 new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
-                MainnetSpecProvider.Instance, 
+                MainnetSpecProvider.Instance,
                 cliqueConfig,
                 LimboLogs.Instance);
-            
+
             SnapshotManager snapshotManager = new(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            
+
             CliqueRpcModule bridge = new(producer, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
         }
-        
+
         [Test]
         public void Can_ask_for_block_signer()
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Clique.Test
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
         }
-        
+
         [Test]
         public void Can_ask_for_block_signer_when_block_is_unknown()
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Clique.Test
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
         }
-        
+
         [Test]
         public void Can_ask_for_block_signer_when_hash_is_null()
         {

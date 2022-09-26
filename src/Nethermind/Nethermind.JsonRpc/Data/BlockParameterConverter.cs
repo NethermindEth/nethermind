@@ -109,11 +109,11 @@ namespace Nethermind.JsonRpc.Data
                 for (int i = 0; i < 2; i++)
                 {
                     reader.Read();
-                    if (string.Equals((string) reader.Value, "requireCanonical", StringComparison.InvariantCultureIgnoreCase))
+                    if (string.Equals((string)reader.Value, "requireCanonical", StringComparison.InvariantCultureIgnoreCase))
                     {
                         requireCanonical = reader.ReadAsBoolean().Value;
                     }
-                    else if (string.Equals((string) reader.Value, "blockHash", StringComparison.InvariantCultureIgnoreCase))
+                    else if (string.Equals((string)reader.Value, "blockHash", StringComparison.InvariantCultureIgnoreCase))
                     {
                         blockHash = new Keccak(reader.ReadAsString());
                     }
@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.Data
 
             if (IsNonStringAndLongish(reader.Value))
             {
-                return new BlockParameter((long) reader.Value);
+                return new BlockParameter((long)reader.Value);
             }
 
             string value = reader.Value as string;

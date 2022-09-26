@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Cli.Converters
             _defaultConverter = defaultConverter;
             _converters = converters;
         }
-        
+
         public object Convert(object value, Type type, IFormatProvider formatProvider)
         {
             TypeConverter? converter = GetConverter(type, GetFromType(value));
@@ -55,9 +55,9 @@ namespace Nethermind.Cli.Converters
 
             return result;
         }
-        
+
         private static Type GetFromType(object? value) => value?.GetType() ?? typeof(object);
-        
+
         private TypeConverter? GetConverter(Type toType, Type fromType) =>
             _converters.FirstOrDefault(c => c.CanConvertTo(toType) && c.CanConvertFrom(fromType));
     }

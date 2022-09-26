@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,8 +23,8 @@ namespace Nethermind.Stats
     {
         private StatsParameters()
         {
-            FailedConnectionDelays = new[] {100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5};
-            DisconnectDelays = new[] {100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5};
+            FailedConnectionDelays = new[] { 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
+            DisconnectDelays = new[] { 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
         }
 
         public static StatsParameters Instance { get; } = new StatsParameters();

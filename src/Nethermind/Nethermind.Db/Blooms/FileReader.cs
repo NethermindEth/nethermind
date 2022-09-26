@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,13 +29,13 @@ namespace Nethermind.Db.Blooms
             _elementSize = elementSize;
             _file = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
-        
+
         public int Read(long index, Span<byte> element)
         {
             SeekIndex(index);
             return _file.Read(element);
         }
-        
+
         private void SeekIndex(long index)
         {
             long seekPosition = index * _elementSize;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Logging.NLog.Test
             NLogLogger logger = (NLogLogger)manager.GetClassLogger();
             Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Name);
         }
-        
+
         [Test]
         public void Create_defines_rules_correctly()
         {
@@ -53,10 +53,10 @@ namespace Nethermind.Logging.NLog.Test
                         foundRules.Should().BeEmpty();
                     }
                 }
-                
+
             }
 
-            string[] rulePatterns = {"Abc.*", "Cdf.efg"};
+            string[] rulePatterns = { "Abc.*", "Cdf.efg" };
             CheckRules(rulePatterns, false);
             string logRules = string.Join(";", rulePatterns.Select(r => $"{r}:Warn"));
             NLogManager manager = new("test", null, logRules);

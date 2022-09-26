@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Vault.Test
         [TestCase(false)]
         public void Init_vault_plugin_does_not_throw_exception(bool enabled)
         {
-            VaultConfig vaultConfig = new() {Enabled = enabled};
+            VaultConfig vaultConfig = new() { Enabled = enabled };
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<VaultConfig>().Returns(vaultConfig);
             context.MemDbFactory = new MemDbFactory();

@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.ToString(Block.Format.Short)}");
                 return null;
             }
-            
+
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsTrace) _logger.Trace("Signer cannot sing any blocks");
                 return false;
             }
-            
+
             if (!snapshot.Signers.ContainsKey(_signer.Address))
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.Clique
                     return false;
                 }
             }
-            
+
             // If we're amongst the recent signers, wait for the next block
             if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
             {

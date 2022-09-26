@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            
+
             BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
@@ -90,7 +90,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
-            
+
             _tracer = new Tracer(stateProvider, _processor);
         }
 
@@ -98,15 +98,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         public void Can_trace_raw_parity_style()
         {
             TraceRpcModule traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
-            ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] {"trace"});
+            ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] { "trace" });
             Assert.NotNull(result.Data);
         }
-        
+
         [Test]
         public void Can_trace_raw_parity_style_berlin_tx()
         {
             TraceRpcModule traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
-            ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4"), new[] {"trace"});
+            ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4"), new[] { "trace" });
             Assert.NotNull(result.Data);
         }
     }

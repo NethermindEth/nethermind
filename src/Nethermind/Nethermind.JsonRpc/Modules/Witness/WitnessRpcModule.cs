@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Witness
 
             Keccak hash = searchResult.Object.Hash;
             Keccak[] result = _witnessRepository.Load(hash!);
-            return result is null ? Task.FromResult(ResultWrapper<Keccak[]>.Fail("Witness unavailable",ErrorCodes.ResourceUnavailable)) : Task.FromResult(ResultWrapper<Keccak[]>.Success(result));
+            return result is null ? Task.FromResult(ResultWrapper<Keccak[]>.Fail("Witness unavailable", ErrorCodes.ResourceUnavailable)) : Task.FromResult(ResultWrapper<Keccak[]>.Success(result));
         }
     }
 }

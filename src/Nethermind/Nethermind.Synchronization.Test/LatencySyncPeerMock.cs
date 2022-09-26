@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,14 +51,14 @@ namespace Nethermind.Synchronization.Test
             HeadNumber = Tree.Head.Number;
             HeadHash = Tree.Head.Hash;
             TotalDifficulty = Tree.Head.TotalDifficulty ?? 0;
-            
+
             Node = new Node(TestItem.PrivateKeys[RemoteIndex].PublicKey, remoteHost, 30303);
             LocalNode = new Node(TestItem.PrivateKeys[0].PublicKey, localHost, 30303);
             Node.ClientId = $"remote {RemoteIndex}";
             LocalNode.ClientId = "local nethermind";
             RemoteIndex++;
         }
-        
+
         public Node Node { get; }
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test
         {
             throw new NotImplementedException();
         }
-        
+
         public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             throw new NotImplementedException();

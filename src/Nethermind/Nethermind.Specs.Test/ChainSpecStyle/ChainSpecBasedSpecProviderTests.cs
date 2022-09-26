@@ -321,7 +321,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 Parameters = new ChainParameters
                 {
-                    MaxCodeSizeTransition = maxCodeTransition, MaxCodeSize = maxCodeSize
+                    MaxCodeSizeTransition = maxCodeTransition,
+                    MaxCodeSize = maxCodeSize
                 }
             };
 
@@ -375,7 +376,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 Parameters = new ChainParameters
                 {
-                    Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4
+                    Eip1706Transition = 5,
+                    Eip1283Transition = 1,
+                    Eip1283DisableTransition = 4
                 }
             };
 

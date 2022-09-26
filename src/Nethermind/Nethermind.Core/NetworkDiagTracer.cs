@@ -43,7 +43,7 @@ namespace Nethermind.Core
             _logger = logManager.GetClassLogger();
             Timer timer = new();
             timer.Interval = 60000;
-            timer.Elapsed += (_, _) => DumpEvents(); 
+            timer.Elapsed += (_, _) => DumpEvents();
             timer.Start();
         }
 
@@ -56,7 +56,7 @@ namespace Nethermind.Core
                 stringBuilder.AppendLine(keyValuePair.Key);
                 foreach (string s in keyValuePair.Value)
                 {
-                    stringBuilder.AppendLine("  " + s);    
+                    stringBuilder.AppendLine("  " + s);
                 }
             }
 
@@ -80,31 +80,31 @@ namespace Nethermind.Core
 
         public static void ReportOutgoingMessage(IPEndPoint? nodeInfo, string protocol, string messageCode)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
         }
-        
+
         public static void ReportIncomingMessage(IPEndPoint? nodeInfo, string protocol, string info)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {info}");
         }
-        
+
         public static void ReportConnect(IPEndPoint? nodeInfo, string clientId)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
-        
+
         public static void ReportDisconnect(IPEndPoint? nodeInfo, string details)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
         }
-        
+
         public static void ReportInterestingEvent(IPEndPoint? nodeInfo, string details)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");
         }
     }

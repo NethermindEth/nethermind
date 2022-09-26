@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 {
                     return;
                 }
-                
+
                 if (!(e.OldAddress is null) && e.OldAddress != Address.Zero)
                 {
                     return;

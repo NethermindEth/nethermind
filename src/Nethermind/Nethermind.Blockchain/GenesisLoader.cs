@@ -53,12 +53,12 @@ namespace Nethermind.Blockchain
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
-        
+
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
             Preallocate(genesis);
-            
+
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain
 
             genesis.Header.StateRoot = _stateProvider.StateRoot;
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            
+
             return genesis;
         }
 

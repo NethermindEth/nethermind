@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new DataAssetDataMessage(Keccak.OfAnEmptySequenceRlp, "client", "data", 1));
             Test(new DataAssetMessage(dataAsset));
             Test(new DataAssetRemovedMessage(Keccak.OfAnEmptyString));
-            Test(new DataAssetsMessage(new[] {dataAsset, dataAsset}));
+            Test(new DataAssetsMessage(new[] { dataAsset, dataAsset }));
 
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.Archived));
             Test(new DataAssetStateChangedMessage(Keccak.OfAnEmptyString, DataAssetState.UnderMaintenance));
@@ -66,16 +66,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new DataAvailabilityMessage(Keccak.OfAnEmptyString, DataAvailability.DataDeliveryReceiptNotProvided));
 
             Test(new DataDeliveryReceiptMessage(Keccak.OfAnEmptyString, new DataDeliveryReceipt(StatusCodes.Error, 1, 2, signature)));
-            Test(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] {4}, Address.SystemUser, TestItem.AddressA, signature), 5));
+            Test(new DataRequestMessage(new DataRequest(Keccak.OfAnEmptyString, 1, 2, 3, new byte[] { 4 }, Address.SystemUser, TestItem.AddressA, signature), 5));
             Test(new DataRequestResultMessage(Keccak.OfAnEmptyString, DataRequestResult.DepositUnverified));
             Test(new DataStreamDisabledMessage(Keccak.OfAnEmptyString, "client"));
-            Test(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            Test(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             Test(new DepositApprovalConfirmedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
             Test(new DepositApprovalRejectedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
-            Test(new DepositApprovalsMessage(new DepositApproval[] {new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed)}));
+            Test(new DepositApprovalsMessage(new DepositApproval[] { new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed) }));
             Test(new DisableDataStreamMessage(Keccak.OfAnEmptyString, "client"));
             Test(new EarlyRefundTicketMessage(new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, signature), RefundReason.InvalidDataAsset));
-            Test(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
+            Test(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] { "a", "b", "c" }));
             Test(new EthRequestedMessage(new FaucetResponse(FaucetRequestStatus.FaucetDisabled, FaucetRequestDetails.Empty)));
             Test(new FinishSessionMessage(Keccak.OfAnEmptyString));
             Test(new GetDataAssetsMessage());
@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new HiMessage(1, TestItem.AddressA, TestItem.AddressB, TestItem.PublicKeyA, signature));
             Test(new InvalidDataMessage(Keccak.OfAnEmptyString, InvalidDataReason.InvalidResult));
             Test(new ProviderAddressChangedMessage(Address.SystemUser));
-            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
+            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] { new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature) })));
             Test(new RequestDepositApprovalMessage(Keccak.OfAnEmptyString, Address.SystemUser, "kyc"));
             Test(new RequestEthMessage(Address.SystemUser, UInt256.One));
             Test(new SessionFinishedMessage(session));
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Assert.Throws<InvalidDataException>(() => Test(new ConsumerAddressChangedMessage(null)));
             Assert.Throws<InvalidDataException>(() => Test(new DataAssetDataMessage(null, "client", "data", 1)));
             Assert.Throws<InvalidDataException>(() => Test(new DataAssetMessage(null)));
-            Assert.Throws<InvalidDataException>(() => Test(new DataAssetsMessage(new DataAsset[] {null})));
+            Assert.Throws<InvalidDataException>(() => Test(new DataAssetsMessage(new DataAsset[] { null })));
         }
 
         private void Test<T>(T message) where T : P2PMessage
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             message.Protocol.Should().Be("ndm");
 
             FieldInfo fieldInfo = typeof(NdmMessageCode).GetField(message.GetType().Name.Replace("Message", string.Empty), BindingFlags.Static | BindingFlags.Public);
-            message.PacketType.Should().Be((int) fieldInfo.GetValue(null));
+            message.PacketType.Should().Be((int)fieldInfo.GetValue(null));
 
             byte[] firstSer = _service.Serialize(message);
             byte[] secondSer = _service.Serialize(_service.Deserialize<T>(firstSer));

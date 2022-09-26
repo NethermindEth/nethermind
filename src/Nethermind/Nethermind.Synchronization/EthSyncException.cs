@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization
         public EthSyncException(string message) : base(message)
         {
         }
-        
+
         public EthSyncException(string message, Exception innerException) : base(message, innerException)
         {
         }

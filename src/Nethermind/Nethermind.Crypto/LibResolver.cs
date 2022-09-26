@@ -7,8 +7,8 @@ namespace Nethermind.Crypto
 {
     public static class LibResolver
     {
-        private static int _done;        
-        
+        private static int _done;
+
         public static void Setup()
         {
             if (Interlocked.CompareExchange(ref _done, 1, 0) == 0)

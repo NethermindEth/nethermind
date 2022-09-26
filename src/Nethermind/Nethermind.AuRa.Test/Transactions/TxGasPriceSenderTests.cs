@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class TxGasPriceSenderTests
     {
-        
+
         [TestCase(0uL, 0u, 0uL)]
         [TestCase(100uL, 110u, 110uL)]
         [TestCase(200uL, 110u, 220uL)]

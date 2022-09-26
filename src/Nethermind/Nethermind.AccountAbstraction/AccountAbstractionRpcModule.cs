@@ -35,7 +35,7 @@ namespace Nethermind.AccountAbstraction
         {
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
-        
+
         public AccountAbstractionRpcModule(IDictionary<Address, IUserOperationPool> userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
@@ -48,7 +48,7 @@ namespace Nethermind.AccountAbstraction
             {
                 return ResultWrapper<Keccak>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
             }
-            
+
             // check if any entrypoint has both the sender and same nonce, if they do then the fee must increase 
             bool allow = _supportedEntryPoints
                 .Select(ep => _userOperationPool[ep])

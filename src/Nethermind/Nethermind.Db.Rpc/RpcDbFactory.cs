@@ -66,10 +66,10 @@ namespace Nethermind.Db.Rpc
             var memDb = _wrappedMemDbFactory.CreateDb(dbName);
             return WrapWithRpc(memDb);
         }
-        
+
         public string GetFullDbPath(RocksDbSettings rocksDbSettings) => _wrappedRocksDbFactory.GetFullDbPath(rocksDbSettings);
 
-        private IDb WrapWithRpc(IDb db) => 
+        private IDb WrapWithRpc(IDb db) =>
             new ReadOnlyDb(new RpcDb(db.Name, _jsonSerializer, _jsonRpcClient, _logManager, db), true);
     }
 }

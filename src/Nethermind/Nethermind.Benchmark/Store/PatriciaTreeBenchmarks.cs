@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -220,7 +220,7 @@ namespace Nethermind.Benchmarks.Store
         {
             for (int i = 0; i < 19; i++)
             {
-                _scenarios[i].Action(_tree);    
+                _scenarios[i].Action(_tree);
             }
         }
 
@@ -229,7 +229,7 @@ namespace Nethermind.Benchmarks.Store
         {
             for (int i = 0; i < 19; i++)
             {
-                _scenarios[i].Action(_tree);    
+                _scenarios[i].Action(_tree);
             }
         }
     }

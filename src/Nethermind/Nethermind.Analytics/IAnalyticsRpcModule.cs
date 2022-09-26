@@ -25,7 +25,7 @@ namespace Nethermind.Analytics
     {
         [JsonRpcMethod(Description = "Retrieves ETH supply counted from state.", IsImplemented = true)]
         ResultWrapper<UInt256> analytics_verifySupply();
-        
+
         [JsonRpcMethod(Description = "Retrieves ETH supply counted from rewards.", IsImplemented = true)]
         ResultWrapper<UInt256> analytics_verifyRewards();
     }

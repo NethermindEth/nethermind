@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -22,17 +22,21 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class CreateTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         [Retry(3)]
         public void Test(GeneralStateTest test)
-        {    
+        {
             Assert.True(RunTest(test).Pass);
         }
-        
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCreateTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
+
+        public static IEnumerable<GeneralStateTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCreateTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }

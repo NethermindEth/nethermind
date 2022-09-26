@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Crypto
                 }
             }
         }
-        
+
         public static string Unsecure(this SecureString secureString)
         {
             if (secureString == null)
@@ -67,7 +67,7 @@ namespace Nethermind.Crypto
                 }
             }
         }
-        
+
         public static SecureString Secure(this string notSecureString)
         {
             var secureString = new SecureString();
@@ -75,7 +75,7 @@ namespace Nethermind.Crypto
             {
                 secureString.AppendChar(c);
             }
-            
+
             secureString.MakeReadOnly();
             return secureString;
         }

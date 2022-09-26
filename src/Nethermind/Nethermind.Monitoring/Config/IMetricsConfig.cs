@@ -26,13 +26,13 @@ namespace Nethermind.Monitoring.Config
 
         [ConfigItem(Description = "If 'true',the node publishes various metrics to Prometheus Pushgateway at given interval.", DefaultValue = "false")]
         bool Enabled { get; }
-        
+
         [ConfigItem(Description = "Prometheus Pushgateway URL.", DefaultValue = "\"http://localhost:9091/metrics\"")]
         string PushGatewayUrl { get; }
-        
+
         [ConfigItem(DefaultValue = "5", Description = "Defines how often metrics are pushed to Prometheus")]
         int IntervalSeconds { get; }
-        
+
         [ConfigItem(Description = "Name displayed in the Grafana dashboard", DefaultValue = "\"Nethermind\"")]
         string NodeName { get; }
     }

@@ -45,17 +45,17 @@ namespace Nethermind.Consensus.Processing
         /// Fired when a branch is being processed.
         /// </summary>
         event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
-        
+
         /// <summary>
         /// Fired after a block has been processed.
         /// </summary>
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        
+
         /// <summary>
         /// Fired after a transaction has been processed (even if inside the block).
         /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
-        
+
         public interface IBlockTransactionsExecutor
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);

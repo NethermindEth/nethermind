@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
             {
                 IPrecompile precompile = PairingPrecompile.Instance;
                 (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
-                
+
                 output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
                 success.Should().BeTrue();
             }

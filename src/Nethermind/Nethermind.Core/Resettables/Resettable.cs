@@ -58,7 +58,7 @@ namespace Nethermind.Core.Resettables
             {
                 _arrayPool.Return(array);
                 currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
-                array = _arrayPool.Rent(currentCapacity);    
+                array = _arrayPool.Rent(currentCapacity);
             }
 
             currentPosition = Resettable.EmptyPosition;

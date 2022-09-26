@@ -26,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Network
     {
         public override int PacketType { get; } = AaMessageCode.UserOperations;
         public override string Protocol { get; } = "aa";
-        
+
         public IList<UserOperationWithEntryPoint> UserOperationsWithEntryPoint { get; }
 
         public UserOperationsMessage(IList<UserOperationWithEntryPoint> userOperations)

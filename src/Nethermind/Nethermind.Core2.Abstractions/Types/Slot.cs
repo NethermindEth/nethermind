@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,9 +32,9 @@ namespace Nethermind.Core2.Types
         }
 
         public static Slot? None => default;
-        
+
         public static Slot Zero => new Slot(0);
-        
+
         public static Slot One => new Slot(1);
 
         public ulong Number => _number;
@@ -121,7 +121,7 @@ namespace Nethermind.Core2.Types
                 throw new ArgumentException("Slot number must be > 0", nameof(value));
             }
 
-            return new Slot((ulong) value);
+            return new Slot((ulong)value);
         }
 
         public static implicit operator ulong(Slot slot)
@@ -131,14 +131,14 @@ namespace Nethermind.Core2.Types
 
         public static explicit operator int(Slot slot)
         {
-            return (int) slot._number;
+            return (int)slot._number;
         }
-        
+
         public static Slot Max(Slot val1, Slot val2)
         {
             return val1 >= val2 ? val1 : val2;
         }
-        
+
         public static Slot Min(Slot val1, Slot val2)
         {
             return val1 <= val2 ? val1 : val2;

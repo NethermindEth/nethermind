@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            _lowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
+            _lowestInsertedReceiptBlock = lowestBytes == null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 

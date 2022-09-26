@@ -46,12 +46,12 @@ namespace Nethermind.AccountAbstraction.Source
         {
             NotifyAllPeers(op);
         }
-        
+
         public void BroadcastOnce(IUserOperationPoolPeer peer, UserOperationWithEntryPoint[] ops)
         {
             NotifyPeer(peer, ops);
         }
-        
+
         private void NotifyAllPeers(UserOperationWithEntryPoint op)
         {
             if (_logger.IsDebug) _logger.Debug($"Broadcasting new user operation {op.UserOperation.RequestId!} to entryPoint {op.EntryPoint} to all peers");
@@ -69,7 +69,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
             }
         }
-        
+
         private void NotifyPeer(IUserOperationPoolPeer peer, IEnumerable<UserOperationWithEntryPoint> ops)
         {
             try

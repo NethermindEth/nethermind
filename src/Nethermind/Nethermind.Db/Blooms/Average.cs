@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Db.Blooms
             {
                 decimal sum = 0;
                 uint count = 0;
-                
+
                 foreach (var bucket in Buckets)
                 {
                     sum += bucket.Key * bucket.Value;
@@ -38,7 +38,7 @@ namespace Nethermind.Db.Blooms
         }
 
         public readonly IDictionary<uint, uint> Buckets = new Dictionary<uint, uint>();
-        
+
         public int Count { get; private set; }
 
         public void Increment(uint value)

@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((DataDeliveryReceiptToMerge) obj);
+            return Equals((DataDeliveryReceiptToMerge)obj);
         }
 
         public override int GetHashCode()

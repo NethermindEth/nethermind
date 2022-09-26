@@ -26,7 +26,7 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int CheckpointLength = Ssz.RootLength + Ssz.EpochLength;
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Checkpoint value, ref int offset)
         {
@@ -50,7 +50,7 @@ namespace Nethermind.Ssz
             offset += Ssz.CheckpointLength;
             return checkpoint;
         }
-        
+
         public static Checkpoint DecodeCheckpoint(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, Ssz.CheckpointLength);

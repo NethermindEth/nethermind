@@ -49,11 +49,11 @@ namespace Nethermind.Mev
         {
             Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
         }
-        
+
         public MevRpcModule(
-            IJsonRpcConfig jsonRpcConfig, 
-            IBundlePool bundlePool, 
-            IBlockFinder blockFinder, 
+            IJsonRpcConfig jsonRpcConfig,
+            IBundlePool bundlePool,
+            IBlockFinder blockFinder,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
@@ -118,7 +118,7 @@ namespace Nethermind.Mev
                 header,
                 cancellationTokenSource.Token,
                 timestamp);
-            
+
             return ResultWrapper<TxsResults>.Success(results);
         }
 
@@ -132,10 +132,10 @@ namespace Nethermind.Mev
                 Keccak transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);
-                
+
                 txs[i] = bundleTransaction;
             }
-            
+
             if (revertingTxHashes.Count > 0)
             {
                 throw new ArgumentException(
@@ -145,7 +145,7 @@ namespace Nethermind.Mev
 
             return txs;
         }
-        
+
         private bool HasStateForBlock(BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();

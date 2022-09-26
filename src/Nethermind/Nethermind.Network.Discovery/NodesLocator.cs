@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -58,10 +58,10 @@ public class NodesLocator : INodesLocator
         {
             throw new InvalidOperationException("Master node has not been initialized");
         }
-            
+
         ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
 
-        if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
+        if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
 
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
@@ -69,7 +69,7 @@ public class NodesLocator : INodesLocator
         {
             Array.Clear(tryCandidates, 0, tryCandidates.Length);
             int candidatesCount;
-                
+
             int attemptsCount = 0;
             while (true)
             {
@@ -85,14 +85,14 @@ public class NodesLocator : INodesLocator
                         break;
                     }
                 }
-                    
+
                 if (attemptsCount++ > 20 || candidatesCount > 0)
                 {
                     break;
                 }
 
-                if(_logger.IsTrace) _logger.Trace($"Waiting {_discoveryConfig.DiscoveryNewCycleWaitTime} for new nodes");
-                    
+                if (_logger.IsTrace) _logger.Trace($"Waiting {_discoveryConfig.DiscoveryNewCycleWaitTime} for new nodes");
+
                 //we need to wait some time for pong messages received from new nodes we reached out to
                 try
                 {
@@ -106,7 +106,7 @@ public class NodesLocator : INodesLocator
 
             if (candidatesCount == 0)
             {
-                if(_logger.IsTrace) _logger.Trace("No more closer candidates");
+                if (_logger.IsTrace) _logger.Trace("No more closer candidates");
                 break;
             }
 
@@ -117,18 +117,18 @@ public class NodesLocator : INodesLocator
             {
                 int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
-                    
+
                 IEnumerable<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes);
                 Result?[] results = await Task.WhenAll(sendFindNodeTasks);
 
                 if (results.Length == 0)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"No more nodes to send, sent {successRequestsCount} successful requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                    if (_logger.IsDebug) _logger.Debug($"No more nodes to send, sent {successRequestsCount} successful requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                     break;
                 }
 
                 nodesTriedCount += results.Length;
-                    
+
                 foreach (Result? result in results)
                 {
                     if ((result?.ResultType ?? ResultType.Failure) == ResultType.Failure)
@@ -143,13 +143,13 @@ public class NodesLocator : INodesLocator
 
                 if (successRequestsCount >= _discoveryConfig.Concurrency)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Sent {successRequestsCount} successful requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                    if (_logger.IsTrace) _logger.Trace($"Sent {successRequestsCount} successful requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                     break;
                 }
             }
         }
         int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-        if(_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
+        if (_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
         if (_logger.IsTrace)
         {
@@ -203,7 +203,7 @@ public class NodesLocator : INodesLocator
                 sb.AppendLine($"{bucketItem.Node}, LastContactTime: {bucketItem.LastContactTime:yyyy-MM-dd HH:mm:ss:000}");
             }
         }
-            
+
         sb.Insert(0, $"------------------------------------------------------{Environment.NewLine}NodeTable, non-empty bucket count: {length}, total items count: {bondedItemsCount}");
         sb.AppendLine("------------------------------------------------------");
         _logger.Trace(sb.ToString());
@@ -214,7 +214,7 @@ public class NodesLocator : INodesLocator
         try
         {
             INodeLifecycleManager? nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
-                
+
             nodeManager?.SendFindNode(searchedNodeId ?? _masterNode!.Id.Bytes);
 
             return await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MsgType.Neighbors, _discoveryConfig.SendNodeTimeout)
@@ -224,6 +224,6 @@ public class NodesLocator : INodesLocator
         catch (OperationCanceledException)
         {
             return Result.Fail("Cancelled");
-        } 
+        }
     }
 }

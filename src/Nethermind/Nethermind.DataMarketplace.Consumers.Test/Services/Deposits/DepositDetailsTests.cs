@@ -14,7 +14,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
     public class DepositDetailsTests
     {
         private DepositDetails _depositDetails;
-        private Deposit _deposit; 
+        private Deposit _deposit;
         private DataAsset _dataAsset;
         private Address _consumerAddress;
 
@@ -32,8 +32,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             _depositDetails = new DepositDetails(_deposit,
                                                  _dataAsset,
                                                  _consumerAddress,
-                                                 pepper: new byte[] { 1, 2, 3}, 
-                                                 timestamp: 10, 
+                                                 pepper: new byte[] { 1, 2, 3 },
+                                                 timestamp: 10,
                                                  transactions: null);
         }
 
@@ -70,13 +70,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         {
             Assert.Throws<InvalidOperationException>(() => _depositDetails.SetConfirmationTimestamp(0));
         }
-        
+
         [Test]
         public void can_add_transaction()
         {
-            var transaction = new TransactionInfo(Keccak.OfAnEmptyString, 
-            value: 10, 
-            gasPrice: 1, 
+            var transaction = new TransactionInfo(Keccak.OfAnEmptyString,
+            value: 10,
+            gasPrice: 1,
             gasLimit: 20,
             timestamp: 30
             );
@@ -91,16 +91,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public void can_include_transaction()
         {
-            var transaction = new TransactionInfo(Keccak.OfAnEmptyString, 
-            value: 10, 
-            gasPrice: 1, 
+            var transaction = new TransactionInfo(Keccak.OfAnEmptyString,
+            value: 10,
+            gasPrice: 1,
             gasLimit: 20,
             timestamp: 30
             );
 
-            var transaction2 = new TransactionInfo(Keccak.OfAnEmptySequenceRlp, 
-            value: 10, 
-            gasPrice: 1, 
+            var transaction2 = new TransactionInfo(Keccak.OfAnEmptySequenceRlp,
+            value: 10,
+            gasPrice: 1,
             gasLimit: 20,
             timestamp: 30
             );
@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             Assert.IsTrue(includedTransaction.State == TransactionState.Included);
             Assert.IsTrue(rejectedTransaction.State == TransactionState.Rejected);
-        } 
+        }
 
         [Test]
         public void can_set_rejected()
@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void can_set_early_refund_ticket()
         {
             var earlyRefundTicket = new EarlyRefundTicket(Keccak.Zero,
-                                                        claimableAfter: 10, 
+                                                        claimableAfter: 10,
                                                         new Signature(1, 2, 37));
 
             _depositDetails.SetEarlyRefundTicket(earlyRefundTicket);
@@ -137,13 +137,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public void can_add_claimed_refund_transaction()
         {
-            var transaction = new TransactionInfo(Keccak.Zero, 
-                                                value: 10, 
+            var transaction = new TransactionInfo(Keccak.Zero,
+                                                value: 10,
                                                 gasPrice: 1,
                                                 gasLimit: 20,
                                                 timestamp: 10
                                                 );
-            
+
             _depositDetails.AddClaimedRefundTransaction(transaction);
 
             Assert.AreEqual(transaction, _depositDetails.ClaimedRefundTransaction);
@@ -152,13 +152,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public void can_set_included_on_claimed_refund()
         {
-            var transaction = new TransactionInfo(Keccak.Zero, 
-                                                value: 10, 
+            var transaction = new TransactionInfo(Keccak.Zero,
+                                                value: 10,
                                                 gasPrice: 1,
                                                 gasLimit: 20,
                                                 timestamp: 10
                                                 );
-            
+
             _depositDetails.AddClaimedRefundTransaction(transaction);
 
             _depositDetails.SetIncludedClaimedRefundTransaction(transaction.Hash);
@@ -184,7 +184,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void can_claim_early_refund_returns_correctly_true()
         {
             var earlyRefundTicket = new EarlyRefundTicket(Keccak.Zero,
-                                                        claimableAfter: 10, 
+                                                        claimableAfter: 10,
                                                         new Signature(1, 2, 37));
 
             _depositDetails.SetEarlyRefundTicket(earlyRefundTicket);
@@ -199,7 +199,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void will_not_set_can_claim_early_refund_when_current_timestamp_is_lower_than_deposit_timestamp()
         {
             var earlyRefundTicket = new EarlyRefundTicket(Keccak.Zero,
-                                                        claimableAfter: 10, 
+                                                        claimableAfter: 10,
                                                         new Signature(1, 2, 37));
 
             _depositDetails.SetEarlyRefundTicket(earlyRefundTicket);
@@ -237,7 +237,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             UInt256 timeLeft = _depositDetails.GetTimeLeftToClaimRefund(8);
 
-            Assert.IsTrue(timeLeft == 12); 
+            Assert.IsTrue(timeLeft == 12);
         }
 
         [Test]
@@ -254,7 +254,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void equals_returns_correctly_true()
         {
             var depositDetailsClone = _depositDetails;
-            
+
             bool equals = depositDetailsClone.Equals(_depositDetails);
 
             Assert.IsTrue(equals);
@@ -267,10 +267,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var depositDetails = new DepositDetails(deposit,
                                                  _dataAsset,
                                                  _consumerAddress,
-                                                 pepper: new byte[] { 5, 8, 6}, 
-                                                 timestamp: 50, 
+                                                 pepper: new byte[] { 5, 8, 6 },
+                                                 timestamp: 50,
                                                  transactions: null);
-            
+
             bool equals = depositDetails.Equals(_depositDetails);
 
             Assert.IsFalse(equals);

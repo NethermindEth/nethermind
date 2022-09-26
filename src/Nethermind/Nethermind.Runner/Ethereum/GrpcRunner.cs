@@ -40,8 +40,8 @@ namespace Nethermind.Runner.Ethereum
         {
             _server = new Server
             {
-                Services = {NethermindService.BindService(_service)},
-                Ports = {new ServerPort(_config.Host, _config.Port, ServerCredentials.Insecure)}
+                Services = { NethermindService.BindService(_service) },
+                Ports = { new ServerPort(_config.Host, _config.Port, ServerCredentials.Insecure) }
             };
             _server.Start();
             if (_logger.IsInfo) _logger.Info($"Started GRPC server on {_config.Host}:{_config.Port}.");

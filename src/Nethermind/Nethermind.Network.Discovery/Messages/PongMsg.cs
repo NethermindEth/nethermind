@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,12 +28,12 @@ public class PongMsg : DiscoveryMsg
     {
         PingMdc = pingMdc ?? throw new ArgumentNullException(nameof(pingMdc));
     }
-    
+
     public PongMsg(PublicKey farPublicKey, long expirationTime, byte[] pingMdc) : base(farPublicKey, expirationTime)
     {
         PingMdc = pingMdc ?? throw new ArgumentNullException(nameof(pingMdc));
     }
-    
+
     public override string ToString()
     {
         return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}";

@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Precompiles.Bls
                 _ => _discountTable[k]
             };
         }
-        
+
         private static Dictionary<int, int> _discountTable = new()
         {
             {1, 1200}, {2, 888}, {3, 764}, {4, 641}, {5, 594}, {6, 547}, {7, 500}, {8, 453},

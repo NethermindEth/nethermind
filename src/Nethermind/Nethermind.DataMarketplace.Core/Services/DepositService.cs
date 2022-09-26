@@ -43,9 +43,9 @@ namespace Nethermind.DataMarketplace.Core.Services
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
-        
+
         public ulong GasLimit { get; } = 55000;
-        
+
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig,
@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 GasPrice = 0.GWei(),
                 Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf)
             };
-            
+
             var data = await _blockchainBridge.CallAsync(transaction);
 
             return data.ToUInt256();
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 throw new InvalidDataException($"No contract code at address {contractAddress}.");
             }
-            
+
             if (!Bytes.AreEqual(code, Bytes.FromHexString(ContractData.DeployedCode)))
             {
                 throw new InvalidDataException($"Code at address {contractAddress} is different than expected.");
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 Data = txData,
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
-                GasLimit = (long) GasLimit,
+                GasLimit = (long)GasLimit,
                 GasPrice = gasPrice,
                 Nonce = nonce
             };

@@ -9,7 +9,7 @@ namespace Nethermind.Core2
         }
 
         public static IDisposable Instance { get; } = new EmptyDisposable();
-        
+
         public void Dispose()
         {
         }

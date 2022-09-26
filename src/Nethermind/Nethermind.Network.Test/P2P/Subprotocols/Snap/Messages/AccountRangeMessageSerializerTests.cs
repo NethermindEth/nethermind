@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
+                RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = System.Array.Empty<PathWithAccount>(),
                 Proofs = Array.Empty<byte[]>()
             };
@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_Many()
         {
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_EmptyStorageRoot()
         {
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_EmptyCode()
         {
@@ -104,10 +104,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 .WithStorageRoot(TestItem.KeccakA)
                 .TestObject;
 
-            AccountRangeMessage msg = new() { 
+            AccountRangeMessage msg = new()
+            {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
-                Proofs = new[] {TestItem.RandomDataA, TestItem.RandomDataB}
+                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();

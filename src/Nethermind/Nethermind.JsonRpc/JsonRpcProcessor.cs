@@ -94,8 +94,8 @@ namespace Nethermind.JsonRpc
                     foreach (JToken tokenElement in array)
                     {
                         UpdateParams(tokenElement);
-                    } 
-                    
+                    }
+
                     yield return (null, array.ToObject<List<JsonRpcRequest>>(_obsoleteBasicJsonSerializer));
                 }
                 else
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc
                 return; // null
             }
 
-            JArray arrayToken = (JArray) paramsToken;
+            JArray arrayToken = (JArray)paramsToken;
             for (int i = 0; i < arrayToken.Count; i++)
             {
                 if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
@@ -259,7 +259,7 @@ namespace Nethermind.JsonRpc
             {
                 _recorder.RecordResponse(_jsonSerializer.Serialize(result));
             }
-            
+
             return result;
         }
 

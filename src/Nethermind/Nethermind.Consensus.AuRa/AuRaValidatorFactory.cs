@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.AuRa
 
             var validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
-            
+
             ContractBasedValidator GetContractBasedValidator() =>
                 new ContractBasedValidator(
                     GetValidatorContract(),
@@ -113,21 +113,21 @@ namespace Nethermind.Consensus.AuRa
                     startBlockNumber,
                     _posdaoTransition,
                     _forSealing);
-            
+
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => 
+                AuRaParameters.ValidatorType.List =>
                     new ListBasedValidator(
-                        validator, 
-                        validSealerStrategy, 
-                        _validatorStore, 
+                        validator,
+                        validSealerStrategy,
+                        _validatorStore,
                         _logManager,
                         startBlockNumber,
                         _forSealing),
-                
+
                 AuRaParameters.ValidatorType.Contract => GetContractBasedValidator(),
-                
-                AuRaParameters.ValidatorType.ReportingContract => 
+
+                AuRaParameters.ValidatorType.ReportingContract =>
                     new ReportingContractBasedValidator(
                         GetContractBasedValidator(),
                         GetReportingValidatorContract(),
@@ -140,8 +140,8 @@ namespace Nethermind.Consensus.AuRa
                         _specProvider,
                         _gasPriceOracle,
                         _logManager),
-                
-                AuRaParameters.ValidatorType.Multi => 
+
+                AuRaParameters.ValidatorType.Multi =>
                     new MultiValidator(
                         validator,
                         this,
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.AuRa
                         parentHeader,
                         _logManager,
                         _forSealing),
-                
+
                 _ => throw new ArgumentOutOfRangeException()
             };
         }

@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Test
             peerInfo.IsAllocated(_contexts).Should().BeTrue();
             peerInfo.CanBeAllocated(_contexts).Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_free()
         {
@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.Test
             peerInfo.IsAllocated(_contexts).Should().BeFalse();
             peerInfo.CanBeAllocated(_contexts).Should().BeTrue();
         }
-        
+
         [Test]
         public void Cannot_allocate_subcontext()
         {
@@ -141,12 +141,12 @@ namespace Nethermind.Synchronization.Test
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
             peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeFalse();
             peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
-            
+
             peerInfo.Free(AllocationContexts.Receipts);
             peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
             peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
         }
-        
+
         [Test]
         public void Cannot_allocate_subcontext_of_sleeping()
         {

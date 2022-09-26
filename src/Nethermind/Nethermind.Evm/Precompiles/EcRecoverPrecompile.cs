@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,13 +45,13 @@ namespace Nethermind.Evm.Precompiles
         }
 
         private readonly EthereumEcdsa _ecdsa = new(ChainId.Mainnet, LimboLogs.Instance);
-        
+
         private readonly byte[] _zero31 = new byte[31];
-        
+
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
-            
+
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.Span.Slice(0, Math.Min(128, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 return (Array.Empty<byte>(), true);
             }
-            
+
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 result = result.PadLeft(32);
             }
-            
+
             // TODO: change recovery code to return bytes
             return (result, true);
         }

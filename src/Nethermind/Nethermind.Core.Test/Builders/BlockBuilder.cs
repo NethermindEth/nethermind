@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
             header.Hash = TestObjectInternal.CalculateHash();
         }
-        
+
         public BlockBuilder WithHeader(BlockHeader header)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedHeader(header);
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = number;
             return this;
         }
-        
+
         public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
             TestObjectInternal.Header.BaseFeePerGas = baseFeePerGas;
@@ -86,7 +86,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 txs[i] = new Transaction();
             }
-            
+
             TxReceipt[] receipts = new TxReceipt[txCount];
             for (int i = 0; i < txCount; i++)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
             return result;
         }
-        
+
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.TxRoot = trie.RootHash;
             return this;
         }
-        
+
         public BlockBuilder WithTxRoot(Keccak txRoot)
         {
             TestObjectInternal.Header.TxRoot = txRoot;
@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Beneficiary = address;
             return this;
         }
-        
+
         public BlockBuilder WithPostMergeFlag(bool postMergeFlag)
         {
             TestObjectInternal.Header.IsPostMerge = postMergeFlag;
@@ -133,7 +133,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {
-            TestObjectInternal.Header.TotalDifficulty = (ulong) difficulty;
+            TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
             return this;
         }
 

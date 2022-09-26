@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         private readonly ISyncServer _syncServer;
 
         private readonly MessageQueue<GetBlockWitnessHashesMessage, Keccak[]> _witnessRequests;
-        
+
         public WitProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStats,
@@ -48,13 +48,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         }
 
         public override byte ProtocolVersion => 0;
-        
+
         public override string ProtocolCode => Protocol.Wit;
-        
+
         public override int MessageIdSpaceSize => 3;
-        
+
         public override string Name => "wit0";
-        
+
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -103,7 +103,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         }
 
         private static long _requestId;
-        
+
         public async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
@@ -114,7 +114,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             Keccak[] witnessHashes = await SendRequest(msg, token);
             return witnessHashes;
         }
-        
+
         private async Task<Keccak[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -139,14 +139,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
                 delayCancellation.Cancel();
                 return task.Result;
             }
-            
+
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockWitnessHashes)} for {message.BlockHash}");
         }
-        
+
         #region Cleanup
 
         private int _isDisposed;
-        
+
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();

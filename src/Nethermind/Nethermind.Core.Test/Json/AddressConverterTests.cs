@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,13 +28,13 @@ namespace Nethermind.Core.Test.Json
         {
             TestConverter(null, (address, address1) => address == address1, new AddressConverter());
         }
-        
+
         [Test]
         public void Zero_value()
         {
             TestConverter(Address.Zero, (address, address1) => address == address1, new AddressConverter());
         }
-        
+
         [Test]
         public void Some_value()
         {
