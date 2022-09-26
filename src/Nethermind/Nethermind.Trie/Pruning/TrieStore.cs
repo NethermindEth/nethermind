@@ -311,7 +311,10 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     CurrentPackage = null;
-                    Monitor.Exit(_dirtyNodes);
+                    if (Monitor.IsEntered(_dirtyNodes))
+                    {
+                        Monitor.Exit(_dirtyNodes);
+                    }
                 }
             }
             finally
@@ -692,7 +695,11 @@ namespace Nethermind.Trie.Pruning
         {
             if (CurrentPackage is null)
             {
-                Monitor.Enter(_dirtyNodes);
+                if (!Monitor.IsEntered(_dirtyNodes))
+                {
+                    Monitor.Enter(_dirtyNodes);
+                }
+
                 CreateCommitSet(blockNumber);
             }
         }
