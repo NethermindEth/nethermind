@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private const string CustomType = "custom";
         private const string Url = "https://ethgasstation.info/json/ethgasAPI.json";
-        private readonly string[] _types = {CustomType, "safelow", "average", "fast", "fastest"};
+        private readonly string[] _types = { CustomType, "safelow", "average", "fast", "fastest" };
         private readonly IHttpClient _client;
         private readonly IConfigManager _configManager;
         private readonly string _configId;
@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.GasPrice ?? 20.GWei();
         }
-        
+
         public async Task<UInt256> GetCurrentRefundGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
@@ -110,7 +110,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"Updated gas price: {config.GasPrice} wei.");
             }
         }
-        
+
         public async Task SetRefundGasPriceAsync(UInt256 gasPrice)
         {
             if (gasPrice <= 0)
@@ -129,13 +129,13 @@ namespace Nethermind.DataMarketplace.Core.Services
             await _configManager.UpdateAsync(config);
             if (_logger.IsInfo) _logger.Info($"Updated refund gas price: {config.RefundGasPrice} wei.");
         }
-        
+
         public async Task<UInt256> GetCurrentPaymentClaimGasPriceAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return config?.PaymentClaimGasPrice ?? 20.GWei();
         }
-        
+
         public async Task SetPaymentClaimGasPriceAsync(UInt256 gasPrice)
         {
             if (gasPrice <= 0)
@@ -192,7 +192,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
 
                 // ETH Gas Station returns 10xGwei value.
-                UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
+                UInt256 GetGasPriceGwei(decimal gasPrice) => ((int)Math.Ceiling(gasPrice / 10)).GWei();
             }
         }
 

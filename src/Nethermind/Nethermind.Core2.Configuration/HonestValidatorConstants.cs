@@ -1,4 +1,4 @@
-﻿using Nethermind.Core2.Types;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Configuration
 {

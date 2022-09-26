@@ -54,14 +54,14 @@ namespace Nethermind.DataMarketplace.Core.Services
             NdmConfig? config = await _configManager.GetAsync(_configId);
             if (config == null)
             {
-                if(_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update JSON RPC procy");
+                if (_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update JSON RPC procy");
                 throw new InvalidOperationException($"Failed to retrieve config {_configId} to update JSON RPC procy");
             }
             else
             {
                 config.JsonRpcUrlProxies = providedUrls;
                 await _configManager.UpdateAsync(config);
-                if (_logger.IsInfo) _logger.Info("Updated JSON RPC Proxy configuration.");   
+                if (_logger.IsInfo) _logger.Info("Updated JSON RPC Proxy configuration.");
             }
         }
     }

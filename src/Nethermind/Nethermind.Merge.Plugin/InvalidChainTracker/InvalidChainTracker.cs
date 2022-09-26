@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 ///
 /// </summary>
-public class InvalidChainTracker: IInvalidChainTracker
+public class InvalidChainTracker : IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBlockFinder _blockFinder;
@@ -136,7 +136,7 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
     {
-        if(_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
+        if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
 
         // TODO: This port can now be removed? We should never get null here?
         if (parent == null)
@@ -144,7 +144,7 @@ public class InvalidChainTracker: IInvalidChainTracker
             BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
             if (failedBlockHeader == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
                 return;
             }
 
@@ -162,7 +162,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
         else
         {
-            if(_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
         }
 
         Node failedBlockNode = GetNode(failedBlock);

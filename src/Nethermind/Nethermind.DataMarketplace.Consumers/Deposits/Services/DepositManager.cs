@@ -161,8 +161,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            uint now = (uint) _timestamper.UnixTime.Seconds;
-            uint expiryTime = now + (uint) dataAsset.Rules.Expiry.Value;
+            uint now = (uint)_timestamper.UnixTime.Seconds;
+            uint expiryTime = now + (uint)dataAsset.Rules.Expiry.Value;
             expiryTime += dataAsset.UnitType == DataAssetUnitType.Unit ? 0 : units;
             byte[] pepper = _cryptoRandom.GenerateRandomBytes(16);
             byte[] abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _depositAbiSig, assetId.Bytes,

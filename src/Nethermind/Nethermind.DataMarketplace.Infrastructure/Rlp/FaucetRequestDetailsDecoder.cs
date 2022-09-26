@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 return FaucetRequestDetails.Empty;
             }
-            
+
             string host = rlpStream.DecodeString();
             Address address = rlpStream.DecodeAddress();
             UInt256 value = rlpStream.DecodeUInt256();
@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 return Serialization.Rlp.Rlp.OfEmptySequence;
             }
-            
+
             long date = (item.Date == DateTime.MinValue || item.Date == null) ? 0 : new DateTimeOffset(item.Date.Value).ToUnixTimeSeconds();
 
             return Serialization.Rlp.Rlp.Encode(

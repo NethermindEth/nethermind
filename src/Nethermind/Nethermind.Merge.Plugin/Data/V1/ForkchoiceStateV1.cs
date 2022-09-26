@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,18 +32,18 @@ namespace Nethermind.Merge.Plugin.Data.V1
             FinalizedBlockHash = finalizedBlockHash;
             SafeBlockHash = safeBlockHash;
         }
-        
+
         /// <summary>
         /// Hash of the head of the canonical chain.
         /// </summary>
         public Keccak HeadBlockHash { get; set; }
-        
+
         /// <summary>
         /// Safe block hash of the canonical chain under certain synchrony and honesty assumptions. This value MUST be either equal to or an ancestor of headBlockHash.
         /// </summary>
         /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
         public Keccak SafeBlockHash { get; set; }
-        
+
         /// <summary>
         /// Hash of the most recent finalized block
         /// </summary>

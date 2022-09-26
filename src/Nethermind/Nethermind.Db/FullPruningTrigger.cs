@@ -26,12 +26,12 @@ namespace Nethermind.Db
         /// Only Manual trigger is supported.
         /// </summary>
         Manual,
-        
+
         /// <summary>
         /// Automatically triggers on State DB size.
         /// </summary>
         StateDbSize,
-        
+
         /// <summary>
         /// Automatically triggers on Volume free space on volume with State DB.
         /// </summary>

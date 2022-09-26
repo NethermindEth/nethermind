@@ -43,14 +43,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 string name = rlpStream.DecodeString();
                 string description = rlpStream.DecodeString();
                 UInt256 unitPrice = rlpStream.DecodeUInt256();
-                DataAssetUnitType unitType = (DataAssetUnitType) rlpStream.DecodeInt();
+                DataAssetUnitType unitType = (DataAssetUnitType)rlpStream.DecodeInt();
                 uint minUnits = rlpStream.DecodeUInt();
                 uint maxUnits = rlpStream.DecodeUInt();
                 DataAssetRules rules = Serialization.Rlp.Rlp.Decode<DataAssetRules>(rlpStream);
                 DataAssetProvider provider = Serialization.Rlp.Rlp.Decode<DataAssetProvider>(rlpStream);
                 string file = rlpStream.DecodeString();
-                QueryType queryType = (QueryType) rlpStream.DecodeInt();
-                DataAssetState state = (DataAssetState) rlpStream.DecodeInt();
+                QueryType queryType = (QueryType)rlpStream.DecodeInt();
+                DataAssetState state = (DataAssetState)rlpStream.DecodeInt();
                 string termsAndConditions = rlpStream.DecodeString();
                 bool kycRequired = rlpStream.DecodeBool();
                 string plugin = rlpStream.DecodeString();
@@ -81,14 +81,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Name),
                 Serialization.Rlp.Rlp.Encode(item.Description),
                 Serialization.Rlp.Rlp.Encode(item.UnitPrice),
-                Serialization.Rlp.Rlp.Encode((int) item.UnitType),
+                Serialization.Rlp.Rlp.Encode((int)item.UnitType),
                 Serialization.Rlp.Rlp.Encode(item.MinUnits),
                 Serialization.Rlp.Rlp.Encode(item.MaxUnits),
                 Serialization.Rlp.Rlp.Encode(item.Rules),
                 Serialization.Rlp.Rlp.Encode(item.Provider),
                 Serialization.Rlp.Rlp.Encode(item.File),
-                Serialization.Rlp.Rlp.Encode((int) item.QueryType),
-                Serialization.Rlp.Rlp.Encode((int) item.State),
+                Serialization.Rlp.Rlp.Encode((int)item.QueryType),
+                Serialization.Rlp.Rlp.Encode((int)item.State),
                 Serialization.Rlp.Rlp.Encode(item.TermsAndConditions),
                 Serialization.Rlp.Rlp.Encode(item.KycRequired),
                 Serialization.Rlp.Rlp.Encode(item.Plugin));

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,12 +37,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="items"></param>
         /// <returns></returns>
         bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items);
-        
+
         /// <summary>
         /// If changes in blocks are incremental.
         /// If 'true' values we extract from receipts are changes to be merged with previous state.
         /// If 'false' values we extract from receipts overwrite previous state.
         /// </summary>
-        bool IncrementalChanges { get; } 
+        bool IncrementalChanges { get; }
     }
 }

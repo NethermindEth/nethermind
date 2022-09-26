@@ -176,7 +176,7 @@ namespace Nethermind.State.Proofs
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
-                    Keccak childHash = node.GetChildHash((byte) childIndex);
+                    Keccak childHash = node.GetChildHash((byte)childIndex);
                     if (childHash is null)
                     {
                         AddEmpty(node, trieVisitContext);
@@ -188,9 +188,9 @@ namespace Nethermind.State.Proofs
                             _storageNodeInfos[childHash] = new StorageNodeInfo();
                         }
 
-                        if (!bumpedIndexes.Contains((byte) childIndex))
+                        if (!bumpedIndexes.Contains((byte)childIndex))
                         {
-                            bumpedIndexes.Add((byte) childIndex);
+                            bumpedIndexes.Add((byte)childIndex);
                             _storageNodeInfos[childHash].PathIndex = _pathTraversalIndex + 1;
                         }
 
@@ -201,7 +201,7 @@ namespace Nethermind.State.Proofs
             }
             else
             {
-                _nodeToVisitFilter.Add(node.GetChildHash((byte) _fullAccountPath[_pathTraversalIndex]));
+                _nodeToVisitFilter.Add(node.GetChildHash((byte)_fullAccountPath[_pathTraversalIndex]));
             }
 
             _pathTraversalIndex++;
@@ -321,7 +321,7 @@ namespace Nethermind.State.Proofs
             bool isPathMatched = true;
             for (int i = _pathTraversalIndex; i < node.Key.Length + _pathTraversalIndex; i++)
             {
-                if ((byte) path[i] != node.Key[i - _pathTraversalIndex])
+                if ((byte)path[i] != node.Path[i - _pathTraversalIndex])
                 {
                     isPathMatched = false;
                     break;

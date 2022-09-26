@@ -32,7 +32,7 @@ namespace Nethermind.Consensus
         {
             _constantDifficulty = constantDifficulty;
         }
-        
+
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) => _constantDifficulty;
     }
 }

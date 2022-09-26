@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
-            if(!dict.TryGetValue(expectedRootHash, out TrieNode root))
+            if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }

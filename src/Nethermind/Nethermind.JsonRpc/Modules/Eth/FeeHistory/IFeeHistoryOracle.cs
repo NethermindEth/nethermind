@@ -22,6 +22,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
     public interface IFeeHistoryOracle
     {
         ResultWrapper<FeeHistoryResults> GetFeeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles);
-        
+
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Comparison
     public class ByHashTxComparer : IComparer<Transaction>, IEqualityComparer<Transaction>
     {
         public static readonly ByHashTxComparer Instance = new();
-        
+
         private ByHashTxComparer() { }
 
         public int Compare(Transaction? x, Transaction? y)
@@ -34,7 +34,7 @@ namespace Nethermind.TxPool.Comparison
             if (ReferenceEquals(x?.Hash, y?.Hash)) return 0;
             if (ReferenceEquals(null, y?.Hash)) return 1;
             if (ReferenceEquals(null, x?.Hash)) return -1;
-            
+
             return x.Hash!.CompareTo(y.Hash);
         }
 

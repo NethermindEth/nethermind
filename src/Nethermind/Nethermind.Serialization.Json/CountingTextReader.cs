@@ -87,7 +87,7 @@ namespace Nethermind.Serialization.Json
             }
             return read;
         }
-        
+
         private int IncrementLength(in int read)
         {
             Length += read;

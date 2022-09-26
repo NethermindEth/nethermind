@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,11 +36,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             CreateSystemAccounts();
             base.Load();
         }
-        
+
         private void CreateSystemAccounts()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
+
             bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (hasConstructorAllocation)
             {

@@ -37,7 +37,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 .OrderBy(b => b.Number)
                 .ToList();
 
-            var window = new Window("Blocks") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Blocks") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
 
             if (!blocks.Any())
             {
@@ -56,7 +56,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var blockDetailsWindow = new Window("Block details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(blockDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

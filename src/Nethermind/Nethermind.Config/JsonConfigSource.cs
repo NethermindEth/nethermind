@@ -57,12 +57,12 @@ namespace Nethermind.Config
                     directory = Path.IsPathRooted(configFilePath)
                         ? directory
                         : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory);
-                    
+
                     missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
-                    
+
                     string[] configFiles = Directory.GetFiles(directory, "*.cfg");
                     if (configFiles.Length > 0)
-                    {   
+                    {
                         missingConfigFileMessage.AppendLine("Found the following config files:");
                         for (int i = 0; i < configFiles.Length; i++)
                         {
@@ -113,7 +113,7 @@ namespace Nethermind.Config
             {
                 configModule = configModule + "Config";
             }
-            
+
             _values[configModule] = items;
             _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         }
@@ -133,7 +133,7 @@ namespace Nethermind.Config
                 {
                     ParseValue(type, category, name);
                 }
-                
+
                 return (true, _parsedValues[category][name]);
             }
 
@@ -142,7 +142,7 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            if(string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
+            if (string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
             {
                 return (false, null);
             }

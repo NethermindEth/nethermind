@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public GetReceiptsMessage()
         {
         }
-        
+
         public GetReceiptsMessage(long requestId, V63.Messages.GetReceiptsMessage ethMessage) : base(requestId, ethMessage)
         {
         }

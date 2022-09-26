@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
         Task<T> PrepareRequest(CancellationToken token = default);
         SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
-        
+
         /// <summary>
         /// Multifeed can prepare and handle multiple requests concurrently.
         /// </summary>

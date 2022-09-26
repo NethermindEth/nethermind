@@ -65,7 +65,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Should_always_announce_block_number_when_pruning_disabled_and_persisting()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) {LastSeen = 1};
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) { LastSeen = 1 };
 
             long reorgBoundaryCount = 0L;
             TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
@@ -286,7 +286,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Can_load_from_rlp()
         {
             MemDb memDb = new();
-            memDb[Keccak.Zero.Bytes] = new byte[] {1, 2, 3};
+            memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
 
             TrieStore trieStore = new(memDb, _logManager);
             trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
@@ -349,10 +349,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Will_get_dropped_on_snapshot_if_it_was_a_transient_node()
         {
-            TrieNode a = new(NodeType.Leaf, new byte[] {1});
+            TrieNode a = new(NodeType.Leaf, new byte[] { 1 });
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
-            TrieNode b = new(NodeType.Leaf, new byte[] {2});
+            TrieNode b = new(NodeType.Leaf, new byte[] { 2 });
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new();

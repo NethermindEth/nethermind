@@ -144,13 +144,13 @@ namespace Nethermind.Trie
                         {
                             totalLength++;
                         }
-                        else if(item._data[i] is Keccak)
+                        else if (item._data[i] is Keccak)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
@@ -185,13 +185,13 @@ namespace Nethermind.Trie
                         {
                             destination[position++] = 128;
                         }
-                        else if(item._data[i] is Keccak)
+                        else if (item._data[i] is Keccak)
                         {
                             position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false);
                             if (childNode.Keccak is null)
                             {

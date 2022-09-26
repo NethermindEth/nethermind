@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,11 +50,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _value Transaction amount in wei.
             // _gasPrice Gas price in wei for the transaction.
             // _data Transaction data.
-            
+
             long number = (parentHeader?.Number ?? 0) + 1;
             bool isEip1559Enabled = _specProvider.GetSpec(number).IsEip1559Enabled;
             UInt256 gasPrice = isEip1559Enabled && tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
-            
+
             return new object[]
             {
                 tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data ?? Array.Empty<byte>()

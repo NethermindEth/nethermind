@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Contracts.Json
         internal const string PrecisionGroup = "N";
         internal const string ArrayGroup = "A";
         internal const string LengthGroup = "L";
-        
+
         /// <remarks>
         /// Groups:
         /// T - type or base type if array
@@ -42,8 +42,8 @@ namespace Nethermind.Blockchain.Contracts.Json
         /// </remarks>
         internal static readonly Regex TypeExpression = new(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed((?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        
-        
+
+
         internal static readonly IDictionary<string, Func<int?, int?, AbiType>> SimpleTypeFactories = new Dictionary<string, Func<int?, int?, AbiType>>(StringComparer.InvariantCultureIgnoreCase)
         {
             {"int", (m, n) => new AbiInt(m ?? 256)},
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             {"string", (m, n) => AbiType.String}
         };
     }
-    
+
     public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()
     {
         private readonly IList<IAbiTypeFactory> _abiTypeFactories;
@@ -87,13 +87,13 @@ namespace Nethermind.Blockchain.Contracts.Json
             item.Name = GetName(token);
             item.Type = GetAbiType(token);
         }
-        
-        private AbiType GetAbiType(JToken token) => 
+
+        private AbiType GetAbiType(JToken token) =>
             GetParameterType(token[TypePropertyName]!.Value<string>(), token["components"]);
 
         private static string TypePropertyName => nameof(AbiParameter.Type).ToLowerInvariant();
 
-        private static string GetName(JToken token) => 
+        private static string GetName(JToken token) =>
             token[NamePropertyName]!.Value<string>();
 
         private static string NamePropertyName => nameof(AbiParameter.Name).ToLowerInvariant();
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 var baseAbiType = GetBaseType(baseType, match, components);
                 return match.Groups[AbiParameterConverterStatics.ArrayGroup].Success
                     ? match.Groups[AbiParameterConverterStatics.LengthGroup].Success
-                        ? (AbiType) new AbiFixedLengthArray(baseAbiType, int.Parse(match.Groups[AbiParameterConverterStatics.LengthGroup].Value))
+                        ? (AbiType)new AbiFixedLengthArray(baseAbiType, int.Parse(match.Groups[AbiParameterConverterStatics.LengthGroup].Value))
                         : new AbiArray(baseAbiType)
                     : baseAbiType;
             }
@@ -144,8 +144,8 @@ namespace Nethermind.Blockchain.Contracts.Json
 
             if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
             {
-                int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
-                int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?) null;
+                int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?)null;
+                int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?)null;
                 return simpleTypeFactory(m, n);
             }
             else if (baseType == "tuple")

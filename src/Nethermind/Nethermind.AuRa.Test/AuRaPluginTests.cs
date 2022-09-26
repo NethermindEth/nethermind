@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,9 +29,9 @@ namespace Nethermind.AuRa.Test
         public void Init_when_not_AuRa_doesnt_trow()
         {
             AuRaPlugin auRaPlugin = new();
-            Action init =() => auRaPlugin.Init(new NethermindApi());
+            Action init = () => auRaPlugin.Init(new NethermindApi());
             init.Should().NotThrow();
         }
-            
+
     }
 }

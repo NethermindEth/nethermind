@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Db.Blooms
         private readonly Stream _fileWrite;
         private readonly Stream _fileRead;
         private int _needsFlush;
-        
+
         public FixedSizeFileStore(string path, int elementSize)
         {
             _path = path;
@@ -72,12 +72,12 @@ namespace Nethermind.Db.Blooms
         public int Read(long index, Span<byte> element)
         {
             EnsureFlushed();
-            
+
             lock (_fileRead)
             {
                 SeekIndex(_fileRead, index);
                 return _fileRead.Read(element);
-            }            
+            }
         }
 
         public IFileReader CreateFileReader()

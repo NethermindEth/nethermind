@@ -41,25 +41,25 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public uint ConsumedUnits
         {
-            get => (uint) _consumedUnits;
+            get => (uint)_consumedUnits;
             private set => _consumedUnits = value;
         }
 
         public uint UnpaidUnits
         {
-            get => (uint) _unpaidUnits;
+            get => (uint)_unpaidUnits;
             private set => _unpaidUnits = value;
         }
 
         public uint PaidUnits
         {
-            get => (uint) _paidUnits;
+            get => (uint)_paidUnits;
             private set => _paidUnits = value;
         }
 
         public uint SettledUnits
         {
-            get => (uint) _settledUnits;
+            get => (uint)_settledUnits;
             private set => _settledUnits = value;
         }
 
@@ -106,7 +106,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((Session) obj);
+            return Equals((Session)obj);
         }
 
         public override int GetHashCode()

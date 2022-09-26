@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Rlp
     public class TxDecoder : TxDecoder<Transaction> { }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
     public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
-    
+
     public class TxDecoder<T> :
         IRlpStreamDecoder<T>,
         IRlpValueDecoder<T>
@@ -116,7 +116,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
-        
+
         private void DecodeEip1559PayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = rlpStream.DecodeULong();
@@ -129,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
-        
+
         private void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext)
         {
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -140,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
-        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext  decoderContext, RlpBehaviors rlpBehaviors)
+        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -151,7 +151,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
-        
+
         private void DecodeEip1559PayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
@@ -164,7 +164,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
-        
+
         private void EncodeLegacyWithoutPayload(T item, RlpStream stream)
         {
             stream.Encode(item.Nonce);
@@ -174,7 +174,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
         }
-        
+
         private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
             stream.Encode(item.ChainId ?? 0);
@@ -186,7 +186,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
-        
+
         private void EncodeEip1559PayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
             stream.Encode(item.ChainId ?? 0);
@@ -238,7 +238,7 @@ namespace Nethermind.Serialization.Rlp
             int transactionLength = decoderContext.PeekNextRlpLength();
             int lastCheck = decoderContext.Position + transactionLength;
             decoderContext.SkipLength();
-            
+
             switch (transaction.Type)
             {
                 case TxType.Legacy:
@@ -408,7 +408,7 @@ namespace Nethermind.Serialization.Rlp
                 + Rlp.LengthOf(item.Value)
                 + Rlp.LengthOf(item.Data);
         }
-        
+
         private int GetAccessListContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
@@ -420,7 +420,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
-        
+
         private int GetEip1559ContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
@@ -448,8 +448,8 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.EIP1559:
                     contentLength = GetEip1559ContentLength(item);
                     break;
-            }            
-            
+            }
+
             if (forSigning)
             {
                 if (isEip155Enabled && chainId != 0)

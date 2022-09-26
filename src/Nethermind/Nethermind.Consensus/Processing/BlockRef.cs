@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Processing
         public Keccak BlockHash { get; set; }
         public Block? Block { get; set; }
         public ProcessingOptions ProcessingOptions { get; }
-        
+
         public bool Resolve(IBlockTree blockTree)
         {
             if (IsInDb)

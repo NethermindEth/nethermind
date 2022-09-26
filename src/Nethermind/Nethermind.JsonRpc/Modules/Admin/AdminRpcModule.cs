@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -111,12 +111,12 @@ namespace Nethermind.JsonRpc.Modules.Admin
             {
                 removed = _peerPool.TryRemove(new NetworkNode(enode).NodeId, out Peer _);
             }
-            
+
             return removed
                 ? ResultWrapper<string>.Success(enode)
                 : ResultWrapper<string>.Fail("Failed to remove peer.");
         }
-        
+
         public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
             => ResultWrapper<PeerInfo[]>.Success(
                 _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());

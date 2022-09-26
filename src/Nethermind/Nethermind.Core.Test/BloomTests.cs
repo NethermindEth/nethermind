@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,10 +54,10 @@ namespace Nethermind.Core.Test
         public void doesnt_match_not_added_item(int count, int topicMax)
         {
             MatchingTest(() => GetLogEntries(count, topicMax),
-                addedEntries => GetLogEntries(count, topicMax, 
+                addedEntries => GetLogEntries(count, topicMax,
                 addedEntries.Sum(a => a.Topics.Length)), false);
         }
-        
+
         [Test]
         public void empty_doesnt_match_any_item()
         {

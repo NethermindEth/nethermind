@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly List<IBlockTracer> _childTracers = new List<IBlockTracer>();
         public bool IsTracingRewards { get; private set; }
-        
+
         public CompositeBlockTracer()
         {
             IsTracingRewards = _childTracers.Any(childTracer => childTracer.IsTracingRewards);
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Tracing
             IList<IBlockTracer> childBlockTracers = _childTracers;
 
             List<ITxTracer> tracers = new(childBlockTracers.Count);
-            
+
             for (int i = 0; i < childBlockTracers.Count; i++)
             {
                 IBlockTracer childBlockTracer = childBlockTracers[i];
@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Tracing
             _childTracers.Add(tracer);
             IsTracingRewards |= tracer.IsTracingRewards;
         }
-        
+
         public void AddRange(params IBlockTracer[] tracers)
         {
             _childTracers.AddRange(tracers);

@@ -30,26 +30,26 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private bool _lastIsSyncing;
-        
+
         public SyncingSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, 
-            IBlockTree? blockTree, 
-            IEthSyncingInfo ethSyncingInfo, 
-            ILogManager? logManager) 
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IBlockTree? blockTree,
+            IEthSyncingInfo ethSyncingInfo,
+            ILogManager? logManager)
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _lastIsSyncing = _ethSyncingInfo.IsSyncing();
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
-            
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
+
             _blockTree.NewBestSuggestedBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
-            
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
+
             _blockTree.NewHeadBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)
@@ -91,9 +91,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
             _blockTree.NewHeadBlock -= OnConditionsChange;
             base.Dispose();
-            
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
+
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
         }
     }
 }

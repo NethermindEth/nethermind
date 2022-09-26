@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Abi
         {
             if (arg is bool input)
             {
-                Span<byte> bytes = stackalloc byte[1] {input ? (byte) 1 : (byte) 0};
+                Span<byte> bytes = stackalloc byte[1] { input ? (byte)1 : (byte)0 };
                 return bytes.PadLeft(packed ? LengthInBytes : UInt256.LengthInBytes);
             }
 

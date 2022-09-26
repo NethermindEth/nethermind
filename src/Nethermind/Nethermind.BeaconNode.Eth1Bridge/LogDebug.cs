@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ using Nethermind.Core2.Types;
 namespace Nethermind.BeaconNode.Eth1Bridge
 {
     internal static class LogDebug
-    { 
+    {
         // 6bxx debug
 
         // 635x debug - eth1 (Eth1Bridge)
@@ -30,12 +30,12 @@ namespace Nethermind.BeaconNode.Eth1Bridge
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6350, nameof(PeeringWorkerExecute)),
                 "Eth1 bridge worker execute running.");
-        
+
         public static readonly Action<ILogger, Exception?> PeeringWorkerStopping =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6352, nameof(PeeringWorkerStopping)),
                 "Eth1 bridge worker stopping.");
-        
+
         public static readonly Action<ILogger, int, Exception?> CheckingForEth1Genesis =
             LoggerMessage.Define<int>(LogLevel.Debug,
                 new EventId(6353, nameof(CheckingForEth1Genesis)),

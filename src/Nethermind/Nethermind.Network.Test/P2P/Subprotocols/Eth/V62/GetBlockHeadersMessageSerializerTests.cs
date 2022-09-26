@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -66,10 +66,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void Roundtrip_zero()
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.Reverse = 0;
             message.StartBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new();
-            
+
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010280");
 
@@ -90,10 +90,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void To_string()
         {

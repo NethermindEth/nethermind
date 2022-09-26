@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Tracing
         /// Traces blockhash calls
         /// </summary>
         bool IsTracingBlockHash { get; }
-        
+
         /// <summary>
         /// Traces storage access
         /// </summary>
@@ -79,17 +79,17 @@ namespace Nethermind.Evm.Tracing
         void SetOperationStack(List<string> stackTrace);
 
         void ReportStackPush(in ReadOnlySpan<byte> stackItem);
-        
+
         void ReportStackPush(byte stackItem)
         {
-            ReportStackPush(new[] {stackItem});
+            ReportStackPush(new[] { stackItem });
         }
 
         void ReportStackPush(in ZeroPaddedSpan stackItem)
         {
             ReportStackPush(stackItem.ToArray().AsSpan());
         }
-        
+
         void ReportStackPush(in ZeroPaddedMemory stackItem)
         {
             ReportStackPush(stackItem.ToArray().AsSpan());
@@ -105,20 +105,20 @@ namespace Nethermind.Evm.Tracing
         {
             if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
             {
-                ReportMemoryChange((long) offset, data);
+                ReportMemoryChange((long)offset, data);
             }
         }
 
         void ReportMemoryChange(long offset, byte data)
         {
-            ReportMemoryChange(offset, new[] {data});
+            ReportMemoryChange(offset, new[] { data });
         }
 
         void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
         {
             ReportMemoryChange(offset, data.ToArray());
         }
-        
+
         void ReportMemoryChange(long offset, in ZeroPaddedMemory data)
         {
             ReportMemoryChange(offset, data.ToArray());
@@ -128,7 +128,7 @@ namespace Nethermind.Evm.Tracing
 
         void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue);
         void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, Span<byte> newValue, byte[] currentValue) { }
-        
+
         void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value);
         void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, byte[] value) { }
 
@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Tracing
         void ReportActionEnd(long gas, ReadOnlyMemory<byte> output);
 
         void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft) => ReportActionError(evmExceptionType);
-        
+
         void ReportActionError(EvmExceptionType evmExceptionType);
 
         void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         private static void Test(byte[][] data)
         {
             NodeDataMessage message = new(data);
-            
+
             NodeDataMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, message);
         }
@@ -36,14 +36,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
+            byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
             Test(data);
         }
-        
+
         [Test]
         public void Zero_roundtrip()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
+            byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
             Test(data);
         }
 
@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, Array.Empty<byte>(), TestItem.KeccakC.Bytes};
+            byte[][] data = { TestItem.KeccakA.Bytes, Array.Empty<byte>(), TestItem.KeccakC.Bytes };
             Test(data);
         }
     }

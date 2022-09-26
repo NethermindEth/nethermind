@@ -19,7 +19,7 @@ namespace Nethermind.Trie.Pruning
     internal class BlockCommitSet
     {
         public long BlockNumber { get; }
-        
+
         public TrieNode? Root { get; set; }
 
         public bool IsSealed { get; private set; }

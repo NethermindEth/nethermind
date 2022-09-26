@@ -46,16 +46,16 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-        
+
         private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
             Assert.AreEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-             Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
+            Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
         }
-        
+
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayloadV1 executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
@@ -95,7 +95,12 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new ExecutionPayloadV1()
             {
-                BlockNumber = head.Number, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
+                BlockNumber = head.Number,
+                BlockHash = head.Hash!,
+                StateRoot = head.StateRoot!,
+                ReceiptsRoot = head.ReceiptsRoot!,
+                GasLimit = head.GasLimit,
+                Timestamp = (ulong)head.Timestamp
             };
         }
 
@@ -173,7 +178,7 @@ namespace Nethermind.Merge.Plugin.Test
                 return false;
             }
         }
-        
+
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
             SingleReleaseSpecProvider spec = new(London.Instance, 1);
@@ -183,4 +188,4 @@ namespace Nethermind.Merge.Plugin.Test
             return testRpc;
         }
     }
-}      
+}

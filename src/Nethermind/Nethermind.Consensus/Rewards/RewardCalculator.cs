@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,25 +30,25 @@ namespace Nethermind.Consensus.Rewards
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         private UInt256 GetBlockReward(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             return spec.BlockReward;
         }
-        
+
         public BlockReward[] CalculateRewards(Block block)
         {
             if (block.IsGenesis)
             {
                 return Array.Empty<BlockReward>();
             }
-            
+
             UInt256 blockReward = GetBlockReward(block);
             BlockReward[] rewards = new BlockReward[1 + block.Uncles.Length];
 
             BlockHeader blockHeader = block.Header;
-            UInt256 mainReward = blockReward + (uint) block.Uncles.Length * (blockReward >> 5);
+            UInt256 mainReward = blockReward + (uint)block.Uncles.Length * (blockReward >> 5);
             rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
 
             for (int i = 0; i < block.Uncles.Length; i++)
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Rewards
 
         private UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
         {
-            return blockReward - ((uint) (blockHeader.Number - uncle.Number) * blockReward >> 3);
+            return blockReward - ((uint)(blockHeader.Number - uncle.Number) * blockReward >> 3);
         }
 
         public IRewardCalculator Get(ITransactionProcessor processor) => this;

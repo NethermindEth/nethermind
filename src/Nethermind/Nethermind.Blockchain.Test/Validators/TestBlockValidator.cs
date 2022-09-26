@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Validators
         private readonly bool? _alwaysSameResultForProcessed;
         private readonly bool? _alwaysSameResultForSuggested;
 
-        public TestBlockValidator(bool suggestedValidationResult = true, bool processedValidationResult  = true)
+        public TestBlockValidator(bool suggestedValidationResult = true, bool processedValidationResult = true)
         {
             _alwaysSameResultForSuggested = suggestedValidationResult;
             _alwaysSameResultForProcessed = processedValidationResult;

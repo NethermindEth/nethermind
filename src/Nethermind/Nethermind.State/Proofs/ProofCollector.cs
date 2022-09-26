@@ -58,7 +58,7 @@ namespace Nethermind.State.Proofs
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);
-            _visitingFilter.Add(node.GetChildHash((byte) Prefix[_pathIndex]));
+            _visitingFilter.Add(node.GetChildHash((byte)Prefix[_pathIndex]));
 
             _pathIndex++;
         }

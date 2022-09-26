@@ -67,25 +67,25 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         public async Task<Keccak?> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice)
         {
-            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, 
-                refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, 
+            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig,
+                refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime,
                 refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
             transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
-            transaction.GasLimit = (long) GasLimit;
+            transaction.GasLimit = (long)GasLimit;
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
-            
+
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {
                 _logger.Info($"Sending a refund claim transaction for {refundClaim.DepositId} to be refunded to {refundClaim.RefundTo}");
             }
-            
+
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
@@ -102,17 +102,17 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.Data = txData;
             transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
-            transaction.GasLimit = (long) GasLimit;
+            transaction.GasLimit = (long)GasLimit;
             transaction.GasPrice = gasPrice;
             transaction.Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
-            
+
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {
                 _logger.Info($"Sending an early refund claim transaction on {earlyRefundClaim.DepositId} to be refunded to {earlyRefundClaim.RefundTo}");
             }
-            
+
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
     }

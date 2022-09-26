@@ -46,10 +46,10 @@ namespace Nethermind.JsonRpc.Test.Data
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
-            
+
             Assert.AreEqual(output, blockParameter.BlockNumber);
         }
-        
+
         [TestCase("null", BlockParameterType.Latest)]
         [TestCase("\"\"", BlockParameterType.Latest)]
         [TestCase("\"latest\"", BlockParameterType.Latest)]
@@ -71,10 +71,10 @@ namespace Nethermind.JsonRpc.Test.Data
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
-            
+
             Assert.AreEqual(output, blockParameter.Type);
         }
-        
+
         [TestCase("\"latest\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_write_type(string output, BlockParameterType input)
         {
             BlockParameter blockParameter = new(input);
-            
+
             using StringWriter reader = new();
             using JsonTextWriter textWriter = new(reader);
 
@@ -91,16 +91,16 @@ namespace Nethermind.JsonRpc.Test.Data
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             serializer.Serialize(textWriter, blockParameter);
-            
+
             Assert.AreEqual(output, reader.ToString());
         }
-        
+
         [TestCase("\"0x0\"", 0)]
         [TestCase("\"0xa\"", 10)]
         public void Can_write_number(string output, long input)
         {
             BlockParameter blockParameter = new(input);
-            
+
             using StringWriter reader = new();
             using JsonTextWriter textWriter = new(reader);
 
@@ -108,10 +108,10 @@ namespace Nethermind.JsonRpc.Test.Data
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             serializer.Serialize(textWriter, blockParameter);
-            
+
             Assert.AreEqual(output, reader.ToString());
         }
-        
+
         [Test]
         public void Can_do_roundtrip()
         {

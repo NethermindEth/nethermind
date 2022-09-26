@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,10 +24,10 @@ namespace Nethermind.Consensus.Processing
 {
     internal static class TransactionProcessorAdapterExtensions
     {
-        public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor, 
-            Block block, 
-            Transaction currentTx, 
-            BlockReceiptsTracer receiptsTracer, 
+        public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
+            Block block,
+            Transaction currentTx,
+            BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
             IStateProvider stateProvider)
         {

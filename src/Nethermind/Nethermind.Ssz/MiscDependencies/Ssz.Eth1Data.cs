@@ -32,7 +32,7 @@ namespace Nethermind.Ssz
             offset += Ssz.Eth1DataLength;
             return eth1Data;
         }
-        
+
         public static void Encode(Span<byte> span, Eth1Data[] containers)
         {
             if (span.Length != Ssz.Eth1DataLength * containers.Length)
@@ -45,7 +45,7 @@ namespace Nethermind.Ssz
                 Encode(span.Slice(i * Ssz.Eth1DataLength, Ssz.Eth1DataLength), containers[i]);
             }
         }
-        
+
         private static void Encode(Span<byte> span, Eth1Data value, ref int offset)
         {
             Encode(span.Slice(offset, Ssz.Eth1DataLength), value);

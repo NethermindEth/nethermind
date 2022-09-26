@@ -28,20 +28,20 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 return 0;
             }
-            
+
             long estimate = 80L;
             estimate += EstimateSize(block.Header);
             estimate += EstimateSize(block.Body);
             return estimate;
         }
-        
+
         public static long EstimateSize(TxReceipt? txReceipt)
         {
             if (txReceipt == null)
             {
                 return 0;
             }
-            
+
             long estimate = 320L;
             foreach (LogEntry? logEntry in txReceipt.Logs!)
             {
@@ -50,23 +50,23 @@ namespace Nethermind.Synchronization.FastBlocks
 
             return estimate;
         }
-        
+
         public static long EstimateSize(BlockBody? blockBody)
         {
             if (blockBody == null)
             {
                 return 0;
             }
-            
+
             long estimate = 80L;
             estimate += blockBody.Transactions.Length * 8L;
             estimate += blockBody.Uncles.Length * 8L;
-            
+
             foreach (Transaction transaction in blockBody.Transactions)
             {
                 estimate += EstimateSize(transaction);
             }
-            
+
             foreach (BlockHeader header in blockBody.Uncles)
             {
                 estimate += EstimateSize(header);
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             return estimate;
         }
-        
+
         /// <summary>
         /// Rough header memory size estimator
         /// </summary>
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             return 1212 + (header.ExtraData?.Length ?? 0);
         }
-        
+
         public static long EstimateSize(Transaction? transaction)
         {
             if (transaction == null)

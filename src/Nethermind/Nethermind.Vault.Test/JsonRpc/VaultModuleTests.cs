@@ -94,7 +94,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             createKeyResponse.Data.Address.Should().NotBeNullOrEmpty();
-            
+
             _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), createKeyResponse.Data.Id!.ToString());
         }
 
@@ -134,7 +134,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         public async Task can_delete_a_secret_within_a_given_vault_by_its_secret_id()
         {
             // Create some secrets for testing
-            List<string> names = new List<string> {"Name 1", "Name 2", "Name 3"};
+            List<string> names = new List<string> { "Name 1", "Name 2", "Name 3" };
 
             Guid? secretId = null;
             foreach (string name in names)
@@ -260,7 +260,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             signMessageResponse.ErrorCode.Should().Be(0);
             signMessageResponse.Data.Should().NotBeNull();
             signMessageResponse.Result.ResultType.Should().Be(ResultType.Success);
-            
+
             _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), keyId!.ToString());
         }
 
@@ -289,7 +289,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             verifySignatureResponse.ErrorCode.Should().Be(0);
             verifySignatureResponse.Data.Should().Be(true);
             verifySignatureResponse.Result.ResultType.Should().Be(ResultType.Success);
-            
+
             _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), keyId!.ToString());
         }
 
@@ -298,8 +298,8 @@ namespace Nethermind.Vault.Test.JsonRpc
         {
             ResultWrapper<string[]> listVaultsResponse = await _vaultModule.vault_listVaults();
             listVaultsResponse.Data.Should().HaveCount(2);
-            
-            provide.Model.Vault.Vault vault  = new provide.Model.Vault.Vault();
+
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Name 0";
             vault.Description = "Test Vault used for test purposes";
 
@@ -307,7 +307,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                 = await _vaultModule.vault_createVault(vault);
             Guid? vaultId = createVaultResponse.Data.Id;
             vaultId.Should().NotBeNull();
-            
+
             listVaultsResponse = await _vaultModule.vault_listVaults();
             listVaultsResponse.Data.Should().HaveCount(3);
 
@@ -328,7 +328,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         public async Task can_delete_a_key_within_a_given_vault_by_its_key_id()
         {
             // Create some keys for testing
-            List<string> names = new List<string> {"Name 1", "Name 2", "Name 3"};
+            List<string> names = new List<string> { "Name 1", "Name 2", "Name 3" };
             Guid? lastKeyId = null;
             foreach (var name in names)
             {
@@ -355,7 +355,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             listKeysResponse.Data.Should().HaveCount(2);
             listKeysResponse.Data.Select(k => k.Id).Should().NotContain(lastKeyId);
         }
-        
+
         [Test]
         public async Task can_configure()
         {
@@ -366,7 +366,7 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             var setTokenResponse = await _vaultModule.vault_setToken(token);
             setTokenResponse.Result.ResultType.Should().Be(ResultType.Success);
-            
+
             var configureResponse = await _vaultModule.vault_configure(scheme, host, path, token);
             configureResponse.Result.ResultType.Should().Be(ResultType.Success);
         }

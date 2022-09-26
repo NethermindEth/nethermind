@@ -27,10 +27,10 @@ namespace Nethermind.Consensus.Producers
     public class BuildBlocksWhenRequested : IManualBlockProductionTrigger
     {
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
-        
+
         public Task<Block?> BuildBlock(
             BlockHeader? parentHeader = null,
-            CancellationToken? cancellationToken = null, 
+            CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
             PayloadAttributes payloadAttributes = null)
         {

@@ -55,24 +55,24 @@ namespace Nethermind.Core.Test
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Sse41);
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void scalar_should_compute_correct_values((int Rounds, string Output) testCase)
         {
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Scalar);
         }
-        
+
         private void Test(int rounds, string output, Blake2CompressMethod method)
         {
             string input = string.Concat(rounds.ToString("x8"), InputExceptRounds);
-            
+
             byte[] blake2Result = new byte[64];
             _blake2Compression.Compress(Bytes.FromHexString(input), blake2Result, method);
             string result = blake2Result.ToHexString();
             result.Should().BeEquivalentTo(output);
         }
-        
+
         public static IEnumerable<(int, string)> TestCaseSource()
         {
             yield return (0, "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, string functionName, Address sender, params object[] arguments) => 
+        protected object[] Call(BlockHeader header, string functionName, Address sender, params object[] arguments) =>
             Call(header, functionName, sender, DefaultContractGasLimit, arguments);
 
         /// <summary>
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Contracts
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new();
-            
+
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) => 
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
             TryCall(header, functionName, sender, DefaultContractGasLimit, out result, arguments);
 
         /// <summary>
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Contracts
             result = null;
             return false;
         }
-        
+
         /// <summary>
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Crypto
         private const int EntropyMaxLength = 10;
         private const int EntropyMinLength = 5;
         private static readonly TimeSpan MaxSecureTimeSpan = TimeSpan.FromMinutes(10);
-        
+
         private readonly ICryptoRandom _random;
         private readonly ITimestamper _timestamper;
         private byte[] _entropy;
@@ -39,7 +39,7 @@ namespace Nethermind.Crypto
             _timestamper = timestamper ?? Timestamper.Default;
             Protect(data);
         }
-        
+
 #pragma warning disable CA1416
         private void Protect(byte[] data)
         {
@@ -55,7 +55,7 @@ namespace Nethermind.Crypto
             return CreateUnprotected(data);
         }
 #pragma warning restore CA1416
-        
+
         protected abstract T CreateUnprotected(byte[] data);
 
         private void CheckReProtect(byte[] data)

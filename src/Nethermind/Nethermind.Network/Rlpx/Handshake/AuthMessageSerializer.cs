@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedLength = 1;
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int Length = IsTokenUsedOffset + IsTokenUsedLength;
-        
+
         //  65 (sig)
         //  32 (ephem hash)
         //  64 (pub)

@@ -51,7 +51,7 @@ namespace Nethermind.Baseline
             Address contractAddress,
             UInt256 leafIndex,
             BlockParameter? blockParameter = null);
-        
+
         [JsonRpcMethod(
             Description = "Gets root of a tree at the given 'address'",
             IsSharable = true,
@@ -82,7 +82,7 @@ namespace Nethermind.Baseline
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType, string? argumentsAbi = null);
-        
+
         [JsonRpcMethod(
             Description = "(DEV only - not part of Baseline standard) Deploys a contract with the given bytecode. Requires the account to be unlocked.",
             IsSharable = false,
@@ -97,7 +97,7 @@ namespace Nethermind.Baseline
             Address contractAddress,
             long leafIndex,
             BlockParameter? blockParameter = null);
-        
+
         [JsonRpcMethod(
             Description = "Verifies a sibling path for a given root and leaf value.",
             IsSharable = true,
@@ -114,7 +114,7 @@ namespace Nethermind.Baseline
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
-        
+
         [JsonRpcMethod(
             Description = "Stops tracking a tree at the given address.",
             IsSharable = false,
@@ -138,18 +138,18 @@ namespace Nethermind.Baseline
             UInt256[] publicInputs,
             Keccak newCommitment);
     }
-    
+
     public class VerifyAndPushResponse
     {
         public VerifyAndPushResponse(Keccak txHash)
         {
             TxHash = txHash;
         }
-        
+
         public Commitment? Commitment { get; set; }
         public Keccak? TxHash { get; set; }
     }
-    
+
     public class Commitment
     {
         public Commitment(long location, Keccak value)
@@ -157,7 +157,7 @@ namespace Nethermind.Baseline
             Location = location;
             Value = value;
         }
-        
+
         public long Location { get; set; }
         public Keccak Value { get; set; }
     }

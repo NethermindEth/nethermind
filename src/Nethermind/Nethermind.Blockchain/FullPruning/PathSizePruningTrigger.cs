@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 throw new ArgumentException($"{path} is not a directory", nameof(path));
             }
-            
+
             _path = path;
             _threshold = threshold;
             _fileSystem = fileSystem;
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.FullPruning
             return firstIndexSubDirectory is null ? path : _fileSystem.Path.Combine(path, firstIndexSubDirectory.Value.ToString());
         }
 
-        
+
         /// <summary>
         /// Gets the size of the path.
         /// </summary>
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         /// <inheritdoc />
         public event EventHandler<PruningTriggerEventArgs>? Prune;
-        
+
         /// <inheritdoc />
         public void Dispose()
         {

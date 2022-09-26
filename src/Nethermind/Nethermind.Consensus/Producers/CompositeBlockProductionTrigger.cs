@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Producers
             _triggers.Add(trigger);
             HookTrigger(trigger);
         }
-        
+
         private void HookTrigger(IBlockProductionTrigger trigger) =>
             trigger.TriggerBlockProduction += OnInnerTriggerBlockProduction;
 

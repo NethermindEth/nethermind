@@ -27,15 +27,15 @@ namespace Nethermind.State
         Keccak StateRoot { get; }
 
         UInt256 GetNonce(Address address);
-        
+
         UInt256 GetBalance(Address address);
-        
+
         Keccak GetStorageRoot(Address address);
-        
+
         byte[] GetCode(Address address);
 
         byte[] GetCode(Keccak codeHash);
-        
+
         Keccak GetCodeHash(Address address);
 
         public bool IsContract(Address address) => GetCodeHash(address) != Keccak.OfAnEmptyString;
@@ -47,7 +47,7 @@ namespace Nethermind.State
         /// <param name="stateRoot">Root to run on.</param>
         /// <param name="visitingOptions">Options to run visitor.</param>
         void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
-        
+
         bool AccountExists(Address address);
 
         bool IsDeadAccount(Address address);

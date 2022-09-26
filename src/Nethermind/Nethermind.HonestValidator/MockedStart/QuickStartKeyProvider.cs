@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,9 +32,9 @@ namespace Nethermind.HonestValidator.MockedStart
     public class QuickStartKeyProvider : IValidatorKeyProvider, IDisposable
     {
         private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
-        
+
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
-        
+
         private readonly IDictionary<BlsPublicKey, BLS> _publicKeyToBls = new Dictionary<BlsPublicKey, BLS>();
 
         public QuickStartKeyProvider(
@@ -79,9 +79,9 @@ namespace Nethermind.HonestValidator.MockedStart
             {
                 var keyCount = GetPublicKeys().Count();
             }
-            
+
             BLS bls = _publicKeyToBls[blsPublicKey];
-            
+
             byte[] destination = new byte[BlsSignature.Length];
             bool success = bls.TrySignData(root.AsSpan(), destination, out int bytesWritten);
             if (!success || bytesWritten != BlsSignature.Length)
@@ -91,7 +91,7 @@ namespace Nethermind.HonestValidator.MockedStart
             BlsSignature blsSignature = new BlsSignature(destination);
             return blsSignature;
         }
-        
+
         // FIXME: This is duplicate of beacon node, need to clean up
         public byte[] GeneratePrivateKey(ulong index)
         {
@@ -120,7 +120,7 @@ namespace Nethermind.HonestValidator.MockedStart
                 throw new Exception("Error generating quick start private key.");
             }
             privateKeySpan.Reverse();
-            
+
             return privateKeySpan.ToArray();
         }
 

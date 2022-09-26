@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -23,7 +23,8 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class ExampleTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
@@ -31,8 +32,11 @@ namespace Ethereum.Blockchain.Block.Test
         {
             await RunTest(test);
         }
-        
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcExample");
-            return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcExample");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }

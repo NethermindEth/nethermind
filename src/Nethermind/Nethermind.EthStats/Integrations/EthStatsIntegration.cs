@@ -110,7 +110,7 @@ namespace Nethermind.EthStats.Integrations
 
         public async Task InitAsync()
         {
-            _timer = new Timer {Interval = SendStatsInterval};
+            _timer = new Timer { Interval = SendStatsInterval };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
@@ -125,10 +125,10 @@ namespace Nethermind.EthStats.Integrations
         {
             if (_websocketClient is null)
             {
-                if(_logger.IsError) _logger.Error("WebSocket client initialization failed");
+                if (_logger.IsError) _logger.Error("WebSocket client initialization failed");
                 return;
             }
-            
+
             _websocketClient.ReconnectionHappened.Subscribe(async _ =>
             {
                 if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
@@ -192,7 +192,7 @@ namespace Nethermind.EthStats.Integrations
                 timer.Stop();
                 timer.Dispose();
             }
-            
+
             _websocketClient?.Dispose();
         }
 
@@ -207,7 +207,7 @@ namespace Nethermind.EthStats.Integrations
             => _sender.SendAsync(_websocketClient!, new BlockMessage(
                 new Messages.Models.Block(
                     block.Number,
-                    (block.Hash ?? Keccak.Zero).ToString() ,
+                    (block.Hash ?? Keccak.Zero).ToString(),
                     (block.ParentHash ?? Keccak.Zero).ToString(),
                     (long)block.Timestamp,
                     (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
@@ -234,7 +234,7 @@ namespace Nethermind.EthStats.Integrations
                 if (_logger.IsTrace) _logger.Trace($"Gas price beyond the eth stats expected scope {gasPrice}");
                 gasPrice = long.MaxValue;
             }
-            
+
             return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
                 _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
         }

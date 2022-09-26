@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Transactions
             {
                 if (tx is T)
                 {
-                    AcceptTxResult acceptTxResult= _txFilter.IsAllowed(tx, parent);
+                    AcceptTxResult acceptTxResult = _txFilter.IsAllowed(tx, parent);
                     if (acceptTxResult)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");

@@ -38,7 +38,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public bool IntersectsWith(UnitsRange unitsRange)
             => From <= unitsRange.To && To >= unitsRange.From;
-        
+
         public bool IsSubsetOf(UnitsRange unitsRange)
             => From >= unitsRange.From && To <= unitsRange.To;
 
@@ -54,14 +54,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((UnitsRange) obj);
+            return Equals((UnitsRange)obj);
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                return ((int) From * 397) ^ (int) To;
+                return ((int)From * 397) ^ (int)To;
             }
         }
     }

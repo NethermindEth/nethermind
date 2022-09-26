@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Validators
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
-                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
@@ -177,7 +177,7 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
-            bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
+            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
                                        || _daoBlockNumber == null
                                        || header.Number < _daoBlockNumber
@@ -227,7 +227,7 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
-        private bool ValidateTimestamp(BlockHeader parent,BlockHeader header)
+        private bool ValidateTimestamp(BlockHeader parent, BlockHeader header)
         {
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)

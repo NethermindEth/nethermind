@@ -81,7 +81,7 @@ namespace Nethermind.Store.Test.SnapSync.Storage
             byte[] newAccountBytes_1002 = TestItem.GenerateRandomAccountRlp();
             TrieNode newAccount_1002 = TrieNodeFactory.CreateLeaf(EmptyPath, newAccountBytes_1002);
             Keccak newAddress = TestItem.GetRandomKeccak();
-            while(newAddress <= list.Keys[21] || newAddress >= list.Keys[22])
+            while (newAddress <= list.Keys[21] || newAddress >= list.Keys[22])
             {
                 newAddress = TestItem.GetRandomKeccak();
             }
@@ -113,7 +113,7 @@ namespace Nethermind.Store.Test.SnapSync.Storage
         {
             for (int i = startIndex; i <= endIndex; i++)
             {
-                if(inputList.Keys[i] != range[i - startIndex].path)
+                if (inputList.Keys[i] != range[i - startIndex].path)
                 {
                     return false;
                 }

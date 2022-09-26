@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class ZeroProtocolHandlerBase : ProtocolHandlerBase
     {
-        protected ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager) 
+        protected ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
         }

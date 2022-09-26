@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,8 +27,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class CompareTxByPriorityOnSpecifiedBlock : CompareTxByPriorityBase
     {
         public CompareTxByPriorityOnSpecifiedBlock(
-            IContractDataStore<Address> sendersWhitelist, 
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            IContractDataStore<Address> sendersWhitelist,
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
             BlockHeader blockHeader) : base(sendersWhitelist, priorities)
         {
             BlockHeader = blockHeader;

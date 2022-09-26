@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
     public class Eip1283Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
-        
+
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
@@ -51,10 +51,10 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
-            
+
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }

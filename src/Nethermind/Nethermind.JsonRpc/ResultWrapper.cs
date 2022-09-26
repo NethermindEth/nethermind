@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,32 +31,32 @@ namespace Nethermind.JsonRpc
         private ResultWrapper()
         {
         }
-        
+
         public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class
         {
-            return new() { Result = Result.Fail(searchResult.Error), ErrorCode = searchResult.ErrorCode};
+            return new() { Result = Result.Fail(searchResult.Error), ErrorCode = searchResult.ErrorCode };
         }
-        
+
         public static ResultWrapper<T> Fail(string error)
         {
-            return new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError};
+            return new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
         }
-        
+
         public static ResultWrapper<T> Fail(Exception e)
         {
-            return new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError};
+            return new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError };
         }
 
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData)
         {
-            return new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData};
+            return new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData };
         }
-        
+
         public static ResultWrapper<T> Fail(string error, int errorCode)
         {
-            return new() { Result = Result.Fail(error), ErrorCode = errorCode};
+            return new() { Result = Result.Fail(error), ErrorCode = errorCode };
         }
-        
+
         public static ResultWrapper<T> Fail(string error, T data)
         {
             return new() { Data = data, Result = Result.Fail(error) };
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc
         {
             return ErrorCode;
         }
-        
+
         public static ResultWrapper<T> From(RpcResult<T>? rpcResult)
         {
             if (rpcResult is null)

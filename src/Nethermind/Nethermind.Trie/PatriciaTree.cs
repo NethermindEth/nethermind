@@ -383,7 +383,7 @@ namespace Nethermind.Trie
             byte[]? result;
             if (startRootHash != null)
             {
-                if(_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
+                if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
                 startNode.ResolveNode(TrieStore);
                 result = TraverseNode(startNode, traverseContext);
@@ -406,7 +406,7 @@ namespace Nethermind.Trie
                 else
                 {
                     RootRef.ResolveNode(TrieStore);
-                    if(_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
+                    if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
                     result = TraverseNode(RootRef, traverseContext);
                 }
             }
@@ -546,6 +546,7 @@ namespace Nethermind.Trie
                                    L L - - - - - - - - - - - - - - */
 
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
+
                                 TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
@@ -555,6 +556,7 @@ namespace Nethermind.Trie
                             else if (childNode.IsLeaf)
                             {
                                 byte[] newKey = Bytes.Concat((byte) childNodeIndex, childNode.Key);
+
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)
                                     _logger.Trace(

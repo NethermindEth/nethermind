@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_OneProof()
         {
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             var serialized = serializer.Serialize(msg);
             var deserialized = serializer.Deserialize(serialized);
-            
+
             SerializerTester.TestZero(serializer, msg);
         }
 
@@ -84,8 +84,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new[] { 
-                    new PathWithStorageSlot[] { 
+                Slots = new[] {
+                    new PathWithStorageSlot[] {
                         new PathWithStorageSlot(new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
                         new PathWithStorageSlot(new Keccak("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes)
                     },

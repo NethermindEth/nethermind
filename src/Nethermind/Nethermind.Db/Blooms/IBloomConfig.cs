@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,13 +22,13 @@ namespace Nethermind.Db.Blooms
     {
         [ConfigItem(Description = "Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.", DefaultValue = "true")]
         bool Index { get; set; }
-        
+
         [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4, 8, 8]")]
         int[] IndexLevelBucketSizes { get; set; }
-        
+
         [ConfigItem(Description = "Defines if migration statistics are to be calculated and output.", DefaultValue = "false")]
         bool MigrationStatistics { get; set; }
-        
+
         [ConfigItem(Description = "Defines if migration of previously downloaded blocks to Bloom index will be done.", DefaultValue = "false")]
         bool Migration { get; set; }
     }

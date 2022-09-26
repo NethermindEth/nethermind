@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ public class ResettableList<T> : IList<T>
         _resetRatio = resetRatio;
         _currentCapacity = _startCapacity;
     }
-    
+
     public IEnumerator<T> GetEnumerator() => _wrapped.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_wrapped).GetEnumerator();
@@ -67,7 +67,7 @@ public class ResettableList<T> : IList<T>
         get => _wrapped[index];
         set => _wrapped[index] = value;
     }
-    
+
     public void Reset()
     {
         if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
@@ -82,7 +82,7 @@ public class ResettableList<T> : IList<T>
                 _currentCapacity *= _resetRatio;
             }
         }
-        
+
         _wrapped.Clear();
     }
 }

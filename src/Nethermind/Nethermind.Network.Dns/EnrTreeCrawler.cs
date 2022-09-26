@@ -68,7 +68,7 @@ public class EnrTreeCrawler
             }
         }
     }
-    
+
     private class SearchContext
     {
         public SearchContext(string startRef)

@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             var depositId = session.DepositId;
             var unitsRange = receiptRequest.UnitsRange;
             var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _dataDeliveryReceiptAbiSig,
-                receiptRequest.DepositId.Bytes, new[] {unitsRange.From, unitsRange.To});
+                receiptRequest.DepositId.Bytes, new[] { unitsRange.From, unitsRange.To });
             var address = _ecdsa.RecoverPublicKey(deliveryReceipt.Signature, Keccak.Compute(abiHash)).Address;
             if (!consumer.Equals(address))
             {
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             }
 
             var paidUnits = unitsRange.To - unitsRange.From + 1;
-            if (_logger.IsInfo)_logger.Info($"Consumer: '{consumer}' has provided a valid receipt for deposit: '{receiptRequest.DepositId}', range: [{unitsRange.From}, {unitsRange.To}], paid units: {paidUnits}");
+            if (_logger.IsInfo) _logger.Info($"Consumer: '{consumer}' has provided a valid receipt for deposit: '{receiptRequest.DepositId}', range: [{unitsRange.From}, {unitsRange.To}], paid units: {paidUnits}");
             if (receiptRequest.ReceiptsToMerge.Any())
             {
                 if (_logger.IsInfo) _logger.Info($"Processing a merged receipt request for consumer: {session.ConsumerAddress}, session: '{session.Id} - units will not be updated.");
@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     session.SettleUnits(paidUnits);
                     if (_logger.IsInfo) _logger.Info($"Settled {paidUnits} units for deposit: '{receiptRequest.DepositId}', consumer: {session.ConsumerAddress}, session: '{session.Id}'.");
                 }
-                
+
                 await _sessionRepository.UpdateAsync(session);
             }
 

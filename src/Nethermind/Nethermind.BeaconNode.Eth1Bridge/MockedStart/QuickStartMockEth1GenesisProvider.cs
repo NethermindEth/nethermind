@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -105,7 +105,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             return privateKeySpan.ToArray();
         }
-        
+
         public Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken)
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
@@ -120,21 +120,21 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             // Fixed amount
             Gwei amount = gweiValues.MaximumEffectiveBalance;
-            
+
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
                 DepositData depositData = BuildAndSignDepositData(
                     validatorIndex,
                     amount,
                     signatureDomains);
-                
+
                 _depositStore.Place(depositData);
             }
 
             ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;
             if (eth1Timestamp == 0)
             {
-                eth1Timestamp = quickStartParameters.GenesisTime - (ulong) (1.5 * timeParameters.MinimumGenesisDelay);
+                eth1Timestamp = quickStartParameters.GenesisTime - (ulong)(1.5 * timeParameters.MinimumGenesisDelay);
             }
             else
             {
@@ -177,7 +177,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             {
                 PrivateKey = privateKey
             };
-                
+
             using BLS bls = BLS.Create(blsParameters);
             byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
             bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
@@ -186,7 +186,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             // Withdrawal Credentials
             Bytes32 withdrawalCredentials = _crypto.Hash(publicKey.AsSpan());
             withdrawalCredentials.Unwrap()[0] = initialValues.BlsWithdrawalPrefix;
-            
+
             // Build deposit data
             DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
 
@@ -204,11 +204,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             BlsSignature depositDataSignature = new BlsSignature(signatureBytes);
             depositData.SetSignature(depositDataSignature);
-            
+
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
                     null);
-            
+
             return depositData;
         }
     }

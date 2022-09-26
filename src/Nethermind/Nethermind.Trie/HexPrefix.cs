@@ -66,11 +66,11 @@ namespace Nethermind.Trie
                 path[i] =
                     isEven
                         ? i % 2 == 0
-                            ? (byte) ((bytes[1 + i / 2] & 240) / 16)
-                            : (byte) (bytes[1 + i / 2] & 15)
+                            ? (byte)((bytes[1 + i / 2] & 240) / 16)
+                            : (byte)(bytes[1 + i / 2] & 15)
                         : i % 2 == 0
-                            ? (byte) (bytes[i / 2] & 15)
-                            : (byte) ((bytes[1 + i / 2] & 240) / 16);
+                            ? (byte)(bytes[i / 2] & 15)
+                            : (byte)((bytes[1 + i / 2] & 240) / 16);
             }
 
             return (path, isLeaf);

@@ -61,7 +61,7 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig();
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
-    
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -83,17 +83,17 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
-        
+
         List<Transaction> expectedTxs = new();
 
         for (int i = 1; i <= expectedCount; i++)
@@ -103,7 +103,7 @@ public class TxBroadcasterTests
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
-    
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -132,10 +132,10 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
@@ -152,7 +152,7 @@ public class TxBroadcasterTests
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
-    
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -182,10 +182,10 @@ public class TxBroadcasterTests
                 .WithMaxFeePerGas(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
@@ -220,14 +220,14 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
         pickedTxs.Count.Should().Be(1);
-        
+
         List<Transaction> expectedTxs = new() { transactions[0] };
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }

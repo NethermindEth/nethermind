@@ -69,7 +69,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .Done;
 
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-            
+
             tracer.Success.Should().Be(success);
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .Done;
 
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-            
+
             tracer.Success.Should().BeTrue();
         }
 
@@ -100,7 +100,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             Address externalContractAddress = TestItem.GetRandomAddress();
             Address paymasterContractAddress = TestItem.GetRandomAddress();
-            
+
             // simple storage access contract
             byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
                 .PushData(69)
@@ -111,11 +111,11 @@ namespace Nethermind.AccountAbstraction.Test
             TestState.CreateAccount(externalContractAddress, 1.Ether());
             Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
             TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
-            
+
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, 70000)
                 .Done;
-            
+
             TestState.CreateAccount(paymasterContractAddress, 1.Ether());
             Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
             TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
@@ -125,12 +125,12 @@ namespace Nethermind.AccountAbstraction.Test
                 .Call(paymasterContractAddress, 100000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
 
             tracer.Success.Should().Be(shouldSucceed);
         }
-        
+
         [TestCase(false, false, true, false)]
         [TestCase(false, true, true, false)]
         [TestCase(true, false, true, false)]
@@ -143,7 +143,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             Address externalContractAddress = TestItem.GetRandomAddress();
             Address paymasterContractAddress = TestItem.GetRandomAddress();
-            
+
             // simple storage access contract
             byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
                 .PushData(Address.Zero)
@@ -153,11 +153,11 @@ namespace Nethermind.AccountAbstraction.Test
             TestState.CreateAccount(externalContractAddress, 1.Ether());
             Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
             TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
-            
+
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, 70000)
                 .Done;
-            
+
             TestState.CreateAccount(paymasterContractAddress, 1.Ether());
             Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
             TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
@@ -167,7 +167,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .Call(paymasterContractAddress, 100000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             Keccak initialCodeHash = TestState.GetCodeHash(externalContractAddress);
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
             if (shouldMatch)
@@ -179,14 +179,14 @@ namespace Nethermind.AccountAbstraction.Test
                 TestState.GetCodeHash(externalContractAddress).Should().NotBe(initialCodeHash);
             }
         }
-        
+
         [TestCase(200, true, true)]
         [TestCase(30000, false, false)]
         public void Should_not_allow_inner_call_to_run_out_of_gas(long gasLimit, bool shouldRunOutOfGas, bool shouldError)
         {
             Address externalContractAddress = TestItem.GetRandomAddress();
             Address paymasterContractAddress = TestItem.GetRandomAddress();
-            
+
             // simple storage access contract
             byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
                 .PushData(32)
@@ -197,7 +197,7 @@ namespace Nethermind.AccountAbstraction.Test
             TestState.CreateAccount(externalContractAddress, 1.Ether());
             Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
             TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
-            
+
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, gasLimit)
                 .PushData(0)
@@ -206,7 +206,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .PushData(0)
                 .Op(Instruction.RETURN)
                 .Done;
-            
+
             TestState.CreateAccount(paymasterContractAddress, 1.Ether());
             Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
             TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
@@ -226,7 +226,7 @@ namespace Nethermind.AccountAbstraction.Test
             tracer.Output.Should().BeEquivalentTo(shouldRunOutOfGas ? Bytes.FromHexString("0x00") : Bytes.FromHexString("0x01"));
             tracer.Error.Should().Be(shouldError ? "simulation failed: a call during simulation ran out of gas" : null);
         }
-        
+
         [TestCase(Instruction.DELEGATECALL, true)]
         [TestCase(Instruction.CALL, true)]
         [TestCase(Instruction.STATICCALL, true)]
@@ -255,7 +255,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .Done;
 
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-            
+
             tracer.Success.Should().Be(success);
         }
 

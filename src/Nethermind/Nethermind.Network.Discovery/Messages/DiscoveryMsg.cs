@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,27 +25,27 @@ public abstract class DiscoveryMsg : MessageBase
     /// For incoming messages far address is set after deserialization
     /// </summary>
     public IPEndPoint? FarAddress { get; set; }
-        
+
     public PublicKey? FarPublicKey { get; init; }
 
     public int Version { get; set; } = 4;
-    
+
     protected DiscoveryMsg(IPEndPoint farAddress, long expirationTime)
     {
         FarAddress = farAddress ?? throw new ArgumentNullException(nameof(farAddress));
         ExpirationTime = expirationTime;
     }
-    
+
     protected DiscoveryMsg(PublicKey? farPublicKey, long expirationTime)
     {
         FarPublicKey = farPublicKey; // if it is null then it suggests that the signature is not correct
         ExpirationTime = expirationTime;
     }
-    
+
     /// <summary>
     /// Message expiry time as Unix epoch seconds
     /// </summary>
-    public long ExpirationTime { get; init; }     
+    public long ExpirationTime { get; init; }
 
     public override string ToString()
     {

@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
-        
+
         public Keccak FindBlockHash(Keccak txHash) => _receiptStorage.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block)
@@ -43,14 +43,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _receiptStorage.Insert(block, receipts);
             }
-            
+
             return receipts;
         }
 
         public TxReceipt[] Get(Keccak blockHash)
         {
             var receipts = _receiptStorage.Get(blockHash);
-            
+
             if (_receiptsRecovery.NeedRecover(receipts))
             {
                 var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

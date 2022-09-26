@@ -27,15 +27,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public DroppedPendingTransactionsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
-            ITxPool? txPool, 
-            ILogManager? logManager) 
+            ITxPool? txPool,
+            ILogManager? logManager)
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _txPool.EvictedPending += OnEvicted;
-            if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");
+            if (_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");
         }
 
         private void OnEvicted(object? sender, TxEventArgs e)
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _txPool.EvictedPending -= OnEvicted;
             base.Dispose();
-            if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will no longer track DroppedPendingTransactions");
+            if (_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will no longer track DroppedPendingTransactions");
         }
     }
 }

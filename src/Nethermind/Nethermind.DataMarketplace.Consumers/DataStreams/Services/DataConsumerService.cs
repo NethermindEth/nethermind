@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
         private readonly IConsumerSessionRepository _sessionRepository;
         private readonly ILogger _logger;
 
-        public DataConsumerService(IDepositProvider depositProvider, ISessionService sessionService, 
+        public DataConsumerService(IDepositProvider depositProvider, ISessionService sessionService,
             IConsumerNotifier consumerNotifier, ITimestamper timestamper, IConsumerSessionRepository sessionRepository,
             ILogManager logManager)
         {
@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             _sessionRepository = sessionRepository;
             _logger = logManager.GetClassLogger();
         }
-        
+
         public async Task SetUnitsAsync(Keccak depositId, uint consumedUnitsFromProvider)
         {
             var (session, deposit) = await TryGetSessionAndDepositAsync(depositId);
@@ -56,12 +56,12 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             {
                 return;
             }
-            
+
             session.SetConsumedUnitsFromProvider(consumedUnitsFromProvider);
             switch (deposit.DataAsset.UnitType)
             {
                 case DataAssetUnitType.Time:
-                    var now = (uint) _timestamper.UnixTime.Seconds;
+                    var now = (uint)_timestamper.UnixTime.Seconds;
                     var currentlyConsumedUnits = now - deposit.ConfirmationTimestamp;
                     var currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
                         ? currentlyConsumedUnits - session.PaidUnits
@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                     Metrics.ConsumedUnits++;
                     break;
             }
-            
+
             var consumedUnits = session.ConsumedUnits;
             var unpaidUnits = session.UnpaidUnits;
             if (_logger.IsTrace) _logger.Trace($"Setting units, consumed: [provider: {consumedUnitsFromProvider}, consumer: {consumedUnits}], unpaid: {unpaidUnits}, paid: {session.PaidUnits}, for deposit: '{depositId}', session: '{session.Id}'.");
@@ -88,13 +88,13 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             {
                 var unitsDifference = consumedUnits - consumedUnitsFromProvider;
                 if (_logger.IsTrace) _logger.Trace($"Provider has counted less consumed units ({unitsDifference}) for deposit: '{depositId}', session: '{session.Id}'.");
-                
+
                 //Adjust units?
-//                session.SubtractUnpaidUnits(unpaidUnits);
-//                session.SubtractUnpaidUnits(unitsDifference);
+                //                session.SubtractUnpaidUnits(unpaidUnits);
+                //                session.SubtractUnpaidUnits(unitsDifference);
             }
 
-            
+
             await _sessionRepository.UpdateAsync(session);
         }
 
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             {
                 return;
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Setting data availability: '{dataAvailability}', for deposit: '{depositId}', session: {session.Id}.");
             session.SetDataAvailability(dataAvailability);
             await _sessionRepository.UpdateAsync(session);
@@ -137,7 +137,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             await _consumerNotifier.SendGraceUnitsExceeded(depositId, deposit.DataAsset.Name,
                 consumedUnitsFromProvider, consumedUnits, graceUnits);
         }
-        
+
         private async Task<(ConsumerSession? session, DepositDetails? deposit)> TryGetSessionAndDepositAsync(
             Keccak depositId)
         {
@@ -148,7 +148,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 
                 return (null, null);
             }
-            
+
             var deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
             {
@@ -156,7 +156,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 
                 return (session, null);
             }
-                
+
             return (session, deposit);
         }
     }
