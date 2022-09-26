@@ -131,7 +131,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception.InnerException);
             return;
         }
         catch (OperationCanceledException exception)
