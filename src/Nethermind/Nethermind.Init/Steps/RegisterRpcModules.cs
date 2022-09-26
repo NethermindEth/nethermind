@@ -136,7 +136,7 @@ namespace Nethermind.Init.Steps
             DebugModuleFactory debugModuleFactory = new(
                 _api.DbProvider,
                 _api.BlockTree,
-				rpcConfig,
+                rpcConfig,
                 _api.BlockValidator,
                 _api.BlockPreprocessor,
                 _api.RewardCalculatorSource,
