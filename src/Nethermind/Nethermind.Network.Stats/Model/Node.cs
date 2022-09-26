@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-//
+// 
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -31,7 +31,7 @@ namespace Nethermind.Stats.Model
         private string _paddedPort;
 
         /// <summary>
-        /// Node public key - same as in enode.
+        /// Node public key - same as in enode. 
         /// </summary>
         public PublicKey Id { get; }
 
@@ -73,7 +73,7 @@ namespace Nethermind.Stats.Model
                 if (_clientId is null)
                 {
                     _clientId = value;
-                    ClientType = RecognizeClientType(_clientId);
+                    RecognizeClientType();
                 }
             }
         }
@@ -173,39 +173,39 @@ namespace Nethermind.Stats.Model
             return !(a == b);
         }
 
-        public static NodeClientType RecognizeClientType(string clientId)
+        private void RecognizeClientType()
         {
-            if (clientId is null)
+            if (_clientId is null)
             {
-                return NodeClientType.Unknown;
+                ClientType = NodeClientType.Unknown;
             }
-            else if (clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.BeSu;
+                ClientType = NodeClientType.BeSu;
             }
-            else if (clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.Geth;
+                ClientType = NodeClientType.Geth;
             }
-            else if (clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.Nethermind;
+                ClientType = NodeClientType.Nethermind;
             }
-            else if (clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.Parity;
+                ClientType = NodeClientType.Parity;
             }
-            else if (clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.OpenEthereum;
+                ClientType = NodeClientType.OpenEthereum;
             }
-            else if (clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
+            else if (_clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
             {
-                return NodeClientType.Trinity;
+                ClientType = NodeClientType.Trinity;
             }
             else
             {
-                return NodeClientType.Unknown;
+                ClientType = NodeClientType.Unknown;
             }
         }
     }
