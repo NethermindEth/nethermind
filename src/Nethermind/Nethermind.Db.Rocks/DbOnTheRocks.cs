@@ -430,7 +430,7 @@ public class DbOnTheRocks : IDbWithSpan
             }
 
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
-            _dbOnTheRocks._currentBatches.Remove(this);
+            _dbOnTheRocks._currentBatches.TryRemove(this);
             _rocksBatch.Dispose();
         }
 
