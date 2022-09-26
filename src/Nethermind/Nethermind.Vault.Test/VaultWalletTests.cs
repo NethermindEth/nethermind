@@ -51,7 +51,7 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Name";
             vault.Description = "Description";
-            
+
             // Create a single Vault instance
             provide.Model.Vault.Vault response = await _vaultService.CreateVault(vault);
             response.Id.Should().NotBeNull();

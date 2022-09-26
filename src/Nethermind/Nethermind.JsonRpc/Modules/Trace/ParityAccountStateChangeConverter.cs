@@ -163,7 +163,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     string trimmedKey = pair.Key.ToString("x64");
                     trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
-                    
+
                     writer.WritePropertyName(string.Concat("0x", trimmedKey));
                     WriteStorageChange(writer, pair.Value, value.Balance?.Before == null && value.Balance?.After != null, serializer);
                 }

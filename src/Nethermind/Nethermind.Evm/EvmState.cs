@@ -76,7 +76,7 @@ namespace Nethermind.Evm
 
                 return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
             }
-            
+
             private int[] RentReturnStack()
             {
                 if (_returnStackPool.TryPop(out int[] result))
@@ -92,7 +92,7 @@ namespace Nethermind.Evm
 
                 return new int[EvmStack.ReturnStackSize];
             }
-            
+
             public (byte[], int[]) RentStacks()
             {
                 return (RentDataStack(), RentReturnStack());
@@ -101,7 +101,7 @@ namespace Nethermind.Evm
         private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
 
         public byte[]? DataStack;
-       
+
         public int[]? ReturnStack;
 
         /// <summary>
@@ -113,7 +113,7 @@ namespace Nethermind.Evm
         /// EIP-2929 accessed storage keys
         /// </summary>
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
-        
+
         // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
         // As we can add here from VM, we need it as ICollection
@@ -129,27 +129,27 @@ namespace Nethermind.Evm
         private readonly int _logsSnapshot;
 
         public int DataStackHead = 0;
-        
+
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
 
         public EvmState(
-            long gasAvailable, 
-            ExecutionEnvironment env, 
-            ExecutionType executionType, 
-            bool isTopLevel, 
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            bool isTopLevel,
             Snapshot snapshot,
             bool isContinuation)
-            : this(gasAvailable, 
-                env, 
-                executionType, 
-                isTopLevel, 
-                snapshot, 
-                0L, 
-                0L, 
-                false, 
-                null, 
-                isContinuation, 
+            : this(gasAvailable,
+                env,
+                executionType,
+                isTopLevel,
+                snapshot,
+                0L,
+                0L,
+                false,
+                null,
+                isContinuation,
                 false)
         {
             GasAvailable = gasAvailable;
@@ -173,7 +173,7 @@ namespace Nethermind.Evm
             {
                 throw new InvalidOperationException("Top level continuations are not valid");
             }
-            
+
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -233,11 +233,11 @@ namespace Nethermind.Evm
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
         public long Refund { get; set; }
-        
+
         public Address To => Env.CodeSource;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public ExecutionEnvironment Env { get; }
-        
+
         internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsTopLevel { get; } // TODO: move to CallEnv
         internal long OutputDestination { get; } // TODO: move to CallEnv
@@ -265,7 +265,7 @@ namespace Nethermind.Evm
         }
 
         public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
-        
+
         public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)

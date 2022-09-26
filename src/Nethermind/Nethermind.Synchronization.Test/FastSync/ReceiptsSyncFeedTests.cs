@@ -113,10 +113,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _blockTree = Substitute.For<IBlockTree>();
 
-            _syncConfig = new SyncConfig {FastBlocks = true};
+            _syncConfig = new SyncConfig { FastBlocks = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
             _syncConfig.PivotHash = Keccak.Zero.ToString();
-            
+
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncReport = Substitute.For<ISyncReport>();
 
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Should_throw_when_fast_blocks_not_enabled()
         {
-            _syncConfig = new SyncConfig {FastBlocks = false};
+            _syncConfig = new SyncConfig { FastBlocks = false };
             Assert.Throws<InvalidOperationException>(
                 () => _feed = new ReceiptsSyncFeed(
                     _selector,
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     _syncReport,
                     LimboLogs.Instance));
         }
-        
+
         [Test]
         public async Task Should_finish_on_start_when_receipts_not_stored()
         {
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private void LoadScenario(Scenario scenario)
         {
-            LoadScenario(scenario, new SyncConfig {FastBlocks = true});
+            LoadScenario(scenario, new SyncConfig { FastBlocks = true });
         }
 
         private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
@@ -274,25 +274,25 @@ namespace Nethermind.Synchronization.Test.FastSync
                     {
                         return null;
                     }
-                    
+
                     BlockInfo blockInfo = new(block.Hash, block.TotalDifficulty ?? 0);
                     blockInfo.BlockNumber = ci.Arg<long>();
                     return blockInfo;
                 });
-            
+
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
                         ? scenario.BlocksByHash[ci.Arg<Keccak>()]
                         : null);
-            
+
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
                         ? scenario.BlocksByHash[ci.Arg<Keccak>()].Header
                         : null);
 
-            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?) null);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
             _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody.Number);
         }
 
@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 batches[i].Should().NotBeNull();
                 batches[i].ToString().Should().NotBeNull();
             }
-            
+
             for (int i = 2; i < 100; i++)
             {
                 batches[i].Should().BeNull();
@@ -328,14 +328,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
             batch!.Response = new TxReceipt[batch.Infos.Length][];
-            
+
             // default receipts that we use when constructing receipt root for tests have stats code 0
             // so by using 1 here we create a different tx root
-            batch.Response[0] = new [] {Build.A.Receipt.WithStatusCode(1).TestObject};
-            
+            batch.Response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
-            
+
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
@@ -347,7 +347,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch.Response = new TxReceipt[batch.Infos.Length][];
             for (int i = 0; i < batch.Response.Length; i++)
             {
-                batch.Response[i] = new[] {Build.A.Receipt.TestObject};
+                batch.Response[i] = new[] { Build.A.Receipt.TestObject };
             }
         }
 
@@ -356,7 +356,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_64BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
-            
+
             FillBatchResponses(batch);
             _feed.HandleResponse(batch);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);

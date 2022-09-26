@@ -47,11 +47,11 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private readonly bool _paymasterWhitelisted;
         private readonly bool _hasInitCode;
-        
+
         private bool _paymasterValidationMode;
         private int _numberOfCreate2Calls;
         private bool _nextOpcodeMustBeCall; // GAS is allowed only if it followed immediately by a CALL, DELEGATECALL, STATICCALL, or CALLCODE
-        
+
         public UserOperationTxTracer(
             Transaction? transaction,
             bool paymasterWhitelisted,
@@ -147,12 +147,12 @@ namespace Nethermind.AccountAbstraction.Executor
                     Error ??= $"simulation error: GAS opcode was called at depth {depth} pc {pc} but was not immediately followed by CALL, DELEGATECALL, STATICCALL, or CALLCODE";
                 }
             }
-            
+
             if (depth > 1 && opcode == Instruction.GAS)
             {
                 _nextOpcodeMustBeCall = true;
             }
-            
+
             // spec: These opcodes are forbidden because their outputs may differ between simulation and execution,
             // so simulation of calls using these opcodes does not reliably tell what would happen if these calls are later done on-chain.
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
@@ -161,7 +161,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 {
                     return;
                 }
-                
+
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
                 Error ??= $"simulation failed: encountered banned opcode {opcode} at depth {depth} pc {pc}";
@@ -169,7 +169,7 @@ namespace Nethermind.AccountAbstraction.Executor
             // in the simulateWallet function of the entryPoint, NUMBER is called once
             // signalling that validation is switching from the wallet to the paymaster
             else if (depth == 1 && opcode == Instruction.NUMBER)
-            { 
+            {
                 _paymasterValidationMode = true;
             }
             else if (opcode == Instruction.CREATE2)
@@ -180,7 +180,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 {
                     return;
                 }
-                
+
                 if (_hasInitCode)
                 {
                     if (_numberOfCreate2Calls > 1)
@@ -249,7 +249,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private void HandleStorageAccess(Address address, UInt256 storageIndex)
         {
             AddToAccessedStorage(address, storageIndex);
-            
+
             if (address == _entryPointAddress) return;
             // spec: The call does not access mutable state of any contract except the wallet/paymaster itself
             if (!_paymasterValidationMode)
@@ -282,7 +282,7 @@ namespace Nethermind.AccountAbstraction.Executor
             if (value == 0) return;
 
             if (from == _sender && to == _entryPointAddress) return;
-            
+
             Success = false;
             Error ??= $"simulation failed: balance write allowed only from sender to entrypoint, instead found from: {from} to: {_entryPointAddress} with value {value}";
         }
@@ -333,7 +333,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             AccessedAddresses = accessedAddresses;
         }
-        
+
         private void AddToAccessedStorage(Address address, UInt256 index)
         {
             if (AccessedStorage.TryGetValue(address, out HashSet<UInt256>? values))
@@ -342,7 +342,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 return;
             }
 
-            AccessedStorage.Add(address, new HashSet<UInt256> {index});
+            AccessedStorage.Add(address, new HashSet<UInt256> { index });
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Caching
 
             cache.Get(_addresses[Capacity - 1]).Should().BeTrue();
         }
-        
+
         [Test]
         public void Can_reset()
         {
@@ -60,14 +60,14 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(_addresses[0]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().BeTrue();
         }
-        
+
         [Test]
         public void Can_ask_before_first_set()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
             cache.Get(_addresses[0]).Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_clear()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().BeTrue();
         }
-        
+
         [Test]
         public void Beyond_capacity()
         {

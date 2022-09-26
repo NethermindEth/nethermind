@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P
             {
                 return 0;
             }
-            
+
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
             int length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
                     else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
                 }
             });
-            
+
             return length;
         }
 

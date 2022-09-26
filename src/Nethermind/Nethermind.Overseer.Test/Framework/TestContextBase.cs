@@ -38,12 +38,12 @@ namespace Nethermind.Overseer.Test.Framework
             TestBuilder.SwitchNode(node);
             return (TContext)this;
         }
-        
+
         public TestBuilder LeaveContext()
         {
             return TestBuilder;
         }
-        
+
         public TContext Wait(int delay = 5000, string name = "Wait")
             => Add(new WaitTestStep($"name {delay}", delay));
 
@@ -53,7 +53,7 @@ namespace Nethermind.Overseer.Test.Framework
             => Add(new JsonRpcTestStep<TResult>(name,
                 async () =>
                 {
-                    
+
                     var result = await ExecuteJsonRpcAsync(methodName, func);
                     if (result.IsValid)
                     {
@@ -66,7 +66,7 @@ namespace Nethermind.Overseer.Test.Framework
         protected TContext Add(TestStepBase step)
         {
             TestBuilder.QueueWork(step);
-            return (TContext) this;
+            return (TContext)this;
         }
 
         private async Task<JsonRpcResponse<TResult>> ExecuteJsonRpcAsync<TResult>(

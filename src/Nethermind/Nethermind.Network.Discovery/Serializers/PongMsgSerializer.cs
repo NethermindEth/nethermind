@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,14 +34,14 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
             throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.",
                 NetworkExceptionType.Discovery);
         }
-        
+
         byte[] data = Rlp.Encode(
             Encode(msg.FarAddress),
             Rlp.Encode(msg.PingMdc),
             Rlp.Encode(msg.ExpirationTime)
         ).Bytes;
 
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, data);
+        byte[] serializedMsg = Serialize((byte)msg.MsgType, data);
         return serializedMsg;
     }
 

@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             SerializerTester.TestZero(serializer, message, "ca820457c682270f050580");
         }
-        
+
         //test from https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
         [Test]
         public void RoundTrip_hash()

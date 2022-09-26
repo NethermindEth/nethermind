@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _consumerNotifier = consumerNotifier;
             _logger = logManager.GetClassLogger();
         }
-        
+
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
             => _depositApprovalRepository.BrowseAsync(query);
 
@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already confirmed.");
                 return;
             }
-            
+
             approval.Confirm();
             await _depositApprovalRepository.UpdateAsync(approval);
             await _consumerNotifier.SendDepositApprovalConfirmedAsync(approval.AssetId, approval.AssetName, consumer);
@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already rejected.");
                 return;
             }
-            
+
             approval.Reject();
             await _depositApprovalRepository.UpdateAsync(approval);
             await _consumerNotifier.SendDepositApprovalRejectedAsync(approval.AssetId, approval.AssetName, consumer);

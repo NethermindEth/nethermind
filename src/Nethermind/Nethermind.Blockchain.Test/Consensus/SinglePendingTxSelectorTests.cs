@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,13 +38,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             SinglePendingTxSelector selector = new(txSource);
             _ = selector.ToString();
         }
-        
+
         [Test]
         public void Throws_on_null_argument()
         {
             Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelector(null));
         }
-        
+
         [Test]
         public void When_no_transactions_returns_empty_list()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            txSource.GetTransactions(_anyParent, 1000000).ReturnsForAnyArgs(new []
+            txSource.GetTransactions(_anyParent, 1000000).ReturnsForAnyArgs(new[]
             {
                 Build.A.Transaction.WithNonce(6).TestObject,
                 Build.A.Transaction.WithNonce(1).WithTimestamp(7).TestObject,

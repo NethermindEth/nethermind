@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Filters.Topics
                 }
             }
 
-            return false;            
+            return false;
         }
 
         public override bool Matches(ref BloomStructRef bloom)
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Filters.Topics
                 }
             }
 
-            return false;            
+            return false;
         }
 
         public override bool Equals(object? obj)
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             if (ReferenceEquals(this, other)) return true;
             return _subexpressions.SequenceEqual(other._subexpressions);
         }
-        
+
         public override string ToString() => $"[{string.Join<TopicExpression>(',', _subexpressions)}]";
     }
 }

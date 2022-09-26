@@ -37,7 +37,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperation.Signature;
             PaymasterData = userOperation.PaymasterData;
         }
-        
+
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] CallData { get; set; }

@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IReceiptStorage>(),			
+                Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>());
         }
@@ -73,14 +73,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), false);
             Assert.Throws<InvalidOperationException>(() => _modulePool.GetModule(false));
         }
-        
+
         [Test]
         public void Can_return_exclusive_if_allowed()
         {
             _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), true);
             _modulePool.GetModule(false);
         }
-        
+
         [Test]
         public void Ensure_unlimited_shared()
         {

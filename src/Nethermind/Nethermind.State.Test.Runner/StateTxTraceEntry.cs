@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -39,7 +39,7 @@ namespace Nethermind.State.Test.Runner
 
         [JsonProperty(PropertyName = "gasCost")]
         public long GasCost { get; set; }
-        
+
         [JsonProperty(PropertyName = "memory")]
         public string Memory { get; set; }
 
@@ -48,20 +48,20 @@ namespace Nethermind.State.Test.Runner
 
         [JsonProperty(PropertyName = "stack")]
         public List<string> Stack { get; set; }
-        
+
         [JsonProperty(PropertyName = "depth")]
         public int Depth { get; set; }
-        
+
         [JsonProperty(PropertyName = "refund")]
         public int Refund { get; set; }
 
         [JsonProperty(PropertyName = "opname")]
         public string? OperationName { get; set; }
-        
+
         [JsonProperty(PropertyName = "error")]
         public string? Error { get; set; } = string.Empty;
 
-//        public Dictionary<string, string> Storage { get; set; }
+        //        public Dictionary<string, string> Storage { get; set; }
 
         internal void UpdateMemorySize(ulong size)
         {

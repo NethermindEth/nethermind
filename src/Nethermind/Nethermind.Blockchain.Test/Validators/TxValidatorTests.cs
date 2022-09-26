@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,25 +48,25 @@ namespace Nethermind.Blockchain.Test.Validators
 
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
-        
+
         [Test]
         public void Zero_s_is_not_valid()
         {
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
-            // s is zero
-            
+                             // s is zero
+
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
-        
+
         [Test]
         public void Bad_chain_id_is_not_valid()
         {
@@ -76,11 +76,11 @@ namespace Nethermind.Blockchain.Test.Validators
             sigData[64] = 39;
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
-        
+
         [Test]
         public void No_chain_id_tx_is_valid()
         {
@@ -89,11 +89,11 @@ namespace Nethermind.Blockchain.Test.Validators
             sigData[63] = 1; // correct s
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
-        
+
         [Test]
         public void Is_valid_with_valid_chain_id()
         {
@@ -103,11 +103,11 @@ namespace Nethermind.Blockchain.Test.Validators
             sigData[64] = 38;
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
-        
+
         [TestCase(true)]
         [TestCase(false)]
         public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
@@ -122,11 +122,11 @@ namespace Nethermind.Blockchain.Test.Validators
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip155Enabled.Returns(false);
             releaseSpec.ValidateChainId.Returns(validateChainId);
-            
+
             TxValidator txValidator = new(1);
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
         }
-        
+
         [TestCase(TxType.Legacy, true, ExpectedResult = true)]
         [TestCase(TxType.Legacy, false, ExpectedResult = true)]
         [TestCase(TxType.AccessList, false, ExpectedResult = false)]
@@ -146,11 +146,11 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
-            
+
             TxValidator txValidator = new(1);
             return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
         }
-        
+
         [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
         [TestCase(TxType.Legacy, false, false, ExpectedResult = true)]
         [TestCase(TxType.AccessList, false, false, ExpectedResult = false)]
@@ -174,13 +174,13 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
-            
+
             TxValidator txValidator = new(1);
-            IReleaseSpec releaseSpec = new ReleaseSpec() {IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559};
+            IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559 };
             return txValidator.IsWellFormed(tx, releaseSpec);
         }
-        
-        
+
+
         [TestCase(TxType.Legacy, ExpectedResult = true)]
         [TestCase(TxType.AccessList, ExpectedResult = false)]
         [TestCase(TxType.EIP1559, ExpectedResult = false)]
@@ -197,7 +197,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
-            
+
             TxValidator txValidator = new(ChainId.Mainnet);
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
-            
+
             TxValidator txValidator = new(ChainId.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Crypto
             byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope);
             byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
         }
-        
+
         private static readonly IProtector _protector = CreateProtector();
 
         private static IProtector CreateProtector()

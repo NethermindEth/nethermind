@@ -39,9 +39,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             TestState.Commit(Berlin.Instance);
-            
+
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
             IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.IsNotEmpty(addressesAccessed);
             addressesAccessed.Should().BeEquivalentTo(expected);
         }
-        
+
         [Test]
         public void Records_get_correct_accessed_keys()
         {
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData("0x69")
                 .Op(Instruction.SSTORE)
                 .Done;
-            
+
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
             IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList.Data;
@@ -69,12 +69,12 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.IsNotEmpty(accessedData);
             accessedData.Should().BeEquivalentTo(
                 new Dictionary<Address, IReadOnlySet<UInt256>>{
-                    {SenderRecipientAndMiner.Default.Sender, ImmutableHashSet<UInt256>.Empty}, 
+                    {SenderRecipientAndMiner.Default.Sender, ImmutableHashSet<UInt256>.Empty},
                     {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105}}});
         }
-        
+
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
-        
+
         protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);

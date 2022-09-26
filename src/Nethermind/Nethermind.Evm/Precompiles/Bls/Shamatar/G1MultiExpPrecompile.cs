@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
         }
 
         private const int ItemSize = 160;
-        
+
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             }
 
             (byte[], bool) result;
-            
+
             Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
             bool success = ShamatarLib.BlsG1MultiExp(inputData.Span, output);
             if (success)

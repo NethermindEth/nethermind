@@ -460,7 +460,7 @@ namespace Nethermind.Evm.Test
                 // Call depth = 0, call self after TSTORE 8
                 .StoreDataInTransientStorage(1, 8)
 
-                // Recursive call with input
+                    // Recursive call with input
                     // Depth++
                     .PushData(5)
                     .Op(Instruction.MLOAD)
@@ -480,7 +480,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPDEST) // PC = 84
                 .StoreDataInTransientStorage(1, 9)
 
-                // Recursive call with input
+                    // Recursive call with input
                     // Depth++
                     .PushData(5)
                     .Op(Instruction.MLOAD)
@@ -535,7 +535,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract (1 if successful)
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
-                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])                    
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
                 .ReturnInnerCallResult()
                 .Done;
 

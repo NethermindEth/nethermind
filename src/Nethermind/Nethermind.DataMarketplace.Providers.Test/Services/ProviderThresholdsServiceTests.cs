@@ -52,25 +52,25 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             _configManager.GetAsync(ConfigId).Returns(_config);
             _providerThresholdsService = new ProviderThresholdsService(_configManager, ConfigId, _logManager);
         }
-        
+
         [Test]
         public void default_receipt_request_threshold_should_be_10000000000000000()
         {
             _config.ReceiptRequestThreshold.Should().Be(_receiptRequestThreshold);
         }
-        
+
         [Test]
         public void default_receipts_merge_threshold_should_be_100000000000000000()
         {
             _config.ReceiptsMergeThreshold.Should().Be(_receiptsMergeThreshold);
         }
-        
+
         [Test]
         public void default_payment_claim_threshold_should_be_1000000000000000000()
         {
             _config.PaymentClaimThreshold.Should().Be(_paymentClaimThreshold);
         }
-        
+
         [Test]
         public async Task get_current_should_return_chosen_receipt_request_threshold()
         {
@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             receiptRequestThreshold.Should().Be(_config.ReceiptRequestThreshold);
             await _configManager.Received().GetAsync(ConfigId);
         }
-        
+
         [Test]
         public async Task get_current_should_return_chosen_receipts_merge_threshold()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             receiptsMergeThreshold.Should().Be(_config.ReceiptsMergeThreshold);
             await _configManager.Received().GetAsync(ConfigId);
         }
-        
+
         [Test]
         public async Task get_current_should_return_chosen_payment_claim_threshold()
         {
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             paymentClaimThreshold.Should().Be(_config.PaymentClaimThreshold);
             await _configManager.Received().GetAsync(ConfigId);
         }
-        
+
         [Test]
         public void set_should_fail_if_receipt_request_threshold_will_be_0()
         {
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             act.Should().Throw<ArgumentException>()
                 .WithMessage("Receipt request threshold must be greater than 0.");
         }
-        
+
         [Test]
         public void set_should_fail_if_receipts_merge_threshold_will_be_0()
         {
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             act.Should().Throw<ArgumentException>()
                 .WithMessage("Receipts merge threshold must be greater than 0.");
         }
-        
+
         [Test]
         public void set_should_fail_if_payment_claim_threshold_will_be_0()
         {

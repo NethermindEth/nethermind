@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,13 +29,13 @@ namespace Nethermind.Consensus.Producers
     {
         public BlockHeader? ParentHeader { get; }
         public IBlockTracer? BlockTracer { get; }
-        
+
         public PayloadAttributes? PayloadAttributes { get; }
         public CancellationToken CancellationToken { get; }
         public Task<Block?> BlockProductionTask { get; set; } = Task.FromResult<Block?>(null);
 
         public BlockProductionEventArgs(
-            BlockHeader? parentHeader = null, 
+            BlockHeader? parentHeader = null,
             CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
             PayloadAttributes? payloadAttributes = null)

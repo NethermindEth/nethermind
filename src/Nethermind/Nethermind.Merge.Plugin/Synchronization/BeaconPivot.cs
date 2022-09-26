@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,7 +48,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         Rlp.Encode(value.GetOrCalculateHash()).Bytes);
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
                         Rlp.Encode(value.Number).Bytes);
-                } else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
+                }
+                else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
             }
         }
 

@@ -23,8 +23,8 @@ namespace Nethermind.Synchronization.Reporting
         public void Dispose()
         {
         }
-        
-        public static NullSyncReport Instance = new(); 
+
+        public static NullSyncReport Instance = new();
 
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
         public long FullSyncBlocksKnown { get; set; }

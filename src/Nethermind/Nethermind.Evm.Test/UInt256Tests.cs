@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
             Assert.False(((UInt256)BigInteger.Pow(2, 128)).IsOne, "2^128");
             Assert.False(((UInt256)BigInteger.Pow(2, 196)).IsOne, "2^196");
         }
-        
+
         [Test]
         public void To_big_endian_can_store_in_address()
         {
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
             a.ToBigEndian(target);
             Assert.AreEqual("b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7".ToUpperInvariant(), target.ToHexString().ToUpperInvariant());
         }
-        
+
         [Test]
         public void To_big_endian_can_store_on_stack()
         {

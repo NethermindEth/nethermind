@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,13 +21,13 @@ namespace Nethermind.Network.Rlpx
         void AddMac(byte[] input, int offset, int length, bool isHeader);
 
         void UpdateEgressMac(byte[] input);
-        
+
         void UpdateIngressMac(byte[] input, bool isHeader);
 
         bool CheckMac(byte[] mac, bool isHeader);
-        
+
         void CalculateMac(byte[] output);
-        
+
         void AddMac(byte[] input, int offset, int length, byte[] output, int outputOffset, bool isHeader);
         void CheckMac(byte[] input, int offset, int length, bool isHeader);
     }

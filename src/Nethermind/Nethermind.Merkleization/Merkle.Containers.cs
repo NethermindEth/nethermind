@@ -82,16 +82,16 @@ namespace Nethermind.Merkleization
     //         MaximumDepositContracts = (ulong) 1 << depositContractTreeDepth;
     //     }
     // }
-    
+
     public static partial class Merkle
     {
-        
-        
+
+
         public static void Ize(out UInt256 root, BlsPublicKey container)
         {
             Ize(out root, container.Bytes);
         }
-        
+
         public static void Ize(out UInt256 root, BlsSignature container)
         {
             Ize(out root, container.Bytes);
@@ -101,27 +101,27 @@ namespace Nethermind.Merkleization
         {
             Ize(out root, container.Amount);
         }
-        
+
         public static void Ize(out UInt256 root, Slot container)
         {
             Ize(out root, container.Number);
         }
-        
+
         public static void Ize(out UInt256 root, Epoch container)
         {
             Ize(out root, container.Number);
         }
-        
+
         public static void Ize(out UInt256 root, ValidatorIndex container)
         {
             Ize(out root, container.Number);
         }
-        
+
         public static void Ize(out UInt256 root, CommitteeIndex container)
         {
             Ize(out root, container.Number);
         }
-        
+
         public static void Ize(out UInt256 root, Eth1Data? container)
         {
             if (container is null)
@@ -129,7 +129,7 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.DepositRoot);
             merkleizer.Feed(container.DepositCount);
@@ -155,7 +155,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Ref<DepositData> container)
         {
             if (container.Root is null)
@@ -165,7 +165,7 @@ namespace Nethermind.Merkleization
             }
             else
             {
-                container.Root.AsInt(out root);    
+                container.Root.AsInt(out root);
             }
         }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(value, Ssz.Ssz.MaximumDepositContracts);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, List<DepositData> value)
         {
             Merkleizer merkleizer = new Merkleizer(0);
@@ -199,7 +199,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.Target);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, BeaconBlockBody? container)
         {
             if (container is null)
@@ -219,7 +219,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.VoluntaryExits, Ssz.Ssz.MaxVoluntaryExits);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, BeaconState? container)
         {
             if (container is null)
@@ -249,7 +249,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.FinalizedCheckpoint);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, BeaconBlock container)
         {
             Merkleizer merkleizer = new Merkleizer(2);
@@ -259,7 +259,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.Body);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Attestation? container)
         {
             if (container is null)
@@ -267,14 +267,14 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.FeedBitlist(container.AggregationBits, Ssz.Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, IndexedAttestation? container)
         {
             if (container is null)
@@ -289,7 +289,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, PendingAttestation? container)
         {
             if (container is null)
@@ -297,7 +297,7 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.FeedBitlist(container.AggregationBits, Ssz.Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
@@ -305,7 +305,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.ProposerIndex);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, AttesterSlashing? container)
         {
             if (container is null)
@@ -313,13 +313,13 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Attestation1);
             merkleizer.Feed(container.Attestation2);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Deposit? container)
         {
             if (container is null)
@@ -327,7 +327,7 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Proof);
             merkleizer.Feed(container.Data);
@@ -344,7 +344,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.SignedHeader2);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Fork? container)
         {
             if (container is null)
@@ -352,14 +352,14 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Value.PreviousVersion);
             merkleizer.Feed(container.Value.CurrentVersion);
             merkleizer.Feed(container.Value.Epoch);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Checkpoint? container)
         {
             if (container is null)
@@ -367,13 +367,13 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Value.Epoch);
             merkleizer.Feed(container.Value.Root);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, HistoricalBatch? container)
         {
             if (container is null)
@@ -381,13 +381,13 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, SignedVoluntaryExit container)
         {
             Merkleizer merkleizer = new Merkleizer(1);
@@ -403,7 +403,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.ValidatorIndex);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Validator? container)
         {
             if (container is null)
@@ -411,7 +411,7 @@ namespace Nethermind.Merkleization
                 root = RootOfNull;
                 return;
             }
-            
+
             Merkleizer merkleizer = new Merkleizer(3);
             merkleizer.Feed(container.PublicKey);
             merkleizer.Feed(container.WithdrawalCredentials);
@@ -423,7 +423,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.WithdrawableEpoch);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, BeaconBlockHeader container)
         {
             Merkleizer merkleizer = new Merkleizer(2);
@@ -433,7 +433,7 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.BodyRoot);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, SignedBeaconBlockHeader container)
         {
             Merkleizer merkleizer = new Merkleizer(1);

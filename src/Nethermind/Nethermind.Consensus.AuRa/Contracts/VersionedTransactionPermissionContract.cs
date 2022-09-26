@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
             Address contractAddress,
             long activation,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ICache<Keccak, UInt256> cache,
             ILogManager logManager,
             ISpecProvider specProvider)
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 logManager)
         {
         }
-        
+
         private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 readOnlyTxProcessorSource,
                 specProvider);
         }
-        
+
         private static TransactionPermissionContractV4 CreateV4(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,

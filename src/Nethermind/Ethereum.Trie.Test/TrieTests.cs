@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -119,7 +119,7 @@ namespace Ethereum.Trie.Test
         [TestCaseSource(nameof(LoadAnyOrderTests))]
         public void Test_any_order(TrieTest test)
         {
-            RunTest(test, false);    
+            RunTest(test, false);
         }
 
         [TestCaseSource(nameof(LoadAnyOrderSecureTests))]
@@ -141,7 +141,7 @@ namespace Ethereum.Trie.Test
                 // removed the implementation of secure trie as it was not used outside of tests
                 return;
             }
-            
+
             string permutationDescription =
                 string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
 

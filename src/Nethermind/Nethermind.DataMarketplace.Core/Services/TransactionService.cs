@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             });
         }
 
-        public Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value) 
+        public Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value)
             => UpdateAsync(transactionHash, transaction =>
             {
                 var previousValue = transaction.Value;
@@ -78,8 +78,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
 
             const long gasLimit = Transaction.BaseTxGasCost;
-            UInt256 gasPrice = 0; 
-            
+            UInt256 gasPrice = 0;
+
             var hash = await UpdateAsync(transactionHash, transaction =>
             {
                 gasPrice = multiplier * transaction.GasPrice / 100;
@@ -99,7 +99,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 throw new ArgumentException("Transaction hash cannot be null.", nameof(transactionHash));
             }
-            
+
             var transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
             if (transactionDetails is null)
             {
@@ -110,7 +110,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 throw new InvalidOperationException($"Transaction with hash: '{transactionHash}' is not pending.");
             }
-            
+
             var transaction = transactionDetails.Transaction;
             update(transaction);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());

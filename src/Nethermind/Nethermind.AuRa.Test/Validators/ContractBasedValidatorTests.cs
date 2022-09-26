@@ -58,8 +58,8 @@ namespace Nethermind.AuRa.Test.Validators
         private IReadOnlyTransactionProcessor _transactionProcessor;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         private static Address _contractAddress = Address.FromNumber(1000);
-        private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] {0, 1, 2});
-        private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] {3, 4, 5});
+        private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] { 0, 1, 2 });
+        private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] { 3, 4, 5 });
         private Address[] _initialValidators;
         private IBlockTree _blockTree;
         private IReceiptStorage _receiptsStorage;
@@ -81,10 +81,10 @@ namespace Nethermind.AuRa.Test.Validators
             _receiptsStorage = Substitute.For<IReceiptStorage>();
             _validator = new AuRaParameters.Validator()
             {
-                Addresses = new[] {_contractAddress},
+                Addresses = new[] { _contractAddress },
                 ValidatorType = AuRaParameters.ValidatorType.Contract
             };
-            _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
+            _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
 
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _transactionProcessor.IsContractDeployed(_contractAddress).Returns(true);
@@ -92,39 +92,39 @@ namespace Nethermind.AuRa.Test.Validators
             _readOnlyTxProcessorSource.Build(Arg.Any<Keccak>()).Returns(_transactionProcessor);
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _blockTree.Head.Returns(_block);
-            
+
             _abiEncoder
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "getValidators"), Arg.Any<object[]>())
                 .Returns(_getValidatorsData.TransactionData);
-            
+
             _abiEncoder
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
                 .Returns(_finalizeChangeData.TransactionData);
-            
+
             _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
         }
-        
+
         [Test]
         public void throws_ArgumentNullException_on_empty_validatorStore()
         {
             Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, null, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentNullException_on_empty_validSealearStrategy()
         {
             Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentNullException_on_empty_blockTree()
         {
             Action act = () => new ContractBasedValidator(_validatorContract, null, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentNullException_on_empty_logManager()
         {
@@ -139,9 +139,9 @@ namespace Nethermind.AuRa.Test.Validators
             SetupInitialValidators(initialValidator);
             _block.Header.Beneficiary = initialValidator;
             ContractBasedValidator validator = new(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-            
+
             validator.OnBlockProcessingStart(_block);
-            
+
             _stateProvider.Received(1).CreateAccount(Address.SystemUser, UInt256.Zero);
             _stateProvider.Received(1).Commit(Homestead.Instance);
         }
@@ -150,23 +150,23 @@ namespace Nethermind.AuRa.Test.Validators
         public void initializes_pendingValidators_from_db()
         {
             _validatorStore = Substitute.For<IValidatorStore>();
-            
+
             int blockNumber = 10;
             Address[] validators = TestItem.Addresses.Take(10).ToArray();
             Keccak blockHash = Keccak.Compute("Test");
             PendingValidators pendingValidators = new(blockNumber, blockHash, validators);
             _validatorStore.PendingValidators.Returns(pendingValidators);
-            _blockTree.Head.Returns((Block) null);
-            
+            _blockTree.Head.Returns((Block)null);
+
             IAuRaValidator validator = new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-            
+
             _blockFinalizationManager.BlocksFinalized +=
                 Raise.EventWith(new FinalizeEventArgs(_block.Header,
                     Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
 
             validator.Validators.Should().BeEquivalentTo(validators, o => o.WithStrictOrdering());
         }
-            
+
         [TestCase(1)]
         [TestCase(10)]
         public void loads_initial_validators_from_contract(long blockNumber)
@@ -178,12 +178,12 @@ namespace Nethermind.AuRa.Test.Validators
             ContractBasedValidator validator = new(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);
 
             bool finalizeChangeCalled = blockNumber == 1;
-            
+
             if (!finalizeChangeCalled)
             {
-                validator.Validators = new[] {TestItem.AddressD};
+                validator.Validators = new[] { TestItem.AddressD };
             }
-            
+
             validator.OnBlockProcessingStart(block);
 
             // getValidators should have been called
@@ -267,7 +267,7 @@ namespace Nethermind.AuRa.Test.Validators
                 {
                     TestName = "consecutive_initiate_change_gets_finalized_and_switch_validators"
                 };
-                
+
                 yield return new TestCaseData(new ConsecutiveInitiateChangeTestParameters
                 {
                     StartBlockNumber = 1,
@@ -304,7 +304,7 @@ namespace Nethermind.AuRa.Test.Validators
                                         Addresses = GenerateValidators(20),
                                         InitializeBlock = 7,
                                         FinalizeBlock = Int32.MaxValue // IgnoredInitializeChange
-                                    },                        
+                                    },
                                     new()
                                     {
                                         Addresses = GenerateValidators(3),
@@ -320,7 +320,7 @@ namespace Nethermind.AuRa.Test.Validators
                 {
                     TestName = "consecutive_initiate_change_gets_finalized_ignoring_duplicate_initiate_change"
                 };
-                
+
                 yield return new TestCaseData(new ConsecutiveInitiateChangeTestParameters
                 {
                     StartBlockNumber = 1,
@@ -370,7 +370,7 @@ namespace Nethermind.AuRa.Test.Validators
                 {
                     TestName = "consecutive_initiate_change_reorganisation_ignores_reorganised_initiate_change"
                 };
-                
+
                 yield return new TestCaseData(new ConsecutiveInitiateChangeTestParameters
                 {
                     StartBlockNumber = 1,
@@ -402,7 +402,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 6,  
+                                BlockNumber = 6,
                                 ExpectedFinalizationCount = 1,
                                 NumberOfSteps = 10,
                                 Validators = new  List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
@@ -488,9 +488,9 @@ namespace Nethermind.AuRa.Test.Validators
         {
             Address[] currentValidators = GenerateValidators(1);
             SetupInitialValidators(currentValidators);
-            
+
             IAuRaValidator validator = new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _blockTree.Head.Header, _logManager, test.StartBlockNumber);
-            
+
             test.TryDoReorganisations(test.StartBlockNumber, out _);
             for (int i = 0; i < test.Current.NumberOfSteps; i++)
             {
@@ -502,14 +502,14 @@ namespace Nethermind.AuRa.Test.Validators
                     i = 0;
                     blockNumber = test.Current.BlockNumber + i;
                 }
-                
+
                 _block.Header.Number = blockNumber;
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
                 _block.Header.Hash = Keccak.Compute(blockNumber.ToString());
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
-                
+
                 Action preProcess = () => validator.OnBlockProcessingStart(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
                 validator.OnBlockProcessingEnd(_block, txReceipts);
@@ -517,14 +517,14 @@ namespace Nethermind.AuRa.Test.Validators
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
                             .WithHash(Keccak.Compute(finalizedNumber.ToString())).TestObject));
-                
+
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");
             }
-            
+
             ValidateFinalizationForChain(test.Current);
         }
-        
+
         [TestCase(8, 5, null)]
         [TestCase(7, 5, 7)]
         [TestCase(6, 5, 7)]
@@ -545,11 +545,11 @@ namespace Nethermind.AuRa.Test.Validators
                     block = bt.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
                 }
             }
-            
+
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithTransactions(inMemoryReceiptStorage,
-                    RopstenSpecProvider.Instance, delegate(Block block, Transaction transaction)
+                    RopstenSpecProvider.Instance, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;
                         return new[]
@@ -561,18 +561,18 @@ namespace Nethermind.AuRa.Test.Validators
                         };
                     })
                 .OfChainLength(9, 0, 0, validators);
-            
+
             BlockTree blockTree = blockTreeBuilder.TestObject;
             SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
             IAuRaValidator validator = new ContractBasedValidator(_validatorContract, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, 1);
-            
+
             _abiEncoder.Decode(_validatorContract.AbiDefinition.Functions[ValidatorContract.GetValidatorsFunction].GetReturnInfo(), Arg.Any<byte[]>())
                 .Returns(c =>
                 {
                     byte addressIndex = c.Arg<byte[]>()[0];
-                    return new object[] {new Address[] {TestItem.Addresses[addressIndex]}};
+                    return new object[] { new Address[] { TestItem.Addresses[addressIndex] } };
                 });
-            
+
             _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns(lastLevelFinalized);
 
             validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
@@ -581,9 +581,9 @@ namespace Nethermind.AuRa.Test.Validators
             if (expectedBlockValidators.HasValue)
             {
                 Block block = GetAllBlocks(blockTree).First(b => b.Number == expectedBlockValidators.Value);
-                pendingValidators = new PendingValidators(block.Number, block.Hash, new [] {TestItem.Addresses[block.Number*10]});
+                pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
             }
-            
+
             _validatorStore.PendingValidators.Should().BeEquivalentTo(pendingValidators);
         }
 
@@ -595,12 +595,12 @@ namespace Nethermind.AuRa.Test.Validators
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
                     _block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
-            
+
             _transactionProcessor.ClearReceivedCalls();
         }
 
-        private static Address[] GenerateValidators(int number) => 
-            Enumerable.Range(1, number).Select(i => Address.FromNumber((UInt256) i)).ToArray();
+        private static Address[] GenerateValidators(int number) =>
+            Enumerable.Range(1, number).Select(i => Address.FromNumber((UInt256)i)).ToArray();
 
         private void SetupInitialValidators(params Address[] initialValidators)
         {
@@ -641,28 +641,28 @@ namespace Nethermind.AuRa.Test.Validators
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,
                 Arg.Is<AbiSignature>(s => s.Types.Length == 1 && s.Types[0].CSharpType == typeof(Address[])),
-                data).Returns(new object[] {addresses});
+                data).Returns(new object[] { addresses });
 
             return data;
         }
-        
+
         private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
         {
             return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data == transactionInfo.TransactionData;
         }
-        
+
         public class ConsecutiveInitiateChangeTestParameters
         {
             private ChainInfo _last;
-            
+
             public int StartBlockNumber { get; set; }
 
-            public ChainInfo Current { get; set; } 
-            
+            public ChainInfo Current { get; set; }
+
             public IDictionary<long, ChainInfo> Reorganisations { get; set; }
-            
+
             public string TestName { get; set; }
-            
+
             public override string ToString() => JsonConvert.SerializeObject(this);
 
             public bool TryDoReorganisations(int blockNumber, out ChainInfo last)
@@ -694,7 +694,7 @@ namespace Nethermind.AuRa.Test.Validators
                             dataFunc(validators),
                             new[] {validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash})
                     };
-                    
+
                     return new TxReceipt[]
                     {
                         new()
@@ -730,7 +730,7 @@ namespace Nethermind.AuRa.Test.Validators
                 public int BlockNumber { get; set; }
                 public int NumberOfSteps { get; set; }
                 public int ExpectedFinalizationCount { get; set; }
-                public IList<ValidatorsInfo> Validators { get; set; }               
+                public IList<ValidatorsInfo> Validators { get; set; }
             }
         }
     }

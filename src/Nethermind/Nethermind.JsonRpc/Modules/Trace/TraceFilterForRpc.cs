@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,16 +24,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceFilterForRpc
     {
-        public BlockParameter? FromBlock{ get; set; }
-        
+        public BlockParameter? FromBlock { get; set; }
+
         public BlockParameter? ToBlock { get; set; }
-        
+
         public Address[]? FromAddress { get; set; }
-        
+
         public Address[]? ToAddress { get; set; }
-        
-        public int After { get; set; } 
-        
+
+        public int After { get; set; }
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public int? Count { get; set; }
     }

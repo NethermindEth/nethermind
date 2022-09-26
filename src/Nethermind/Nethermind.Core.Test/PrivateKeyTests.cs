@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,14 +50,14 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null_bytes()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[]) null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[])null));
         }
 
         [Test]
         public void Cannot_be_initialized_with_null_string()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string) null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string)null));
         }
 
         [Test]
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(a, b);
         }
 
-        
+
         /// <summary>
         /// https://en.bitcoin.it/wiki/Private_key
         /// </summary>

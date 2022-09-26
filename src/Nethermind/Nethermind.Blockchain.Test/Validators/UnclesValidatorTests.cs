@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Test.Validators
         public void When_uncle_was_already_included_return_false()
         {
             UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-            Assert.False(unclesValidator.Validate(_block.Header, new[] {_duplicateUncle.Header}));
+            Assert.False(unclesValidator.Validate(_block.Header, new[] { _duplicateUncle.Header }));
         }
 
         private BlockHeader[] GetValidUncles(int count)

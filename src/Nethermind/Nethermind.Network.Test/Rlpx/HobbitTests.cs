@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             _frame = new byte[16 + 16 + 16 + 16];
             _frame[2] = 16; // size   
-            
+
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
                 {
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test.Rlpx
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
         }
-        
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
-            
+
             GetReceiptsMessage message = new(hashes);
 
             GetReceiptsMessageSerializer serializer = new();
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.Rlpx
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
             Assert.AreEqual(message.Hashes.Count, decodedMessage.Hashes.Count);
         }
-        
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
@@ -206,12 +206,12 @@ namespace Nethermind.Network.Test.Rlpx
             }
             finally
             {
-                embeddedChannel?.Finish();    
+                embeddedChannel?.Finish();
             }
 
             return packet;
         }
-        
+
         private EmbeddedChannel BuildEmbeddedChannel(StackType inbound, StackType outbound, bool framingEnabled = true)
         {
             if (inbound != StackType.Zero ||
@@ -226,7 +226,7 @@ namespace Nethermind.Network.Test.Rlpx
             IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
 
             Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
-            
+
             if (!framingEnabled)
             {
                 splitter.DisableFraming();
@@ -241,12 +241,12 @@ namespace Nethermind.Network.Test.Rlpx
 
             return embeddedChannel;
         }
-        
+
         public enum StackType
         {
             Zero
         }
-        
+
         private class ConsoleLoggerOptionsMonitor : IOptionsMonitor<ConsoleLoggerOptions>
         {
             public ConsoleLoggerOptionsMonitor(ConsoleLoggerOptions currentValue)
@@ -255,7 +255,7 @@ namespace Nethermind.Network.Test.Rlpx
             }
 
             public ConsoleLoggerOptions CurrentValue { get; }
-            
+
             public ConsoleLoggerOptions Get(string name) => CurrentValue;
 
             public IDisposable OnChange(Action<ConsoleLoggerOptions, string> listener)

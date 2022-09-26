@@ -217,10 +217,10 @@ namespace Nethermind.Cli.Modules
         // ReSharper disable once MemberCanBePrivate.Global
         public void LoadModule(Type type)
         {
-            ConstructorInfo? ctor = type.GetConstructor(new[] {typeof(ICliEngine), typeof(INodeManager)});
+            ConstructorInfo? ctor = type.GetConstructor(new[] { typeof(ICliEngine), typeof(INodeManager) });
             if (ctor != null)
             {
-                CliModuleBase module = (CliModuleBase) ctor.Invoke(new object[] {_engine, _client});
+                CliModuleBase module = (CliModuleBase)ctor.Invoke(new object[] { _engine, _client });
                 LoadModule(module);
             }
             else

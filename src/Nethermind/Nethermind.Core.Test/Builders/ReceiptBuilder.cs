@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TxReceipt();
-            TestObjectInternal.Logs = new[] {new LogEntry(Address.Zero, Array.Empty<byte>(), new[] {Keccak.Zero})};
+            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Keccak.Zero }) };
         }
 
         public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = new Bloom(logs);
             return this;
         }
-        
+
         public ReceiptBuilder WithTxType(TxType txType)
         {
             TestObject.TxType = txType;
@@ -79,7 +79,7 @@ namespace Nethermind.Core.Test.Builders
             TestObject.BlockHash = hash;
             return this;
         }
-        
+
         public ReceiptBuilder WithGasUsedTotal(long gasTotal)
         {
             TestObjectInternal.GasUsedTotal = gasTotal;
@@ -91,43 +91,43 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.GasUsed = gasUsed;
             return this;
         }
-        
+
         public ReceiptBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Bloom = bloom;
             return this;
         }
-        
+
         public ReceiptBuilder WithError(string error)
         {
             TestObjectInternal.Error = error;
             return this;
         }
-        
+
         public ReceiptBuilder WithIndex(int index)
         {
             TestObjectInternal.Index = index;
             return this;
         }
-        
+
         public ReceiptBuilder WithSender(Address sender)
         {
             TestObjectInternal.Sender = sender;
             return this;
         }
-        
+
         public ReceiptBuilder WithContractAddress(Address contractAddress)
         {
             TestObjectInternal.ContractAddress = contractAddress;
             return this;
         }
-        
+
         public ReceiptBuilder WithRecipient(Address recipient)
         {
             TestObjectInternal.Recipient = recipient;
             return this;
         }
-        
+
         public ReceiptBuilder WithStatusCode(byte statusCode)
         {
             TestObjectInternal.StatusCode = statusCode;

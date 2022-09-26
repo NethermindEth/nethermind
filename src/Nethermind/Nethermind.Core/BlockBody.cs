@@ -43,7 +43,7 @@ namespace Nethermind.Core
 
         public static BlockBody WithOneTransactionOnly(Transaction tx)
         {
-            return new(new[] {tx}, Array.Empty<BlockHeader>());
+            return new(new[] { tx }, Array.Empty<BlockHeader>());
         }
 
         public Transaction[] Transactions { get; internal set; }

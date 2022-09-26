@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions().Where(pt => pt.SenderAddress != null)
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
                     t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
-        
+
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
             IEnumerable<ReceiptForRpc> result = receipts
-                .Zip(block.Transactions, (r, t) => 
+                .Zip(block.Transactions, (r, t) =>
                     new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
@@ -110,10 +110,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _signerStore.SetSigner(key);
             return ResultWrapper<bool>.Success(true);
         }
-        
+
         public ResultWrapper<bool> parity_clearEngineSigner()
         {
-            _signerStore.SetSigner((ProtectedPrivateKey) null);
+            _signerStore.SetSigner((ProtectedPrivateKey)null);
             return ResultWrapper<bool>.Success(true);
         }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,41 +29,41 @@ namespace Nethermind.TxPool.Test
             get
             {
                 var transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
-                
-                yield return new TestCaseData(null, null) {ExpectedResult = true};
-                
+
+                yield return new TestCaseData(null, null) { ExpectedResult = true };
+
                 yield return new TestCaseData(transaction, null)
                 {
                     ExpectedResult = false
                 };
-                
+
                 yield return new TestCaseData(null, transaction)
                 {
                     ExpectedResult = false
                 };
-                
+
                 yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject)
                 {
                     ExpectedResult = false
                 };
-                
+
                 yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject)
                 {
                     ExpectedResult = false
                 };
-                
+
                 yield return new TestCaseData(transaction, transaction)
                 {
                     ExpectedResult = true
                 };
-                
-                yield return new TestCaseData(transaction,  Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
+
+                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
                 {
                     ExpectedResult = true
                 };
             }
         }
-        
+
         [TestCaseSource(nameof(TestCases))]
         public bool Equals_test(Transaction t1, Transaction t2) => CompetingTransactionEqualityComparer.Instance.Equals(t1, t2);
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -88,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return signedBlock;
         }
 
-        public static BeaconState Create(            
+        public static BeaconState Create(
                 // Versioning
                 ulong? genesisTime = null,
                 Slot? slot = null,
@@ -130,14 +130,14 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 eth1DataVotes ?? new List<Eth1Data>(),
                 eth1DepositIndex ?? 0,
                 validators ?? new List<Validator>(),
-                balances ?? new List<Gwei>(), 
-                randaoMixes ?? new Bytes32[0], 
-                slashings ?? new Gwei[0], 
+                balances ?? new List<Gwei>(),
+                randaoMixes ?? new Bytes32[0],
+                slashings ?? new Gwei[0],
                 previousEpochAttestations ?? new List<PendingAttestation>(),
-                currentEpochAttestations ?? new List<PendingAttestation>(), 
+                currentEpochAttestations ?? new List<PendingAttestation>(),
                 justificationBits ?? new BitArray(0),
                 previousJustifiedCheckpoint ?? Checkpoint.Zero,
-                currentJustifiedCheckpoint ?? Checkpoint.Zero, 
+                currentJustifiedCheckpoint ?? Checkpoint.Zero,
                 finalizedCheckpoint ?? Checkpoint.Zero);
             return state;
         }

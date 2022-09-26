@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Keys.Should().BeEquivalentTo(trieDb.Keys);
             clonedDb.Values.Should().BeEquivalentTo(trieDb.Values);
         }
-        
+
         [Test]
         public async Task cancel_coping_state_between_dbs()
         {
@@ -53,9 +53,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             MemDb clonedDb = new();
             IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
             Task task = Task.Run(() => CopyDb(pruningContext, trieDb, clonedDb));
-            
+
             pruningContext?.CancellationTokenSource.Cancel();
-            
+
             await task;
 
             clonedDb.Count.Should().BeLessThan(trieDb.Count);

@@ -53,7 +53,7 @@ namespace Nethermind.Overseer.Test
 
             await ScenarioCompletion;
         }
-        
+
         [Test]
         public async Task Clique_vote()
         {
@@ -81,7 +81,7 @@ namespace Nethermind.Overseer.Test
 
             await ScenarioCompletion;
         }
-        
+
         [Test]
         public async Task Clique_transaction_broadcast()
         {
@@ -95,7 +95,7 @@ namespace Nethermind.Overseer.Test
                 0,0,0,0,0,0,0,0,
                 0,0,0,0,0,0,0,3
             }).Address;
-            
+
             tx.To = new PrivateKey(new byte[32] {
                 0,0,0,0,0,0,0,0,
                 0,0,0,0,0,0,0,0,

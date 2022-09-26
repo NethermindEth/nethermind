@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode.OApi
 
 
         // 1bxx preliminary
-        
+
         public static readonly Action<ILogger, IPAddress, Exception?> NodeVersionRequested =
             LoggerMessage.Define<IPAddress>(LogLevel.Information,
                 new EventId(1480, nameof(NodeVersionRequested)),

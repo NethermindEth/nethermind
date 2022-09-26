@@ -20,8 +20,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class GasLimitsForRpc
     {
-        public ulong Deposit { get;  }
-        public ulong Refund { get;  }
+        public ulong Deposit { get; }
+        public ulong Refund { get; }
 
         public GasLimitsForRpc(GasLimits gasLimits)
         {

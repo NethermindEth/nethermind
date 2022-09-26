@@ -1,4 +1,4 @@
-﻿namespace Nethermind.Core2
+namespace Nethermind.Core2
 {
     public interface IClientVersion
     {

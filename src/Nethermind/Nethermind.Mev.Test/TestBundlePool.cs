@@ -33,11 +33,11 @@ namespace Nethermind.Mev.Test
     public class TestBundlePool : BundlePool
     {
         private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
-        
-        public TestBundlePool(IBlockTree blockTree, 
+
+        public TestBundlePool(IBlockTree blockTree,
             IBundleSimulator simulator,
             ITimestamper timestamper,
-            ITxValidator txValidator, 
+            ITxValidator txValidator,
             ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager,

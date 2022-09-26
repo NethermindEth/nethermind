@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing
             _innerTracer = innerTracer;
             _token = token;
         }
-        
+
         public bool IsTracingReceipt
         {
             get => _isTracingReceipt || _innerTracer.IsTracingReceipt;
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Tracing
             get => _isTracingState || _innerTracer.IsTracingState;
             init => _isTracingState = value;
         }
-        
+
         public bool IsTracingStorage
         {
             get => _isTracingStorage || _innerTracer.IsTracingStorage;
@@ -166,7 +166,7 @@ namespace Nethermind.Evm.Tracing
                 _innerTracer.ReportStorageChange(storageCell, before, after);
             }
         }
-        
+
         public void ReportStorageRead(StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
@@ -355,7 +355,7 @@ namespace Nethermind.Evm.Tracing
                 _innerTracer.ReportActionEnd(gas, output);
             }
         }
-        
+
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             _token.ThrowIfCancellationRequested();

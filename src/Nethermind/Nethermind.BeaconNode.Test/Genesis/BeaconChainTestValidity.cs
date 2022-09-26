@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,7 +47,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             {
                 depositStore.Place(deposit);
             }
-            
+
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = eth1TimestampOverride ?? miscellaneousParameters.MinimumGenesisTime;
             BeaconState state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp);
@@ -125,7 +125,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             {
                 depositStore.Place(deposit);
             }
-            
+
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
@@ -154,7 +154,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             {
                 depositStore.Place(deposit);
             }
-            
+
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 

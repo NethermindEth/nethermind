@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Builders
             currentFilterIndex++;
             return new FilterBuilder();
         }
-        
+
         public FilterBuilder WithId(int id)
         {
             _id = id;
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Builders
             _fromBlock = new BlockParameter(number);
             return this;
         }
-        
+
         public FilterBuilder FromBlock(BlockParameterType blockType)
         {
             _fromBlock = new BlockParameter(blockType);
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
             return this;
         }
-        
+
         public FilterBuilder FromFutureBlock()
         {
             _fromBlock = new BlockParameter(1000000);

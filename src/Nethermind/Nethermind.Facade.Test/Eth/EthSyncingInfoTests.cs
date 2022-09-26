@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -135,7 +135,7 @@ namespace Nethermind.Facade.Test.Eth
         private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock)
         {
             if (!isSyncing) return SyncingResult.NotSyncing;
-            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0};
+            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0 };
         }
     }
 }

@@ -7,7 +7,7 @@ namespace Ethereum.Test.Base
     {
         [JsonProperty("address")]
         public Address Address { get; set; }
-        
+
         [JsonProperty("storageKeys")]
         public byte[][] StorageKeys { get; set; }
     }

@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
         {
             _consumerModule = ndmConsumersModule;
         }
-        
+
         public override async Task<INdmCapabilityConnector> InitAsync(INdmApi ndmApi)
         {
             INdmConfig ndmConfig = ndmApi.ConfigProvider.GetConfig<INdmConfig>();

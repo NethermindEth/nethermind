@@ -45,7 +45,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         public DepositReportService(IDepositDetailsRepository depositRepository, IDepositUnitsCalculator depositUnitsCalculator, IReceiptRepository receiptRepository,
             IConsumerSessionRepository sessionRepository, ITimestamper timestamper)
         {
-             _depositUnitsCalculator = depositUnitsCalculator;
+            _depositUnitsCalculator = depositUnitsCalculator;
             _depositRepository = depositRepository;
             _receiptRepository = receiptRepository;
             _sessionRepository = sessionRepository;
@@ -78,10 +78,10 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 DepositDetails? detailsOfOne = await _depositRepository.GetAsync(query.DepositId);
                 if (detailsOfOne is null)
                 {
-                    return DepositsReport.Empty;    
+                    return DepositsReport.Empty;
                 }
-                
-                deposits = PagedResult<DepositDetails>.Create(new[] {detailsOfOne},
+
+                deposits = PagedResult<DepositDetails>.Create(new[] { detailsOfOne },
                     1, 1, 1, 1);
             }
 
@@ -121,7 +121,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 results = 10;
             }
 
-            uint timestamp = (uint) _timestamper.UnixTime.Seconds;
+            uint timestamp = (uint)_timestamper.UnixTime.Seconds;
             int skip = (page - 1) * results;
             List<DepositReportItem> items = new List<DepositReportItem>();
             foreach ((Keccak _, DepositDetails deposit) in foundDeposits.OrderByDescending(d => d.Value.Timestamp).Skip(skip)
@@ -142,7 +142,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
             (UInt256 total, UInt256 claimed, UInt256 refunded) = CalculateValues(foundDeposits, depositsReceipts);
             int totalResults = foundDeposits.Count;
-            int totalPages = (int) Math.Ceiling((double) totalResults / query.Results);
+            int totalPages = (int)Math.Ceiling((double)totalResults / query.Results);
 
             return new DepositsReport(total, claimed, refunded,
                 PagedResult<DepositReportItem>.Create(items.OrderByDescending(i => i.Timestamp).ToList(),
@@ -166,10 +166,10 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                     continue;
                 }
 
-                BigInteger unitPrice = (BigInteger) value / deposit.Deposit.Units;
+                BigInteger unitPrice = (BigInteger)value / deposit.Deposit.Units;
                 uint claimedUnits = 1 + depositReceipts.Max(r => r.Request.UnitsRange.To) -
                                     depositReceipts.Min(r => r.Request.UnitsRange.From);
-                UInt256 claimedValue = (UInt256) (claimedUnits * unitPrice);
+                UInt256 claimedValue = (UInt256)(claimedUnits * unitPrice);
                 UInt256 refundedValue = deposit.RefundClaimed ? value - claimedValue : 0;
                 claimed += claimedValue;
                 refunded += refundedValue;

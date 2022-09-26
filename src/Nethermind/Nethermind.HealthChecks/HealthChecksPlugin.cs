@@ -29,7 +29,7 @@ using Nethermind.Monitoring.Config;
 
 namespace Nethermind.HealthChecks
 {
-    public class HealthChecksPlugin: INethermindPlugin, INethermindServicesPlugin
+    public class HealthChecksPlugin : INethermindPlugin, INethermindServicesPlugin
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;

@@ -189,7 +189,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
             info.Hash.Should().BeNull();
         }
-        
+
         [Test]
         public async Task update_refund_gas_price_should_fail_for_cancelled_deposit()
         {
@@ -262,7 +262,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(claimedRefundTransactionHash, gasPrice);
         }
-        
+
         [Test]
         public async Task cancel_deposit_should_fail_for_missing_deposit()
         {
@@ -272,7 +272,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(depositId);
         }
-        
+
         [Test]
         public async Task cancel_deposit_should_fail_for_confirmed_deposit()
         {
@@ -286,7 +286,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
-        
+
         [Test]
         public async Task cancel_deposit_should_fail_for_not_pending_transaction()
         {
@@ -299,7 +299,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_fail_for_missing_deposit()
         {
@@ -309,7 +309,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(depositId);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_fail_for_missing_transaction()
         {
@@ -321,7 +321,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_fail_if_already_claimed()
         {
@@ -335,7 +335,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_fail_for_cancelled_deposit()
         {
@@ -347,7 +347,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_fail_for_rejected_deposit()
         {
@@ -392,7 +392,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().CancelAsync(transactionHash);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_return_transaction_status()
         {
@@ -416,10 +416,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             Keccak claimedRefundTransactionHash = null, bool cancelled = false)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                transactionHash is null ? Array.Empty<TransactionInfo>() : new[] {TransactionInfo.Default(transactionHash, 1, 1, 1, 1)},
+                transactionHash is null ? Array.Empty<TransactionInfo>() : new[] { TransactionInfo.Default(transactionHash, 1, 1, 1, 1) },
                 claimedRefundTransactions: claimedRefundTransactionHash is null
                     ? Array.Empty<TransactionInfo>()
-                    : new[] {TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1)},
+                    : new[] { TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1) },
                 cancelled: cancelled);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)

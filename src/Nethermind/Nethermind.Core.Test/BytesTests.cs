@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,8 +77,8 @@ namespace Nethermind.Core.Test
 
         [TestCase("0x", "0x", true)]
         [TestCase(null, null, true)]
-//        [TestCase(null, "0x", false)]
-//        [TestCase("0x", null, false)]
+        //        [TestCase(null, "0x", false)]
+        //        [TestCase("0x", null, false)]
         [TestCase("0x01", "0x01", true)]
         [TestCase("0x01", "0x0102", false)]
         [TestCase("0x0102", "0x01", false)]
@@ -94,7 +94,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Stream_hex_works()
         {
-            byte[] bytes = new byte[] {15, 16, 255};
+            byte[] bytes = new byte[] { 15, 16, 255 };
             StreamWriter? sw = null;
             StreamReader? sr = null;
 
@@ -268,7 +268,7 @@ namespace Nethermind.Core.Test
         {
             Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
         }
-        
+
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
         [TestCase(
             "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -279,13 +279,13 @@ namespace Nethermind.Core.Test
             Bytes.ChangeEndianness8(bytes);
             bytes.ToHexString(true).Should().Be(expectedResult);
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
             BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
         public void Can_create_bit_array_from_bytes(string hex, string expectedResult)
         {
@@ -309,10 +309,10 @@ namespace Nethermind.Core.Test
                 {
                     var thisArray = GenerateRandom(length);
                     var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte) b).ToArray();
+                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte)b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
-                
+
                 yield return GenerateTest(1);
                 yield return GenerateTest(10);
                 yield return GenerateTest(32);
@@ -322,7 +322,7 @@ namespace Nethermind.Core.Test
                 yield return GenerateTest(200);
             }
         }
-        
+
         [TestCaseSource(nameof(OrTests))]
         public void Or(byte[] first, byte[] second, byte[] expected)
         {

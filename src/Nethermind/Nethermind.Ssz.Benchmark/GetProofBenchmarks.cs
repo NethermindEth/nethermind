@@ -33,7 +33,7 @@ namespace Nethermind.Ssz.Benchmarks
             for (int i = 0; i < _bytes.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i % 32] = (byte) i;
+                bytes[i % 32] = (byte)i;
                 _bytes[i] = Bytes32.Wrap(bytes);
             }
         }

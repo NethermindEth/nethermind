@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Rewards
         private NoBlockRewards() { }
 
         public static NoBlockRewards Instance { get; } = new();
-        
+
         private static readonly BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;

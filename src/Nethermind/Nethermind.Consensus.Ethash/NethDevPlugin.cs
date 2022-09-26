@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Ethash
 
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-            
+
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Ethash
             DefaultBlockProductionTrigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
                 .IfPoolIsNotEmpty(getFromApi.TxPool)
                 .Or(getFromApi.ManualBlockProductionTrigger);
-            
+
             IBlockProducer blockProducer = new DevBlockProducer(
                 additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
                 producerChainProcessor,

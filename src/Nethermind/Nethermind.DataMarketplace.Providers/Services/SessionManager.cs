@@ -45,14 +45,14 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 : DepositNodes.TryGetValue(depositId, out var nodes)
                     ? nodes.Values
                     : Enumerable.Empty<ConsumerNode>();
-        
+
         public ConsumerNode? GetConsumerNode(INdmProviderPeer peer)
             => Nodes.TryGetValue(peer.NodeId, out ConsumerNode? node) ? node : null;
 
         public void SetSession(ProviderSession session, INdmProviderPeer peer)
         {
             if (_logger.IsInfo) _logger.Info($"Setting an active session: '{session.Id}' for node: '{peer.NodeId}', address: '{peer.ConsumerAddress}', deposit: '{session.DepositId}'.");
-            
+
             var node = GetConsumerNode(peer);
             if (node is null)
             {
@@ -76,10 +76,10 @@ namespace Nethermind.DataMarketplace.Providers.Services
             if (Nodes.TryAdd(peer.NodeId, new ConsumerNode(peer)))
             {
                 if (_logger.IsInfo) _logger.Info($"Added node: '{peer.NodeId}' for address: '{peer.ConsumerAddress}'.");
-                
+
                 return;
             }
-            
+
             if (_logger.IsError) _logger.Error($"Node: '{peer.NodeId}' for address: '{peer.ConsumerAddress}' couldn't be added.");
         }
 
@@ -88,10 +88,10 @@ namespace Nethermind.DataMarketplace.Providers.Services
             if (!Nodes.TryGetValue(peer.NodeId, out var node))
             {
                 if (_logger.IsInfo) _logger.Info($"No sessions to be finished found for node: '{peer.NodeId}'.");
-                
+
                 return;
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Finishing session(s) for node: '{peer.NodeId}'.");
             var timestamp = _timestamper.UnixTime.Seconds;
             foreach (var session in node.Sessions)
@@ -111,7 +111,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return;
             }
-            
+
             TryRemovePeer(node, peer);
         }
 
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
                 return;
             }
- 
+
             if (_logger.IsInfo) _logger.Info($"Finishing a session for deposit: '{depositId}', node: '{peer.NodeId}'.");
             var timestamp = _timestamper.UnixTime.Seconds;
             session.Finish(SessionState.FinishedByConsumer, timestamp);
@@ -135,18 +135,18 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"COuld not find consumer node for peer {peer.NodeId} with consumer address {peer.ConsumerAddress}");
             }
-            
+
             node.RemoveSession(session.DepositId);
             if (_logger.IsInfo) _logger.Info($"Finished a session: '{session.Id}' for deposit: '{session.DepositId}', node: '{peer.NodeId}', timestamp: {timestamp}.");
             if (!removePeer)
             {
                 return;
             }
-            
+
             TryRemoveDepositNode(session.DepositId, peer);
             TryRemovePeer(node, peer);
         }
-        
+
         private void TryRemoveDepositNode(Keccak depositId, INdmProviderPeer peer)
         {
             if (!DepositNodes.TryGetValue(depositId, out var nodes))
@@ -166,15 +166,15 @@ namespace Nethermind.DataMarketplace.Providers.Services
             if (consumerNode.HasSessions)
             {
                 if (_logger.IsInfo) _logger.Info($"Connected node: '{peer.NodeId}' has active sessions and will not be removed.");
-                
+
                 return;
             }
-            
+
             if (Nodes.TryRemove(peer.NodeId, out _))
             {
                 return;
             }
-            
+
             if (_logger.IsError) _logger.Error($"Node: '{peer.NodeId}' for address: '{peer.ProviderAddress}' couldn't be removed.");
         }
     }

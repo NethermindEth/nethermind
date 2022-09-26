@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 _logger.Warn($"Full Pruning Failed: Missing node {nodeHash} at level {trieVisitContext.Level}.");
             }
-            
+
             // if nodes are missing then state trie is not valid and we need to stop copying it
             _pruningContext.CancellationTokenSource.Cancel();
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.FullPruning
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(node);
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext) { }
-        
+
         private void PersistNode(TrieNode node)
         {
             if (node.Keccak is not null)
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.FullPruning
                 // simple copy of nodes RLP
                 _pruningContext[node.Keccak.Bytes] = node.FullRlp;
                 Interlocked.Increment(ref _persistedNodes);
-                
+
                 // log message every 1 mln nodes
                 if (_persistedNodes % Million == 0)
                 {
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.FullPruning
         private void LogProgress(string state)
         {
             if (_logger.IsInfo)
-                _logger.Info($"Full Pruning {state}: {_stopwatch.Elapsed} {_persistedNodes / (double) Million :N} mln nodes mirrored.");
+                _logger.Info($"Full Pruning {state}: {_stopwatch.Elapsed} {_persistedNodes / (double)Million:N} mln nodes mirrored.");
         }
 
         public void Dispose()

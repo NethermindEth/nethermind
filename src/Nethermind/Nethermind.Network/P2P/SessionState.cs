@@ -22,27 +22,27 @@ namespace Nethermind.Network.P2P
         /// Newly created session object
         /// </summary>
         New = 0,
-        
+
         /// <summary>
         /// RLPx handshake complete
         /// </summary>
         HandshakeComplete = 1,
-        
+
         /// <summary>
         /// P2P Initialized
         /// </summary>
         Initialized = 2,
-        
+
         /// <summary>
         /// Disconnecting all subprotocols (ETH, NDM and so on)
         /// </summary>
         DisconnectingProtocols = 3,
-        
+
         /// <summary>
         /// Disconnecting P2P protocols.
         /// </summary>
         Disconnecting = 4,
-        
+
         /// <summary>
         /// Disconnected.
         /// </summary>

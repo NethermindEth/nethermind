@@ -146,7 +146,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("confirmationTimestamp", 1);
             VerifyDataProperty("confirmed", false);
         }
-        
+
         [Test]
         public void Can_send_grace_units_exceeded()
         {
@@ -158,7 +158,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("consumedUnits", 2);
             VerifyDataProperty("graceUnits", 3);
         }
-        
+
         [Test]
         public void Can_send_data_stream_enabled()
         {
@@ -167,7 +167,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("depositId", TestItem.KeccakA);
             VerifyDataProperty("sessionId", TestItem.KeccakB);
         }
-        
+
         [Test]
         public void Can_send_consumer_address_changed()
         {
@@ -176,7 +176,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("newAddress", TestItem.AddressA);
             VerifyDataProperty("previousAddress", TestItem.AddressB);
         }
-        
+
         [Test]
         public void Can_send_data_asset_state_changed()
         {
@@ -186,7 +186,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("name", "asset");
             VerifyDataProperty("state", "Archived");
         }
-        
+
         [Test]
         public void Can_send_provider_address()
         {
@@ -195,7 +195,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("newAddress", TestItem.AddressA);
             VerifyDataProperty("previousAddress", TestItem.AddressB);
         }
-        
+
         [Test]
         public void Can_send_data_availability_changed()
         {
@@ -205,7 +205,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("sessionId", TestItem.KeccakB);
             VerifyDataProperty("availability", "UnitsExceeded");
         }
-        
+
         [Test]
         public void Can_send_data_asset_removed()
         {
@@ -214,7 +214,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             VerifyDataProperty("id", TestItem.KeccakA);
             VerifyDataProperty("name", "asset");
         }
-        
+
         [Test]
         public void Can_send_consumer_account_locked()
         {
@@ -222,7 +222,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Notifiers
             _ndmNotifier.Type.Should().Be("consumer_account_locked");
             VerifyDataProperty("address", TestItem.AddressA);
         }
-        
+
         [Test]
         public void Can_send_consumer_account_unlocked()
         {

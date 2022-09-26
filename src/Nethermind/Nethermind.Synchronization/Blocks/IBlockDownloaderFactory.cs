@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -62,16 +62,16 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            
+
         }
-        
+
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new(syncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport,
                 _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(), _betterPeerStrategy, _logManager);
         }
     }
-    
+
     public interface IBlockDownloaderFactory
     {
         BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed);

@@ -24,8 +24,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<SnapSyncBatch>
     {
-        
-        private static readonly IPeerAllocationStrategy DefaultStrategy = 
+
+        private static readonly IPeerAllocationStrategy DefaultStrategy =
             new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
 
         public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)

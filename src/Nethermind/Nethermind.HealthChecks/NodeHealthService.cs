@@ -122,7 +122,7 @@ namespace Nethermind.HealthChecks
                 }
             }
 
-            return new CheckHealthResult() {Healthy = healthy, Messages = messages};
+            return new CheckHealthResult() { Healthy = healthy, Messages = messages };
         }
 
         private ulong? GetBlockProcessorIntervalHint()

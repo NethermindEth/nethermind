@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -223,7 +223,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             PrivateKey privateKey = NetTestVectors.StaticKeyA;
 
-            byte[] plainText = {1, 2, 3, 4, 5};
+            byte[] plainText = { 1, 2, 3, 4, 5 };
             _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
             _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
             byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)

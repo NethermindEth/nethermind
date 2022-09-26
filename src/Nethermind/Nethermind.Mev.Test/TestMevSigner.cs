@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,15 +29,15 @@ namespace Nethermind.Mev.Test
         {
             Address = blockAuthorAddress;
         }
-        
+
         public ValueTask Sign(Transaction tx) => default;
-        
+
         public PrivateKey Key => null!;
-        
+
         public Address Address { get; }
-        
+
         public Signature Sign(Keccak message) => null!;
-        
+
         public bool CanSign => true;
     }
 }

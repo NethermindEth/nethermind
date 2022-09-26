@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             var logsManager = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();
             _jsonRpcClient = new JsonRpcClientProxy(new DefaultHttpClient(
-                new HttpClient(), _serializer, logsManager, 0), new[] {jsonRpcUrl}, logsManager);
+                new HttpClient(), _serializer, logsManager, 0), new[] { jsonRpcUrl }, logsManager);
         }
 
         public async Task RunAsync()
@@ -72,12 +72,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
         private async Task VerifyConnectionAsync()
         {
             Separator();
-            
+
             var retries = 0;
             const int maxRetries = 30;
             const int delay = 2000;
             var jsonRpcAvailable = false;
-            
+
             while (!jsonRpcAvailable && retries < maxRetries)
             {
                 Log("* Verifying JSON RPC availability *");
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             Log($"* Unlocked an account: {account}, {unlockedResult} *");
             Separator();
         }
-        
+
         private async Task ChangeAccountAsync(Address account)
         {
             Log($"* Changing NDM account: {account} *");
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
                 Log(_serializer.Serialize(dataAsset, true));
                 Separator();
             }
-            
+
             return dataAssets;
         }
 
@@ -182,10 +182,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
                 Exit();
                 return null;
             }
-            
+
             Log($"* Making a deposit for data asset: {dataAsset.Id} *");
             Separator();
-            
+
             var makeDeposit = new MakeDepositForRpc
             {
                 DataAssetId = dataAsset.Id,
@@ -194,14 +194,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             };
             Log(_serializer.Serialize(makeDeposit, true));
             Separator();
-                        
+
             var depositId = await ExecuteOrFailAsync<Keccak>("ndm_makeDeposit", makeDeposit);
             Log($"* Made a deposit: {depositId} *");
             Separator();
 
             return depositId;
         }
-        
+
         private async Task SendDataRequestAsync(Keccak depositId)
         {
             Log($"* Sending data request for deposit: {depositId}*");
@@ -232,7 +232,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
                 Log("* Fetching active sessions *");
                 var sessions = await ExecuteAsync<ConsumerSessionForRpc[]>("ndm_getActiveConsumerSessions");
                 session = sessions?.FirstOrDefault();
-                if (session is {})
+                if (session is { })
                 {
                     session = sessions.First();
                     Log($"* Active session: {session.Id} *");
@@ -250,7 +250,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
         {
             Log($"Queries will be sent using the client name: {_client}");
             var failedDataPulls = 0;
-            
+
             while (true)
             {
                 Log("* Sending a query *");
@@ -297,7 +297,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
                 {
                     continue;
                 }
-                
+
                 Log($"! Reached max failed data pulls: {failedDataPulls}/{_pullDataFailures} !");
                 Exit();
                 return;
@@ -309,7 +309,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
 
         private Task<T> ExecuteAsync<T>(string method, params object[] @params)
             => ExecuteAsync<T>(false, method, @params);
-        
+
         private async Task<T> ExecuteAsync<T>(bool failForInvalidResult, string method, params object[] @params)
         {
             var result = await _jsonRpcClient.SendAsync<T>(method, @params);
@@ -328,14 +328,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             {
                 return result.Result;
             }
-            
+
             Log($"Received an invalid result for method: '{method}'");
-            
+
             if (failForInvalidResult)
             {
                 Exit();
             }
-            
+
             return default;
         }
 
@@ -344,9 +344,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             Log("Exiting E2E scenario... ");
             Environment.Exit(1);
         }
-        
+
         private static void Log(string message) => Console.WriteLine($"{message} [client: {_client}]");
-        
+
         private static void Separator() => Console.WriteLine();
     }
 }

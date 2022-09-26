@@ -63,11 +63,11 @@ namespace Nethermind.Init.Steps
                 {
                     _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
                 }
-                
+
                 await _autoResetEvent.WaitOneAsync(cancellationToken);
-                
+
                 if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
-                
+
                 changedAnything = false;
                 foreach (StepInfo stepInfo in _allSteps)
                 {
@@ -120,7 +120,7 @@ namespace Nethermind.Init.Steps
             foreach (StepInfo stepInfo in _allSteps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                
+
                 if (stepInfo.Stage != StepInitializationStage.WaitingForExecution)
                 {
                     continue;
@@ -149,7 +149,7 @@ namespace Nethermind.Init.Steps
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             t.Exception);
                     }
-                    else if(t.IsFaulted)
+                    else if (t.IsFaulted)
                     {
                         if (_logger.IsWarn) _logger.Warn(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
@@ -159,7 +159,7 @@ namespace Nethermind.Init.Steps
                         if (_logger.IsDebug) _logger.Debug(
                             $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                     }
-                    
+
                     stepInfo.Stage = StepInitializationStage.Complete;
                     _autoResetEvent.Set();
 

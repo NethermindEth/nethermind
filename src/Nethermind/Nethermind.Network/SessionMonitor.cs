@@ -68,7 +68,7 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Disconnected -= OnDisconnected;
             _sessions.TryRemove(session.SessionId, out session);
         }
@@ -108,7 +108,7 @@ namespace Nethermind.Network
                     if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
                     if (failures > tasks.Length / 3)
                     {
-                        decimal percentage = (decimal) failures / tasksLength;
+                        decimal percentage = (decimal)failures / tasksLength;
                         if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
                     }
                 }
@@ -157,7 +157,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting session monitor");
 
-            _pingTimer = new Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
+            _pingTimer = new Timer(_networkConfig.P2PPingInterval) { AutoReset = false };
             _pingTimer.Elapsed += (sender, e) =>
             {
                 try

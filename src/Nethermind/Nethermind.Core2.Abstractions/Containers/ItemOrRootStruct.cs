@@ -18,10 +18,10 @@ using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
-    public struct ItemOrRootStruct<T> where T : struct 
+    public struct ItemOrRootStruct<T> where T : struct
     {
         public T? Item { get; set; }
-        
+
         public Root? Root { get; set; }
     }
 }

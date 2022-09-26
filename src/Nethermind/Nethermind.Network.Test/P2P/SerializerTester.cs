@@ -49,18 +49,18 @@ namespace Nethermind.Network.Test.P2P
             {
                 serializer.Serialize(buffer, message);
                 T deserialized = serializer.Deserialize(buffer);
-                
+
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
                 deserialized.Should().BeEquivalentTo(message, options => options.Excluding(c => c.Name == "RlpLength"));
-                
+
                 Assert.AreEqual(0, buffer.ReadableBytes, "readable bytes");
-                
+
                 serializer.Serialize(buffer2, deserialized);
 
                 buffer.SetReaderIndex(0);
                 string allHex = buffer.ReadAllHex();
                 Assert.AreEqual(allHex, buffer2.ReadAllHex(), "test zero");
-                
+
                 if (expectedData != null)
                 {
                     allHex.Should().BeEquivalentTo(expectedData);

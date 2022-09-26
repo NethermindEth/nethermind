@@ -134,7 +134,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     {
                         throw new ApplicationException("Failed to initialize Mongo DB.");
                     }
-                    
+
                     sessionRepository = new ConsumerSessionMongoRepository(database);
                     depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, _api.Timestamper);
                     depositRepository = new DepositDetailsMongoRepository(database, depositUnitsCalculator);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
 
-[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
+[assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.Blockchain
 {
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
-        
+
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider)
         {
@@ -44,20 +44,20 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
-            
+
             blockTree.BlockAddedToMain += OnHeadChanged;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
-        
+
         public IAccountStateProvider AccountStateProvider { get; }
-        
+
         public long? BlockGasLimit { get; internal set; }
-        
+
         public UInt256 CurrentBaseFee { get; private set; }
-        
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
-        
+
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             BlockGasLimit = e.Block!.GasLimit;
