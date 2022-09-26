@@ -28,7 +28,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
-        private (long BlockNumber, ReleaseSpec Release)[] _transitions;
+        private ((long BlockNumber, ulong timestamp), ReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
 
@@ -114,7 +114,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             TransitionBlocks = transitionBlocks.Skip(1).ToArray();
-            _transitions = new (long BlockNumber, ReleaseSpec Release)[transitionBlocks.Count];
+            _transitions = new ((long BlockNumber, ulong timestamp), ReleaseSpec Release)[transitionBlocks.Count + transitionTimestamps.Count];
 
             int index = 0;
             foreach (long releaseStartBlock in transitionBlocks)
@@ -191,7 +191,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     }
                 }
 
-                _transitions[index] = (releaseStartBlock, releaseSpec);
+                _transitions[index] = ((releaseStartBlock, 0UL), releaseSpec);
                 index++;
             }
 
@@ -199,6 +199,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 ReleaseSpec releaseSpec = new();
                 releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+                
+                _transitions[index] = ((_transitions[index-1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
+                index++;
             }
 
             MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
@@ -220,14 +223,16 @@ namespace Nethermind.Specs.ChainSpecStyle
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
         public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0) =>
-                _transitions.TryGetSearchedItem(blockNumber,
+                _transitions.TryGetSearchedItem((blockNumber, timestamp),
                     CompareTransitionOnBlock,
-                    out (long BlockNumber, ReleaseSpec Release) transition)
+                    out ((long BlockNumber, ulong timestamp), ReleaseSpec Release) transition)
                     ? transition.Release
                     : null;
 
-        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) =>
-            blockNumber.CompareTo(transition.BlockNumber);
+        private static int CompareTransitionOnBlock((long BlockNumber, ulong timestamp) blockNumberAndTimestamp, ((long BlockNumber, ulong timestamp), ReleaseSpec Release) transition) =>
+            blockNumberAndTimestamp.timestamp < 1UL
+            ? blockNumberAndTimestamp.BlockNumber.CompareTo(transition.Item1.BlockNumber)
+            : blockNumberAndTimestamp.timestamp.CompareTo(transition.Item1.timestamp);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
