@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,18 +34,18 @@ namespace Nethermind.Consensus
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         }
 
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) => 
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) =>
             _sealer.SealBlock(block, cancellationToken);
 
-        public bool CanSeal(long blockNumber, Keccak parentHash) => 
+        public bool CanSeal(long blockNumber, Keccak parentHash) =>
             _sealer.CanSeal(blockNumber, parentHash);
 
         public Address Address => _sealer.Address;
-        
-        public bool ValidateParams(BlockHeader parent, BlockHeader header) => 
+
+        public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
             _sealValidator.ValidateParams(parent, header);
 
-        public bool ValidateSeal(BlockHeader header, bool force) => 
+        public bool ValidateSeal(BlockHeader header, bool force) =>
             _sealValidator.ValidateSeal(header, force);
     }
 }

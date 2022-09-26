@@ -116,7 +116,7 @@ namespace Nethermind.BeaconNode
             {
                 if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
                 {
-                    return new ValidatorIndex((ulong) index);
+                    return new ValidatorIndex((ulong)index);
                 }
             }
 

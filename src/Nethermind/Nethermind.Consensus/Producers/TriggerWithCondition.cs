@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Producers
         public TriggerWithCondition(IBlockProductionTrigger trigger, Func<bool> checkCondition) : this(trigger, _ => checkCondition())
         {
         }
-        
+
         public TriggerWithCondition(IBlockProductionTrigger trigger, Func<BlockProductionEventArgs, bool> checkCondition)
         {
             _checkCondition = checkCondition;

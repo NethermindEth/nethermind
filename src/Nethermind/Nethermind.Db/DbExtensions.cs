@@ -33,18 +33,18 @@ namespace Nethermind.Db
         }
 
         public static void Set(this IDb db, Keccak key, byte[] value)
-         {
-             db[key.Bytes] = value;
-         }
+        {
+            db[key.Bytes] = value;
+        }
 
         public static byte[]? Get(this IDb db, Keccak key)
         {
-            #if DEBUG
+#if DEBUG
             if (key == Keccak.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
-            #endif
+#endif
 
             return db[key.Bytes];
         }

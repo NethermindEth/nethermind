@@ -45,14 +45,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             Metrics.Bn256AddPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.PrepareEthInput(inputDataSpan);
-            
+
             Span<byte> output = stackalloc byte[64];
             bool success = ShamatarLib.Bn256Add(inputDataSpan, output);
 
             (byte[], bool) result;
             if (success)
             {
-                result = (output.ToArray(), true);   
+                result = (output.ToArray(), true);
             }
             else
             {

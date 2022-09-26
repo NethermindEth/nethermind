@@ -27,10 +27,10 @@ public class EnrDiscoveryTests
         NodeRecordSigner singer = new(new Ecdsa(), TestItem.PrivateKeyA);
         TestErrorLogManager testErrorLogManager = new();
         EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), testErrorLogManager);
-        
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         int added = 0;
-        enrDiscovery.NodeAdded += (o, e) => Interlocked.Increment(ref added); 
+        enrDiscovery.NodeAdded += (o, e) => Interlocked.Increment(ref added);
         await enrDiscovery.SearchTree("all.mainnet.ethdisco.net");
         await TestContext.Out.WriteLineAsync($"Actually added {added} in {stopwatch.Elapsed:g}");
         foreach (TestErrorLogManager.Error error in testErrorLogManager.Errors)
@@ -56,7 +56,7 @@ public class EnrDiscoveryTests
                 verified++;
             }
         }
-        
+
         await TestContext.Out.WriteLineAsync($"Verified {verified}");
     }
 }

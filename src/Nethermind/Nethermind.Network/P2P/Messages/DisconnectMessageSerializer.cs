@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Messages
 
         private byte[] breach1 = Bytes.FromHexString("0204c104");
         private byte[] breach2 = Bytes.FromHexString("0204c180");
-        
+
         public DisconnectMessage Deserialize(byte[] msgBytes)
         {
             if (msgBytes.Length == 1)
@@ -44,12 +44,12 @@ namespace Nethermind.Network.P2P.Messages
             {
                 return new DisconnectMessage(DisconnectReason.Breach1);
             }
-            
+
             if (msgBytes.SequenceEqual(breach2))
             {
                 return new DisconnectMessage(DisconnectReason.Breach2);
             }
-            
+
             RlpStream rlpStream = msgBytes.AsRlpStream();
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();

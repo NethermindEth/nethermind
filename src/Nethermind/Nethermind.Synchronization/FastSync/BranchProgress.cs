@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.FastSync
     {
         private ILogger _logger;
         private NodeProgressState[] _syncProgress;
-        
+
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];
         }
-        
+
         private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
         {
             if (childIndex == -1)
@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.FastSync
                 _syncProgress[index] = newState;
             }
         }
-        
+
         private void ReportSyncedLevel2(int parentIndex, int childIndex, NodeProgressState nodeProgressState)
         {
             if (parentIndex == -1)
@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.FastSync
                 syncItem.NodeDataType,
                 NodeProgressState.Requested);
         }
-        
+
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
         {
             if (level > 2 || nodeDataType != NodeDataType.State)
@@ -135,14 +135,14 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
+            decimal currentProgress = (decimal)savedBranches / _syncProgress.Length;
 
             if (currentProgress == LastProgress)
             {
                 return;
             }
 
-            Metrics.StateBranchProgress = (int) (currentProgress * 100);
+            Metrics.StateBranchProgress = (int)(currentProgress * 100);
             LastProgress = currentProgress;
             if (nodeProgressState == NodeProgressState.Empty)
             {

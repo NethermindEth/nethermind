@@ -26,9 +26,9 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            TestRoundtrip((UInt256) 123456789);
+            TestRoundtrip((UInt256)123456789);
         }
-        
+
         [Test]
         public void Can_do_roundtrip_big()
         {

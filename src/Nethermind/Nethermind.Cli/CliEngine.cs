@@ -38,24 +38,24 @@ namespace Nethermind.Cli
         {
             _cliConsole = cliConsole;
             JintEngine = new Engine();
-            JintEngine.SetValue("gasPrice", (double) 20.GWei());
+            JintEngine.SetValue("gasPrice", (double)20.GWei());
             JintEngine.SetValue("load", new Action<string>(LoadFile));
             JintEngine.SetValue("log", new Action<JsValue>(v =>
             {
-//                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
+                //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Colorful.Console.WriteLine(v.ToString());
             }));
-            
+
             JintEngine.Global.FastAddProperty("window", JintEngine.Global, false, false, false);
-            
+
             ObjectInstance console = JintEngine.Object.Construct(Arguments.Empty);
             JintEngine.SetValue("console", console);
             console.Put("log", new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
             {
-//                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
+                //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Colorful.Console.WriteLine(v.ToString());
             })), false);
-            
+
             JintEngine.ClrTypeConverter = new FallbackTypeConverter(JintEngine.ClrTypeConverter, new BigIntegerTypeConverter());
         }
 

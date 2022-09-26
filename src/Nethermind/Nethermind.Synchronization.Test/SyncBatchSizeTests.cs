@@ -43,11 +43,11 @@ namespace Nethermind.Synchronization.Test
             {
                 syncBatchSize.Shrink();
             }
-            
+
             Assert.AreEqual(syncBatchSize.Current, SyncBatchSize.Min, "current is min");
             Assert.True(syncBatchSize.IsMin, "is min");
         }
-        
+
         [Test]
         public void Cannot_go_above_max()
         {
@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Test
             {
                 syncBatchSize.Expand();
             }
-            
+
             Assert.AreEqual(syncBatchSize.Current, SyncBatchSize.Max, "current is max");
             Assert.True(syncBatchSize.IsMax, "is max");
         }

@@ -46,7 +46,7 @@ namespace Nethermind.Core.Eip2930
         private readonly Queue<object> _orderQueue = new();
 
         private Address? _currentAddress;
-        
+
         public void AddAddress(Address address)
         {
             _currentAddress = address;
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Eip2930
             {
                 throw new InvalidOperationException("No address known when adding index to the access list");
             }
-            
+
             _orderQueue.Enqueue(index);
             (_data[_currentAddress] as HashSet<UInt256>)!.Add(index);
         }

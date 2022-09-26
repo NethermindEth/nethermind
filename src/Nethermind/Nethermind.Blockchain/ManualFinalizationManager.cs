@@ -25,10 +25,10 @@ namespace Nethermind.Blockchain
     {
         // We could save in DB, but its not really needed yet
         public long LastFinalizedBlockLevel { get; private set; } = 0;
-        
+
         // We could save in DB, but its not really needed yet
         public Keccak LastFinalizedHash { get; private set; } = Keccak.Zero;
-        
+
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
         public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
             LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, finalizedBlock.Number);
             BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
         }
-        
+
         public void Dispose() { }
     }
 

@@ -27,24 +27,24 @@ namespace Nethermind.GitBook
     public class ConfigGenerator
     {
         private readonly SharedContent _sharedContent;
-        
+
         public ConfigGenerator(SharedContent sharedContent)
         {
             _sharedContent = sharedContent;
         }
-        
+
         public void Generate()
         {
             string docsDir = DocsDirFinder.FindDocsDir();
-            
+
             string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
                 .OrderBy(n => n).ToArray();
-            
+
             foreach (string dll in dlls)
             {
                 Assembly assembly = Assembly.LoadFile(dll);
-                Type[] modules  = assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
-                
+                Type[] modules = assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
+
                 foreach (Type module in modules)
                 {
                     GenerateDocFileContent(module, docsDir);
@@ -55,8 +55,8 @@ namespace Nethermind.GitBook
         private void GenerateDocFileContent(Type configType, string docsDir)
         {
             Attribute attribute = configType.GetCustomAttribute(typeof(ConfigCategoryAttribute));
-            if(((ConfigCategoryAttribute)attribute)?.HiddenFromDocs ?? false) return;
-            
+            if (((ConfigCategoryAttribute)attribute)?.HiddenFromDocs ?? false) return;
+
             StringBuilder docBuilder = new StringBuilder();
             string moduleName = configType.Name.Substring(1).Replace("Config", "");
 
@@ -69,13 +69,13 @@ namespace Nethermind.GitBook
             docBuilder.AppendLine();
             docBuilder.AppendLine("| Property | Env Variable | Description | Default |");
             docBuilder.AppendLine("| :--- | :--- | :--- | :--- |");
-            
+
             if (moduleProperties.Length == 0) return;
-            
+
             foreach (PropertyInfo property in moduleProperties)
             {
                 Attribute attr = property.GetCustomAttribute(typeof(ConfigItemAttribute));
-                if(((ConfigItemAttribute)attr)?.HiddenFromDocs ?? false) continue;
+                if (((ConfigItemAttribute)attr)?.HiddenFromDocs ?? false) continue;
                 docBuilder.AppendLine($"| {property.Name} | NETHERMIND_{moduleName.ToUpper()}CONFIG_{property.Name.ToUpper()} | {((ConfigItemAttribute)attr)?.Description ?? ""} | {((ConfigItemAttribute)attr)?.DefaultValue ?? ""} |");
             }
 

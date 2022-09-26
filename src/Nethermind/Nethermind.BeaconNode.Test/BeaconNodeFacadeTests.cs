@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Test
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             // Act
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
@@ -72,7 +72,7 @@ namespace Nethermind.BeaconNode.Test
             fork.CurrentVersion.ShouldBe(new ForkVersion());
             fork.PreviousVersion.ShouldBe(new ForkVersion());
         }
-        
+
         [TestMethod]
         public async Task TestValidators80DutiesForEpochZeroHaveExactlyOneProposerPerSlot()
         {
@@ -86,8 +86,8 @@ namespace Nethermind.BeaconNode.Test
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
-            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
+
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;
             Console.WriteLine("Number of validators: {0}", numberOfValidators);
@@ -97,7 +97,7 @@ namespace Nethermind.BeaconNode.Test
             {
                 Console.WriteLine("[{0}] priv:{1} pub:{2}", index, "0x" + BitConverter.ToString(privateKeys[index]).Replace("-", ""), publicKeys[index]);
             }
-            
+
             // Act
             Epoch targetEpoch = new Epoch(0);
             var validatorPublicKeys = publicKeys.Take(numberOfValidators).ToList();
@@ -141,7 +141,7 @@ namespace Nethermind.BeaconNode.Test
             //groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
             validatorDuties.Count(x => !x.BlockProposalSlot.HasValue).ShouldBe(numberOfValidators - 7);
         }
-        
+
         [TestMethod]
         public async Task TestValidators80DutiesForEpochOneHaveExactlyOneProposerPerSlot()
         {
@@ -155,19 +155,19 @@ namespace Nethermind.BeaconNode.Test
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
-            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
+
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;
             Console.WriteLine("Number of validators: {0}", numberOfValidators);
             BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
-            
+
             // Act
             Epoch targetEpoch = new Epoch(1);
             var validatorPublicKeys = publicKeys.Take(numberOfValidators).ToList();
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
-            
+
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
             var validatorDutiesResponse =
@@ -189,7 +189,7 @@ namespace Nethermind.BeaconNode.Test
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
             }
-            
+
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
                 .Where(x => x.BlockProposalSlot.HasValue)
@@ -205,7 +205,7 @@ namespace Nethermind.BeaconNode.Test
             //groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
             validatorDuties.Count(x => !x.BlockProposalSlot.HasValue).ShouldBe(numberOfValidators - 7);
         }
-        
+
         [TestMethod]
         public async Task QuickStart64DutiesForEpochZeroHaveExactlyOneProposerPerSlot()
         {
@@ -224,20 +224,20 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
-            
+
             Eth1BridgeWorker eth1BridgeWorker =
                 testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
             await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             IStore store = testServiceProvider.GetService<IStore>();
             BeaconState state = await store!.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
-            
+
             // Act
             Epoch targetEpoch = new Epoch(0);
             var validatorPublicKeys = state!.Validators.Select(x => x.PublicKey).ToList();
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
-            
+
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
             var validatorDutiesResponse =
@@ -259,7 +259,7 @@ namespace Nethermind.BeaconNode.Test
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
             }
-            
+
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
                 .Where(x => x.BlockProposalSlot.HasValue)
@@ -275,7 +275,7 @@ namespace Nethermind.BeaconNode.Test
             //groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
             //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
         }
-        
+
         [TestMethod]
         public async Task ShouldGetStatusWhenSyncing()
         {
@@ -287,7 +287,7 @@ namespace Nethermind.BeaconNode.Test
             mockNetworkPeering.HighestPeerSlot.Returns(highest);
             mockNetworkPeering.SyncStartingSlot.Returns(starting);
             IStore mockStore = Substitute.For<IStore>();
-            Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
+            Root root = new Root(Enumerable.Repeat((byte)0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             SignedBeaconBlock signedBlock =
                 new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
@@ -298,7 +298,7 @@ namespace Nethermind.BeaconNode.Test
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);
-            
+
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton(mockNetworkPeering);
             testServiceCollection.AddSingleton(mockStore);
@@ -320,7 +320,7 @@ namespace Nethermind.BeaconNode.Test
             syncing.SyncStatus.CurrentSlot.ShouldBe(new Slot(5));
             syncing.SyncStatus.HighestSlot.ShouldBe(new Slot(10));
         }
-        
+
         [TestMethod]
         public async Task ShouldGetStatusWhenSyncComplete()
         {
@@ -332,7 +332,7 @@ namespace Nethermind.BeaconNode.Test
             mockNetworkPeering.HighestPeerSlot.Returns(highest);
             mockNetworkPeering.SyncStartingSlot.Returns(starting);
             IStore mockStore = Substitute.For<IStore>();
-            Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
+            Root root = new Root(Enumerable.Repeat((byte)0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             SignedBeaconBlock signedBlock =
                 new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
@@ -343,7 +343,7 @@ namespace Nethermind.BeaconNode.Test
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);
-            
+
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton(mockNetworkPeering);
             testServiceCollection.AddSingleton(mockStore);

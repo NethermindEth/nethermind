@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Crypto
             {
                 return (false, null);
             }
-            
+
             Span<byte> ephemBytes = cipherText.AsSpan().Slice(0, ephemBytesLength);
             byte[] iv = cipherText.Slice(ephemBytesLength, KeySize / 8);
             byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
@@ -66,14 +66,14 @@ namespace Nethermind.Crypto
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
-            
+
             using MemoryStream memoryStream = new();
             memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
             memoryStream.Write(iv, 0, iv.Length);
             memoryStream.Write(cipher, 0, cipher.Length);
             return memoryStream.ToArray();
         }
-        
+
         private OptimizedKdf _optimizedKdf = new();
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
@@ -83,7 +83,7 @@ namespace Nethermind.Crypto
         }
 
         private static IesParameters _iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
-        
+
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
             AesEngine aesFastEngine = new();

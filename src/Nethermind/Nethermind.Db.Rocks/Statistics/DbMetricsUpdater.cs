@@ -88,7 +88,7 @@ public class DbMetricsUpdater
 
     private void UpdateMetricsFromList(List<(string Name, long Value)> levelStats)
     {
-        if(levelStats != null)
+        if (levelStats != null)
         {
             foreach (var stat in levelStats)
             {
@@ -134,7 +134,7 @@ public class DbMetricsUpdater
             var rgx = new Regex(@"^Interval compaction: (\d+)\.\d+.*GB write.*\s+(\d+)\.\d+.*MB\/s write.*\s+(\d+)\.\d+.*GB read.*\s+(\d+)\.\d+.*MB\/s read.*\s+(\d+)\.\d+.*seconds.*$", RegexOptions.Multiline);
             var match = rgx.Match(compactionStatsDump);
 
-            if(match != null && match.Success)
+            if (match != null && match.Success)
             {
                 stats.Add(("IntervalCompactionGBWrite", long.Parse(match.Groups[1].Value)));
                 stats.Add(("IntervalCompactionMBPerSecWrite", long.Parse(match.Groups[2].Value)));

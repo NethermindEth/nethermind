@@ -182,7 +182,7 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()
@@ -327,7 +327,7 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()

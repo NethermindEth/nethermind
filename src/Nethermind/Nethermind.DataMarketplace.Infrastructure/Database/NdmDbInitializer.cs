@@ -55,7 +55,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Database
                 UpdateWriteMetrics = () => Metrics.ConfigsDbWrites++,
             });
             RegisterDb(new RocksDbSettings(
-                GetTitleDbName(NdmDbNames.EthRequests),NdmDbNames.EthRequests)
+                GetTitleDbName(NdmDbNames.EthRequests), NdmDbNames.EthRequests)
             {
                 CacheIndexAndFilterBlocks = _ndmConfig.EthRequestsDbCacheIndexAndFilterBlocks,
                 BlockCacheSize = _ndmConfig.EthRequestsDbBlockCacheSize,

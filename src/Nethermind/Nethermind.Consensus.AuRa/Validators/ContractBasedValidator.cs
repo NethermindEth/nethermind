@@ -39,13 +39,13 @@ namespace Nethermind.Consensus.AuRa.Validators
     public partial class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
         private readonly ILogger _logger;
-       
+
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
-        
+
         internal IValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
-            IAuRaBlockFinalizationManager finalizationManager, 
+            IAuRaBlockFinalizationManager finalizationManager,
             BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (!ForSealing)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                
+
                 if (parentHeader != null)
                 {
                     Validators = LoadValidatorsFromContract(parentHeader);
@@ -98,18 +98,18 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 return;
             }
-            
+
             var isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var notConsecutiveBlock = block.Number - 1 > _lastProcessedBlockNumber || _lastProcessedBlockNumber == 0;
             var shouldLoadValidators = Validators == null || notConsecutiveBlock || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
-            
+
             if (shouldLoadValidators)
             {
                 Validators = isInitBlock || notConsecutiveBlock
-                    ? LoadValidatorsFromContract(BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
+                    ? LoadValidatorsFromContract(BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None))
                     : ValidatorStore.GetValidators();
 
                 if (mainChainProcessing)
@@ -117,14 +117,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                     if (_logger.IsInfo) _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
                 }
             }
-            
+
             if (isInitBlock)
             {
                 if (mainChainProcessing)
                 {
                     ValidatorStore.SetValidators(InitBlockNumber, Validators);
                 }
-                
+
                 InitiateChange(block, Validators.ToArray(), isProcessingBlock, true);
             }
             else
@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash), Validators);
                     }
                 }
-                
+
                 if (isProcessingBlock)
                 {
                     bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
@@ -159,11 +159,11 @@ namespace Nethermind.Consensus.AuRa.Validators
                     SetPendingValidators(LoadPendingValidators());
                 }
             }
-            
+
             base.OnBlockProcessingStart(block, options);
-            
+
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
-            
+
             _lastProcessedBlockNumber = block.Number;
         }
 
@@ -194,12 +194,12 @@ namespace Nethermind.Consensus.AuRa.Validators
         public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             base.OnBlockProcessingEnd(block, receipts, options);
-            
+
             if (block.IsGenesis)
             {
                 ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
             }
-            
+
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {
                 bool isProcessingBlock = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -225,16 +225,16 @@ namespace Nethermind.Consensus.AuRa.Validators
                 SetPendingValidators(null, isProcessingBlock);
             }
         }
-        
+
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
                 SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators)
-                    {
-                        AreFinalized = initiateChangeIsImmediatelyFinalized
-                    },
+                {
+                    AreFinalized = initiateChangeIsImmediatelyFinalized
+                },
                     !initiateChangeIsImmediatelyFinalized && isProcessingBlock);
             }
         }
@@ -244,7 +244,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             try
             {
                 var validators = ValidatorContract.GetValidators(parentHeader);
-                
+
                 if (validators.Length == 0)
                 {
                     throw new AuRaException("Failed to initialize validators list.");
@@ -268,7 +268,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks[i].Hash == CurrentPendingValidators.BlockHash;
                 }
-                
+
                 if (currentPendingValidatorsBlockGotFinalized)
                 {
                     CurrentPendingValidators.AreFinalized = true;
@@ -288,7 +288,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void SetPendingValidators(PendingValidators validators, bool canSave = false)
         {
             _currentPendingValidators = validators;
-            
+
             // We don't want to save to db when:
             // * We are producing block
             // * We will save later on processing same block (stateDb ignores consecutive calls with same key!)
@@ -298,7 +298,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ValidatorStore.PendingValidators = validators;
             }
         }
-        
+
         public override string ToString() => $"{nameof(ContractBasedValidator)}";
 
     }

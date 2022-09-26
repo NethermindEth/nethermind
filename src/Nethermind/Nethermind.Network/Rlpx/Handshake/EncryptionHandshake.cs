@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey RemoteEphemeralPublicKey { get; set; }
         public PrivateKey EphemeralPrivateKey { get; set; }
-        
+
         public Packet AuthPacket { get; set; }
         public Packet AckPacket { get; set; }
     }

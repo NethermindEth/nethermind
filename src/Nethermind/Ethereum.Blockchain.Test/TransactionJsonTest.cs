@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -47,7 +47,7 @@ namespace Ethereum.Blockchain.Test
                 .BeEquivalentTo(new Address("0x0001020304050607080900010203040506070809"));
             txJson.AccessLists[0][0].StorageKeys[1][0].Should().Be((byte)1);
 
-            Transaction tx = JsonToEthereumTest.Convert(new PostStateJson {Indexes = new IndexesJson()}, txJson);
+            Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
             tx.AccessList.Should().NotBeNull();
         }
     }

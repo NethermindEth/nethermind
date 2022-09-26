@@ -54,7 +54,7 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingState);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -70,7 +70,7 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -108,7 +108,7 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._accountCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -124,10 +124,10 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingCode);
             }
-            
+
             IncrementLevel(trieVisitContext, Stats._codeLevels);
         }
-        
+
         private void IncrementLevel(TrieVisitContext trieVisitContext)
         {
             int[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;

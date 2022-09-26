@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Precompiles
     public class Sha256Precompile : IPrecompile
     {
         private static ThreadLocal<SHA256> _sha256 = new();
-        
+
         public static readonly IPrecompile Instance = new Sha256Precompile();
 
         private Sha256Precompile()
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            return 12L * EvmPooledMemory.Div32Ceiling((ulong) inputData.Length);
+            return 12L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

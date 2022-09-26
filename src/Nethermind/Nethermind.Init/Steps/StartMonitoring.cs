@@ -42,13 +42,13 @@ namespace Nethermind.Init.Steps
         {
             IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
-            
+
             // hacky
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))
             {
                 _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
             }
-            
+
             if (metricsConfig.Enabled)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
@@ -57,20 +57,20 @@ namespace Nethermind.Init.Steps
                 IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
                 foreach (Type metric in metrics)
                 {
-                    _api.MonitoringService.RegisterMetrics(metric);    
+                    _api.MonitoringService.RegisterMetrics(metric);
                 }
 
                 await _api.MonitoringService.StartAsync().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && logger.IsError) 
+                    if (x.IsFaulted && logger.IsError)
                         logger.Error("Error during starting a monitoring.", x.Exception);
                 }, cancellationToken);
-                
+
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
             }
             else
             {
-                if (logger.IsInfo) 
+                if (logger.IsInfo)
                     logger.Info("Grafana / Prometheus metrics are disabled in configuration");
             }
         }

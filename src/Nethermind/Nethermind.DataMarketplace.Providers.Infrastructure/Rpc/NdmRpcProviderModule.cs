@@ -106,7 +106,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc
             {
                 throw new InvalidDataException("AssetID missing in Data Asset Data");
             }
-            
+
             await _providerService.SendDataAssetDataAsync(new DataAssetData(data.AssetId, data.Data));
             return ResultWrapper<Keccak>.Success(data.AssetId);
         }
@@ -149,40 +149,40 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc
             {
                 throw new InvalidDataException("Data asset is missing unit price.");
             }
-            
+
             if (dataAsset.UnitType == null)
             {
                 throw new InvalidDataException("Data asset is missing unit type.");
             }
-            
+
             if (dataAsset.Rules == null)
             {
                 throw new InvalidDataException("Data asset is missing basic rules definitions.");
             }
-            
+
             if (dataAsset.Description == null)
             {
                 throw new InvalidDataException("Data asset is missing description.");
             }
-            
+
             if (dataAsset.Name == null)
             {
                 throw new InvalidDataException("Data asset is missing name.");
             }
-            
+
             if (dataAsset.Rules.Expiry == null)
             {
                 throw new InvalidDataException("Data asset is missing expiry rule.");
             }
 
             Keccak? id = await _providerService.AddDataAssetAsync(dataAsset.Name,
-                dataAsset.Description, (UInt256) dataAsset.UnitPrice,
+                dataAsset.Description, (UInt256)dataAsset.UnitPrice,
                 Enum.Parse<DataAssetUnitType>(dataAsset.UnitType, true),
                 dataAsset.MinUnits, dataAsset.MaxUnits,
-                new DataAssetRules(new DataAssetRule((UInt256) dataAsset.Rules.Expiry.Value),
+                new DataAssetRules(new DataAssetRule((UInt256)dataAsset.Rules.Expiry.Value),
                     dataAsset.Rules.UpfrontPayment is null
                         ? null
-                        : new DataAssetRule((UInt256) dataAsset.Rules.UpfrontPayment.Value)),
+                        : new DataAssetRule((UInt256)dataAsset.Rules.UpfrontPayment.Value)),
                 dataAsset.File, dataAsset.Data,
                 string.IsNullOrWhiteSpace(dataAsset.QueryType)
                     ? QueryType.Stream
@@ -259,14 +259,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc
             Keccak paymentClaimId, UInt256 gasPrice)
             => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(new UpdatedTransactionInfoForRpc(
                 await _providerTransactionsService.UpdatePaymentClaimGasPriceAsync(paymentClaimId, gasPrice)));
-        
+
         public async Task<ResultWrapper<bool>> ndm_setPaymentClaimGasPrice(UInt256 gasPrice)
         {
             await _gasPriceService.SetPaymentClaimGasPriceAsync(gasPrice);
 
             return ResultWrapper<bool>.Success(true);
         }
-        
+
         public async Task<ResultWrapper<UInt256>> ndm_getPaymentClaimGasPrice()
             => ResultWrapper<UInt256>.Success(await _gasPriceService.GetCurrentPaymentClaimGasPriceAsync());
 
@@ -289,7 +289,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc
             return ResultWrapper<IEnumerable<ResourceTransactionForRpc>>.Success(transactions
                 .Select(t => new ResourceTransactionForRpc(t)));
         }
-        
+
         public ResultWrapper<GasLimitsForRpc> ndm_getProviderGasLimits()
             => ResultWrapper<GasLimitsForRpc>.Success(new GasLimitsForRpc(_gasLimitsService.GasLimits));
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Collections
             StackList<int> stack = GetStackList();
             stack.Peek().Should().Be(stack[^1]);
         }
-        
+
         [Test]
         public void try_peek_should_return_last_element()
         {
@@ -38,14 +38,14 @@ namespace Nethermind.Core.Test.Collections
             stack.TryPeek(out int item).Should().Be(true);
             item.Should().Be(stack[^1]);
         }
-        
+
         [Test]
         public void try_peek_should_return_false_if_empty()
         {
             StackList<int> stack = new();
             stack.TryPeek(out _).Should().Be(false);
         }
-        
+
         [Test]
         public void pop_should_remove_last_element()
         {
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Collections
             stack.Pop().Should().Be(expectedElement);
             stack.Count.Should().Be(count - 1);
         }
-        
+
         [Test]
         public void try_pop_should_return_last_element()
         {
@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test.Collections
             item.Should().Be(expectedElement);
             stack.Count.Should().Be(count - 1);
         }
-        
+
         [Test]
         public void try_pop_should_return_false_if_empty()
         {
@@ -74,6 +74,6 @@ namespace Nethermind.Core.Test.Collections
             stack.TryPop(out _).Should().Be(false);
         }
 
-        private static StackList<int> GetStackList() => new() {1, 2, 5};
+        private static StackList<int> GetStackList() => new() { 1, 2, 5 };
     }
 }

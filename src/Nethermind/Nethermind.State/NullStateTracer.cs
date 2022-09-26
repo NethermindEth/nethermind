@@ -27,9 +27,9 @@ namespace Nethermind.State
 
         public static IStateTracer Instance { get; } = new NullStateTracer();
         private const string ErrorMessage = "Null tracer should never receive any calls.";
-        
+
         public bool IsTracingState => false;
-        
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
             => throw new InvalidOperationException(ErrorMessage);
 

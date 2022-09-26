@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public static void Init()
         {
         }
-        
+
         static NdmConfigDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();

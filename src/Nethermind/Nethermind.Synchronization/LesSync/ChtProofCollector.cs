@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.LesSync
     {
         long _fromLevel;
         long _level;
-        public ChtProofCollector(byte[] key, long fromLevel): base(key)
+        public ChtProofCollector(byte[] key, long fromLevel) : base(key)
         {
             _fromLevel = fromLevel;
             _level = 0;

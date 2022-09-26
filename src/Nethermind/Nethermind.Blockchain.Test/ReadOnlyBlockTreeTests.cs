@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,16 +31,16 @@ namespace Nethermind.Blockchain.Test
         public void SetUp()
         {
             _innerBlockTree = Substitute.For<IBlockTree>();
-            _blockTree = new ReadOnlyBlockTree(_innerBlockTree);            
+            _blockTree = new ReadOnlyBlockTree(_innerBlockTree);
         }
-        
+
         [TestCase]
         public void DeleteChainSlice_throws_when_endNumber_other_than_bestKnownNumber()
         {
             Action action = () => _blockTree.DeleteChainSlice(0, 10);
             action.Should().Throw<InvalidOperationException>();
         }
-        
+
         [TestCase(10, 20, 15, null, true, TestName = "No corrupted block.")]
         [TestCase(10, 20, 15, 19, true, TestName = "Corrupted block too far.")]
         [TestCase(10, 20, 5, 19, true, TestName = "Start before head.")]
@@ -53,9 +53,9 @@ namespace Nethermind.Blockchain.Test
             _innerBlockTree.BestKnownNumber.Returns(bestKnown);
             _innerBlockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
                 .Returns(c => c.Arg<long>() == corruptedBlock ? null : Build.A.BlockHeader.WithNumber(c.Arg<long>()).TestObject);
-            
+
             Action action = () => _blockTree.DeleteChainSlice(start);
-            
+
             if (throws)
             {
                 action.Should().Throw<InvalidOperationException>();

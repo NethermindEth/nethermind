@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Transactions
         {
             _transactionSources.Add(txSource);
         }
-        
+
         public void First(ITxSource txSource)
         {
             _transactionSources.Insert(0, txSource);
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Transactions
                 }
             }
         }
-        
+
         public override string ToString()
             => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
     }

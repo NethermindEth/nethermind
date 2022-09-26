@@ -32,7 +32,7 @@ namespace Nethermind.Cli.Modules
         // {
         //     return NodeManager.PostJint("debug_deleteChainSlice", startNumber).Result;
         // }
-        
+
         // [CliFunction("debug", "resetHead")]
         // public JsValue ResetHead(string blockHash)
         // {
@@ -104,7 +104,7 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("debug_getBlockRlp", number).Result;
         }
-        
+
         [CliFunction("debug", "migrateReceipts")]
         public bool MigrateReceipts(long number)
         {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,16 +22,16 @@ namespace Nethermind.Core
 {
     public class Eip1559Constants
     {
-                
+
         public static readonly UInt256 DefaultForkBaseFee = 1.GWei();
-        
+
         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
-        
+
         public static readonly int DefaultElasticityMultiplier = 2;
-        
+
         // The above values are the default ones. However, we're allowing to override it from genesis
         public static UInt256 ForkBaseFee { get; set; } = DefaultForkBaseFee;
         public static UInt256 BaseFeeMaxChangeDenominator { get; set; } = DefaultBaseFeeMaxChangeDenominator;
-        public static long ElasticityMultiplier { get; set;  } = DefaultElasticityMultiplier;
+        public static long ElasticityMultiplier { get; set; } = DefaultElasticityMultiplier;
     }
 }

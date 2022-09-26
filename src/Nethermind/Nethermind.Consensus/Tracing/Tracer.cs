@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Tracing
                 _stateProvider.Reset();
                 throw;
             }
-            
+
             blockTracer.EndBlockTrace();
 
             return processedBlock;

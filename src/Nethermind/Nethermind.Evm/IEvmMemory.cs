@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,29 +33,29 @@ namespace Nethermind.Evm
         long CalculateMemoryCost(in UInt256 location, in UInt256 length);
         List<string> GetTrace();
     }
-    
+
     public class StackableEvmMemory : IEvmMemory
     {
         private StackableEvmMemory _parent;
-        
+
         private EvmPooledMemory _pooled;
-        
+
         private ulong _offset;
 
         public StackableEvmMemory()
         {
             _pooled = new EvmPooledMemory();
         }
-        
+
         public StackableEvmMemory(StackableEvmMemory stackableEvmMemory, ulong offset)
         {
             _pooled = stackableEvmMemory._pooled;
             _offset = stackableEvmMemory._offset + offset;
             _parent = stackableEvmMemory;
         }
-        
+
         // need to add a method to shrink the EvmPooled - not too difficult
-        
+
         public void Dispose()
         {
             if (_parent == null)
@@ -65,7 +65,7 @@ namespace Nethermind.Evm
         }
 
         public ulong Size => _pooled.Size - _offset / 32;
-        
+
         public void SaveWord(in UInt256 location, Span<byte> word)
         {
             _pooled.SaveWord(location + _offset, word);

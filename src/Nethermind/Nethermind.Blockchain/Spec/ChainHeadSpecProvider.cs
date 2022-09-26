@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Spec
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
-        
+
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
@@ -54,11 +54,11 @@ namespace Nethermind.Blockchain.Spec
         public ulong ChainId => _specProvider.ChainId;
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
-        
+
         public IReleaseSpec GetCurrentHeadSpec()
         {
             long headerNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
-            
+
             // we are fine with potential concurrency issue here, that the spec will change
             // between this if and getting actual header spec
             // this is used only in tx pool and this is not a problem there

@@ -27,13 +27,13 @@ namespace Nethermind.Core2.Containers
             Item = item;
             Root = null;
         }
-        
+
         public T Item { get; set; }
 
         public Root? Root { get; set; }
-        
-        
-        
+
+
+
         // for Item we can describe the location -> Memory / DB / other?
         // ChangeLocation(TargetLocation) -> this way we can move from memory to the database and back - use object or ssz format for each location
         public bool Equals(Ref<T>? other)
@@ -48,7 +48,7 @@ namespace Nethermind.Core2.Containers
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((Ref<T>) obj);
+            return Equals((Ref<T>)obj);
         }
 
         public override int GetHashCode()

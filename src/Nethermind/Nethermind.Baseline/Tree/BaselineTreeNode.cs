@@ -25,7 +25,7 @@ namespace Nethermind.Baseline.Tree
             Hash = hash;
             NodeIndex = nodeIndex;
         }
-        
+
         /// <summary>
         /// Keccak here in order not to add a new converter at the moment
         /// </summary>

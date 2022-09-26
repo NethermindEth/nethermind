@@ -32,10 +32,10 @@ namespace Nethermind.Cli.Modules
 
         [CliFunction("web3", "sha3")]
         public string? Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
-        
+
         [CliFunction("web3", "toDecimal")]
         public JsValue ToDecimal(string hex) => Engine.Execute(hex);
-        
+
         [CliFunction("web3", "abi")]
         public string Abi(string name) => new AbiSignature(name).Address.ToHexString();
     }

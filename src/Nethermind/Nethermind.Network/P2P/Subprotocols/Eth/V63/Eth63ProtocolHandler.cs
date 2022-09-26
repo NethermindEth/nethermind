@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -109,7 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
-            
+
             byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
 
             return new NodeDataMessage(nodeData);
@@ -129,7 +129,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             GetNodeDataMessage msg = new(keys);
-            
+
             // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
             // on a sample 3M blocks Goerli fast sync
             byte[][] nodeData = await SendRequest(msg, token);
@@ -146,7 +146,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             return txReceipts;
         }
-        
+
         protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -157,7 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             Request<GetNodeDataMessage, byte[][]> request = new(message);
             _nodeDataRequests.Send(request);
-            
+
             Task<byte[][]> task = request.CompletionSource.Task;
 
             using CancellationTokenSource delayCancellation = new();
@@ -173,18 +173,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace)
                     Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
 
                 return task.Result;
             }
-            
+
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
-        
+
         protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -198,7 +198,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation 
+            using CancellationTokenSource compositeCancellation
                 = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace)
                     Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);

@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transactionTask = _proxy.eth_getTransactionByHash(transactionHash);
             var receiptTask = _proxy.eth_getTransactionReceipt(transactionHash);
             await Task.WhenAll(transactionTask, receiptTask);
-            
+
             return transactionTask.Result?.Result is null
                 ? null
                 : MapTransaction(transactionTask.Result.Result, receiptTask.Result?.Result);
@@ -123,8 +123,8 @@ namespace Nethermind.DataMarketplace.Core.Services
         private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel? receipt)
         {
             var isPending = receipt is null;
-            return new NdmTransaction(transaction.ToTransaction(), isPending, (long) (receipt?.BlockNumber ?? 0),
-                receipt?.BlockHash, (long) (receipt?.GasUsed ?? 0));
+            return new NdmTransaction(transaction.ToTransaction(), isPending, (long)(receipt?.BlockNumber ?? 0),
+                receipt?.BlockHash, (long)(receipt?.GasUsed ?? 0));
         }
     }
 }

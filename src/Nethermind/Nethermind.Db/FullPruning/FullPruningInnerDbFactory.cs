@@ -57,7 +57,7 @@ namespace Nethermind.Db.FullPruning
             RocksDbSettings settings = GetRocksDbSettings(rocksDbSettings);
             return _rocksDbFactory.CreateColumnsDb<T>(settings);
         }
-        
+
         /// <inheritdoc />
         public string GetFullDbPath(RocksDbSettings rocksDbSettings)
         {
@@ -69,12 +69,12 @@ namespace Nethermind.Db.FullPruning
         private RocksDbSettings GetRocksDbSettings(RocksDbSettings rocksDbSettings)
         {
             _index++;
-            
+
             // if its -1 then this is first db.
-            bool firstDb = _index == -1; 
-            
+            bool firstDb = _index == -1;
+
             // if first DB, then we will put it into main directory and not use indexed subdirectory
-            string dbName = firstDb ? rocksDbSettings.DbName : rocksDbSettings.DbName + _index; 
+            string dbName = firstDb ? rocksDbSettings.DbName : rocksDbSettings.DbName + _index;
             string dbPath = firstDb ? rocksDbSettings.DbPath : _fileSystem.Path.Combine(rocksDbSettings.DbPath, _index.ToString());
             RocksDbSettings dbSettings = rocksDbSettings.Clone(dbName, dbPath);
             dbSettings.CanDeleteFolder = !firstDb; // we cannot delete main db folder, only indexed subfolders

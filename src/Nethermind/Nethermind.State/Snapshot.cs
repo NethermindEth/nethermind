@@ -17,7 +17,7 @@
 
 using System.Runtime.CompilerServices;
 
-[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.State
 {
     /// <summary>
@@ -50,10 +50,10 @@ namespace Nethermind.State
                 TransientStorageSnapshot = transientStorageSnapshot;
             }
         }
-        
+
         public int StateSnapshot { get; }
         public Storage StorageSnapshot { get; }
-        
+
         public const int EmptyPosition = -1;
     }
 }

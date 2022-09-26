@@ -77,7 +77,7 @@ namespace Nethermind.Overseer.Test.Framework
                 return this;
             }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
-        
+
         /// <summary>
         /// Queues up asynchronous work.
         /// </summary>

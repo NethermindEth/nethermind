@@ -157,7 +157,7 @@ namespace Nethermind.Core.Test
             measuredProgress.MarkEnd();
             Assert.True(measuredProgress.HasEnded);
         }
-        
+
         [Test]
         public void Has_ended_returns_false_when_ended()
         {

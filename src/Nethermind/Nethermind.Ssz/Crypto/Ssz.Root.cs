@@ -37,20 +37,20 @@ namespace Nethermind.Ssz
         {
             Encode(span, value.AsSpan());
         }
-        
-//        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
-//        {
-//            for (int i = 0; i < value.Length; i++)
-//            {
-//                Encode(span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length), value[i]);    
-//            }
-//        }
+
+        //        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
+        //        {
+        //            for (int i = 0; i < value.Length; i++)
+        //            {
+        //                Encode(span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length), value[i]);    
+        //            }
+        //        }
 
         public static void Encode(Span<byte> span, IReadOnlyList<Root> value)
         {
             for (int i = 0; i < value.Count; i++)
             {
-                Encode(span.Slice(i * Ssz.RootLength, Ssz.RootLength), value[i]);    
+                Encode(span.Slice(i * Ssz.RootLength, Ssz.RootLength), value[i]);
             }
         }
 
@@ -61,19 +61,19 @@ namespace Nethermind.Ssz
             offset += Ssz.RootLength;
             return hash32;
         }
-        
+
         public static Root DecodeRoot(ReadOnlySpan<byte> span)
         {
             return new Root(span);
         }
-        
+
         public static Root[] DecodeRoots(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
                 return Array.Empty<Root>();
             }
-            
+
             int count = span.Length / Ssz.RootLength;
             Root[] result = new Root[count];
             for (int i = 0; i < count; i++)

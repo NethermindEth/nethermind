@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
                 ReadOnlyDbProvider? dbProvider = Blockchain.DbProvider.AsReadOnly(false);
                 ReceiptsRecovery receiptsRecovery =
-                    new (Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
+                    new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
                 IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
                 ReadOnlyTxProcessingEnv txProcessingEnv =
                     new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     await Blockchain.AddBlock(transactions.ToArray());
                 }
             }
-            public ITraceRpcModule TraceRpcModule { get; private set;  }
+            public ITraceRpcModule TraceRpcModule { get; private set; }
             public IJsonRpcConfig JsonRpcConfig { get; private set; }
 
             public TestRpcBlockchain Blockchain { get; set; }
@@ -216,7 +216,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             long lastBLockNumber = blockchain.BlockTree.Head!.Number;
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber);
             traceFilterRequest.ToBlock = new BlockParameter(lastBLockNumber);
-            traceFilterRequest.ToAddress = new[] {TestItem.AddressA};
+            traceFilterRequest.ToAddress = new[] { TestItem.AddressA };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(1, traces.Data.Count());
         }
@@ -236,7 +236,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TraceFilterForRpc traceFilterRequest = new();
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
-            traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address};
+            traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(1, traces.Data.Count());
         }
@@ -283,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TraceFilterForRpc traceFilterRequest = new();
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
-            traceFilterRequest.ToAddress = new[] {contractAddress};
+            traceFilterRequest.ToAddress = new[] { contractAddress };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(2, traces.Data.Count());
 
@@ -311,8 +311,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             long lastBLockNumber = blockchain.BlockTree.Head!.Number;
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
-            traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address};
-            traceFilterRequest.ToAddress = new[] {TestItem.AddressC};
+            traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address };
+            traceFilterRequest.ToAddress = new[] { TestItem.AddressC };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(1, traces.Data.Count());
         }
@@ -328,8 +328,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             traceFilterRequest.Count = 4;
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
-            traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address};
-            traceFilterRequest.ToAddress = new[] {TestItem.AddressC, TestItem.AddressA, TestItem.AddressB};
+            traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address };
+            traceFilterRequest.ToAddress = new[] { TestItem.AddressC, TestItem.AddressA, TestItem.AddressB };
             UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
             UInt256 currentNonceAddressC = blockchain.State.GetAccount(TestItem.AddressC).Nonce;
             UInt256 currentNonceAddressD = blockchain.State.GetAccount(TestItem.AddressD).Nonce;
@@ -439,7 +439,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
             traces.Data.Should().BeEquivalentTo(new[] { new { TransactionHash = transaction.Hash } }, o => o.Including(o => o.TransactionHash));
 
-            long[] positions = {0};
+            long[] positions = { 0 };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
             traceGet.Data.Should().BeEmpty();
         }
@@ -456,7 +456,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction);
 
-            long[] positions = {0};
+            long[] positions = { 0 };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
             traces.Data.Should().BeEmpty();
         }
@@ -501,7 +501,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             traces.Data.Should().HaveCount(3);
             traces.Data.ElementAt(0).TransactionHash.Should().Be(transaction2.Hash!);
 
-            long[] positions = {0};
+            long[] positions = { 0 };
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
             traces.Data.ElementAt(0).TransactionHash.Should().BeEquivalentTo(transaction2.Hash);
             traces.Data.ElementAt(1).Should().BeEquivalentTo(tracesGet.Data.ElementAt(0));
@@ -547,7 +547,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             traces.Data.ElementAt(0).TransactionHash.Should().Be(transaction2.Hash!);
             string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
 
-            Assert.AreEqual("[{\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x9a6c\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2dcd\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},{\"traceAddress\":[1],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2d56\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}],\"error\":\"Reverted\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":null,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2dcd\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"traceAddress\":[1],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2d56\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]",serialized, serialized.Replace("\"", "\\\""));
+            Assert.AreEqual("[{\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x9a6c\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2dcd\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},{\"traceAddress\":[1],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2d56\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}],\"error\":\"Reverted\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":null,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2dcd\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"traceAddress\":[1],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x2d56\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]", serialized, serialized.Replace("\"", "\\\""));
         }
         [Test]
         public async Task trace_timeout_is_separate_for_rpc_calls()
@@ -589,7 +589,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithTo(TestItem.AddressC)
                 .WithGasLimit(93548).TestObject;
             await blockchain.AddBlock(transaction);
-            string[] traceTypes = {"trace"};
+            string[] traceTypes = { "trace" };
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
             Assert.AreEqual(TestItem.AddressB, traces.Data.Action.From);
             Assert.AreEqual(TestItem.AddressC, traces.Data.Action.To);
@@ -618,7 +618,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithTo(TestItem.AddressC)
                 .WithGasLimit(93548).TestObject;
             await blockchain.AddBlock(transaction);
-            string[] traceTypes = {"rewards"};
+            string[] traceTypes = { "rewards" };
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
             Assert.AreEqual("reward", traces.Data.Action.CallType);
             Assert.AreEqual(UInt256.Parse("2000000000000000000"), traces.Data.Action.Value);
@@ -631,7 +631,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             OverridableReleaseSpec releaseSpec = new(London.Instance);
             releaseSpec.Eip1559TransitionBlock = 1;
-            TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
+            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet };
             await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;
             UInt256 currentNonceAddressC = blockchain.State.GetAccount(TestItem.AddressC).Nonce;
@@ -642,7 +642,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithIsServiceTransaction(true).TestObject;
             await blockchain.AddBlock(serviceTransaction);
             BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
-            string[] traceTypes = {"trace"};
+            string[] traceTypes = { "trace" };
             ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
             traces.Data.First().Action.Result!.GasUsed.Should().Be(0);
         }
@@ -679,7 +679,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             TransactionForRpc transactionRpc = new(transaction2);
 
-            string[] traceTypes = {"trace"};
+            string[] traceTypes = { "trace" };
 
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_call(transactionRpc, traceTypes);
             Assert.AreEqual("call", traces.Data.Action.CallType);
@@ -704,7 +704,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
         }
 
-        [TestCase("{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\",\"gasPrice\":\"0x119e04a40a\"}", "[\"trace\"]","{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}")]
+        [TestCase("{\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\",\"gasPrice\":\"0x119e04a40a\"}", "[\"trace\"]", "{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x7f554713be84160fdf0178cc8df86f5aabd33397\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}")]
         [TestCase("{\"from\":\"0xc71acc7863f3bc7347b24c3b835643bd89d4d161\",\"to\":\"0xa760e26aa76747020171fcf8bda108dfde8eb930\",\"value\":\"0x0\",\"gasPrice\":\"0x2108eea5bc\"}", "[\"trace\"]", "{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xc71acc7863f3bc7347b24c3b835643bd89d4d161\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xa760e26aa76747020171fcf8bda108dfde8eb930\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}")]
         public async Task Trace_call_without_blockParameter_test(string transaction, string traceTypes, string expectedResult)
         {
@@ -729,14 +729,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             TransactionForRpc txForRpc1 = new(transaction1);
-            string[] traceTypes1 = {"Trace"};
+            string[] traceTypes1 = { "Trace" };
 
             Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressD)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction1, transaction2);
 
             TransactionForRpc txForRpc2 = new(transaction2);
-            string[] traceTypes2 = {"Trace"};
+            string[] traceTypes2 = { "Trace" };
 
             BlockParameter numberOrTag = new(16);
             TransactionForRpcWithTraceTypes tr1 = new();
@@ -746,7 +746,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             tr2.Transaction = txForRpc2;
             tr2.TraceTypes = traceTypes2;
 
-            TransactionForRpcWithTraceTypes[] a = {tr1, tr2};
+            TransactionForRpcWithTraceTypes[] a = { tr1, tr2 };
 
             ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
             tr.Data.Should().HaveCount(2);
@@ -820,7 +820,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             traces.Data.Should().HaveCount(2);
             traces.Data.ElementAt(0).Action.From.Should().BeEquivalentTo(traces.Data.ElementAt(1).Action.From);
             string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
-            Assert.AreEqual("[{\"output\":\"0x\",\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0x79\",\"output\":\"0x\",\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}},{\"output\":\"0x\",\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0xa3d\",\"output\":\"0x\",\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x8feb\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}}]",serialized);
+            Assert.AreEqual("[{\"output\":\"0x\",\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0x79\",\"output\":\"0x\",\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}},{\"output\":\"0x\",\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0xa3d\",\"output\":\"0x\",\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x8feb\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}}]", serialized);
         }
     }
 }

@@ -20,8 +20,8 @@ namespace Nethermind.Monitoring.Config
     {
         public int? ExposePort { get; set; } = null;
         public bool Enabled { get; set; } = false;
-        public string PushGatewayUrl {get; set; } = "http://localhost:9091/metrics";
-        public int IntervalSeconds {get; set; } = 5;
-        public string NodeName { get; set;} = "Nethermind";
+        public string PushGatewayUrl { get; set; } = "http://localhost:9091/metrics";
+        public int IntervalSeconds { get; set; } = 5;
+        public string NodeName { get; set; } = "Nethermind";
     }
 }

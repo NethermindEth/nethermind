@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(timerFactory, LimboLogs.Instance), 
+                new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _serializer,
                 LimboLogs.Instance);
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.P2P
 
             _session.Received(1).DeliverMessage(Arg.Any<HelloMessage>());
         }
-        
+
         [Test]
         public void On_init_sends_a_hello_message_with_capabilities()
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 0));
             p2PProtocolHandler.Init();
 
-            string[] expectedCapabilities = {"eth62", "eth63", "eth64", "eth65", "eth66", "wit0"};
+            string[] expectedCapabilities = { "eth62", "eth63", "eth64", "eth65", "eth66", "wit0" };
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }

@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning
     // ReSharper disable once InconsistentNaming
     public static class ITrieStoreExtensions
     {
-        public static IReadOnlyTrieStore AsReadOnly(this ITrieStore trieStore, IKeyValueStore? readOnlyStore = null) => 
+        public static IReadOnlyTrieStore AsReadOnly(this ITrieStore trieStore, IKeyValueStore? readOnlyStore = null) =>
             trieStore.AsReadOnly(readOnlyStore);
     }
 }

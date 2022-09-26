@@ -116,10 +116,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             consumedDepositDetails.SetConsumedUnits(9);
 
             var refundsResult = PagedResult<DepositDetails>.Create(
-                new List<DepositDetails> { consumedDepositDetails }, 
-                1, 
-                1, 
-                1, 
+                new List<DepositDetails> { consumedDepositDetails },
+                1,
+                1,
+                1,
                 1);
 
             _depositRepository.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));
@@ -141,10 +141,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             consumedDepositDetails.SetConsumedUnits(10);
 
             var refundsResult = PagedResult<DepositDetails>.Create(
-                new List<DepositDetails> { consumedDepositDetails }, 
-                1, 
-                1, 
-                1, 
+                new List<DepositDetails> { consumedDepositDetails },
+                1,
+                1,
+                1,
                 1);
 
             _depositRepository.BrowseAsync(Arg.Any<GetDeposits>()).Returns(Task.FromResult(refundsResult));

@@ -53,14 +53,14 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
-            byte[] code = new byte[] {1, 2, 3};
+            byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] { a, b, c, d, e });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 
@@ -87,14 +87,14 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
-            byte[] code = new byte[] {1, 2, 3};
+            byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] { a });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 

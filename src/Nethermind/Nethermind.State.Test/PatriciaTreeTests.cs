@@ -42,7 +42,7 @@ namespace Nethermind.Store.Test
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256) 2, accountRestored.Balance);
+            Assert.AreEqual((UInt256)2, accountRestored.Balance);
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Store.Test
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256) 2, accountRestored.Balance);
+            Assert.AreEqual((UInt256)2, accountRestored.Balance);
         }
 
         [Test]

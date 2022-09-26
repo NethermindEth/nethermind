@@ -34,14 +34,14 @@ namespace Nethermind.Mev.Test
         {
             _ = new MevPlugin();
         }
-        
+
         [Test]
         public void Throws_on_null_api_in_init()
         {
             MevPlugin plugin = new();
             Assert.Throws<ArgumentNullException>(() => plugin.Init(null));
         }
-        
+
         [Test]
         public void Can_initialize()
         {
@@ -49,7 +49,7 @@ namespace Nethermind.Mev.Test
             plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
             plugin.InitRpcModules();
         }
-        
+
         [Test]
         public async Task Can_initialize_block_producer()
         {
@@ -63,7 +63,7 @@ namespace Nethermind.Mev.Test
 
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
             consensusPlugin.InitBlockProducer().Returns(Substitute.For<IBlockProducer>());
-            
+
             Task<IBlockProducer> blockProducer = plugin.InitBlockProducer(consensusPlugin);
 
             blockProducer.Result.Should().BeOfType(typeof(MevBlockProducer));

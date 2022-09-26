@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -32,11 +32,11 @@ namespace Ethereum.Blockchain.Block.Test
         {
             await RunTest(test);
         }
-        
+
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcUncleHeaderValidity");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }

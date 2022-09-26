@@ -34,7 +34,7 @@ namespace Nethermind.Evm
 
             return new Address(in contractAddressKeccak);
         }
-        
+
         public static Address From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
         {
             // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
@@ -43,7 +43,7 @@ namespace Nethermind.Evm
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
             salt.CopyTo(bytes.Slice(21, salt.Length));
             ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
-                
+
             ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
         }

@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             Nodes = data ?? Array.Empty<byte[]>();
         }
-        
+
         public override int PacketType => SnapMessageCode.TrieNodes;
 
         public byte[][] Nodes { get; set; }

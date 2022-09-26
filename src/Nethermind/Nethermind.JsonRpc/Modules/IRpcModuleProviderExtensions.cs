@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout));
         }
-        
+
         public static void RegisterBoundedByCpuCount<T>(
             this IRpcModuleProvider rpcModuleProvider,
             ModuleFactoryBase<T> factory,
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout);
         }
-        
+
         public static void RegisterSingle<T>(
             this IRpcModuleProvider rpcModuleProvider,
             T module,

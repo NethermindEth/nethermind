@@ -39,11 +39,11 @@ namespace Nethermind.Consensus.Ethash
                 Timestamp = timestamp;
                 DataSet = dataSet;
             }
-            
+
             public DateTimeOffset Timestamp { get; set; }
             public Task<IEthashDataSet> DataSet { get; set; }
         }
-        
+
         private int _cachedEpochsCount;
 
         public int CachedEpochsCount => _cachedEpochsCount;
@@ -60,8 +60,8 @@ namespace Nethermind.Consensus.Ethash
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, long start, long end)
         {
-            uint startEpoch = (uint) (start / Ethash.EpochLength);
-            uint endEpoch = (uint) (end / Ethash.EpochLength);
+            uint startEpoch = (uint)(start / Ethash.EpochLength);
+            uint endEpoch = (uint)(end / Ethash.EpochLength);
 
             if (endEpoch - startEpoch > 10)
             {
@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Ethash
                 {
                     currentMax = alreadyCachedEpoch;
                 }
-                
+
                 if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
                 {
                     epochForGuid.Remove(alreadyCachedEpoch);
@@ -111,7 +111,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 for (long i = startEpoch; i <= endEpoch; i++)
                 {
-                    uint epoch = (uint) i;
+                    uint epoch = (uint)i;
                     if (!epochForGuid.Contains(epoch))
                     {
                         epochForGuid.Add(epoch);
@@ -131,17 +131,17 @@ namespace Nethermind.Consensus.Ethash
                             }
                             else
                             {
-                                foreach (KeyValuePair<uint,DataSetWithTime> recent in _recent.ToList())
+                                foreach (KeyValuePair<uint, DataSetWithTime> recent in _recent.ToList())
                                 {
                                     if (recent.Value.Timestamp < DateTimeOffset.UtcNow.AddSeconds(-30))
                                     {
                                         _recent.Remove(recent.Key);
                                     }
                                 }
-                                
+
                                 _cachedSets[epoch] = Task<IEthashDataSet>.Run(() => _createDataSet(epoch));
                             }
-                            
+
                             Interlocked.Increment(ref _cachedEpochsCount);
                         }
                     }

@@ -33,11 +33,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
 
         public NewHeadSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, 
-            IBlockTree? blockTree, 
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IBlockTree? blockTree,
             ILogManager? logManager,
-            ISpecProvider specProvider, 
-            TransactionsOption? options = null) 
+            ISpecProvider specProvider,
+            TransactionsOption? options = null)
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _specProvider = specProvider;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
+            if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
@@ -54,19 +54,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
-                
+
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
+                if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             });
         }
 
         public override string Type => SubscriptionType.NewHeads;
-        
+
         public override void Dispose()
         {
             _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
             base.Dispose();
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
+            if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
         }
     }
 }

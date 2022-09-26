@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -74,10 +74,10 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)td, 10), ((UInt256)10, 10)));
     }
 
-    [TestCase(3,4,5,2, true)]
-    [TestCase(3,2,3,4, true)]
-    [TestCase(4,2,3,4, false)]
-    [TestCase(3,4,3,2, false)]
+    [TestCase(3, 4, 5, 2, true)]
+    [TestCase(3, 2, 3, 4, true)]
+    [TestCase(4, 2, 3, 4, false)]
+    [TestCase(3, 4, 3, 2, false)]
     public void IsDesiredPeer_return_expected_results(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();

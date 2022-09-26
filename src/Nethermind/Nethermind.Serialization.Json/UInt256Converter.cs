@@ -61,14 +61,14 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) => 
+        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) =>
             ReaderJson(reader);
 
         public static UInt256 ReaderJson(JsonReader reader)
         {
             if (reader.Value is long || reader.Value is int)
             {
-                return (UInt256) (long) reader.Value;
+                return (UInt256)(long)reader.Value;
             }
 
             string s = reader.Value?.ToString();

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
-    public class GetContractCodesMessageSerializer: IZeroMessageSerializer<GetContractCodesMessage>
+    public class GetContractCodesMessageSerializer : IZeroMessageSerializer<GetContractCodesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, GetContractCodesMessage message)
         {

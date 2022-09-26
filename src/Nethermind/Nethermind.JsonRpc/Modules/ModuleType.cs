@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Baseline = nameof(Baseline);
         public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
-        public const string Health= nameof(Health);
+        public const string Health = nameof(Health);
         public const string Witness = nameof(Witness);
         public const string AccountAbstraction = nameof(AccountAbstraction);
         public const string Rpc = nameof(Rpc);

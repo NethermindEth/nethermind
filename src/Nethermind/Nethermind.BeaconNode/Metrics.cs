@@ -29,7 +29,7 @@ namespace Nethermind.BeaconNode
         public static long BeaconPreviousJustifiedEpoch { get; set; }
         public static long BeaconPreviousJustifiedRoot { get; set; }
     }
-    
+
     public static class Metrics
     {
         public static long BeaconCurrentValidators { get; set; }

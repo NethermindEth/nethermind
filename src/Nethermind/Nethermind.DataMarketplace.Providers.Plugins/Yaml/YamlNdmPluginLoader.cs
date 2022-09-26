@@ -23,27 +23,27 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.Yaml
 
         public IEnumerable<INdmPlugin> Load()
         {
-            if(_logger.IsInfo) _logger.Info($"Plugins directory: {_directory}");
+            if (_logger.IsInfo) _logger.Info($"Plugins directory: {_directory}");
 
             if (!Directory.Exists(_directory))
             {
-                if(_logger.IsError) _logger.Error($"Plugins directory does not exist at {_directory}");
+                if (_logger.IsError) _logger.Error($"Plugins directory does not exist at {_directory}");
                 return Enumerable.Empty<INdmPlugin>();
             }
 
             var plugins = new List<INdmPlugin>();
             var files = Directory.GetFiles(_directory, "*.yml").OrderBy(f => f);
-            
-            if(files.Count() == 0)
+
+            if (files.Count() == 0)
             {
-                if(_logger.IsInfo) _logger.Info($"No plugin files found in {_directory}");
+                if (_logger.IsInfo) _logger.Info($"No plugin files found in {_directory}");
             }
 
             foreach (var file in files)
             {
                 var fileName = file.Contains("/") ? file.Split("/").Last() : file.Split("\\").Last();
                 if (_logger.IsInfo) _logger.Info($"Loading NDM plugin: {fileName}");
-                
+
                 try
                 {
                     var description = File.ReadAllText(file);
@@ -63,13 +63,13 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.Yaml
                         if (_logger.IsError) _logger.Error("NDM plugin name cannot be empty");
                         continue;
                     }
-                    
+
                     if (string.IsNullOrWhiteSpace(plugin.Type))
                     {
                         if (_logger.IsError) _logger.Error($"NDM plugin: {plugin.Name} has empty type");
                         continue;
                     }
-                    
+
                     plugins.Add(plugin);
                 }
                 catch (Exception ex)

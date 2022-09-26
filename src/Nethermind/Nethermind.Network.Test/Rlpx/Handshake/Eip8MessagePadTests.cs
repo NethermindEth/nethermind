@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Adds_at_least_100_bytes()
         {
-            byte[] message = {1};
+            byte[] message = { 1 };
             int lengthBeforePadding = message.Length;
 
             TestRandom testRandom = new(i => 0, i => new byte[i]);
@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Adds_at_most_300_bytes()
         {
-            byte[] message = {1};
+            byte[] message = { 1 };
             int lengthBeforePadding = message.Length;
 
             TestRandom testRandom = new(i => i - 1, i => new byte[i]);

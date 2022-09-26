@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,7 +78,7 @@ namespace Nethermind.Init.Steps.Migrations
             _cancellationTokenSource?.Cancel();
             await (_migrationTask ?? Task.CompletedTask);
         }
-        
+
         public async Task<bool> Run(long blockNumber)
         {
             _cancellationTokenSource?.Cancel();
@@ -115,7 +115,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
         }
-        
+
         private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
         private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
@@ -130,7 +130,7 @@ namespace Nethermind.Init.Steps.Migrations
         private void RunMigration()
         {
             _toBlock = MigrateToBlockNumber;
-            
+
             if (_toBlock > 0)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -164,12 +164,12 @@ namespace Nethermind.Init.Steps.Migrations
 
             long synced = 1;
             IDb receiptsDb = _dbProvider.ReceiptsDb;
-            
+
             _progress.Reset(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (Timer timer = new(1000) {Enabled = true})
+            using (Timer timer = new(1000) { Enabled = true })
             {
                 timer.Elapsed += (_, _) =>
                 {
@@ -189,20 +189,20 @@ namespace Nethermind.Init.Steps.Migrations
                         {
                             _receiptStorage.Insert(block, notNullReceipts);
                             _receiptStorage.MigratedBlockNumber = block.Number;
-                            
+
                             for (int i = 0; i < notNullReceipts.Length; i++)
                             {
                                 receiptsDb.Delete(notNullReceipts[i].TxHash!);
                             }
-                            
+
                             if (notNullReceipts.Length != receipts.Length)
                             {
-                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
+                                if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                             }
                         }
                         else if (block.Number <= _blockTree.Head?.Number)
                         {
-                            if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
+                            if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
                         }
                     }
                 }
@@ -228,7 +228,7 @@ namespace Nethermind.Init.Steps.Migrations
                                     _chainLevelInfoRepository.PersistLevel(number, level, batch);
                                 }
                             }
-                                
+
                             blockHash = level.MainChainBlock?.BlockHash;
                             return blockHash != null;
                         }
@@ -238,7 +238,7 @@ namespace Nethermind.Init.Steps.Migrations
                             return false;
                         }
                     }
-                    
+
                     for (long i = _toBlock - 1; i > 0; i--)
                     {
                         if (token.IsCancellationRequested)
@@ -247,7 +247,7 @@ namespace Nethermind.Init.Steps.Migrations
                             if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
                             yield break;
                         }
-                        
+
                         if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
                             Block? header = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
@@ -274,7 +274,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private long MigrateToBlockNumber =>
             _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current.NotSyncing() 
+                ? _syncModeSelector.Current.NotSyncing()
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;

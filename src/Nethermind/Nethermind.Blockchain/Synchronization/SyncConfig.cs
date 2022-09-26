@@ -28,10 +28,10 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _fastSync;
 
         public static ISyncConfig Default { get; } = new SyncConfig();
-        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig {FastSync = false, FastBlocks = false};
-        public static ISyncConfig WithFastSync { get; } = new SyncConfig {FastSync = true};
-        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
-        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig {FastSync = false, FastBlocks = false, BlockGossipEnabled = false};
+        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig { FastSync = false, FastBlocks = false };
+        public static ISyncConfig WithFastSync { get; } = new SyncConfig { FastSync = true };
+        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig { FastSync = true, FastBlocks = true };
+        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, FastBlocks = false, BlockGossipEnabled = false };
 
         public bool NetworkingEnabled { get; set; } = true;
 

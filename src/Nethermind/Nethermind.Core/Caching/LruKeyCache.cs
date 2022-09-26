@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Core.Caching
             _maxCapacity = maxCapacity;
             _name = name ?? throw new ArgumentNullException(nameof(name));
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>) Bytes.EqualityComparer)
+                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
             _lruList = new LinkedList<TKey>();
         }
@@ -45,13 +45,13 @@ namespace Nethermind.Core.Caching
             : this(maxCapacity, 0, name)
         {
         }
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
             _cacheMap.Clear();
             _lruList.Clear();
-        }        
+        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)
@@ -85,9 +85,9 @@ namespace Nethermind.Core.Caching
                 {
                     LinkedListNode<TKey> newNode = new(key);
                     _lruList.AddLast(newNode);
-                    _cacheMap.Add(key, newNode);    
+                    _cacheMap.Add(key, newNode);
                 }
-                
+
                 return true;
             }
         }
@@ -105,14 +105,14 @@ namespace Nethermind.Core.Caching
         private void Replace(TKey key)
         {
             // TODO: some potential null ref issue here?
-            
+
             LinkedListNode<TKey>? node = _lruList.First;
             if (node is null)
             {
                 throw new InvalidOperationException(
                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
             }
-            
+
             _lruList.RemoveFirst();
             _cacheMap.Remove(node.Value);
 
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Caching
         public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
-            
+
             const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
             int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);

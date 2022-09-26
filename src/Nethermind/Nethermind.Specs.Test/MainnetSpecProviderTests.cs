@@ -26,7 +26,7 @@ namespace Nethermind.Specs.Test
     public class MainnetSpecProviderTests
     {
         private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
-        
+
         [TestCase(12_243_999, false)]
         [TestCase(12_244_000, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
@@ -37,7 +37,7 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
-        
+
         [TestCase(12_964_999, false)]
         [TestCase(12_965_000, true)]
         public void London_eips(long blockNumber, bool isEnabled)
@@ -46,13 +46,13 @@ namespace Nethermind.Specs.Test
                 _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
             else
                 _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
-            
+
             _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
-        
+
         [Test]
         public void Dao_block_number_is_correct()
         {

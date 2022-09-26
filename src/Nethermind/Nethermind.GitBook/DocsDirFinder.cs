@@ -40,7 +40,7 @@ namespace Nethermind.GitBook
                 currentDir = new DirectoryInfo(currentDir).Parent?.FullName;
             } while (true);
         }
-        
+
         public static string FindRunnerDir()
         {
             string currentDir = Environment.CurrentDirectory;

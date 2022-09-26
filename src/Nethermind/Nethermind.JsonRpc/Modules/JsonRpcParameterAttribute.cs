@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules
     public class JsonRpcParameterAttribute : Attribute
     {
         public string? Description { get; set; }
-        
+
         public string? ExampleValue { get; set; }
     }
 }

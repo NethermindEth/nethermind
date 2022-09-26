@@ -114,8 +114,8 @@ public class JsonRpcService : IJsonRpcService
         string methodName = rpcRequest.Method.Trim();
 
         (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo != null 
-            ? await ExecuteAsync(rpcRequest, methodName, result, context) 
+        return result.MethodInfo != null
+            ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
 
@@ -124,7 +124,7 @@ public class JsonRpcService : IJsonRpcService
     {
         ParameterInfo[] expectedParameters = method.Info.GetParameters();
         string?[] providedParameters = request.Params ?? Array.Empty<string>();
-        
+
         LogRequest(methodName, providedParameters, expectedParameters);
 
         int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
@@ -140,7 +140,7 @@ public class JsonRpcService : IJsonRpcService
                 {
                     int parameterIndex = expectedParameters.Length - missingParamsCount + i;
                     bool nullable = IsNullableParameter(expectedParameters[parameterIndex]);
-                    
+
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
                     // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
@@ -185,7 +185,7 @@ public class JsonRpcService : IJsonRpcService
             contextAwareModule.Context = context;
         }
         bool returnImmediately = methodName != "eth_getLogs";
-        Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, rpcModule);
+        Action? returnAction = returnImmediately ? (Action)null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         try
         {
             object invocationResult = method.Info.Invoke(rpcModule, parameters);
@@ -207,7 +207,7 @@ public class JsonRpcService : IJsonRpcService
         catch (TargetInvocationException e) when (e.InnerException is JsonException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
-        }            
+        }
         catch (Exception e) when (e.InnerException is OperationCanceledException)
         {
             string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
@@ -395,7 +395,7 @@ public class JsonRpcService : IJsonRpcService
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) => 
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
         GetErrorResponse(null, errorCode, errorMessage, null, null);
 
     public JsonConverter[] Converters { get; }
@@ -436,7 +436,7 @@ public class JsonRpcService : IJsonRpcService
         ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
         return result switch
         {
-            ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
+            ModuleResolution.Unknown => ((int?)ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
