@@ -161,25 +161,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
