@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
         }
 
         private const int MaxCodeSize = 24576;
-        
+
         [TestCase(0, 0)]
         [TestCase(0, 32)]
         [TestCase(0, 256)]
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test
         public void MemoryCost(int destination, int memoryAllocation)
         {
             EvmPooledMemory memory = new();
-            UInt256 dest = (UInt256) destination;
+            UInt256 dest = (UInt256)destination;
             long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
             TestContext.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
         }
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(initialSize, memory.Size);
             Assert.AreEqual(ReadOnlyMemory<byte>.Empty, result);
         }
-        
+
         [Test]
         public void Inspect_can_read_memory()
         {

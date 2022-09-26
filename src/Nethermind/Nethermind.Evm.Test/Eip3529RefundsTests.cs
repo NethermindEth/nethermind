@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,29 +50,29 @@ namespace Nethermind.Evm.Test
                 return specProvider;
             }
         }
-        
-       [TestCase("0x60006000556000600055", 212, 0, 0)]
-       [TestCase("0x60006000556001600055", 20112, 0, 0)]
-       [TestCase("0x60016000556000600055", 20112, 19900, 0)]
-       [TestCase("0x60016000556002600055", 20112, 0, 0)]
-       [TestCase("0x60016000556001600055", 20112, 0, 0)]
-       [TestCase("0x60006000556000600055", 3012, 15000, 1)]
-       [TestCase("0x60006000556001600055", 3012, 2800, 1)]
-       [TestCase("0x60006000556002600055", 3012, 0, 1)]
-       [TestCase("0x60026000556000600055", 3012, 15000, 1)]
-       [TestCase("0x60026000556003600055", 3012, 0, 1)]
-       [TestCase("0x60026000556001600055", 3012, 2800, 1)]
-       [TestCase("0x60026000556002600055", 3012, 0, 1)]
-       [TestCase("0x60016000556000600055", 3012, 15000, 1)]
-       [TestCase("0x60016000556002600055", 3012, 0, 1)]
-       [TestCase("0x60016000556001600055", 212, 0, 1)]
-       [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
-       [TestCase("0x600060005560016000556000600055", 5918, 17800, 1)]
+
+        [TestCase("0x60006000556000600055", 212, 0, 0)]
+        [TestCase("0x60006000556001600055", 20112, 0, 0)]
+        [TestCase("0x60016000556000600055", 20112, 19900, 0)]
+        [TestCase("0x60016000556002600055", 20112, 0, 0)]
+        [TestCase("0x60016000556001600055", 20112, 0, 0)]
+        [TestCase("0x60006000556000600055", 3012, 15000, 1)]
+        [TestCase("0x60006000556001600055", 3012, 2800, 1)]
+        [TestCase("0x60006000556002600055", 3012, 0, 1)]
+        [TestCase("0x60026000556000600055", 3012, 15000, 1)]
+        [TestCase("0x60026000556003600055", 3012, 0, 1)]
+        [TestCase("0x60026000556001600055", 3012, 2800, 1)]
+        [TestCase("0x60026000556002600055", 3012, 0, 1)]
+        [TestCase("0x60016000556000600055", 3012, 15000, 1)]
+        [TestCase("0x60016000556002600055", 3012, 0, 1)]
+        [TestCase("0x60016000556001600055", 212, 0, 1)]
+        [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
+        [TestCase("0x600060005560016000556000600055", 5918, 17800, 1)]
         public void Before_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             Test(codeHex, gasUsed, refund, originalValue, false);
         }
-        
+
         [TestCase("0x60006000556000600055", 212, 0, 0)]
         [TestCase("0x60006000556001600055", 20112, 0, 0)]
         [TestCase("0x60016000556000600055", 20112, 19900, 0)]
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Test
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             Storage.Commit();
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
@@ -108,11 +108,11 @@ namespace Nethermind.Evm.Test
             transaction.GasPrice = 20.GWei();
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
-            
+
             Assert.AreEqual(refund, tracer.Refund);
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));
         }
-        
+
         [TestCase(true)]
         [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
@@ -184,7 +184,7 @@ namespace Nethermind.Evm.Test
             // self destruct contract
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             int gasUsedByTx3 = 37767;
-            
+
             long blockNumber = eip3529Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 

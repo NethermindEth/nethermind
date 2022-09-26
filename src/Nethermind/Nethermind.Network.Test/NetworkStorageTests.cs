@@ -40,10 +40,10 @@ namespace Nethermind.Network.Test
             ConfigProvider configSource = new();
             _tempDir = TempPath.GetTempDirectory();
 
-            var db = new SimpleFilePublicKeyDb("Test",_tempDir.Path, logManager);
+            var db = new SimpleFilePublicKeyDb("Test", _tempDir.Path, logManager);
             _storage = new NetworkStorage(db, logManager);
         }
-        
+
         [TearDown]
         public void TearDown()
         {

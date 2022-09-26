@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityAccountStateChange change = new()
             {
-                Code = new ParityStateChange<byte[]>(new byte[] {1}, null)
+                Code = new ParityStateChange<byte[]>(new byte[] { 1 }, null)
             };
 
             Assert.DoesNotThrow(() => converter.WriteJson(writer, change, serializer));
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityAccountStateChange change = new()
             {
-                Code = new ParityStateChange<byte[]>(null, new byte[] {1})
+                Code = new ParityStateChange<byte[]>(null, new byte[] { 1 })
             };
 
             Assert.DoesNotThrow(() => converter.WriteJson(writer, change, serializer));

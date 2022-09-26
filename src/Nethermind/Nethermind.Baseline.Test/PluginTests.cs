@@ -29,7 +29,7 @@ namespace Nethermind.Baseline.Test
         {
             Nethermind.JsonRpc.Test.StandardJsonRpcTests.ValidateDocumentation();
         }
-        
+
         [Test]
         public void All_metrics_are_described()
         {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Consensus
     public class NullSigner : ISigner, ISignerStore
     {
         public static readonly NullSigner Instance = new();
-        
+
         public Address Address { get; } = Address.Zero; // TODO: why zero address 
 
         public ValueTask Sign(Transaction tx) => default;
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus
         public bool CanSign { get; } = true; // TODO: why true?
 
         public PrivateKey Key { get; }
-        
+
         public void SetSigner(PrivateKey key) { }
 
         public void SetSigner(ProtectedPrivateKey key) { }

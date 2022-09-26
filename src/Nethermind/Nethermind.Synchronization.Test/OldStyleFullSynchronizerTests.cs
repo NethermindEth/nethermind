@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Pivot pivot = new (syncConfig);
+            Pivot pivot = new(syncConfig);
             SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
                 MainnetSpecProvider.Instance,
@@ -142,20 +142,20 @@ namespace Nethermind.Synchronization.Test
         [Test, Ignore("travis")]
         public void Retrieves_missing_blocks_in_batches()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max* 2).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max * 2).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int)_blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Test
             _synchronizer.Start();
             _pool.AddPeer(peer);
 
-            Assert.AreEqual(0, (int) _blockTree.BestSuggestedHeader.Number);
+            Assert.AreEqual(0, (int)_blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int)_blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.Test
             SemaphoreSlim semaphore = new(0);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) semaphore.Release(1);
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) semaphore.Release(1);
             };
             _pool.Start();
             _synchronizer.Start();
@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.Test
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
-            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
+            Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int)_blockTree.BestSuggestedHeader.Number);
         }
 
         [Test, Ignore("travis")]
@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.Test
             ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
 
             _pool.Start();
@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.AreEqual(SyncBatchSize.Max - 1, (int) _blockTree.BestSuggestedHeader.Number);
+            Assert.AreEqual(SyncBatchSize.Max - 1, (int)_blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.Test
             ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
 
             _pool.Start();
@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void  Can_sync_on_split_of_length_6()
+        public void Can_sync_on_split_of_length_6()
         {
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Test
             ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
 
             _pool.Start();
@@ -319,7 +319,7 @@ namespace Nethermind.Synchronization.Test
             AutoResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
 
             _pool.Start();
@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.Test
             AutoResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
+                if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
 
             _pool.Start();
@@ -389,7 +389,7 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            byte[][] values = _syncServer.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
+            byte[][] values = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
             Assert.AreEqual(2, values.Length, "data.Length");
             Assert.AreEqual(TestItem.RandomDataA, values[0], "data[0]");
             Assert.AreEqual(null, values[1], "data[1]");

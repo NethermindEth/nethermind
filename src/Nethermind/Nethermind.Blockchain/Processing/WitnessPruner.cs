@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Witness
             return repository;
         }
     }
-    
+
     public class WitnessPruner
     {
         private readonly IBlockTree _blockTree;
@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Witness
                 if (level != null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Pruning witness from blocks with number {toPrune}");
-                    
+
                     for (int i = 0; i < level.BlockInfos.Length; i++)
                     {
                         var blockInfo = level.BlockInfos[i];

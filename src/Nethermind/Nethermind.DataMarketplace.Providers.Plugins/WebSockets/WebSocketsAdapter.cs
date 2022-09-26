@@ -16,7 +16,7 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.WebSockets
 
         public WebSocketsAdapter()
         {
-            _client  = new ClientWebSocket();
+            _client = new ClientWebSocket();
         }
 
         public async Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)

@@ -11,5 +11,7 @@
       <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
       <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
     </ItemGroup>
-
+    <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    </ItemGroup>
 </Project>

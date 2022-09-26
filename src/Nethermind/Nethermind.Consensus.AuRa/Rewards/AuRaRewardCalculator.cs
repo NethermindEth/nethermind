@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
     {
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
-        
+
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             if (auRaParameters == null) throw new ArgumentNullException(nameof(auRaParameters));
@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                     {
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
-                    
+
                     contracts.Insert(0, new RewardContract(transactionProcessor, abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
                 }
 
@@ -75,24 +75,24 @@ namespace Nethermind.Consensus.AuRa.Rewards
             {
                 return Array.Empty<BlockReward>();
             }
-            
+
             return _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
         }
-            
-        
+
+
         private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
                 var length = block.Uncles.Length + 1;
-                
+
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
                 beneficiariesList[0] = block.Beneficiary;
                 kindsList[0] = BenefactorKind.Author;
-                
+
                 for (int i = 0; i < block.Uncles.Length; i++)
                 {
                     var uncle = block.Uncles[i];
@@ -134,7 +134,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
         }
-        
+
         public static class BenefactorKind
         {
             public const ushort Author = 0;
@@ -148,7 +148,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             {
                 if (IsValidDistance(distance))
                 {
-                    kind = (ushort) (uncleOffset + distance);
+                    kind = (ushort)(uncleOffset + distance);
                     return true;
                 }
 
@@ -172,7 +172,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                         throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
                 }
             }
-                
+
             private static bool IsValidDistance(long distance)
             {
                 return distance >= minDistance && distance <= maxDistance;

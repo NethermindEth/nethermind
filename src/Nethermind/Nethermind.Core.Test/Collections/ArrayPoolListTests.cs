@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Collections
             list.Capacity.Should().Be(1024);
             list.IsReadOnly.Should().BeFalse();
         }
-        
+
         [Test]
         public void Add_should_work()
         {
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test.Collections
             list.AddRange(Enumerable.Range(0, 4));
             list.Should().BeEquivalentTo(Enumerable.Range(0, 4));
         }
-        
+
         [Test]
         public void Add_should_expand()
         {
@@ -53,7 +53,7 @@ namespace Nethermind.Core.Test.Collections
             list.Count.Should().Be(50);
             list.Capacity.Should().Be(64);
         }
-        
+
         [Test]
         public void Clear_should_clear()
         {
@@ -64,7 +64,7 @@ namespace Nethermind.Core.Test.Collections
             list.Count.Should().Be(0);
             list.Capacity.Should().Be(64);
         }
-        
+
         [TestCase(0, ExpectedResult = true)]
         [TestCase(20, ExpectedResult = true)]
         [TestCase(100, ExpectedResult = false)]
@@ -75,10 +75,10 @@ namespace Nethermind.Core.Test.Collections
             list.AddRange(Enumerable.Range(0, 50));
             return list.Contains(item);
         }
-        
-        [TestCase(0, new[] {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})]
-        [TestCase(4, new[] {0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})]
-        [TestCase(16, new[] {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1})]
+
+        [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
+        [TestCase(4, new[] { 0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
+        [TestCase(16, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 })]
         public void Insert_should_expand(int index, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Collections
             Action action = () => list.Insert(index, -1);
             action.Should().Throw<ArgumentOutOfRangeException>();
         }
-        
+
         [TestCase(0, ExpectedResult = 0)]
         [TestCase(40, ExpectedResult = 40)]
         [TestCase(50, ExpectedResult = -1)]
@@ -107,12 +107,12 @@ namespace Nethermind.Core.Test.Collections
             list.AddRange(Enumerable.Range(0, 50));
             return list.IndexOf(item);
         }
-     
-        
-        [TestCase(0, true, new[] {1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(7, true, new[] {0, 1, 2, 3, 4, 5, 6})]
-        [TestCase(8, false, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(-1, false, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
+
+
+        [TestCase(0, true, new[] { 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(7, true, new[] { 0, 1, 2, 3, 4, 5, 6 })]
+        [TestCase(8, false, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(-1, false, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
         public void Remove_should_remove(int item, bool removed, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -120,9 +120,9 @@ namespace Nethermind.Core.Test.Collections
             list.Remove(item).Should().Be(removed);
             list.Should().BeEquivalentTo(expected);
         }
-        
-        [TestCase(0, new[] {1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(7, new[] {0, 1, 2, 3, 4, 5, 6})]
+
+        [TestCase(0, new[] { 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(7, new[] { 0, 1, 2, 3, 4, 5, 6 })]
         public void RemoveAt_should_remove(int item, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -130,9 +130,9 @@ namespace Nethermind.Core.Test.Collections
             list.RemoveAt(item);
             list.Should().BeEquivalentTo(expected);
         }
-        
-        [TestCase(8, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(-1, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
+
+        [TestCase(8, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(-1, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
         public void RemoveAt_should_throw(int item, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -140,7 +140,7 @@ namespace Nethermind.Core.Test.Collections
             Action action = () => list.RemoveAt(item);
             action.Should().Throw<ArgumentOutOfRangeException>();
         }
-        
+
         [Test]
         public void CopyTo_should_copy()
         {
@@ -150,7 +150,7 @@ namespace Nethermind.Core.Test.Collections
             list.CopyTo(array, 1);
             array.Should().BeEquivalentTo(Enumerable.Range(0, 1).Concat(Enumerable.Range(0, 50)));
         }
-        
+
         [TestCase(0, ExpectedResult = 0)]
         [TestCase(7, ExpectedResult = 7)]
         public int Get_should_return(int item)
@@ -159,7 +159,7 @@ namespace Nethermind.Core.Test.Collections
             list.AddRange(Enumerable.Range(0, 8));
             return list[item];
         }
-        
+
         [TestCase(8)]
         [TestCase(-1)]
         public void Get_should_throw(int item)
@@ -169,7 +169,7 @@ namespace Nethermind.Core.Test.Collections
             Func<int> action = () => list[item];
             action.Should().Throw<ArgumentOutOfRangeException>();
         }
-        
+
         [TestCase(0, ExpectedResult = -1)]
         [TestCase(7, ExpectedResult = -1)]
         public int Set_should_set(int item)
@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test.Collections
             list[item] = -1;
             return list[item];
         }
-        
+
         [TestCase(8)]
         [TestCase(-1)]
         public void Set_should_throw(int item)

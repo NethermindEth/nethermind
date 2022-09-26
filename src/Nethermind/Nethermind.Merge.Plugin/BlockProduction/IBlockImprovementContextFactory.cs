@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 public interface IBlockImprovementContextFactory
 {
     IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock, 
-        BlockHeader parentHeader, 
+        Block currentBestBlock,
+        BlockHeader parentHeader,
         PayloadAttributes payloadAttributes);
 }

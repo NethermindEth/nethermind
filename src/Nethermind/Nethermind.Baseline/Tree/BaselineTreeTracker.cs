@@ -93,25 +93,25 @@ namespace Nethermind.Baseline.Tree
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
-            if(_logger.IsWarn) _logger.Warn($"Tree tracker for {_baselineTree} processing block {e.Block.ToString(Block.Format.Short)}");
-            
+            if (_logger.IsWarn) _logger.Warn($"Tree tracker for {_baselineTree} processing block {e.Block.ToString(Block.Format.Short)}");
+
             if (_currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash && _currentBlockHeader.Number < e.Block.Number)
             {
                 // what is this - not covered by any test?
                 // why do we build tree here?
                 _baselineTreeHelper.BuildTree(_baselineTree, _address, new BlockParameter(_currentBlockHeader.Hash), new BlockParameter(e.Block.Hash));
                 _currentBlockHeader = e.Block.Header;
-                
+
                 // TODO: why this is here
                 _baselineTree.MemorizeCurrentCount(_baselineTree.LastBlockDbHash, _baselineTree.LastBlockWithLeaves, _baselineTree.Count);
                 return;
             }
 
             uint removedItemsCount = 0;
-            bool reorganized = _currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash; 
+            bool reorganized = _currentBlockHeader != null && _currentBlockHeader.Hash != e.Block.ParentHash;
             if (reorganized)
             {
-                if(_logger.IsWarn) _logger.Warn(
+                if (_logger.IsWarn) _logger.Warn(
                     $"Tree tracker for {_baselineTree} reorganizes from branching point at {e.Block.ToString(Block.Format.Short)}");
                 removedItemsCount = Revert(e.Block.Number);
             }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -96,13 +96,13 @@ namespace Nethermind.BeaconNode
             Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
 
-            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int) stateListLengths.EpochsPerHistoricalVector)
+            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int)stateListLengths.EpochsPerHistoricalVector)
                 .ToArray();
 
             BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader, randaoMixes,
                 timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
-            
+
             state.Eth1Data.SetDepositRoot(_depositStore.DepositData.Root);
             foreach (Deposit deposit in _depositStore.Deposits)
             {

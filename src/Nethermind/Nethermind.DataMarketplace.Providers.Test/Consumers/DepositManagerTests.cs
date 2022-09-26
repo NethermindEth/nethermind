@@ -221,33 +221,33 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
 
             ConfigureMocks(consumer);
 
-            var depositNodesHandler = new InMemoryDepositNodesHandler(Keccak.Zero, 
-                                                                    _consumer, 
-                                                                    DataAssetUnitType.Time, 
+            var depositNodesHandler = new InMemoryDepositNodesHandler(Keccak.Zero,
+                                                                    _consumer,
+                                                                    DataAssetUnitType.Time,
                                                                     1,
-                                                                    100, 
+                                                                    100,
                                                                     1,
-                                                                    60, 
-                                                                    50, 
-                                                                    30, 
-                                                                    50, 
-                                                                    0, 
-                                                                    0, 
-                                                                    null, 
-                                                                    null, 
+                                                                    60,
+                                                                    50,
+                                                                    30,
+                                                                    50,
+                                                                    0,
+                                                                    0,
+                                                                    null,
+                                                                    null,
                                                                     0);
 
-            _depositNodesHandlerFactory.CreateInMemory(depositId, 
-                                                    Arg.Any<Address>(), 
-                                                    DataAssetUnitType.Time, Arg.Any<uint>(), 
-                                                    Arg.Any<uint>(), Arg.Any<UInt256>(), Arg.Any<uint>(), 
+            _depositNodesHandlerFactory.CreateInMemory(depositId,
+                                                    Arg.Any<Address>(),
+                                                    DataAssetUnitType.Time, Arg.Any<uint>(),
+                                                    Arg.Any<uint>(), Arg.Any<UInt256>(), Arg.Any<uint>(),
                                                     Arg.Any<uint>(),
-                                                    Arg.Any<uint>(), 
-                                                    Arg.Any<uint>(), 
-                                                    Arg.Any<uint>(), 
-                                                    Arg.Any<uint>(), 
-                                                    Arg.Any<PaymentClaim>(), 
-                                                    Arg.Any<IEnumerable<DataDeliveryReceiptDetails>>(), 
+                                                    Arg.Any<uint>(),
+                                                    Arg.Any<uint>(),
+                                                    Arg.Any<uint>(),
+                                                    Arg.Any<uint>(),
+                                                    Arg.Any<PaymentClaim>(),
+                                                    Arg.Any<IEnumerable<DataDeliveryReceiptDetails>>(),
                                                     Arg.Any<uint>())
                                                     .Returns(depositNodesHandler);
 
@@ -344,9 +344,9 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
                 .Returns(PagedResult<PaymentClaim>.Empty);
 
             _sessionRepository.BrowseAsync(new GetProviderSessions
-                {
-                    DepositId = depositId
-                })
+            {
+                DepositId = depositId
+            })
                 .Returns(PagedResult<ProviderSession>.Create(new List<ProviderSession>(consumer.Sessions), 1, 1, 1, 1));
 
             _receiptsPolicies.CanRequestReceipts(Arg.Any<long>(), Arg.Any<UInt256>()).Returns(true);
@@ -359,15 +359,15 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
 
         private void AddReciptsToMerge(TestConsumer consumer, IDepositNodesHandler depositHandler)
         {
-            DataDeliveryReceiptRequest request = new DataDeliveryReceiptRequest(1, consumer.DepositId, new UnitsRange(0, 5), false, new List<DataDeliveryReceiptToMerge> { new DataDeliveryReceiptToMerge(new UnitsRange(0,1), new Signature(1, 2, 37)) });
+            DataDeliveryReceiptRequest request = new DataDeliveryReceiptRequest(1, consumer.DepositId, new UnitsRange(0, 5), false, new List<DataDeliveryReceiptToMerge> { new DataDeliveryReceiptToMerge(new UnitsRange(0, 1), new Signature(1, 2, 37)) });
             DataDeliveryReceipt receipt = new DataDeliveryReceipt(StatusCodes.Ok, 50, 0, new Signature(1, 2, 37));
-            DataDeliveryReceiptDetails receiptDetails = new DataDeliveryReceiptDetails(Keccak.OfAnEmptyString, consumer.Sessions.First().Id, consumer.DataAsset.Id, null, request, receipt, 10, true); 
+            DataDeliveryReceiptDetails receiptDetails = new DataDeliveryReceiptDetails(Keccak.OfAnEmptyString, consumer.Sessions.First().Id, consumer.DataAsset.Id, null, request, receipt, 10, true);
 
             depositHandler.AddReceipt(receiptDetails);
 
             DataDeliveryReceiptRequest request2 = new DataDeliveryReceiptRequest(1, consumer.DepositId, new UnitsRange(6, 49));
             DataDeliveryReceipt receipt2 = new DataDeliveryReceipt(StatusCodes.Ok, 50, 0, new Signature(1, 2, 37));
-            DataDeliveryReceiptDetails receiptDetails2 = new DataDeliveryReceiptDetails(Keccak.OfAnEmptyString, consumer.Sessions.First().Id, consumer.DataAsset.Id, null, request2, receipt2, 10, false); 
+            DataDeliveryReceiptDetails receiptDetails2 = new DataDeliveryReceiptDetails(Keccak.OfAnEmptyString, consumer.Sessions.First().Id, consumer.DataAsset.Id, null, request2, receipt2, 10, false);
 
             depositHandler.AddReceipt(receiptDetails2);
         }

@@ -70,7 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((SessionClient) obj);
+            return Equals((SessionClient)obj);
         }
 
         public override int GetHashCode()

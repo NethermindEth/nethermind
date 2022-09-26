@@ -27,7 +27,7 @@ namespace Nethermind.Cli.Modules
             var value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
             return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
         }
-        
+
         [CliProperty("system", "memory")]
         public string Memory(string name, string defaultValue)
         {

@@ -106,18 +106,18 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public void RemoveDiscoveredDataAsset(Keccak dataAssetId)
             => _dataAssetService.RemoveDiscovered(dataAssetId);
-        
+
         #endregion
-                
+
         #region DataRequests
-        
+
         public Task<DataRequestResult> SendDataRequestAsync(Keccak depositId)
             => _dataRequestService.SendAsync(depositId);
-        
+
         #endregion
-        
+
         #region DataStreams
-        
+
         public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string?[] args)
             => _dataStreamService.EnableDataStreamAsync(depositId, client, args);
 
@@ -132,7 +132,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public Task SetDisabledDataStreamAsync(Keccak depositId, string client)
             => _dataStreamService.SetDisabledDataStreamAsync(depositId, client);
-        
+
         public Task SetUnitsAsync(Keccak depositId, uint consumedUnitsFromProvider)
             => _dataConsumerService.SetUnitsAsync(depositId, consumedUnitsFromProvider);
 
@@ -144,11 +144,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public Task HandleGraceUnitsExceededAsync(Keccak depositId, uint consumedUnitsFromProvider, uint graceUnits)
             => _dataConsumerService.HandleGraceUnitsExceededAsync(depositId, consumedUnitsFromProvider, graceUnits);
-        
+
         #endregion
-        
+
         #region Deposits
-        
+
         public Task<DepositDetails?> GetDepositAsync(Keccak depositId)
             => _depositManager.GetAsync(depositId);
 
@@ -163,48 +163,48 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public Task<Keccak?> RequestDepositApprovalAsync(Keccak assetId, string kyc)
             => _depositApprovalService.RequestAsync(assetId, _accountService.GetAddress(), kyc);
-        
+
         public Task ConfirmDepositApprovalAsync(Keccak assetId, Address consumer)
             => _depositApprovalService.ConfirmAsync(assetId, consumer);
 
         public Task RejectDepositApprovalAsync(Keccak assetId, Address consumer)
             => _depositApprovalService.RejectAsync(assetId, consumer);
-        
+
         public Task UpdateDepositApprovalsAsync(IReadOnlyList<DepositApproval> depositApprovals, Address provider)
             => _depositApprovalService.UpdateAsync(depositApprovals, provider);
-        
+
         #endregion
-        
+
         #region Providers
 
         public IReadOnlyList<Address> GetConnectedProviders()
             => _providerService.GetPeers().Select(p => p.ProviderAddress ?? throw new InvalidDataException("Connected provider peer has no provider address set")).ToArray();
-            
+
         public Task<IReadOnlyList<ProviderInfo>> GetKnownProvidersAsync()
             => _providerService.GetKnownAsync();
-        
+
         public Task ChangeProviderAddressAsync(INdmPeer peer, Address address)
             => _providerService.ChangeAddressAsync(peer, address);
 
         public void AddProviderPeer(INdmPeer peer)
             => _providerService.Add(peer);
-        
+
         #endregion
-        
+
         #region Receipts
-        
+
         public Task SendDataDeliveryReceiptAsync(DataDeliveryReceiptRequest request)
             => _receiptService.SendAsync(request);
-        
+
         #endregion
-        
+
         #region Refunds
-        
+
         public Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason)
             => _refundService.SetEarlyRefundTicketAsync(ticket, reason);
-        
+
         #endregion
-        
+
         #region Sessions
 
         public IReadOnlyList<ConsumerSession> GetActiveSessions()
@@ -218,12 +218,12 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true)
             => _sessionService.FinishSessionsAsync(provider, removePeer);
-        
+
         public Task<Keccak?> SendFinishSessionAsync(Keccak depositId)
             => _sessionService.SendFinishSessionAsync(depositId);
-        
+
         #endregion
-        
+
         #region Proxy
 
         public Task<NdmProxy?> GetProxyAsync()

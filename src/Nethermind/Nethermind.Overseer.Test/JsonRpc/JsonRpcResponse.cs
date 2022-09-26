@@ -31,7 +31,7 @@ namespace Nethermind.Overseer.Test.JsonRpc
                 Code = code;
                 Message = message;
             }
-            
+
             public int Code { get; set; }
             public string Message { get; set; }
             public object Data { get; set; }

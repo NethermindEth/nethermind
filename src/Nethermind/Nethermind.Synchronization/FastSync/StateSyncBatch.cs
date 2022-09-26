@@ -25,9 +25,9 @@ namespace Nethermind.Synchronization.FastSync
         {
             RequestedNodes = requestedNodes;
         }
-        
+
         public StateSyncItem[]? RequestedNodes { get; }
-        
+
         public byte[][]? Responses { get; set; }
 
         public int ConsumerId { get; set; }

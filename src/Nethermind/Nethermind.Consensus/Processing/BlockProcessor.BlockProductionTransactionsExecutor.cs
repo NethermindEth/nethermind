@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,20 +42,20 @@ namespace Nethermind.Consensus.Processing
             public BlockProductionTransactionsExecutor(
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
-                ILogManager logManager) 
+                ILogManager logManager)
                 : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor, 
-                    readOnlyTxProcessingEnv.StateProvider, 
-                    readOnlyTxProcessingEnv.StorageProvider, 
-                    specProvider, 
+                    readOnlyTxProcessingEnv.TransactionProcessor,
+                    readOnlyTxProcessingEnv.StateProvider,
+                    readOnlyTxProcessingEnv.StorageProvider,
+                    specProvider,
                     logManager)
             {
             }
-            
+
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
                 IStateProvider stateProvider,
-                IStorageProvider storageProvider, 
+                IStorageProvider storageProvider,
                 ISpecProvider specProvider,
                 ILogManager logManager)
             {
@@ -99,11 +99,11 @@ namespace Nethermind.Consensus.Processing
             }
 
             protected TxAction ProcessTransaction(
-                Block block, 
-                Transaction currentTx, 
-                int index, 
+                Block block,
+                Transaction currentTx,
+                int index,
                 BlockReceiptsTracer receiptsTracer,
-                ProcessingOptions processingOptions, 
+                ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
             {
@@ -116,19 +116,19 @@ namespace Nethermind.Consensus.Processing
                 else
                 {
                     _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                    
+
                     if (addToBlock)
                     {
                         transactionsInBlock.Add(currentTx);
                         _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                     }
                 }
-                
+
                 return args.Action;
             }
-            
+
             protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
-            
+
             protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
             {
                 block.TrySetTransactions(transactionsInBlock.ToArray());

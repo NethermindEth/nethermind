@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 else if (configuration.GetSection("QuickStart:GenesisTime").Exists())
                 {
                     ulong genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
-                    clockOffset = (long) genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
+                    clockOffset = (long)genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
 
                 if (clockOffset != 0)

@@ -31,7 +31,7 @@ namespace Nethermind.State
     {
         private static readonly UInt256 CacheSize = 1024;
 
-        private static readonly int CacheSizeInt = (int) CacheSize;
+        private static readonly int CacheSizeInt = (int)CacheSize;
 
         private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
 
@@ -40,7 +40,7 @@ namespace Nethermind.State
             Span<byte> buffer = stackalloc byte[32];
             for (int i = 0; i < CacheSizeInt; i++)
             {
-                UInt256 index = (UInt256) i;
+                UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
                 Cache[index] = Keccak.Compute(buffer).Bytes;
             }
@@ -57,7 +57,7 @@ namespace Nethermind.State
         {
             TrieType = TrieType.Storage;
         }
-        
+
         public static Span<byte> GetKey(in UInt256 index)
         {
             if (index < CacheSize)
@@ -78,7 +78,7 @@ namespace Nethermind.State
             byte[]? value = Get(key, storageRoot);
             if (value is null)
             {
-                return new byte[] {0};
+                return new byte[] { 0 };
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();

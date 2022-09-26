@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
             {
                 return Task.FromResult(PagedResult<DepositApproval>.Empty);
             }
-            
+
             var depositApprovals = _db.Values;
             if (!depositApprovals.Any())
             {
@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
 
             return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).ToArray().Paginate(query));
         }
-        
+
         public Task AddAsync(DepositApproval depositApproval)
         {
             _db.TryAdd(depositApproval.Id, depositApproval);

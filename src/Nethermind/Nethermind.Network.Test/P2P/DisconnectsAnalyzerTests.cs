@@ -41,25 +41,25 @@ namespace Nethermind.Network.Test.P2P
                 DisconnectsAnalyzer = new DisconnectsAnalyzer(logManager).WithIntervalOverride(10);
             }
         }
-        
+
         [Test]
         public void Can_pass_null_details()
         {
             Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
         }
-        
+
         [Test]
         public void Will_add_of_same_type()
         {
             Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
-            
+
             // GitHub actions not handling these tests well
             // ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
         }
-        
+
         [Test]
         public void Will_add_of_different_types()
         {
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test.P2P
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote, null);
             Thread.Sleep(15);
-            
+
             // GitHub actions not handling these tests well
             // ctx.TestLogger.LogList.Any(l => l.Contains("Remote")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
             // ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));

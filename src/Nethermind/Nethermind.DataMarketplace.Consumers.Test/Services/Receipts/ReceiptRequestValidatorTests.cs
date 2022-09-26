@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         {
             _validator = new ReceiptRequestValidator(LimboLogs.Instance);
         }
-        
+
         [Test]
         public void given_units_range_from_0_to_0_and_1_unpaid_units_request_should_be_valid()
         {
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             var previousUnitsRange = new UnitsRange(0, 9);
             var unitsRange = new UnitsRange(10, 19);
             var previousReceipt = new DataDeliveryReceiptToMerge(previousUnitsRange, null);
-            var receiptRequest = CreateRequest(unitsRange, new[] {previousReceipt});
+            var receiptRequest = CreateRequest(unitsRange, new[] { previousReceipt });
 
             var isValid = _validator.IsValid(receiptRequest, unpaidUnits, consumedUnits, purchasedUnits);
 
@@ -117,7 +117,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             var previousUnitsRange = new UnitsRange(10, 19);
             var unitsRange = new UnitsRange(0, 9);
             var previousReceipt = new DataDeliveryReceiptToMerge(previousUnitsRange, null);
-            var receiptRequest = CreateRequest(unitsRange, new[] {previousReceipt});
+            var receiptRequest = CreateRequest(unitsRange, new[] { previousReceipt });
 
             var isValid = _validator.IsValid(receiptRequest, unpaidUnits, consumedUnits, purchasedUnits);
 
@@ -133,7 +133,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             var previousUnitsRange = new UnitsRange(15, 19);
             var unitsRange = new UnitsRange(0, 9);
             var previousReceipt = new DataDeliveryReceiptToMerge(previousUnitsRange, null);
-            var receiptRequest = CreateRequest(unitsRange, new[] {previousReceipt});
+            var receiptRequest = CreateRequest(unitsRange, new[] { previousReceipt });
 
             var isValid = _validator.IsValid(receiptRequest, unpaidUnits, consumedUnits, purchasedUnits);
 
@@ -223,7 +223,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             var previousUnitsRange = new UnitsRange(0, 9);
             var unitsRange = new UnitsRange(9, 15);
             var previousReceipt = new DataDeliveryReceiptToMerge(previousUnitsRange, null);
-            var receiptRequest = CreateRequest(unitsRange, new[] {previousReceipt});
+            var receiptRequest = CreateRequest(unitsRange, new[] { previousReceipt });
 
             var isValid = _validator.IsValid(receiptRequest, unpaidUnits, consumedUnits, purchasedUnits);
 

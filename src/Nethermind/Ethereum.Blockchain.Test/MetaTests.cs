@@ -24,7 +24,8 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         private List<string> excludesDirectories = new List<string>()
@@ -37,7 +38,7 @@ namespace Ethereum.Blockchain.Test
             "TestFiles",
             "Blockhash"
         };
-        
+
         [Test]
         public void All_categories_are_tested()
         {
@@ -50,13 +51,13 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if(type == null && !excludesDirectories.Contains(directory))
+                if (type == null && !excludesDirectories.Contains(directory))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
                         continue;
                     }
-                    
+
                     missingCategories.Add(directory + " - " + expectedTypeName);
                 }
             }
@@ -80,15 +81,15 @@ namespace Ethereum.Blockchain.Test
                 }
                 else
                 {
-                    expectedTypeName += "s";    
+                    expectedTypeName += "s";
                 }
             }
 
             if (directory.StartsWith("vm"))
             {
-                return "Vm" + expectedTypeName;    
+                return "Vm" + expectedTypeName;
             }
-            
+
             return expectedTypeName;
         }
     }

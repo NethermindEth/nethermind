@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,28 +35,28 @@ namespace Nethermind.Core.Test.Collections
             journalSet.Restore(snapshot);
             journalSet.Should().BeEquivalentTo(Enumerable.Range(0, 10));
         }
-        
+
         [Test]
         public void Can_restore_empty_snapshot_on_empty()
         {
-            JournalSet<int> journalSet = new() {};
+            JournalSet<int> journalSet = new() { };
             int snapshot = journalSet.TakeSnapshot();
             journalSet.Restore(snapshot);
             journalSet.Restore(snapshot);
             journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
         }
-        
+
         [Test]
         public void Can_restore_empty_snapshot()
         {
-            JournalSet<int> journalSet = new() {};
+            JournalSet<int> journalSet = new() { };
             int snapshot = journalSet.TakeSnapshot();
             journalSet.AddRange(Enumerable.Range(0, 10));
             journalSet.Restore(snapshot);
             journalSet.Restore(snapshot);
             journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
         }
-        
+
         [Test]
         public void Snapshots_behave_as_sets()
         {

@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public UnitsRangeForRpc()
         {
         }
-        
+
         public UnitsRangeForRpc(UnitsRange range)
         {
             From = range.From;

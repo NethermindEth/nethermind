@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
         {
             return LimboLogs.Instance;
         }
-        
+
         [SetUp]
         public virtual void Setup()
         {
@@ -130,7 +130,7 @@ namespace Nethermind.Evm.Test
             long gasLimit,
             byte[] code,
             SenderRecipientAndMiner senderRecipientAndMiner = null,
-            int value = 1, 
+            int value = 1,
             long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
@@ -207,7 +207,7 @@ namespace Nethermind.Evm.Test
         protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx, long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(blockGasLimit).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] { tx }).WithGasLimit(blockGasLimit).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
@@ -233,10 +233,10 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();  
+            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
             Assert.AreEqual(expected, actualValue, "storage");
         }
-        
+
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
         {
             byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
@@ -246,18 +246,18 @@ namespace Nethermind.Evm.Test
         }
 
         private static int _callIndex = -1;
-        
+
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] {0}, $"storage {storageCell}, call {_callIndex}");
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
             }
         }
 

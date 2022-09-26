@@ -27,7 +27,7 @@ namespace Nethermind.Db.Rocks;
 public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
-    
+
     public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
         : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
     {
@@ -35,7 +35,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         foreach (T key in keys)
         {
-            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!); 
+            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
         }
     }
 
@@ -52,7 +52,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
     {
         InitCache(dbConfig);
-        
+
         ColumnFamilies result = new();
         ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
         foreach (T key in keys)

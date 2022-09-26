@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
                 throw new ArgumentException(
                     $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
             }
-            
+
             ClientId = peer.Node.ClientId;
             Host = peer.Node.Host == null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsBootnode = peer.Node.IsBootnode;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString("e");
-            
+
             if (includeDetails)
             {
                 ClientType = peer.Node.ClientType.ToString();

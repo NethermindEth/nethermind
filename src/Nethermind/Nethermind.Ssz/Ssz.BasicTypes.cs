@@ -34,39 +34,39 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset, value.Length), value);
             offset += value.Length;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, int value, ref int offset)
         {
             BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, sizeof(int)), value);
             offset += sizeof(int);
         }
-        
+
         private static void Encode(Span<byte> span, uint value, ref int offset)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset, sizeof(uint)), value);
             offset += sizeof(uint);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, ulong value, ref int offset)
         {
             Encode(span.Slice(offset, sizeof(ulong)), value);
             offset += sizeof(ulong);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, bool value, ref int offset)
         {
             Encode(span.Slice(offset, 1), value);
-            offset ++;
+            offset++;
         }
-        
+
         private static bool DecodeBool(Span<byte> span, ref int offset)
         {
             return span[offset++] == 1;
         }
-        
+
         public static void Encode(Span<byte> span, byte value)
         {
             span[0] = value;
@@ -83,7 +83,7 @@ namespace Nethermind.Ssz
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, uint value)
         {
@@ -108,7 +108,7 @@ namespace Nethermind.Ssz
         {
             value.ToLittleEndian(span);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, bool value)
         {
@@ -118,7 +118,7 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte Encode(bool value)
         {
-            return value ? (byte) 1 : (byte) 0;
+            return value ? (byte)1 : (byte)0;
         }
 
         public static void Encode(Span<byte> span, Span<bool> value)
@@ -194,7 +194,7 @@ namespace Nethermind.Ssz
 
             MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
         }
-        
+
         private static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
         {
             BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, VarOffsetSize), dynamicOffset);
@@ -202,7 +202,7 @@ namespace Nethermind.Ssz
             value.CopyTo(span.Slice(dynamicOffset, value.Length));
             dynamicOffset += value.Length;
         }
-        
+
         public static void Encode(Span<byte> span, ReadOnlySpan<byte> value)
         {
             const int typeSize = 1;
@@ -228,7 +228,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             return span[0];
         }
 
@@ -239,7 +239,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUShort)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             return BinaryPrimitives.ReadUInt16LittleEndian(span);
         }
 
@@ -251,10 +251,10 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInt)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             return BinaryPrimitives.ReadUInt32LittleEndian(span);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong DecodeULong(ReadOnlySpan<byte> span)
         {
@@ -263,10 +263,10 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeULong)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             return BinaryPrimitives.ReadUInt64LittleEndian(span);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -274,7 +274,7 @@ namespace Nethermind.Ssz
             offset += sizeof(ulong);
             return result;
         }
-        
+
         public static UInt128 DecodeUInt128(Span<byte> span)
         {
             const int expectedLength = 16;
@@ -282,7 +282,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
             ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
             UInt128.Create(out UInt128 result, s0, s1);
@@ -296,7 +296,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInt256)} expects input of length {expectedLength} and received {span.Length}");
             }
-            
+
             ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
             ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
             ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(16, 8));
@@ -312,7 +312,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInts256)} expects input in multiples of {typeSize} and received {span.Length}");
             }
-            
+
             UInt256[] result = new UInt256[span.Length / typeSize];
             for (int i = 0; i < span.Length / typeSize; i++)
             {
@@ -329,7 +329,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
             }
-            
+
             UInt128[] result = new UInt128[span.Length / typeSize];
             for (int i = 0; i < span.Length / typeSize; i++)
             {
@@ -346,7 +346,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeULongs)} expects input in multiples of {typeSize} and received {span.Length}");
             }
-            
+
             return MemoryMarshal.Cast<byte, ulong>(span);
         }
 
@@ -357,7 +357,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInts)} expects input in multiples of {typeSize} and received {span.Length}");
             }
-            
+
             return MemoryMarshal.Cast<byte, uint>(span);
         }
 
@@ -368,7 +368,7 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUShorts)} expects input in multiples of {typeSize} and received {span.Length}");
             }
-            
+
             return MemoryMarshal.Cast<byte, ushort>(span);
         }
 
@@ -383,14 +383,14 @@ namespace Nethermind.Ssz
             Type type = typeof(T);
             throw new InvalidDataException($"Invalid target length in SSZ encoding of {type.Name}. Target length is {targetLength} and expected length is {expectedLength}.");
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
         {
             Type type = typeof(T);
             throw new InvalidDataException($"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is {expectedLength}.");
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
         {

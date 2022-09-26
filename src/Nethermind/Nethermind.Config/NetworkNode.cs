@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ namespace Nethermind.Config
         }
 
         public override string ToString() => _enode.ToString();
-        
+
         public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
         {
             _enode = new Enode(publicKey, IPAddress.Parse(ip), port);

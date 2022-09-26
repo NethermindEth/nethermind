@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             PublicKey consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
             Address providerAddress = rlpStream.DecodeAddress();
             PublicKey providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            SessionState state = (SessionState) rlpStream.DecodeInt();
+            SessionState state = (SessionState)rlpStream.DecodeInt();
             uint startUnitsFromProvider = rlpStream.DecodeUInt();
             uint startUnitsFromConsumer = rlpStream.DecodeUInt();
             ulong startTimestamp = rlpStream.DecodeUlong();
@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             uint settledUnits = rlpStream.DecodeUInt();
 
             return new Session(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
-                providerNodeId, state,  startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp,
+                providerNodeId, state, startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits);
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.ConsumerNodeId.Bytes),
                 Serialization.Rlp.Rlp.Encode(item.ProviderAddress),
                 Serialization.Rlp.Rlp.Encode(item.ProviderNodeId.Bytes),
-                Serialization.Rlp.Rlp.Encode((int) item.State),
+                Serialization.Rlp.Rlp.Encode((int)item.State),
                 Serialization.Rlp.Rlp.Encode(item.StartUnitsFromProvider),
                 Serialization.Rlp.Rlp.Encode(item.StartUnitsFromConsumer),
                 Serialization.Rlp.Rlp.Encode(item.StartTimestamp),

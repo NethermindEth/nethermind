@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps
         {
             _api = api;
         }
-        
+
         public Task Execute(CancellationToken cancellationToken)
         {
             if (_api.Config<IInitConfig>().IsMining)

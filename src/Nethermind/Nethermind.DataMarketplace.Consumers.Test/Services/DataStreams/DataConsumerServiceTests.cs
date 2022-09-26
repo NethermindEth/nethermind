@@ -97,8 +97,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         [Test]
         public async Task set_units_should_update_units_and_session_for_time_unit_type()
             => await VerifyUnitsAsync(DataAssetUnitType.Time, 10,
-                (d, s) => (uint) (_timestamper.UnixTime.Seconds - s.StartTimestamp),
-                (d, s) => (uint) (_timestamper.UnixTime.Seconds - d.ConfirmationTimestamp - s.PaidUnits));
+                (d, s) => (uint)(_timestamper.UnixTime.Seconds - s.StartTimestamp),
+                (d, s) => (uint)(_timestamper.UnixTime.Seconds - d.ConfirmationTimestamp - s.PaidUnits));
 
         private async Task VerifyUnitsAsync(DataAssetUnitType unitType, uint paidUnits,
             Func<DepositDetails, Session, uint> expectedConsumedUnits,
@@ -128,7 +128,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var dataAvailability = DataAvailability.Available;
 
             await _dataConsumerService.SetDataAvailabilityAsync(depositId, dataAvailability);
-            
+
             _sessionService.Received(1).GetActive(depositId);
             await _sessionRepository.DidNotReceiveWithAnyArgs().UpdateAsync(Arg.Any<ConsumerSession>());
             await _consumerNotifier.DidNotReceiveWithAnyArgs()
@@ -151,15 +151,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             await _consumerNotifier.Received(1)
                 .SendDataAvailabilityChangedAsync(depositId, session.Id, dataAvailability);
         }
-        
+
         [Test]
         public async Task handling_invalid_data_should_fail_for_missing_session()
         {
             var depositId = Keccak.Zero;
             var reason = InvalidDataReason.InvalidResult;
-            
+
             await _dataConsumerService.HandleInvalidDataAsync(depositId, reason);
-            
+
             _sessionService.Received(1).GetActive(depositId);
             await _consumerNotifier.DidNotReceive().SendDataInvalidAsync(depositId, reason);
         }
@@ -171,13 +171,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var reason = InvalidDataReason.InvalidResult;
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             await _dataConsumerService.HandleInvalidDataAsync(depositId, reason);
-            
+
             _sessionService.Received(1).GetActive(depositId);
             await _consumerNotifier.Received(1).SendDataInvalidAsync(depositId, reason);
         }
-        
+
         [Test]
         public async Task handling_exceeded_grace_units_should_fail_for_missing_session()
         {
@@ -219,7 +219,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         private static DepositDetails GetDepositDetails(DataAssetUnitType unitType = DataAssetUnitType.Unit)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(unitType), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, DepositConfirmationTimestamp);
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, DepositConfirmationTimestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

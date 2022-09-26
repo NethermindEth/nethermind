@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
 
         public Task AddAsync(EthRequest request) => EthRequests.InsertOneAsync(request);
         public Task UpdateAsync(EthRequest request) => EthRequests.ReplaceOneAsync(r => r.Id == request.Id, request);
-        
+
         // MongoDB driver for C# doesn't support Date.Date comparison.
         public async Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
         {
@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
             {
                 return 0;
             }
-            
+
             var totalValue = UInt256.Zero;
             foreach (var request in requests)
             {

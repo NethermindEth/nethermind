@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-            
+
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,13 +23,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private TxDecoder _decoder = new();
-        
+
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
-            
+
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Transactions.Count; i++)
             {

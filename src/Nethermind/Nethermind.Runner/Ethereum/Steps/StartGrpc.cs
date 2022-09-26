@@ -50,14 +50,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     if (x.IsFaulted && logger.IsError)
                         logger.Error("Error during GRPC runner start", x.Exception);
                 }, cancellationToken);
-            
+
                 _api.GrpcServer = grpcServer;
-                
+
                 GrpcPublisher grpcPublisher = new(_api.GrpcServer);
                 _api.Publishers.Add(grpcPublisher);
-                
+
                 _api.DisposeStack.Push(grpcPublisher);
-                
+
 #pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => grpcRunner.StopAsync())); // do not await
 #pragma warning restore 4014

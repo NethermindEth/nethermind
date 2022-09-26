@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -64,12 +64,12 @@ namespace Nethermind.BeaconNode
 
         public bool CheckIfValidatorActive(BeaconState state, ValidatorIndex validatorIndex)
         {
-            if ((int) validatorIndex >= state.Validators.Count)
+            if ((int)validatorIndex >= state.Validators.Count)
             {
                 return false;
             }
 
-            Validator validator = state.Validators[(int) validatorIndex];
+            Validator validator = state.Validators[(int)validatorIndex];
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             bool isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             return isActive;
@@ -239,7 +239,7 @@ namespace Nethermind.BeaconNode
         public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch? optionalEpoch)
         {
             // TODO: Obsolete this and remove it; only used in tests
-            var validatorDuties = await GetValidatorDutiesAsync(new[] {validatorPublicKey}, optionalEpoch);
+            var validatorDuties = await GetValidatorDutiesAsync(new[] { validatorPublicKey }, optionalEpoch);
             return validatorDuties.FirstOrDefault();
         }
 
@@ -271,7 +271,7 @@ namespace Nethermind.BeaconNode
             {
                 if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
                 {
-                    return new ValidatorIndex((ulong) index);
+                    return new ValidatorIndex((ulong)index);
                 }
             }
 

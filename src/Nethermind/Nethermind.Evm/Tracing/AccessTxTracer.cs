@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,9 +29,9 @@ namespace Nethermind.Evm.Tracing
     {
         private const long ColdVsWarmSloadDelta = GasCostOf.ColdSLoad - GasCostOf.AccessStorageListEntry;
         public const long MaxStorageAccessToOptimize = GasCostOf.AccessAccountListEntry / ColdVsWarmSloadDelta;
-        
+
         private readonly Address[] _addressesToOptimize;
-        
+
         public bool IsTracingState => false;
         public bool IsTracingStorage => false;
         public bool IsTracingReceipt => true;
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing
         {
             _addressesToOptimize = addressesToOptimize;
         }
-        
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             throw new NotImplementedException();
@@ -225,7 +225,7 @@ namespace Nethermind.Evm.Tracing
 
             AccessList = new AccessList(dictionary.ToDictionary(k => k.Key, v => (IReadOnlySet<UInt256>)v.Value));
         }
-        
+
         public long GasSpent { get; set; }
         public AccessList? AccessList { get; private set; }
     }

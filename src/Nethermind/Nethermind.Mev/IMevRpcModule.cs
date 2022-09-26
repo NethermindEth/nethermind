@@ -24,13 +24,13 @@ namespace Nethermind.Mev
 
     [RpcModule(ModuleType.Mev)]
     public interface IMevRpcModule : IRpcModule
-    {        
+    {
         [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc);
-        
+
         [JsonRpcMethod(Description = "Adds megabundle to the tx pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc);
-        
+
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
         ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc);
     }

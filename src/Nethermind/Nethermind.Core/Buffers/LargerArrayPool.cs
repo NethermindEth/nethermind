@@ -33,7 +33,7 @@ namespace Nethermind.Core.Buffers
         // The count is estimated as a number of CPUs (similar to IEthModule) and 2 additional ones.
         // The CPU based is aligned with the SKU-like cloud environments where one scales both CPU count and an amount of memory.
         private static readonly int s_maxLargeBufferCount = Environment.ProcessorCount + 2;
-        
+
         private readonly Stack<byte[]> _pool = new(s_maxLargeBufferCount);
         private readonly int _largeBufferSize;
         private readonly int _arrayPoolLimit;

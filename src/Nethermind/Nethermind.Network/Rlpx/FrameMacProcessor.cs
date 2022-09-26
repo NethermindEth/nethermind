@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,9 +42,9 @@ namespace Nethermind.Network.Rlpx
             _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
-            _egressMacCopy = (KeccakDigest) _egressMac.Copy();
+            _egressMacCopy = (KeccakDigest)_egressMac.Copy();
             _ingressMac = secrets.IngressMac;
-            _ingressMacCopy = (KeccakDigest) _ingressMac.Copy();
+            _ingressMacCopy = (KeccakDigest)_ingressMac.Copy();
             _aesEngine = MakeMacCipher();
             _checkMacBuffer = new byte[_ingressMac.GetDigestSize()];
             _addMacBuffer = new byte[_ingressMac.GetDigestSize()];
@@ -127,7 +127,7 @@ namespace Nethermind.Network.Rlpx
             {
                 DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0); // frame MAC seed
             }
-            
+
             byte[] aesBlock = _ingressAesBlockBuffer;
             DoFinalNoReset(_ingressMac, _ingressMacCopy, aesBlock, 0);
 

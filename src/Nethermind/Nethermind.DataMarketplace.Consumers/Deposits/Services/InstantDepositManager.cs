@@ -46,33 +46,33 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         }
 
         public Task<DepositDetails?> GetAsync(Keccak depositId) => _depositManager.GetAsync(depositId);
-        
+
         public Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query) => _depositManager.BrowseAsync(query);
 
         public async Task<Keccak?> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address,
             UInt256? gasPrice = null)
         {
             Keccak? depositId = await _depositManager.MakeAsync(assetId, units, value, address, gasPrice);
-            if(depositId == null)
+            if (depositId == null)
             {
                 return null;
             }
-            
+
             if (_logger.IsWarn) _logger.Warn($"NDM instantly verifying deposit with id: '{depositId}'...");
             DepositDetails? deposit = await _depositDetailsRepository.GetAsync(depositId);
             if (deposit is null)
             {
                 throw new InvalidDataException($"Deposit details are null just after creating deposit with id '{depositId}'");
             }
-            
+
             if (deposit.Transaction == null)
             {
                 throw new InvalidDataException($"Retrieved a deposit {depositId} without Transaction set.");
             }
-            
+
             deposit.Transaction.SetIncluded();
             deposit.SetConfirmations(_requiredBlockConfirmations);
-            deposit.SetConfirmationTimestamp((uint) _timestamper.UnixTime.Seconds);
+            deposit.SetConfirmationTimestamp((uint)_timestamper.UnixTime.Seconds);
             await _depositDetailsRepository.UpdateAsync(deposit);
             if (_logger.IsWarn) _logger.Warn($"NDM instantly verified deposit with id '{depositId}'.");
 

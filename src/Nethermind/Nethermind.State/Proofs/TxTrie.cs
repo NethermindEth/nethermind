@@ -38,7 +38,7 @@ namespace Nethermind.State.Proofs
         /// <param name="allowMerkleProofConstructions">Some tries do not need to be used for proof constructions.
         /// In such cases we can avoid maintaining any in-memory databases.</param>
         public TxTrie(IReadOnlyList<Transaction>? txs, bool allowMerkleProofConstructions = false)
-            : base(allowMerkleProofConstructions ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
+            : base(allowMerkleProofConstructions ? (IDb)new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowMerkleProofConstructions = allowMerkleProofConstructions;
             if ((txs?.Count ?? 0) == 0)
@@ -65,9 +65,9 @@ namespace Nethermind.State.Proofs
             {
                 throw new InvalidOperationException("Cannot build proofs without underlying DB (for now?)");
             }
-            
+
             ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
-            Accept(proofCollector, RootHash, new VisitingOptions {ExpectAccounts = false});
+            Accept(proofCollector, RootHash, new VisitingOptions { ExpectAccounts = false });
             return proofCollector.BuildResult();
         }
     }

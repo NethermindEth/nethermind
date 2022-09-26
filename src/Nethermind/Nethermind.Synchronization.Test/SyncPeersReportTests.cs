@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Test
 
             var syncPeer = BuildPeer(false);
 
-            var peers = new[] {syncPeer};
+            var peers = new[] { syncPeer };
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -58,8 +58,8 @@ namespace Nethermind.Synchronization.Test
             var syncPeer = BuildPeer(false);
             var syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
-            
+            var peers = new[] { syncPeer, syncPeer2 };
+
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -75,8 +75,8 @@ namespace Nethermind.Synchronization.Test
             var syncPeer = BuildPeer(false);
             var syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
-            
+            var peers = new[] { syncPeer, syncPeer2 };
+
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test
             var syncPeer = BuildPeer(false);
             var syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
+            var peers = new[] { syncPeer, syncPeer2 };
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);

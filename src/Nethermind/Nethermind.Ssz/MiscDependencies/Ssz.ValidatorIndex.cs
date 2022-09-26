@@ -62,14 +62,14 @@ namespace Nethermind.Ssz
 
             MemoryMarshal.Cast<ValidatorIndex, byte>(value).CopyTo(span);
         }
-        
+
         private static void Encode(Span<byte> span, ValidatorIndex[]? containers, ref int offset, ref int dynamicOffset)
         {
             if (containers is null)
             {
                 return;
             }
-            
+
             int length = containers.Length * Ssz.ValidatorIndexLength;
             Encode(span, dynamicOffset, ref offset);
             Encode(span.Slice(dynamicOffset, length), containers);

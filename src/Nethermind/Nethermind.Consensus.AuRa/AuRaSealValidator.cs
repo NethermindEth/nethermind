@@ -37,24 +37,24 @@ namespace Nethermind.Consensus.AuRa
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
-        
+
         public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _validatorStore = validatorStore?? throw new ArgumentNullException(nameof(validatorStore));
+            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public IReportingValidator ReportingValidator { get; set; } = NullReportingValidator.Instance;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             const long rejectedStepDrift = 4;
-            
+
             if (header.AuRaSignature == null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature.");
@@ -74,13 +74,13 @@ namespace Nethermind.Consensus.AuRa
                 if (step == parent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-	                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
                 else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
                 {
                     if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-    	            ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
 
@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-	                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
                 }
 
                 if (header.Number >= _parameters.ValidateScoreTransition)
@@ -157,7 +157,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsError) _logger.Error($"Author {header.Beneficiary} of the block {header.Number}, hash {header.Hash} doesn't match signer {author}.");
                 return false;
             }
-            
+
             // cannot call: _validator.IsValidSealer(header.Author); because we can call it only when previous step was processed.
             // this responsibility delegated to actual validator during processing with AuRaValidator and IValidSealerStrategy
             return true;
@@ -187,10 +187,10 @@ namespace Nethermind.Consensus.AuRa
                 public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
                 public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);
                 public override int GetHashCode() => HashCode.Combine(Author, Block);
-                public static bool operator==(AuthorBlock obj1, AuthorBlock obj2) => obj1.Equals(obj2);
-                public static bool operator!=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
+                public static bool operator ==(AuthorBlock obj1, AuthorBlock obj2) => obj1.Equals(obj2);
+                public static bool operator !=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
             }
-            
+
             private class AuthorBlockForStep
             {
                 public AuthorBlockForStep(in long step, AuthorBlock? authorBlock)
@@ -203,7 +203,7 @@ namespace Nethermind.Consensus.AuRa
                 public AuthorBlock? AuthorBlock { get; set; }
                 public ISet<AuthorBlock> AuthorBlocks { get; set; }
             }
-            
+
             private class StepElementComparer : IComparer<AuthorBlockForStep>
             {
                 public static readonly StepElementComparer Instance = new StepElementComparer();
@@ -213,10 +213,10 @@ namespace Nethermind.Consensus.AuRa
                     return x.Step.CompareTo(y.Step);
                 }
             }
-            
-            private readonly List<AuthorBlockForStep> _list 
+
+            private readonly List<AuthorBlockForStep> _list
                 = new List<AuthorBlockForStep>();
-            
+
             private const int CacheSizeFullRoundsMultiplier = 4;
 
             public bool ContainsSiblingOrInsert(BlockHeader header, int validatorCount)
@@ -240,7 +240,7 @@ namespace Nethermind.Consensus.AuRa
                             {
                                 stepElement.AuthorBlock.Value
                             };
-                            
+
                             stepElement.AuthorBlock = null;
                         }
 
@@ -252,7 +252,7 @@ namespace Nethermind.Consensus.AuRa
                 {
                     _list.Add(new AuthorBlockForStep(step, item));
                 }
-                
+
                 ClearOldCache(step, validatorCount);
 
                 return containsSibling;

@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override int PacketType => SnapMessageCode.GetAccountRange;
 
         public AccountRange AccountRange { get; set; }
-        
+
         /// <summary>
         /// Soft limit at which to stop returning data
         /// </summary>

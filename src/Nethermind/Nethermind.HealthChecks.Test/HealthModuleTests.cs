@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.HealthChecks.Test
             INodeHealthService nodeHealthService = Substitute.For<INodeHealthService>();
             nodeHealthService.CheckHealth().Returns(new CheckHealthResult()
             {
-                Healthy = false, 
+                Healthy = false,
                 Messages = new List<(string, string)>()
                 {
                     {("Still syncing", "Syncing in progress")}

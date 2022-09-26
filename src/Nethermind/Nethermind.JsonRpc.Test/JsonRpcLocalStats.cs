@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test
     public class JsonRpcLocalStatsTests
     {
         private TestLogger _testLogger;
-        
+
         private JsonRpcConfig _config = new();
 
         private ManualTimestamper _manualTimestamper;
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|2|150|200|0|0|0|");
             CheckLogLine("TOTAL|2|150|200|0|0|0|");
         }
-        
+
         [Test]
         public void Single_average_is_fine()
         {
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|1|100|100|0|0|0|");
             CheckLogLine("TOTAL|1|100|100|0|0|0|");
         }
-        
+
         [Test]
         public void Swaps_properly()
         {
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|1|500|500|0|0|0|");
             _testLogger.LogList.Clear();
         }
-        
+
         [Test]
         public void Calls_do_not_delay_report()
         {
@@ -97,13 +97,13 @@ namespace Nethermind.JsonRpc.Test
 
             _testLogger.LogList.Should().HaveCountGreaterThan(0);
         }
-        
+
         [Test]
         public void Does_not_report_when_info_not_enabled()
         {
             _testLogger = new TestLogger();
             _testLogger.IsInfo = false;
-            
+
             OneLoggerLogManager logManager = new(_testLogger);
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, logManager);
             localStats.ReportCall("A", 100, true);
@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 300, true);
             _testLogger.LogList.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Does_not_report_when_nothing_to_report()
         {
@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 300, true);
             _testLogger.LogList.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Multiple_have_no_decimal_places()
         {
@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|3|33|50|3|67|100|");
             CheckLogLine("TOTAL|3|33|50|3|67|100|");
         }
-        
+
         [Test]
         public void Single_of_each_is_fine()
         {
@@ -151,7 +151,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("B|1|75|75|1|175|175|");
             CheckLogLine("TOTAL|2|50|75|2|150|175|");
         }
-        
+
         [Test]
         public void Orders_alphabetically()
         {
@@ -169,7 +169,7 @@ namespace Nethermind.JsonRpc.Test
         {
             _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
         }
-        
+
         private void MakeTimePass()
         {
             _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);

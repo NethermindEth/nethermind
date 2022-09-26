@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -55,12 +55,12 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             _value = _scenarios[ScenarioIndex];
-            
+
             Console.WriteLine($"Length current: {Current().Length}");
             Console.WriteLine($"Length improved: {Improved().Length}");
             Check(Current().Bytes, Improved().Bytes);
         }
-        
+
         private void Check(byte[] a, byte[] b)
         {
             if (!a.SequenceEqual(b))

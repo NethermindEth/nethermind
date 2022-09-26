@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,9 +49,9 @@ namespace Nethermind.Network.P2P
         void AddSupportedCapability(Capability capability);
         bool HasAvailableCapability(Capability capability);
         bool HasAgreedCapability(Capability capability);
-      
+
         IPingSender PingSender { get; set; }
-        
+
         void AddProtocolHandler(IProtocolHandler handler);
 
         bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);

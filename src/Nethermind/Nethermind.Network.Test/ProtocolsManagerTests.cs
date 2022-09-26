@@ -213,7 +213,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 63;
-                
+
                 return ReceiveStatus(msg);
             }
 
@@ -222,7 +222,7 @@ namespace Nethermind.Network.Test
                 IByteBuffer statusPacket = _serializer.ZeroSerialize(msg);
                 statusPacket.ReadByte();
 
-                _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) {PacketType = Eth62MessageCode.Status + 16});
+                _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
                 return this;
             }
 
@@ -246,7 +246,7 @@ namespace Nethermind.Network.Test
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> {new("eth", 62)};
+                msg.Capabilities = new List<Capability> { new("eth", 62) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
@@ -254,7 +254,7 @@ namespace Nethermind.Network.Test
                 _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
                 return this;
             }
-            
+
             public Context ReceiveHelloNoEth()
             {
                 HelloMessage msg = new();
@@ -266,11 +266,11 @@ namespace Nethermind.Network.Test
                 _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
                 return this;
             }
-            
+
             public Context ReceiveHelloEth(int protocolVersion)
             {
                 HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> {new("eth", protocolVersion)};
+                msg.Capabilities = new List<Capability> { new("eth", protocolVersion) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
@@ -279,7 +279,7 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
-            
+
             public Context ReceiveHelloWrongEth()
             {
                 return ReceiveHelloEth(61);
@@ -412,7 +412,7 @@ namespace Nethermind.Network.Test
                 .ReceiveHelloNoEth()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Disconnects_on_wrong_eth()
         {
@@ -439,7 +439,7 @@ namespace Nethermind.Network.Test
                 .ReceiveStatusWrongChain()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Disconnects_on_wrong_genesis_hash()
         {
@@ -453,7 +453,7 @@ namespace Nethermind.Network.Test
                 .ReceiveStatusWrongGenesis()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Initialized_with_eth66_only()
         {

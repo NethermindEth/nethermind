@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rpc.Models
         public uint ConsumedUnits { get; set; }
         public string DepositValue { get; set; }
         public bool HasAvailableUnits { get; set; }
-        
+
         public ConsumerForRpc(Consumer consumer)
         {
             DepositId = consumer.DepositId;

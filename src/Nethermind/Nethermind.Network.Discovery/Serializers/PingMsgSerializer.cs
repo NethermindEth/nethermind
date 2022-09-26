@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -59,7 +59,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
 
         byte[] serializedMsg = Serialize(typeByte, data);
         msg.Mdc = serializedMsg.Slice(0, 32);
-            
+
         return serializedMsg;
     }
 
@@ -72,7 +72,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
 
         rlp.ReadSequenceLength();
         ReadOnlySpan<byte> sourceAddress = rlp.DecodeByteArraySpan();
-            
+
         // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
         // our discovery messages will not be routed correctly (the fix will not be part of this commit)
         rlp.DecodeInt(); // UDP port
@@ -86,7 +86,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
 
         long expireTime = rlp.DecodeLong();
         PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc);
-        
+
         msg.Version = version;
         if (version == 4)
         {

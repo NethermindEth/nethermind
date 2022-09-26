@@ -36,9 +36,9 @@ namespace Nethermind.Blockchain.Test.Producers
             trigger.TriggerBlockProduction += (s, e) => triggered++;
             for (int i = 0; i < 2; i++)
             {
-                txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));    
+                txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));
             }
-            
+
             triggered.Should().Be(2);
         }
     }

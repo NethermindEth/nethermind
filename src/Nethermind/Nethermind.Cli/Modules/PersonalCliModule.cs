@@ -39,13 +39,13 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>($"personal_newAccount", password).Result;
         }
-        
+
         [CliFunction("personal", "lockAccount")]
         public bool LockAccount(string addressHex)
         {
             return NodeManager.Post<bool>($"personal_lockAccount", addressHex).Result;
         }
-        
+
         [CliFunction("personal", "unlockAccount")]
         public bool UnlockAccount(string addressHex, string password)
         {

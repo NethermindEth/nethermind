@@ -221,7 +221,7 @@ namespace Nethermind.State
             {
                 storage.Value.Commit(blockNumber);
             }
-            
+
             // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise

@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
         }
-        
+
         [Test]
         public void Can_calculate_root()
         {
@@ -55,18 +55,18 @@ namespace Nethermind.Blockchain.Test.Proofs
                     txTrie.RootHash.ToString());
             }
         }
-        
+
         [Test]
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
-            
+
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
         }
-        
+
         [Test]
         public void Can_collect_proof_with_trie_case_2()
         {
@@ -74,11 +74,11 @@ namespace Nethermind.Blockchain.Test.Proofs
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
-            
+
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
         }
-        
+
         [Test]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
@@ -88,8 +88,8 @@ namespace Nethermind.Blockchain.Test.Proofs
             txTrie.UpdateRootHash();
             for (int i = 0; i < 1000; i++)
             {
-                byte[][] proof = txTrie.BuildProof(i);    
-                VerifyProof(proof, txTrie.RootHash);    
+                byte[][] proof = txTrie.BuildProof(i);
+                VerifyProof(proof, txTrie.RootHash);
             }
         }
 

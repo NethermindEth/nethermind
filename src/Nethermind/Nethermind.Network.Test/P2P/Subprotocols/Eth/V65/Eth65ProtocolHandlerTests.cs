@@ -78,13 +78,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 LimboLogs.Instance);
             _handler.Init();
         }
-        
+
         [TearDown]
         public void TearDown()
         {
             _handler.Dispose();
         }
-        
+
         [Test]
         public void Metadata_correct()
         {
@@ -97,7 +97,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _handler.HeadHash.Should().BeNull();
             _handler.HeadNumber.Should().Be(0);
         }
-        
+
         [TestCase(1)]
         [TestCase(NewPooledTransactionHashesMessage.MaxCount - 1)]
         [TestCase(NewPooledTransactionHashesMessage.MaxCount)]
@@ -111,10 +111,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             }
 
             _handler.SendNewTransactions(txs, false);
-            
+
             _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == txCount));
         }
-        
+
         [TestCase(3201)]
         [TestCase(10000)]
         [TestCase(20000)]
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             }
 
             _handler.SendNewTransactions(txs, false);
-            
+
             _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == NewPooledTransactionHashesMessage.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
         }
     }

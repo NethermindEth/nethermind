@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,23 +23,23 @@ namespace Nethermind.Core2.Containers
     public class VoluntaryExit
     {
         public static readonly VoluntaryExit Zero = new VoluntaryExit(Epoch.Zero, ValidatorIndex.Zero);
-        
+
         /// <summary>
         /// The earliest epoch when voluntary exit can be processed
         /// </summary>
         public Epoch Epoch { get; }
         public ValidatorIndex ValidatorIndex { get; }
-        
+
         public VoluntaryExit(Epoch epoch, ValidatorIndex validatorIndex)
         {
             Epoch = epoch;
             ValidatorIndex = validatorIndex;
         }
-        
+
         public bool Equals(VoluntaryExit? other)
         {
-            return other != null 
-                   && Epoch == other.Epoch 
+            return other != null
+                   && Epoch == other.Epoch
                    && ValidatorIndex == other.ValidatorIndex;
         }
 
@@ -54,7 +54,7 @@ namespace Nethermind.Core2.Containers
         {
             return HashCode.Combine(Epoch, ValidatorIndex);
         }
-        
+
         public override string ToString()
         {
             return $"V:{ValidatorIndex} E:{Epoch}";

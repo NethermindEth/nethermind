@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Consensus
         public static NullSealEngine Instance { get; } = new();
 
         public Address Address => Address.Zero;
-        
+
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             return Task.FromResult(block);

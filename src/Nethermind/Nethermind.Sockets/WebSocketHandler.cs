@@ -18,9 +18,9 @@ namespace Nethermind.Sockets
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Task SendRawAsync(ArraySegment<byte> data) => 
-            _webSocket.State != WebSocketState.Open 
-                ? Task.CompletedTask 
+        public Task SendRawAsync(ArraySegment<byte> data) =>
+            _webSocket.State != WebSocketState.Open
+                ? Task.CompletedTask
                 : _webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
 
         public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
@@ -51,7 +51,7 @@ namespace Nethermind.Sockets
                                 if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
                             }
                         }
-                        else if(innerException is WebSocketException webSocketException)
+                        else if (innerException is WebSocketException webSocketException)
                         {
                             if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                             {
@@ -61,7 +61,7 @@ namespace Nethermind.Sockets
                             {
                                 if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({webSocketException.WebSocketErrorCode}: {webSocketException.ErrorCode}). {innerException.Message}");
                             }
-                        } 
+                        }
                         else
                         {
                             if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
@@ -101,7 +101,7 @@ namespace Nethermind.Sockets
                 return _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, result?.CloseStatusDescription,
                     CancellationToken.None);
             }
-            
+
             return Task.CompletedTask;
         }
 

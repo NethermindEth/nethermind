@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Confirmed.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task try_confirm_should_not_confirm_deposit_if_it_is_already_rejected()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             deposit.Confirmed.Should().BeFalse();
             deposit.Rejected.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task try_confirm_should_not_confirm_deposit_if_transaction_was_not_found()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.DidNotReceive().GetLatestBlockNumberAsync();
             deposit.Confirmed.Should().BeFalse();
         }
-        
+
         [Test]
         public async Task try_confirm_should_not_confirm_deposit_if_transaction_is_pending()
         {
@@ -118,14 +118,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             deposit.Transaction.Type.Should().Be(TransactionType.Cancellation);
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
         }
-        
+
         [Test]
         public async Task try_confirm_should_not_confirm_deposit_if_transaction_is_set_as_included_but_was_not_found()
         {
             var transactionDetails = GetTransaction();
             var transaction = transactionDetails.Transaction;
             transaction.Hash = Keccak.Zero;
-            
+
             var deposit = GetDepositDetails(transactions: new[]
             {
                 new TransactionInfo(transaction.Hash, transaction.Value, transaction.GasPrice,
@@ -149,7 +149,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Confirmed.Should().BeFalse();
         }
-        
+
         [Test]
         public async Task try_confirm_should_skip_further_processing_if_block_was_not_found()
         {
@@ -164,7 +164,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.Received().FindBlockAsync(latestBlockNumber);
             await _depositService.DidNotReceive().VerifyDepositAsync(deposit.Consumer, deposit.Id, Arg.Any<long>());
         }
-        
+
         [Test]
         public async Task try_confirm_should_skip_further_processing_if_confirmation_timestamp_is_0()
         {
@@ -182,7 +182,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _depositService.Received().VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number);
             await _depositRepository.Received().UpdateAsync(deposit);
         }
-        
+
         [Test]
         public async Task try_confirm_should_set_confirmation_timestamp_for_the_first_time_if_is_greater_than_0()
         {
@@ -200,7 +200,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _depositRepository.Received().UpdateAsync(deposit);
             deposit.ConfirmationTimestamp.Should().Be(confirmationTimestamp);
         }
-        
+
         [Test]
         public async Task try_confirm_should_confirm_deposit_if_timestamp_is_greater_than_0_and_required_number_of_confirmations_is_achieved()
         {
@@ -224,7 +224,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _consumerNotifier.Received().SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
                 _requiredBlockConfirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, true);
         }
-        
+
         [Test]
         public async Task try_confirm_should_reject_deposit_if_transaction_is_missing_block_confirmation()
         {
@@ -260,7 +260,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             IEnumerable<TransactionInfo> transactions = null)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                transactions ?? new[] {TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, timestamp);
+                transactions ?? new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, timestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

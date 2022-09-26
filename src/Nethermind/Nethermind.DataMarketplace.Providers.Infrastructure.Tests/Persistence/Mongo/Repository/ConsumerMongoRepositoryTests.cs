@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             Consumer result = await repo.GetAsync(consumer.DepositId);
             result.Should().BeEquivalentTo(consumer);
         }
-        
+
         [Test]
         public async Task Can_update_async()
         {
@@ -57,9 +57,9 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
         private static Consumer BuildDummyConsumer()
         {
-            return new Consumer(TestItem.KeccakA, 1, new DataRequest(TestItem.KeccakB, 2, 3, 4, new byte[]{1,2,3}, TestItem.AddressA, TestItem.AddressB, new Signature(new byte[65])), BuildDummyDataAsset(), true);
+            return new Consumer(TestItem.KeccakA, 1, new DataRequest(TestItem.KeccakB, 2, 3, 4, new byte[] { 1, 2, 3 }, TestItem.AddressA, TestItem.AddressB, new Signature(new byte[65])), BuildDummyDataAsset(), true);
         }
-        
+
         private static DataAsset BuildDummyDataAsset()
         {
             return new DataAsset(TestItem.KeccakA, "a", "b", 1000, DataAssetUnitType.Unit, 100, 100000,
@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             await repo.AddAsync(consumer);
             await repo.BrowseAsync(new GetConsumers());
         }
-        
+
         [Test]
         public async Task Can_browse_null_query()
         {

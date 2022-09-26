@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -88,11 +88,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 await chain.Build();
                 return chain;
             }
-            
+
             public class FullTestPruner : FullPruner
             {
-                public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false); 
-                
+                public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
+
                 public FullTestPruner(
                     IFullPruningDb pruningDb,
                     IPruningTrigger pruningTrigger,
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 }
             }
         }
-            
+
         [Test]
         public async Task prune_on_disk_multiple_times()
         {
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 await RunPruning(chain, i, false);
             }
         }
-        
+
         [Test]
         public async Task prune_on_disk_only_once()
         {
@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
             bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-            
+
             await chain.AddBlock(true);
 
             if (!onlyFirstRuns || time == 0)

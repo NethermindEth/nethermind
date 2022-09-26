@@ -61,7 +61,7 @@ namespace Nethermind.Vault
 
             return _accounts.Keys.ToArray();
         }
-        
+
         public async Task<Address> CreateAccount()
         {
             Key key = new Key();
@@ -82,9 +82,9 @@ namespace Nethermind.Vault
                 throw new ApplicationException($"Failed to create vault key with a valid {nameof(key.Id)}.");
             }
 
-            if(_logger.IsTrace) _logger.Trace(
+            if (_logger.IsTrace) _logger.Trace(
                 $"Created key {createdKey.Address} {createdKey.Id} in vault {createdKey.VaultId}");
-            
+
             Address account = new Address(createdKey.Address);
             if (!_accounts.TryAdd(account, createdKey.Id.Value))
             {
@@ -101,8 +101,8 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
-            if(_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
+
+            if (_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
             await _vaultService.DeleteKey(_vaultId, keyId.Value);
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
+
             string signature = await _vaultService.Sign(_vaultId, keyId.Value, message.ToString(false));
             return new Signature(signature);
         }
@@ -135,7 +135,7 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
+
             string sig = Convert.ToString(signature)!.Remove(0, 2);
             bool result = await _vaultService.Verify(_vaultId, keyId.Value, message.ToString(false), sig);
             return result;
@@ -148,7 +148,7 @@ namespace Nethermind.Vault
             {
                 return null;
             }
-            
+
             return _accounts[address];
         }
 
@@ -158,7 +158,7 @@ namespace Nethermind.Vault
             {
                 throw new ArgumentException($"Can only convert keys with {nameof(key.Id)} that is not NULL");
             }
-            
+
             if (key.Address == null)
             {
                 throw new ArgumentException($"Can only convert keys with {nameof(key.Address)} that is not NULL ({key.Name})");

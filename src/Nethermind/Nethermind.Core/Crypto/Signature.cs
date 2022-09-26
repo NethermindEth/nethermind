@@ -25,7 +25,7 @@ namespace Nethermind.Core.Crypto
     public class Signature : IEquatable<Signature>
     {
         public const int VOffset = 27;
-        
+
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
             if (bytes.Length != 64)
@@ -81,9 +81,9 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; } = new byte[64];
         public ulong V { get; set; }
 
-        public ulong? ChainId => V < 35 ? null : (ulong?) (V + (V % 2) - 36) / 2;
+        public ulong? ChainId => V < 35 ? null : (ulong?)(V + (V % 2) - 36) / 2;
 
-        public byte RecoveryId => V <= VOffset + 1 ? (byte) (V - VOffset) : (byte) (1 - V % 2);
+        public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
 
         public byte[] R => Bytes.Slice(0, 32);
         public Span<byte> RAsSpan => Bytes.AsSpan().Slice(0, 32);
@@ -120,7 +120,7 @@ namespace Nethermind.Core.Crypto
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((Signature) obj);
+            return Equals((Signature)obj);
         }
 
         public override int GetHashCode()

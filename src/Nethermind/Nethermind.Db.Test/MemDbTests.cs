@@ -29,28 +29,28 @@ namespace Nethermind.Db.Test
         public void Simple_set_get_is_fine()
         {
             IDb memDb = new MemDb();
-            byte[] bytes = new byte[] {1, 2, 3};
+            byte[] bytes = new byte[] { 1, 2, 3 };
             memDb.Set(TestItem.KeccakA, bytes);
             byte[] retrievedBytes = memDb.Get(TestItem.KeccakA);
             retrievedBytes.Should().BeEquivalentTo(bytes);
         }
 
-        private byte[] _sampleValue = {1, 2, 3};
+        private byte[] _sampleValue = { 1, 2, 3 };
 
         [Test]
         public void Can_create_with_delays()
         {
             MemDb memDb = new(10, 10);
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] {TestItem.KeccakA.Bytes}];
+            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.Bytes }];
         }
 
         [Test]
         public void Can_create_with_name()
         {
             MemDb memDb = new("desc");
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
             memDb.Name.Should().Be("desc");
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Db.Test
         public void Can_create_without_arguments()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] {TestItem.KeccakB.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes}];
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes }];
             result.Should().HaveCount(3);
             result[0].Value.Should().NotBeNull();
             result[1].Value.Should().NotBeNull();

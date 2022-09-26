@@ -226,7 +226,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
             batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             if (batch == null)
             {
-                if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                 return SyncResponseHandlingResult.InternalError;
             }
 
@@ -327,11 +327,11 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch dependentBatch = new();
             dependentBatch.StartNumber = batch.StartNumber;
-            dependentBatch.RequestSize = (int) (addedLast - addedEarliest + 1);
+            dependentBatch.RequestSize = (int)(addedLast - addedEarliest + 1);
             dependentBatch.MinNumber = batch.MinNumber;
             dependentBatch.Response = batch.Response!
-                .Skip((int) (addedEarliest - batch.StartNumber))
-                .Take((int) (addedLast - addedEarliest + 1)).ToArray();
+                .Skip((int)(addedEarliest - batch.StartNumber))
+                .Take((int)(addedLast - addedEarliest + 1)).ToArray();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }
@@ -404,7 +404,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
-                             if (batch.ResponseSourcePeer != null)
+                            if (batch.ResponseSourcePeer != null)
                             {
                                 _syncPeerPool.ReportBreachOfProtocol(
                                     batch.ResponseSourcePeer,
@@ -486,9 +486,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 addedLast = Math.Max(addedLast, header.Number);
             }
 
-            int added = (int) (addedLast - addedEarliest + 1);
-            int leftFillerSize = (int) (addedEarliest - batch.StartNumber);
-            int rightFillerSize = (int) (batch.EndNumber - addedLast);
+            int added = (int)(addedLast - addedEarliest + 1);
+            int leftFillerSize = (int)(addedEarliest - batch.StartNumber);
+            int rightFillerSize = (int)(batch.EndNumber - addedLast);
             if (added + leftFillerSize + rightFillerSize != batch.RequestSize)
             {
                 throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Data
         protected virtual T DefaultValue => default;
 
         public T Data => _data;
-        
+
         public event EventHandler Changed;
 
         public void Dispose()
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Data
                 // file name is valid
                 FilePath = filePath;
                 if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
-                _timer = new Timer(_interval) {Enabled = true};
+                _timer = new Timer(_interval) { Enabled = true };
                 _timer.Elapsed += async (o, e) => await LoadFileAsync();
             }
         }
@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Data
         private void LoadFileCore()
         {
             DateTime? lastChange = null;
-            
+
             if (_fileSystem.File.Exists(FilePath))
             {
                 var lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain.Data
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }
-        
+
         private void ReportJsonError(JsonSerializationException e)
         {
             if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {FilePath}. Will not retry any more.", e);

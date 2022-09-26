@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Mongo.
             {
                 return PagedResult<Consumer>.Empty;
             }
-            
+
             var consumers = Consumers.AsQueryable();
             if (!(query.AssetId is null))
             {

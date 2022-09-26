@@ -24,18 +24,18 @@ namespace Nethermind.Serialization.Rlp
     {
         int GetLength(T item, RlpBehaviors rlpBehaviors);
     }
-    
+
     public interface IRlpStreamDecoder<T> : IRlpDecoder<T>
     {
         T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
-    
+
     public interface IRlpObjectDecoder<in T> : IRlpDecoder<T>
     {
         Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
-    
+
     public interface IRlpValueDecoder<T> : IRlpObjectDecoder<T>
     {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

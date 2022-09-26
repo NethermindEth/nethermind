@@ -33,7 +33,7 @@ namespace Nethermind.Mev.Source
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
         private readonly int _bundleLimit;
-        
+
 
         public BundleSelector(
             ISimulatedBundleSource simulatedBundleSource,
@@ -42,7 +42,7 @@ namespace Nethermind.Mev.Source
             _simulatedBundleSource = simulatedBundleSource;
             _bundleLimit = bundleLimit;
         }
-        
+
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);

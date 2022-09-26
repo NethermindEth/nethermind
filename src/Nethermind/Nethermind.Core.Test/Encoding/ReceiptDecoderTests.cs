@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt GetExpected()
             {
                 ReceiptBuilder receiptBuilder = Build.A.Receipt.WithAllFieldsFilled;
-                
+
                 if ((encodeBehaviors & RlpBehaviors.Eip658Receipts) != 0)
                 {
                     receiptBuilder.WithState(null);
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Encoding
                 {
                     receiptBuilder.WithTransactionHash(null);
                 }
-                
+
                 if (!withError)
                 {
                     receiptBuilder.WithError(string.Empty);
@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder encoder = new(encodeWithTxHash);
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
-            
+
             ReceiptStorageDecoder decoder = new();
             TxReceipt deserialized;
             if (valueDecoder)
@@ -184,7 +184,7 @@ namespace Nethermind.Core.Test.Encoding
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
-        
+
         [Test]
         public void Can_do_roundtrip_with_receipt_message_and_tx_type_access_list()
         {
@@ -199,7 +199,7 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt).Bytes;
             TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult));
-            
+
             AssertMessageReceipt(txReceipt, deserialized);
         }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Core.Test.Encoding
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
-        
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             Bloom bloom = new();
@@ -237,7 +237,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(500).WithState(TestItem.KeccakA).WithTxType(TxType.AccessList).TestObject, "access list");
             yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Can_do_roundtrip_with_storage_receipt((TxReceipt TxReceipt, string Description) testCase)
         {
@@ -249,7 +249,7 @@ namespace Nethermind.Core.Test.Encoding
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Can_do_roundtrip_with_receipt_message((TxReceipt TxReceipt, string Description) testCase)
         {
@@ -262,7 +262,7 @@ namespace Nethermind.Core.Test.Encoding
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
-        
+
         private void AssertMessageReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
             Assert.AreEqual(txReceipt.Bloom, deserialized.Bloom, "bloom");

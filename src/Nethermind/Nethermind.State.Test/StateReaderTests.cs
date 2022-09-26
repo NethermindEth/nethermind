@@ -113,32 +113,32 @@ namespace Nethermind.Store.Test
             CommitEverything();
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {1});
+            UpdateStorageValue(new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {2});
+            UpdateStorageValue(new byte[] { 2 });
             CommitEverything();
             Keccak stateRoot1 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {3});
+            UpdateStorageValue(new byte[] { 3 });
             CommitEverything();
             Keccak stateRoot2 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {4});
+            UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
             Keccak stateRoot3 = provider.StateRoot;
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
-            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
-            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
-            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] {3});
-            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] {4});
+            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
+            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
+            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] { 3 });
+            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] { 4 });
 
             await Task.WhenAll(a, b, c, d);
         }
@@ -163,15 +163,15 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            storageProvider.Set(storageCell, new byte[] {1});
+            storageProvider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
-            
+
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
-            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
-            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
+            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)
@@ -220,7 +220,7 @@ namespace Nethermind.Store.Test
 
             /* at this stage we have an account with empty storage at the address that we want to test */
 
-            byte[] initialValue = new byte[] {1, 2, 3};
+            byte[] initialValue = new byte[] { 1, 2, 3 };
             storage.Set(storageCell, initialValue);
             storage.Commit();
             storage.CommitTrees(2);
@@ -240,7 +240,7 @@ namespace Nethermind.Store.Test
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
 
-            byte[] newValue = new byte[] {1, 2, 3, 4, 5};
+            byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             StateProvider processorStateProvider =
                 new(trieStore, new MemDb(), LimboLogs.Instance);

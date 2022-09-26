@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ namespace Nethermind.TxPool
     {
         [ConfigItem(DefaultValue = "5", Description = "Defines average percent of tx hashes from persistent broadcast send to peer together with hashes of last added txs.")]
         int PeerNotificationThreshold { get; set; }
-        
+
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
 
@@ -30,9 +30,9 @@ namespace Nethermind.TxPool
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]
         int HashCacheSize { get; set; }
-        
+
         [ConfigItem(DefaultValue = "null",
             Description = "Max transaction gas allowed.")]
-        long? GasLimit { get; set; }        
+        long? GasLimit { get; set; }
     }
 }

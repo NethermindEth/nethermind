@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             if (requestedUnits > purchasedUnits || to >= purchasedUnits)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid receipt request, requested units: {requestedUnits}, purchased: {purchasedUnits} <= {to} (range to).");
-                
+
                 return false;
             }
 
@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             {
                 return true;
             }
-            
+
             if (!isMerged)
             {
                 var consumedAndUnpaidUnits = consumedUnits + unpaidUnits;
@@ -89,13 +89,13 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                     {
                         continue;
                     }
-                    
+
                     var mergedUnitsRangeToCompare = receiptsToMerge[j].UnitsRange;
                     if (mergedUnitsRange.Equals(mergedUnitsRangeToCompare))
                     {
                         return false;
                     }
-                    
+
                     if (mergedUnitsRange.IsSubsetOf(mergedUnitsRangeToCompare))
                     {
                         continue;
@@ -118,17 +118,17 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                     subsetsRange += mergedUnitsRange.To - mergedUnitsRange.From + 1;
                     continue;
                 }
-                
+
                 if (mergedUnitsRange.IntersectsWith(requestedUnitsRange))
                 {
                     return false;
                 }
             }
-            
+
             if (!subsets.Any())
             {
                 if (_logger.IsInfo) _logger.Info($"No merged receipts subsets found, validating: {requestedUnits} <= {unpaidUnits}.");
-                
+
                 return requestedUnits <= unpaidUnits;
             }
 

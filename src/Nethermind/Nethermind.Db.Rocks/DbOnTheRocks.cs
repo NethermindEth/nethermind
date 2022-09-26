@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -38,7 +39,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     private bool _isDisposed;
 
-    private readonly HashSet<IBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
     internal WriteOptions? WriteOptions { get; private set; }
@@ -225,7 +226,7 @@ public class DbOnTheRocks : IDbWithSpan
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
-//            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
+        //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
         WriteOptions = new WriteOptions();
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
@@ -393,7 +394,7 @@ public class DbOnTheRocks : IDbWithSpan
 
         // seems it has no performance impact
         return _db.Get(key) != null;
-//            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+        //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
     }
 
     public IBatch StartBatch()
@@ -429,7 +430,7 @@ public class DbOnTheRocks : IDbWithSpan
             }
 
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
-            _dbOnTheRocks._currentBatches.Remove(this);
+            _dbOnTheRocks._currentBatches.TryRemove(this);
             _rocksBatch.Dispose();
         }
 
@@ -540,4 +541,11 @@ public class DbOnTheRocks : IDbWithSpan
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
+
+    public static string? GetRocksDbVersion()
+    {
+        Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));
+        Version? version = rocksDbAssembly?.GetName().Version;
+        return version?.ToString(3);
+    }
 }

@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var consumerSessions = consumerSessionsBytes
                 .Select(b => consumerSessionsDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Consumer sessions") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Consumer sessions") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             if (!consumerSessions.Any())
             {
                 MessageBox.Query(40, 7, "Consumer sessions", "No data." +
@@ -55,7 +55,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var consumerSessionDetailsWindow = new Window("Session details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(consumerSessionDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

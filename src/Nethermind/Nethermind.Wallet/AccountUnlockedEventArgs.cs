@@ -22,7 +22,7 @@ namespace Nethermind.Wallet
     public class AccountUnlockedEventArgs : EventArgs
     {
         public Address Address { get; }
-        
+
         public AccountUnlockedEventArgs(Address address)
         {
             Address = address;

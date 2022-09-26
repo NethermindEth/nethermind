@@ -28,15 +28,15 @@ namespace Nethermind.Synchronization.ParallelSync
         long FindBestHeader();
 
         long FindBestFullBlock();
-        
+
         bool IsFastBlocksHeadersFinished();
-        
+
         bool IsFastBlocksBodiesFinished();
-        
+
         bool IsFastBlocksReceiptsFinished();
-        
+
         bool IsLoadingBlocksFromDb();
-        
+
         long FindBestProcessedBlock();
 
         bool IsSnapGetRangesFinished();

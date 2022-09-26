@@ -64,7 +64,7 @@ namespace Nethermind.Serialization.Json
         {
             if (reader.Value is long || reader.Value is int)
             {
-                return (long) reader.Value;
+                return (long)reader.Value;
             }
 
             string s = reader.Value?.ToString();

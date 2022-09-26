@@ -41,10 +41,10 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             {
                 return 0;
             }
-            
+
             if (deposit.DataAsset.UnitType == DataAssetUnitType.Time)
             {
-                return (uint) _timestamper.UnixTime.Seconds - deposit.ConfirmationTimestamp;
+                return (uint)_timestamper.UnixTime.Seconds - deposit.ConfirmationTimestamp;
             }
 
             var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 Results = int.MaxValue
             });
 
-            return sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+            return sessions.Items.Any() ? (uint)sessions.Items.Sum(s => s.ConsumedUnits) : 0;
         }
     }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Logging.NLog.Test
             nullLogger.IsWarn.Should().BeFalse();
             nullLogger.IsError.Should().BeFalse();
             nullLogger.IsTrace.Should().BeFalse();
-            
+
             nullLogger.Debug(null);
             nullLogger.Info(null);
             nullLogger.Warn(null);

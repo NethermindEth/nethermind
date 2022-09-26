@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Init.Steps
         public Task Execute(CancellationToken _)
         {
             INetworkConfig config = _api.Config<INetworkConfig>();
-            
+
             // create shared objects between discovery and peer manager
             NodeStatsManager nodeStatsManager = new(_api.TimerFactory, _api.LogManager, config.MaxCandidatePeerCount);
             _api.NodeStatsManager = nodeStatsManager;
