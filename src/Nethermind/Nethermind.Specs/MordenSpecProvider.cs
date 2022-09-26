@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -43,7 +44,13 @@ namespace Nethermind.Specs
                 < 1885000 => Homestead.Instance,
                 _ => SpuriousDragon.Instance
             };
-
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
+            blockHeader.Number switch
+            {
+                < 494000 => Frontier.Instance,
+                < 1885000 => Homestead.Instance,
+                _ => SpuriousDragon.Instance
+            };
         public long? DaoBlockNumber => null;
 
         public ulong ChainId => 2;

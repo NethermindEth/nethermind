@@ -18,9 +18,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -91,7 +93,18 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             foreach (PropertyInfo propertyInfo in timestampBaseTransitions)
             {
-                transitionTimestamps.Add((ulong)propertyInfo.GetValue(_chainSpec.Parameters));
+                if (propertyInfo.PropertyType == typeof(ulong))
+                {
+                    transitionTimestamps.Add((ulong)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters));
+                }
+                else if (propertyInfo.PropertyType == typeof(ulong?))
+                {
+                    var optionalTransition = (ulong?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
+                    if (optionalTransition != null)
+                    {
+                        transitionTimestamps.Add(optionalTransition.Value);
+                    }
+                }
             }
 
 
@@ -212,6 +225,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     out (long BlockNumber, ReleaseSpec Release) transition)
                     ? transition.Release
                     : null;
+        
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) => throw new NotImplementedException();
 
         private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) =>
             blockNumber.CompareTo(transition.BlockNumber);

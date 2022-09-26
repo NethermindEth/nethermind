@@ -16,6 +16,7 @@
 //
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -40,6 +41,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public IReleaseSpec GenesisSpec => London.Instance;
 
     public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
+    public IReleaseSpec GetSpec(BlockHeader blockHeader) => London.Instance;
 
     public long? DaoBlockNumber => null;
 

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -38,6 +39,20 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(long blockNumber) =>
             blockNumber switch
+            {
+                < HomesteadBlockNumber => Frontier.Instance,
+                < TangerineWhistleBlockNumber => Homestead.Instance,
+                < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
+                < ByzantiumBlockNumber => SpuriousDragon.Instance,
+                < ConstantinopleBlockNumber => Byzantium.Instance,
+                < ConstantinopleFixBlockNumber => Constantinople.Instance,
+                < IstanbulBlockNumber => ConstantinopleFix.Instance,
+                < BerlinBlockNumber => Istanbul.Instance,
+                < LondonBlockNumber => Berlin.Instance,
+                _ => London.Instance
+            };
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
+            blockHeader.Number switch
             {
                 < HomesteadBlockNumber => Frontier.Instance,
                 < TangerineWhistleBlockNumber => Homestead.Instance,

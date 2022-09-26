@@ -40,10 +40,8 @@ namespace Nethermind.Core.Test
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return _specProvider.GetSpec(blockNumber);
-        }
+        public IReleaseSpec GetSpec(long blockNumber) => _specProvider.GetSpec(blockNumber);
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) => _specProvider.GetSpec(blockHeader);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 

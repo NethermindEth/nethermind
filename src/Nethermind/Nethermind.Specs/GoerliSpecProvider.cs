@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -49,6 +50,14 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(long blockNumber) =>
             blockNumber switch
+            {
+                < IstanbulBlockNumber => GenesisSpec,
+                < BerlinBlockNumber => IstanbulNoBomb,
+                < LondonBlockNumber => BerlinNoBomb,
+                _ => LondonNoBomb
+            };
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
+            blockHeader.Number switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
                 < BerlinBlockNumber => IstanbulNoBomb,

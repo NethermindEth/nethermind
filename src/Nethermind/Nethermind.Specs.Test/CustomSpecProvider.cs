@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -75,6 +76,23 @@ namespace Nethermind.Specs.Test
             for (int i = 1; i < _transitions.Length; i++)
             {
                 if (blockNumber >= _transitions[i].BlockNumber)
+                {
+                    spec = _transitions[i].Release;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return spec;
+        }
+        public IReleaseSpec GetSpec(BlockHeader blockHeader)
+        {
+            IReleaseSpec spec = _transitions[0].Release;
+            for (int i = 1; i < _transitions.Length; i++)
+            {
+                if (blockHeader.Number >= _transitions[i].BlockNumber)
                 {
                     spec = _transitions[i].Release;
                 }

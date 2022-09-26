@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -68,6 +69,14 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
+        [Obsolete("This method is Obsolete! Please use the GetSpec(blockHeader) method.", false)]
         IReleaseSpec GetSpec(long blockNumber);
+
+        /// <summary>
+        /// Resolves a spec for the given block header. Takes into account blockNumber and Timestamp
+        /// </summary>
+        /// <param name="blockHeader"></param>
+        /// <returns>A spec that is valid at the given blockHeader</returns>
+        IReleaseSpec GetSpec(BlockHeader blockHeader);
     }
 }

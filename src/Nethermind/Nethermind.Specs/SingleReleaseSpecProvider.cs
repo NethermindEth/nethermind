@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -52,6 +53,7 @@ namespace Nethermind.Specs
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
         public IReleaseSpec GetSpec(long blockNumber) => _releaseSpec;
+        public IReleaseSpec GetSpec(BlockHeader blockHeader) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
     }
