@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,17 +35,6 @@ namespace Nethermind.Evm.Test
     // Alex Beregszaszi, Paweł Bylica, Andrei Maiboroda, Alexey Akhunov, Christian Reitwiessner, Martin Swende, "EIP-3541: Reject new contracts starting with the 0xEF byte," Ethereum Improvement Proposals, no. 3541, March 2021. [Online serial]. Available: https://eips.ethereum.org/EIPS/eip-3541.
     public class Eip3541Tests : VirtualMachineTestsBase
     {
-        const long LondonTestBlockNumber = 4_370_000;
-        protected override ISpecProvider SpecProvider
-        {
-            get
-            {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= LondonTestBlockNumber)).Returns(London.Instance);
-                specProvider.GetSpec(Arg.Is<long>(x => x < LondonTestBlockNumber)).Returns(Berlin.Instance);
-                return specProvider;
-            }
-        }
 
         [Test]
         public void Wrong_contract_creation_should_return_invalid_code_after_3541(
@@ -125,7 +115,7 @@ namespace Nethermind.Evm.Test
             }
 
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-            long blockNumber = eip3541Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
+            long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
             transaction.GasPrice = 20.GWei();

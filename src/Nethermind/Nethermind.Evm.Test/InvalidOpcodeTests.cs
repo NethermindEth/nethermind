@@ -163,7 +163,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
-        [TestCase(0)]
+        [TestCase(0, 0UL)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber, 0UL)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL)]
         [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber, 0UL)]
@@ -175,7 +175,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber, 0UL)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber, 0UL)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
-        [TestCase(long.MaxValue)]
+        [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong timestamp)
         {
             ILogger logger = _logManager.GetClassLogger();
