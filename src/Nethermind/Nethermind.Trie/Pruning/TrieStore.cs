@@ -311,7 +311,7 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     CurrentPackage = null;
-                    if (Monitor.IsEntered(_dirtyNodes))
+                    if (_pruningStrategy.PruningEnabled && Monitor.IsEntered(_dirtyNodes))
                     {
                         Monitor.Exit(_dirtyNodes);
                     }
@@ -695,7 +695,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (CurrentPackage is null)
             {
-                if (!Monitor.IsEntered(_dirtyNodes))
+                if (_pruningStrategy.PruningEnabled && !Monitor.IsEntered(_dirtyNodes))
                 {
                     Monitor.Enter(_dirtyNodes);
                 }
