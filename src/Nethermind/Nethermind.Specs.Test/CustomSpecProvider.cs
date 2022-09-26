@@ -70,29 +70,12 @@ namespace Nethermind.Specs.Test
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0)
         {
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
             {
                 if (blockNumber >= _transitions[i].BlockNumber)
-                {
-                    spec = _transitions[i].Release;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return spec;
-        }
-        public IReleaseSpec GetSpec(BlockHeader blockHeader)
-        {
-            IReleaseSpec spec = _transitions[0].Release;
-            for (int i = 1; i < _transitions.Length; i++)
-            {
-                if (blockHeader.Number >= _transitions[i].BlockNumber)
                 {
                     spec = _transitions[i].Release;
                 }

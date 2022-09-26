@@ -136,21 +136,21 @@ namespace Nethermind.Evm.Test
                                     )
                             )))))).ToArray();
 
-        private Dictionary<long, Instruction[]> _validOpcodes
+        private Dictionary<(long, ulong), Instruction[]> _validOpcodes
             = new()
             {
-                {0, FrontierInstructions},
-                {MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
-                {MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
-                {MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
-                {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
-                {MainnetSpecProvider.ShanghaiBlockNumber, ShanghaiInstructions},
-                {long.MaxValue, ShanghaiInstructions}
+                {(0, 0UL), FrontierInstructions},
+                {(MainnetSpecProvider.HomesteadBlockNumber, 0UL), HomesteadInstructions},
+                {(MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL), HomesteadInstructions},
+                {(MainnetSpecProvider.TangerineWhistleBlockNumber, 0UL), HomesteadInstructions},
+                {(MainnetSpecProvider.ByzantiumBlockNumber, 0UL), ByzantiumInstructions},
+                {(MainnetSpecProvider.ConstantinopleFixBlockNumber, 0UL), ConstantinopleFixInstructions},
+                {(MainnetSpecProvider.IstanbulBlockNumber, 0UL), IstanbulInstructions},
+                {(MainnetSpecProvider.MuirGlacierBlockNumber, 0UL), IstanbulInstructions},
+                {(MainnetSpecProvider.BerlinBlockNumber, 0UL), BerlinInstructions},
+                {(MainnetSpecProvider.LondonBlockNumber, 0UL), LondonInstructions},
+                {(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp), ShanghaiInstructions},
+                {(long.MaxValue, ulong.MaxValue), ShanghaiInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -164,22 +164,22 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCase(0)]
-        [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
-        [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
-        [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber)]
-        [TestCase(MainnetSpecProvider.ByzantiumBlockNumber)]
-        [TestCase(MainnetSpecProvider.IstanbulBlockNumber)]
-        [TestCase(MainnetSpecProvider.ConstantinopleFixBlockNumber)]
-        [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
-        [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
-        [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
-        [TestCase(MainnetSpecProvider.LondonBlockNumber)]
-        [TestCase(MainnetSpecProvider.ShanghaiBlockNumber)]
+        [TestCase(MainnetSpecProvider.HomesteadBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.IstanbulBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.ConstantinopleFixBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.BerlinBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.BerlinBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.LondonBlockNumber, 0UL)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(long.MaxValue)]
-        public void Test(long blockNumber)
+        public void Test(long blockNumber, ulong timestamp)
         {
             ILogger logger = _logManager.GetClassLogger();
-            Instruction[] validOpcodes = _validOpcodes[blockNumber];
+            Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
@@ -188,7 +188,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code);
+                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp:timestamp);
 
                 if (isValidOpcode)
                 {

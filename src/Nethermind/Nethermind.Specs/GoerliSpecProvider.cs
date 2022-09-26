@@ -48,16 +48,8 @@ namespace Nethermind.Specs
 
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) =>
             blockNumber switch
-            {
-                < IstanbulBlockNumber => GenesisSpec,
-                < BerlinBlockNumber => IstanbulNoBomb,
-                < LondonBlockNumber => BerlinNoBomb,
-                _ => LondonNoBomb
-            };
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
-            blockHeader.Number switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
                 < BerlinBlockNumber => IstanbulNoBomb,

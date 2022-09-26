@@ -44,8 +44,7 @@ namespace Nethermind.Specs.Test
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);
 
-        public IReleaseSpec GetSpec(long blockNumber) => _overrideAction(_specProvider.GetSpec(blockNumber));
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) => _overrideAction(_specProvider.GetSpec(blockHeader));
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0) => _overrideAction(_specProvider.GetSpec(blockNumber));
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 

@@ -37,22 +37,8 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) =>
             blockNumber switch
-            {
-                < HomesteadBlockNumber => Frontier.Instance,
-                < TangerineWhistleBlockNumber => Homestead.Instance,
-                < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
-                < ByzantiumBlockNumber => SpuriousDragon.Instance,
-                < ConstantinopleBlockNumber => Byzantium.Instance,
-                < ConstantinopleFixBlockNumber => Constantinople.Instance,
-                < IstanbulBlockNumber => ConstantinopleFix.Instance,
-                < BerlinBlockNumber => Istanbul.Instance,
-                < LondonBlockNumber => Berlin.Instance,
-                _ => London.Instance
-            };
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
-            blockHeader.Number switch
             {
                 < HomesteadBlockNumber => Frontier.Instance,
                 < TangerineWhistleBlockNumber => Homestead.Instance,

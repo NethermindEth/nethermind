@@ -38,8 +38,7 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) => Frontier.Instance;
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) => Frontier.Instance;
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) => Frontier.Instance;
 
         public long? DaoBlockNumber { get; } = null;
 

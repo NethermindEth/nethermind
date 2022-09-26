@@ -37,15 +37,8 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) =>
             blockNumber switch
-            {
-                < 494000 => Frontier.Instance,
-                < 1885000 => Homestead.Instance,
-                _ => SpuriousDragon.Instance
-            };
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) =>
-            blockHeader.Number switch
             {
                 < 494000 => Frontier.Instance,
                 < 1885000 => Homestead.Instance,

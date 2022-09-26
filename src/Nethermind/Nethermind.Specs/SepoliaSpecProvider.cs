@@ -40,8 +40,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-    public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
-    public IReleaseSpec GetSpec(BlockHeader blockHeader) => London.Instance;
+    public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) => London.Instance;
 
     public long? DaoBlockNumber => null;
 

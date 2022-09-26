@@ -219,14 +219,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
+        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0) =>
                 _transitions.TryGetSearchedItem(blockNumber,
                     CompareTransitionOnBlock,
                     out (long BlockNumber, ReleaseSpec Release) transition)
                     ? transition.Release
                     : null;
-        
-        public IReleaseSpec GetSpec(BlockHeader blockHeader) => throw new NotImplementedException();
 
         private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) =>
             blockNumber.CompareTo(transition.BlockNumber);
