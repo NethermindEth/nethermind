@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private readonly object _syncLock = new ();
+        private readonly object _syncLock = new();
 
         private const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogger _logger;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
-        
+
         public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
             _syncModeSelector = syncModeSelector;
@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
         {
-            if(peer == null)
+            if (peer == null)
             {
                 return SyncResponseHandlingResult.OK;
             }
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
 
-                lock(_syncLock)
+                lock (_syncLock)
                 {
                     foreach (var item in _resultLog)
                     {

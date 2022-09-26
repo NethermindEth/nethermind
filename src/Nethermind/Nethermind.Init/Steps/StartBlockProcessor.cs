@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,14 +29,14 @@ namespace Nethermind.Init.Steps
         {
             _api = api;
         }
-        
+
         public Task Execute(CancellationToken _)
         {
             if (_api.BlockchainProcessor == null)
             {
                 throw new StepDependencyException(nameof(_api.BlockchainProcessor));
             }
-            
+
             _api.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }

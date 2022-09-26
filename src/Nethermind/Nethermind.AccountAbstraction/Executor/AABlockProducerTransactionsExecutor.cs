@@ -38,18 +38,18 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address[] _entryPointAddresses;
 
         public AABlockProducerTransactionsExecutor(
-            ITransactionProcessor transactionProcessor, 
-            IStateProvider stateProvider, 
-            IStorageProvider storageProvider, 
-            ISpecProvider specProvider, 
+            ITransactionProcessor transactionProcessor,
+            IStateProvider stateProvider,
+            IStorageProvider storageProvider,
+            ISpecProvider specProvider,
             ILogManager logManager,
             ISigner signer,
             Address[] entryPointAddresses)
             : base(
-            transactionProcessor, 
-            stateProvider, 
-            storageProvider, 
-            specProvider, 
+            transactionProcessor,
+            stateProvider,
+            storageProvider,
+            specProvider,
             logManager)
         {
             _stateProvider = stateProvider;
@@ -59,13 +59,13 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public override TxReceipt[] ProcessTransactions(
-            Block block, 
+            Block block,
             ProcessingOptions processingOptions,
-            BlockReceiptsTracer receiptsTracer, 
+            BlockReceiptsTracer receiptsTracer,
             IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
-            
+
             int i = 0;
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
             foreach (Transaction transaction in transactions)
@@ -81,7 +81,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
-            
+
             _stateProvider.Commit(spec, receiptsTracer);
             _storageProvider.Commit(receiptsTracer);
 
@@ -95,17 +95,17 @@ namespace Nethermind.AccountAbstraction.Executor
             if (!_entryPointAddresses.Contains(transaction.To)) return false;
             return true;
         }
-        
+
         private BlockProcessor.TxAction ProcessAccountAbstractionTransaction(
-            Block block, 
-            Transaction currentTx, 
-            int index, 
-            BlockReceiptsTracer receiptsTracer, 
+            Block block,
+            Transaction currentTx,
+            int index,
+            BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {
             int snapshot = receiptsTracer.TakeSnapshot();
-            
+
             BlockProcessor.TxAction action = ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
             if (action != BlockProcessor.TxAction.Add)
             {
@@ -119,7 +119,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 receiptsTracer.Restore(snapshot);
                 return BlockProcessor.TxAction.Skip;
             }
-            
+
             transactionsInBlock.Add(currentTx);
             _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             return BlockProcessor.TxAction.Add;

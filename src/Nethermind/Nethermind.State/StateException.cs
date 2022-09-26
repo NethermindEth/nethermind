@@ -23,7 +23,7 @@ namespace Nethermind.State
         public StateException() : base()
         {
         }
-        
+
         public StateException(string message) : base(message)
         {
         }

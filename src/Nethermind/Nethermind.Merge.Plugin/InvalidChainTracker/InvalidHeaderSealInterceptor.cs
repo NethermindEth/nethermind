@@ -21,7 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderSealInterceptor: ISealValidator
+public class InvalidHeaderSealInterceptor : ISealValidator
 {
     private readonly ISealValidator _baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker;

@@ -94,7 +94,7 @@ namespace Nethermind.Ssz
 
             // var part
             BitArray aggregationBits = DecodeBitlist(span.Slice(dynamicOffset1, span.Length - dynamicOffset1));
-            
+
             Attestation container = new Attestation(aggregationBits, data, signature);
 
             return container;
@@ -103,7 +103,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, IReadOnlyList<Attestation> attestations, ref int offset)
         {
             // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
-            
+
             // Static
             int staticOffset = offset;
             int dynamicOffset = attestations.Count * VarOffsetSize;

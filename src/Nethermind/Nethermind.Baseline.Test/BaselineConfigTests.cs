@@ -61,7 +61,7 @@ namespace Nethermind.Baseline.Test
             config.BaselineTreeDbWriteBufferNumber.Should().Be(dbWriteBufferNumber);
             config.BaselineTreeMetadataDbWriteBufferNumber.Should().Be(dbWriteBufferNumber);
         }
-        
+
         [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
         [TestCase("^baseline ^spaceneth", false)]
@@ -69,7 +69,7 @@ namespace Nethermind.Baseline.Test
         {
             Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
-        
+
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
             "ropsten_archive.cfg",

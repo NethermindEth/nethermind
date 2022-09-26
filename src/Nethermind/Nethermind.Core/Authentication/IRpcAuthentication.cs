@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,9 +24,9 @@ public interface IRpcAuthentication
 
 public class NoAuthentication : IRpcAuthentication
 {
-    private NoAuthentication() {}
+    private NoAuthentication() { }
 
     public static NoAuthentication Instance = new();
-    
+
     public bool Authenticate(string _) => true;
 }

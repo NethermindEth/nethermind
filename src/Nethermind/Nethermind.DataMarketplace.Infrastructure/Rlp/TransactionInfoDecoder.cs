@@ -44,9 +44,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 UInt256 gasPrice = rlpStream.DecodeUInt256();
                 ulong gasLimit = rlpStream.DecodeUlong();
                 ulong timestamp = rlpStream.DecodeUlong();
-                TransactionType type = (TransactionType) rlpStream.DecodeInt();
-                TransactionState state = (TransactionState) rlpStream.DecodeInt();
-                
+                TransactionType type = (TransactionType)rlpStream.DecodeInt();
+                TransactionState state = (TransactionState)rlpStream.DecodeInt();
+
                 return new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, type, state);
             }
             catch (Exception e)
@@ -73,8 +73,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.GasPrice),
                 Serialization.Rlp.Rlp.Encode(item.GasLimit),
                 Serialization.Rlp.Rlp.Encode(item.Timestamp),
-                Serialization.Rlp.Rlp.Encode((int) item.Type),
-                Serialization.Rlp.Rlp.Encode((int) item.State));
+                Serialization.Rlp.Rlp.Encode((int)item.Type),
+                Serialization.Rlp.Rlp.Encode((int)item.State));
         }
 
         public int GetLength(TransactionInfo item, RlpBehaviors rlpBehaviors)

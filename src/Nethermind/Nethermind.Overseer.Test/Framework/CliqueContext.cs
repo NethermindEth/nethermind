@@ -30,21 +30,21 @@ namespace Nethermind.Overseer.Test.Framework
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc($"vote {vote} for {address}", "clique_propose",
-                () => client.PostAsync<string>("clique_propose", new object[] {address, vote}));
+                () => client.PostAsync<string>("clique_propose", new object[] { address, vote }));
         }
 
         public CliqueContext Discard(Address address)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc($"discard vote for {address}", "clique_discard",
-                () => client.PostAsync<string>("clique_discard", new object[] {address}));
+                () => client.PostAsync<string>("clique_discard", new object[] { address }));
         }
 
         public CliqueContext SendTransaction(TransactionForRpc tx)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc($"send tx to {TestBuilder.CurrentNode.HttpPort}", "eth_sendTransaction",
-                () => client.PostAsync<string>("eth_SendTransaction", new object[] {tx}));
+                () => client.PostAsync<string>("eth_SendTransaction", new object[] { tx }));
         }
     }
 }

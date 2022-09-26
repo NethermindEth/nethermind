@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         public JsonRpcContext Context { get; set; }
-        
-        
+
+
     }
 }

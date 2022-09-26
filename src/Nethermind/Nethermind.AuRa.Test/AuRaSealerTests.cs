@@ -61,7 +61,7 @@ namespace Nethermind.AuRa.Test
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
             Signer signer = new(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
             _address = signer.Address;
-            
+
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _validatorStore,
@@ -88,9 +88,9 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator.CurrentStep.Returns(11);
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11).Returns(true);
             Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11, null).TestObject).TestObject;
-            
+
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
-            
+
             EthereumEcdsa ecdsa = new(ChainId.Morden, LimboLogs.Instance);
             Signature signature = new(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;

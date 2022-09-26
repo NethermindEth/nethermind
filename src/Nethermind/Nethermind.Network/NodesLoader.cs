@@ -55,13 +55,13 @@ namespace Nethermind.Network
         {
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
-            
+
             LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
                 if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
             });
-            
+
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
                 n.IsStatic = true;
@@ -93,10 +93,10 @@ namespace Nethermind.Network
                 }
                 catch (Exception)
                 {
-                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    if (_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
-                
+
                 INodeStats nodeStats = _stats.GetOrAdd(node);
                 nodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
 
@@ -127,7 +127,7 @@ namespace Nethermind.Network
         }
 
         public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
-        
+
         public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }
 }

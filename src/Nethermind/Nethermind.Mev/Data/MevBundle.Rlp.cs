@@ -36,7 +36,7 @@ namespace Nethermind.Mev.Data
                 int content = Rlp.LengthOf(bundle.BlockNumber) + Rlp.LengthOfSequence(txHashes);
                 return (Rlp.LengthOfSequence(content), txHashes);
             }
-            
+
             (int contentLength, int txLength) = GetContentLength();
             RlpStream stream = new(contentLength);
             stream.StartSequence(contentLength);

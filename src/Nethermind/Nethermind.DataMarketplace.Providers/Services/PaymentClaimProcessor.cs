@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
 {
     public class PaymentClaimProcessor : IPaymentClaimProcessor
     {
-        private static readonly long Eth = (long) Unit.Ether;
+        private static readonly long Eth = (long)Unit.Ether;
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerRepository _consumerRepository;
         private readonly IPaymentClaimRepository _paymentClaimRepository;
@@ -66,23 +66,23 @@ namespace Nethermind.DataMarketplace.Providers.Services
             Consumer? consumer = await _consumerRepository.GetAsync(depositId);
             if (consumer is null)
             {
-                if(_logger.IsError) _logger.Error($"Could not find any consumers for deposit {depositId} in the repository.");
+                if (_logger.IsError) _logger.Error($"Could not find any consumers for deposit {depositId} in the repository.");
                 return null;
             }
-            
+
             DataRequest dataRequest = consumer.DataRequest;
             UnitsRange range = receiptRequest.UnitsRange;
             uint claimedUnits = range.Units;
-            BigInteger claimedValue = claimedUnits * (BigInteger) consumer.DataRequest.Value / consumer.DataRequest.Units;
+            BigInteger claimedValue = claimedUnits * (BigInteger)consumer.DataRequest.Value / consumer.DataRequest.Units;
             ulong timestamp = _timestamper.UnixTime.Seconds;
             Rlp unitsRangeRlp = _unitsRangeRlpDecoder.Encode(range);
             Keccak id = Keccak.Compute(Rlp.Encode(Rlp.Encode(depositId), Rlp.Encode(timestamp), unitsRangeRlp).Bytes);
             PaymentClaim paymentClaim = new PaymentClaim(id, consumer.DepositId, consumer.DataAsset.Id,
                 consumer.DataAsset.Name, dataRequest.Units, claimedUnits, range, dataRequest.Value,
-                (UInt256) claimedValue, dataRequest.ExpiryTime, dataRequest.Pepper, dataRequest.Provider,
+                (UInt256)claimedValue, dataRequest.ExpiryTime, dataRequest.Pepper, dataRequest.Provider,
                 dataRequest.Consumer, signature, timestamp, Array.Empty<TransactionInfo>(), PaymentClaimStatus.Unknown);
             await _paymentClaimRepository.AddAsync(paymentClaim);
-            if (_logger.IsInfo)_logger.Info($"Claiming a payment (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}], units: {claimedUnits}.");
+            if (_logger.IsInfo) _logger.Info($"Claiming a payment (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}], units: {claimedUnits}.");
             UInt256 gasPrice = await _gasPriceService.GetCurrentPaymentClaimGasPriceAsync();
             Keccak? transactionHash = null;
             if (_disableSendingPaymentClaimTransaction)
@@ -98,13 +98,13 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     return paymentClaim;
                 }
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Payment claim (id: {paymentClaim.Id}) for deposit: '{paymentClaim.DepositId}' received a transaction hash: '{transactionHash}'.");
             paymentClaim.AddTransaction(TransactionInfo.Default(transactionHash, 0, gasPrice, _paymentService.GasLimit,
                 timestamp));
             paymentClaim.SetStatus(PaymentClaimStatus.Sent);
             await _paymentClaimRepository.UpdateAsync(paymentClaim);
-            string claimedEth  = ((decimal) claimedValue / Eth).ToString("0.0000");
+            string claimedEth = ((decimal)claimedValue / Eth).ToString("0.0000");
             if (_logger.IsInfo) _logger.Info($"Sent a payment claim (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}], units: {claimedUnits}, units: {claimedUnits}, value: {claimedValue} wei ({claimedEth} ETH, transaction hash: '{transactionHash}'.");
 
             return paymentClaim;
@@ -113,9 +113,9 @@ namespace Nethermind.DataMarketplace.Providers.Services
         public async Task<Keccak?> SendTransactionAsync(PaymentClaim paymentClaim, UInt256 gasPrice)
         {
             bool isPaymentClaimCorrect = IsPaymentClaimCorrect(paymentClaim);
-            if(!isPaymentClaimCorrect)
+            if (!isPaymentClaimCorrect)
             {
-                if(_logger.IsWarn)
+                if (_logger.IsWarn)
                 {
                     _logger.Warn($"Payment claim id: {paymentClaim.Id} was incorrect. Claim will be rejected");
                 }
@@ -132,10 +132,10 @@ namespace Nethermind.DataMarketplace.Providers.Services
             bool isTransactionHashValid = !(transactionHash is null) && transactionHash != Keccak.Zero;
             if (isTransactionHashValid)
             {
-                if (_logger.IsInfo)_logger.Info($"Received a transaction hash: {transactionHash} for payment claim (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}], units: {paymentClaim.Units}.");
+                if (_logger.IsInfo) _logger.Info($"Received a transaction hash: {transactionHash} for payment claim (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}], units: {paymentClaim.Units}.");
                 return transactionHash;
             }
-            
+
             if (_logger.IsError) _logger.Error($"There was an error when claiming a payment (id: '{paymentClaim.Id}') for deposit: '{depositId}', range: [{range.From}, {range.To}] with receipt [{range.From}, {range.To}], units: {paymentClaim.Units} - returned transaction is empty.");
 
             return null;
@@ -151,18 +151,18 @@ namespace Nethermind.DataMarketplace.Providers.Services
             var from = paymentClaim.UnitsRange.From;
             var to = paymentClaim.UnitsRange.To;
 
-            if(from > to)
+            if (from > to)
             {
-                if(_logger.IsInfo)
+                if (_logger.IsInfo)
                 {
                     _logger.Info($"Invalid units range for transaction. Units range: [{from},{to}]");
                 }
                 return false;
             }
 
-            if(to >= paymentClaim.Units)
+            if (to >= paymentClaim.Units)
             {
-                if(_logger.IsInfo)
+                if (_logger.IsInfo)
                 {
                     _logger.Info($"Invalid units range for transaction. UnitsRange.To cannot be higher or equal to payment claim units. UnitRange: [{from},{to}], Units: {paymentClaim.Units}");
                 }

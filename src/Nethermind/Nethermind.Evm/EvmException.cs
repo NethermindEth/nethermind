@@ -22,7 +22,7 @@ namespace Nethermind.Evm
     {
         public abstract EvmExceptionType ExceptionType { get; }
     }
-    
+
     public enum EvmExceptionType
     {
         None,

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Test
         private ILogger _loggerMock = null!;
         private int _port = 1;
         private string _host = "192.168.1.27";
-        
+
         [SetUp]
         public void Setup()
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery.Test
             IConfigProvider configurationProvider = new ConfigProvider();
             _networkConfig.ExternalIp = "99.10.10.66";
             _networkConfig.LocalIp = "10.0.0.5";
-            
+
             IDiscoveryConfig discoveryConfig = configurationProvider.GetConfig<IDiscoveryConfig>();
             discoveryConfig.PongTimeout = 50;
             discoveryConfig.BucketSize = 3;
@@ -83,16 +83,16 @@ namespace Nethermind.Network.Discovery.Test
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             _nodeStatsMock = Substitute.For<INodeStats>();
-            
+
             EvictionManager evictionManager = new(_nodeTable, logManager);
             _evictionManagerMock = Substitute.For<IEvictionManager>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager, 
+            NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
                 new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
             IMsgSender udpClient = Substitute.For<IMsgSender>();
 
-            SimpleFilePublicKeyDb discoveryDb = new("Test","test", logManager);
+            SimpleFilePublicKeyDb discoveryDb = new("Test", "test", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager);
             _discoveryManager.MsgSender = udpClient;
 
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Discovery.Test
 
             Assert.IsTrue(nodeManager.IsBonded);
         }
-        
+
         [Test]
         public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
         {
@@ -128,7 +128,7 @@ namespace Nethermind.Network.Discovery.Test
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
             await nodeManager.SendPingAsync();
-            nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyB, GetExpirationTime(), new byte[] {1,1,1}));
+            nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyB, GetExpirationTime(), new byte[] { 1, 1, 1 }));
 
             Assert.IsFalse(nodeManager.IsBonded);
         }
@@ -139,11 +139,11 @@ namespace Nethermind.Network.Discovery.Test
             Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
-            
-            PongMsg msgI = new (_nodeIds[0], GetExpirationTime(), new byte[32]);
+
+            PongMsg msgI = new(_nodeIds[0], GetExpirationTime(), new byte[32]);
             msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(msgI);
-            
+
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
         }
 
@@ -175,11 +175,11 @@ namespace Nethermind.Network.Discovery.Test
                 {
                     throw new Exception("Manager is null");
                 }
-                
+
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                PongMsg msgI = new (_nodeIds[i], GetExpirationTime(), new byte[32]);
+                PongMsg msgI = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msgI);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
@@ -197,18 +197,18 @@ namespace Nethermind.Network.Discovery.Test
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
 
-            PongMsg pongMsg = new (_nodeIds[3], GetExpirationTime(), new byte[32]);
+            PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(pongMsg);
-            
+
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
             INodeLifecycleManager evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
-            PongMsg msg = new (evictionCandidate.ManagedNode.Id, GetExpirationTime(), new byte[32]);
+            PongMsg msg = new(evictionCandidate.ManagedNode.Id, GetExpirationTime(), new byte[32]);
             msg.FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port);
             _discoveryManager.OnIncomingMsg(msg);
-            
+
             //await Task.Delay(100);
 
             //3th node should survive, 4th node should be active but not in the table
@@ -222,13 +222,13 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(() => closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1, Is.True.After(100, 50));
             Assert.That(() => closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1, Is.True.After(100, 50));
             Assert.That(() => closestNodes.Count(x => x.Host == candidateNode.Host) == 0, Is.True.After(100, 50));
-            
+
             //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
             //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1);
             //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
             //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 0);
         }
-        
+
         private static long GetExpirationTime() => Timestamper.Default.UnixTime.SecondsLong + 20;
 
         [Test]
@@ -246,14 +246,14 @@ namespace Nethermind.Network.Discovery.Test
                 {
                     throw new Exception("Manager is null");
                 }
-                
+
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                PongMsg msg = new (_nodeIds[i], GetExpirationTime(), new byte[32]);
+                PongMsg msg = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msg);
-                
+
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
@@ -270,7 +270,7 @@ namespace Nethermind.Network.Discovery.Test
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
 
-            PongMsg pongMsg = new (_nodeIds[3], GetExpirationTime(), new byte[32]);
+            PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(pongMsg);
 

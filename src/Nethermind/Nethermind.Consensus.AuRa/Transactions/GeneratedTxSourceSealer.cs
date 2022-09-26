@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             _nonces.Clear();
@@ -75,11 +75,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 nonce = _stateReader.GetNonce(stateRoot, address);
             }
-            
+
             nonces[address] = nonce + 1;
             return nonce;
         }
-        
+
         public override string ToString() => $"{nameof(GeneratedTxSource)} [ {_innerSource} ]";
     }
 }

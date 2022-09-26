@@ -117,7 +117,7 @@ namespace Nethermind.Ssz.Test
         public void Can_serialize_bool(bool value, string expectedValue)
         {
             byte output = Ssz.Encode(value);
-            Assert.AreEqual(Bytes.FromHexString(expectedValue), new [] {output});
+            Assert.AreEqual(Bytes.FromHexString(expectedValue), new[] { output });
         }
     }
 }

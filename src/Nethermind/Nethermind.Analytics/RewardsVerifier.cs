@@ -37,7 +37,7 @@ namespace Nethermind.Analytics
 
         private UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
         private UInt256 _uncles;
-        
+
         public UInt256 BlockRewards { get; private set; }
 
         public RewardsVerifier(ILogManager logManager, long endLevelExclusive)
@@ -76,7 +76,7 @@ namespace Nethermind.Analytics
 
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
             => Task.FromResult(HeaderVisitOutcome.None);
-        
+
         public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
     }

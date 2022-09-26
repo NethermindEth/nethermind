@@ -28,9 +28,9 @@ namespace Nethermind.Cli.Console
         {
             _cliModuleLoader = cliModuleLoader;
         }
-        
+
         // characters to start completion from
-        public char[] Separators { get; set; } = {' ', '.', '/'};
+        public char[] Separators { get; set; } = { ' ', '.', '/' };
 
         // text - The current text entered in the console
         // index - The index of the terminal cursor within {text}

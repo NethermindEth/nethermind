@@ -64,12 +64,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
-            new(new T {SealEngineType = sealEngineType});
+            new(new T { SealEngineType = sealEngineType });
 
-        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain=>
+        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);
 
-        public class Builder<T>  where T : TestRpcBlockchain
+        public class Builder<T> where T : TestRpcBlockchain
         {
             private readonly TestRpcBlockchain _blockchain;
 
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-            specProvider ??= new TestSpecProvider(Berlin.Instance) {ChainId = ChainId.Mainnet};
+            specProvider ??= new TestSpecProvider(Berlin.Instance) { ChainId = ChainId.Mainnet };
             await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);

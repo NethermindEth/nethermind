@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     rlpStream.StartByteArray(sequenceLength + 1, false);
                 }
-                
+
                 rlpStream.WriteByte((byte)item.TxType);
             }
 
@@ -290,7 +290,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.GasUsed);
                 contentLength += 1 + Rlp.LengthOf(item.TxHash);
             }
-            
+
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             contentLength += Rlp.LengthOf(item.Bloom);
 

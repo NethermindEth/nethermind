@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength, true);
-            NettyRlpStream stream = new (byteBuffer);
+            NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
 
             return stream;
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public T Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new (byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
     }

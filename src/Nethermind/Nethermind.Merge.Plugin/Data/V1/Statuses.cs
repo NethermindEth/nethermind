@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,12 +33,12 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// Payload started a sync.
         /// </summary>
         public const string Syncing = "SYNCING";
-        
+
         /// <summary>
         /// Payload was accepted but not executed yet. It can be executed in <see cref="ForkchoiceStateV1"/> call.
         /// </summary>
         public const string Accepted = "ACCEPTED";
-        
+
         /// <summary>
         /// Payload has invalid block hash.
         /// </summary>

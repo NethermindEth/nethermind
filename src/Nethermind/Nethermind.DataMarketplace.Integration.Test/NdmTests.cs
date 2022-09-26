@@ -36,28 +36,28 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             NdmState state = new NdmState();
             NdmContext ndmContext = new NdmContext(state);
-            
+
 
             SetContext(ndmContext)
                 .StartDataProvider()
                 .Wait()
                 .DP.DeployNdmContract()
                 .DP.AddDataAsset(() => new DataAssetDto
+                {
+                    Name = "Test data asset #1",
+                    Description = "Test data asset #1 description",
+                    UnitPrice = "100000000000000000",
+                    UnitType = "unit",
+                    MinUnits = 1,
+                    MaxUnits = 100000,
+                    Rules = new DataAssetRulesDto
                     {
-                        Name = "Test data asset #1",
-                        Description = "Test data asset #1 description",
-                        UnitPrice = "100000000000000000",
-                        UnitType = "unit",
-                        MinUnits = 1,
-                        MaxUnits = 100000,
-                        Rules = new DataAssetRulesDto
+                        Expiry = new DataAssetRuleDto
                         {
-                            Expiry = new DataAssetRuleDto
-                            {
-                                Value = "0x10000"
-                            }
+                            Value = "0x10000"
                         }
-                    },
+                    }
+                },
                     validator: d => (d?.Replace("0x", string.Empty).Length ?? 0) == 64,
                     stateUpdater: (s, r) => s.DataAssetId = r.Result)
                 .DP.GetDataAssets(validator: d => d.Any())
@@ -65,11 +65,11 @@ namespace Nethermind.DataMarketplace.Integration.Test
                 .Wait()
                 .DC.GetDiscoveredDataAssets(validator: d => d.Any())
                 .DC.MakeDeposit(() => new MakeDepositDto
-                    {
-                        DataAssetId = state.DataAssetId,
-                        Units = 336,
-                        Value = "33600000000000000000",
-                    },
+                {
+                    DataAssetId = state.DataAssetId,
+                    Units = 336,
+                    Value = "33600000000000000000",
+                },
                     validator: d => (d?.Replace("0x", string.Empty).Length ?? 0) == 64,
                     stateUpdater: (s, r) => { s.DepositId = r.Result; })
                 .Wait()
@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                            !deposit.StreamEnabled &&
                            !deposit.Args.Any();
                 })
-                .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
+                .DC.EnableDataStream(() => state.DepositId, new[] { "test-sub" })
                 .DP.SendData(() => new DataAssetDataDto
                 {
                     DataAssetId = state.DataAssetId,
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                     Subscription = "test-sub"
                 })
                 .DC.PullData(() => state.DepositId, validator: string.IsNullOrWhiteSpace)
-                .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
+                .DC.EnableDataStream(() => state.DepositId, new[] { "test-sub" })
                 .DP.SendData(() => new DataAssetDataDto
                 {
                     DataAssetId = state.DataAssetId,
@@ -152,7 +152,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
                            dataRequest.Args.Contains("test-sub");
                 })
                 .DC.SendDataRequest(() => state.DepositId, validator: d => !string.IsNullOrWhiteSpace(d))
-                .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
+                .DC.EnableDataStream(() => state.DepositId, new[] { "test-sub" })
                 .DP.SendData(() => new DataAssetDataDto
                 {
                     DataAssetId = state.DataAssetId,

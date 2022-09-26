@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Specs.Test
         public CustomSpecProvider(ulong chainId, params (long BlockNumber, IReleaseSpec Release)[] transitions)
         {
             ChainId = chainId;
-            
+
             if (transitions.Length == 0)
             {
                 throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
@@ -80,7 +80,7 @@ namespace Nethermind.Specs.Test
                 }
                 else
                 {
-                    break;    
+                    break;
                 }
             }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -59,12 +59,12 @@ namespace Nethermind.TxPool.Test.Collections
             CollectAndFinalize();
             _finalizedCount = 0;
             _allCount = 0;
-            
+
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() { IsEip1559Enabled = false });
             _transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
         }
 
@@ -72,20 +72,20 @@ namespace Nethermind.TxPool.Test.Collections
         {
             get
             {
-                yield return new TestCaseData(new object[] {GenerateTransactions(), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, nonce: 5), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, address: TestItem.AddressA), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: null, nonce: 5, address: TestItem.AddressA), 1});
-                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: 5, nonce: 5), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: 5, address: TestItem.AddressA), Capacity});
-                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: null, nonce: 5, address: TestItem.AddressA), 1});
+                yield return new TestCaseData(new object[] { GenerateTransactions(), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(gasPrice: 5, nonce: 5), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(gasPrice: 5, address: TestItem.AddressA), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(gasPrice: null, nonce: 5, address: TestItem.AddressA), 1 });
+                yield return new TestCaseData(new object[] { GenerateTransactions(Capacity * 10), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(Capacity * 10, gasPrice: 5, nonce: 5), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(Capacity * 10, gasPrice: 5, address: TestItem.AddressA), Capacity });
+                yield return new TestCaseData(new object[] { GenerateTransactions(Capacity * 10, gasPrice: null, nonce: 5, address: TestItem.AddressA), 1 });
             }
         }
 
         [TestCaseSource(nameof(DistinctTestCases))]
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
-        {             
+        {
 
             var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
@@ -155,7 +155,7 @@ namespace Nethermind.TxPool.Test.Collections
 
         private class WithFinalizerDistinctPool : DistinctValueSortedPool<int, WithFinalizer, int>
         {
-            public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager) 
+            public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
                 : base(capacity, comparer, distinctComparer, logManager)
             {
             }
@@ -183,8 +183,8 @@ namespace Nethermind.TxPool.Test.Collections
 
                 return t1.Index.CompareTo(t2.Index);
             });
-            
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer(), LimboLogs.Instance);
+
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -220,8 +220,8 @@ namespace Nethermind.TxPool.Test.Collections
 
                 return t1.Index.CompareTo(t2.Index);
             });
-            
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer(), LimboLogs.Instance);
+
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
 
@@ -257,8 +257,8 @@ namespace Nethermind.TxPool.Test.Collections
 
                 return t1.Index.CompareTo(t2.Index);
             });
-            
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer(), LimboLogs.Instance);
+
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             void KeepGoing(int iterations)
             {

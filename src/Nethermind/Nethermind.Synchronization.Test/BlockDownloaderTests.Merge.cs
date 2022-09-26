@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -85,7 +85,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(notSyncedTree, beaconPivot,  new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -154,7 +154,7 @@ public partial class BlockDownloaderTests
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
-        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         Assert.True(posSwitcher.HasEverReachedTerminalBlock());
@@ -206,7 +206,7 @@ public partial class BlockDownloaderTests
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
-        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
@@ -267,7 +267,7 @@ public partial class BlockDownloaderTests
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
-        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
 
         Block? lastBestSuggestedBlock = null;
@@ -308,7 +308,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             testSpecProvider,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(blockTree, beaconPivot, new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(blockTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
     }

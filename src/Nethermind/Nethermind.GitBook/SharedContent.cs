@@ -32,7 +32,7 @@ namespace Nethermind.GitBook
         private string ReplaceType(Type type)
         {
             if (type.Name.Contains("`")) return "Array";
-            
+
             string replacedType = type.Name switch
             {
                 "Address" => "Address",
@@ -60,7 +60,7 @@ namespace Nethermind.GitBook
             };
             return replacedType;
         }
-        
+
         public void AddObjectsDescription(StringBuilder moduleBuilder, List<Type> typesToDescribe)
         {
             foreach (Type type in typesToDescribe.Distinct().Where(type => ReplaceType(type).Contains("object")))
@@ -69,20 +69,20 @@ namespace Nethermind.GitBook
                 moduleBuilder.AppendLine(@$"`{type.Name}`");
                 moduleBuilder.AppendLine();
 
-                if(type == typeof(BlockParameterType))
+                if (type == typeof(BlockParameterType))
                 {
                     moduleBuilder.AppendLine("- `Quantity` or `String` (latest, earliest, pending)");
                     moduleBuilder.AppendLine();
                     continue;
                 }
-                
-                if(type == typeof(TxType))
+
+                if (type == typeof(TxType))
                 {
                     moduleBuilder.AppendLine("- [EIP2718](https://eips.ethereum.org/EIPS/eip-2718) transaction type");
                     moduleBuilder.AppendLine();
                     continue;
                 }
-                
+
                 Type typeToDescribe = type.IsArray ? type.GetElementType() : type;
 
                 PropertyInfo[] properties = typeToDescribe.GetProperties();
@@ -98,7 +98,7 @@ namespace Nethermind.GitBook
                 }
             }
         }
-        
+
         public string GetTypeToWrite(Type type, List<Type> typesToDescribe)
         {
             if (type.IsNullable())
@@ -116,12 +116,12 @@ namespace Nethermind.GitBook
 
             return replacedType;
         }
-        
+
         private void AdditionalPropertiesToDescribe(Type type, List<Type> typesToDescribe)
         {
             PropertyInfo[] properties = type.GetProperties()
                 .Where(p => !p.PropertyType.IsPrimitive
-                            && p.PropertyType != typeof(string) 
+                            && p.PropertyType != typeof(string)
                             && p.PropertyType != typeof(long)
                             && p.PropertyType != typeof(Keccak))
                 .ToArray();

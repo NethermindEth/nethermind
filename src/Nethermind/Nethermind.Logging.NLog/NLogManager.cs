@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Logging.NLog
     public class NLogManager : ILogManager
     {
         private const string DefaultFileTargetName = "file-async_wrapped";
-        
+
         public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
         {
             logDirectory = SetupLogDirectory(logDirectory);
@@ -78,7 +78,7 @@ namespace Nethermind.Logging.NLog
         {
             GlobalDiagnosticsContext.Set(name, value);
         }
-        
+
         private void SetupLogRules(string logRules)
         {
             //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
@@ -98,7 +98,7 @@ namespace Nethermind.Logging.NLog
             }
         }
 
-        private Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) => 
+        private Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(r => r.Targets).Distinct().ToArray();
 
         private void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
@@ -141,7 +141,7 @@ namespace Nethermind.Logging.NLog
                 {
                     throw new ArgumentException($"Invalid rule '{rule}' in InitConfig.LogRules '{logRules}'", e);
                 }
-                
+
                 yield return CreateLoggingRule(targets, logLevel, loggerNamePattern);
             }
         }

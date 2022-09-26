@@ -23,7 +23,7 @@ namespace Nethermind.KeyStore
     public class ConsolePasswordProvider : BasePasswordProvider
     {
         private readonly IConsoleUtils _consoleUtils;
-        
+
         public ConsolePasswordProvider(IConsoleUtils consoleUtils)
         {
             _consoleUtils = consoleUtils;

@@ -38,7 +38,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
         {
             RegisterConventions();
         }
-        
+
         public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             {
                 return;
             }
-            
+
             MongoUrl connectionUrl = new MongoUrl(config.ConnectionString);
             MongoClientSettings clientSettings = MongoClientSettings.FromUrl(connectionUrl);
             if (_config.LogQueries)

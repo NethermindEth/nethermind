@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ namespace Nethermind.Core2.Types
     public readonly struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
         public static ValidatorIndex? None => default;
-        
+
         public static ValidatorIndex Zero => new ValidatorIndex(0);
 
         public ValidatorIndex(ulong number)
@@ -63,7 +63,7 @@ namespace Nethermind.Core2.Types
             return a.Number == b.Number;
         }
 
-        public static explicit operator int(ValidatorIndex validatorIndex) => (int) validatorIndex.Number;
+        public static explicit operator int(ValidatorIndex validatorIndex) => (int)validatorIndex.Number;
 
         public static implicit operator ulong(ValidatorIndex validatorIndex) => validatorIndex.Number;
 

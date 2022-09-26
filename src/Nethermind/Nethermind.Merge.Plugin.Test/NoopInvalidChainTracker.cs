@@ -20,7 +20,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class NoopInvalidChainTracker: IInvalidChainTracker
+public class NoopInvalidChainTracker : IInvalidChainTracker
 {
     public void Dispose()
     {

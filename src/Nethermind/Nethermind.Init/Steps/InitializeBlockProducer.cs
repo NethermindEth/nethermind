@@ -57,10 +57,10 @@ namespace Nethermind.Init.Steps
                 _api.TransactionComparerProvider!,
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
-            
+
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
-            
+
             if (consensusPlugin is not null)
             {
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
@@ -72,7 +72,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");    
+                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
         }
     }

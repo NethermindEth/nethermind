@@ -23,7 +23,7 @@ namespace Nethermind.Core2.Crypto
     {
         public static readonly SignedBeaconBlockHeader Zero =
             new SignedBeaconBlockHeader(BeaconBlockHeader.Zero, BlsSignature.Zero);
-        
+
         public SignedBeaconBlockHeader(BeaconBlockHeader message, BlsSignature signature)
         {
             Message = message;

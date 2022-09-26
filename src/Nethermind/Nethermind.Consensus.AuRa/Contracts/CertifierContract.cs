@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,21 +30,21 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public class CertifierContract : RegisterBasedContract, ICertifierContract
     {
-        private static readonly object[] MissingCertifiedResult = {false};
+        private static readonly object[] MissingCertifiedResult = { false };
         internal const string ServiceTransactionContractRegistryName = "service_transaction_checker";
-        
+
         private IConstantContract Constant { get; }
-        
+
         public CertifierContract(
             IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
-            IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource)
             : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
         public bool Certified(BlockHeader parentHeader, Address sender) =>
-            Constant.Call<bool>(new CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) {MissingContractResult = MissingCertifiedResult});
+            Constant.Call<bool>(new CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) { MissingContractResult = MissingCertifiedResult });
     }
 }

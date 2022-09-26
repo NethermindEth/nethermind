@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin
 
         private readonly IEnvironment _environment = new EnvironmentWrapper();
 
-        public MergePlugin() {}
+        public MergePlugin() { }
 
         public MergePlugin(IEnvironment? environment = null)
         {
@@ -112,7 +112,7 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-                   _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
+                   _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
                 _api.SealValidator = new InvalidHeaderSealInterceptor(
                     new MergeSealValidator(_poSSwitcher, _api.SealValidator),
                     _invalidChainTracker,
@@ -128,7 +128,8 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        private void FixTransitionBlock() {
+        private void FixTransitionBlock()
+        {
             // Special case during mainnet merge where if a transition block does not get processed through gossip
             // it does not get marked as main causing some issue on eth_getLogs.
             Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
@@ -399,7 +400,7 @@ namespace Nethermind.Merge.Plugin
                     _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
-                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher,  _beaconPivot, _api.LogManager);
+                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,

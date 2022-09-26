@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Clique
         public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
-                       
+
             // Block number
             long number = (long)rlpStream.DecodeUInt256();
             // Hash
@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Clique
                 long signedAt = (long)rlpStream.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
-            
+
             return signers;
         }
 

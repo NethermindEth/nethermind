@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Logging.NLog
         public bool IsInfo { get; }
         public bool IsDebug { get; }
         public bool IsTrace { get; }
-        
+
         public string Name { get; }
 
         private readonly Logger _logger;
@@ -43,7 +43,7 @@ namespace Nethermind.Logging.NLog
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
             _logger = LogManager.GetLogger(loggerName);
-            
+
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
             // TODO: review the behaviour on log levels switching
             IsInfo = _logger.IsInfoEnabled;

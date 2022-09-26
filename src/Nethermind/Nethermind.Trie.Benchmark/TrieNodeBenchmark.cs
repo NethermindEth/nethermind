@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
@@ -75,7 +75,7 @@ namespace Nethermind.Trie.Benchmark
         {
             return new TrieNode(NodeType.Unknown, new byte[7]);
         }
-        
+
         [Benchmark]
         public TrieNode Just_extension_with_child_96B()
         {
@@ -111,7 +111,7 @@ namespace Nethermind.Trie.Benchmark
         {
             return new Rlp(new byte[8]);
         }
-        
+
         [Benchmark]
         public Rlp Just_rlp_aligned_56B()
         {
@@ -123,7 +123,7 @@ namespace Nethermind.Trie.Benchmark
         {
             return new RlpStream(new byte[7]);
         }
-        
+
         [Benchmark]
         public RlpStream Just_rlp_stream_160B()
         {

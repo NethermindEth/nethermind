@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,7 +72,7 @@ namespace Nethermind.Cryptography
 
             // _POP_ = proof of possession
 
-            LegalKeySizesValue = new[] {new KeySizes(32 * 8, 32 * 8, 0)};
+            LegalKeySizesValue = new[] { new KeySizes(32 * 8, 32 * 8, 0) };
         }
 
         /// <summary>
@@ -197,7 +197,7 @@ namespace Nethermind.Cryptography
         /// <returns>true if the aggregate signature is valid; false if invalid</returns>
         public abstract bool FastAggregateVerifyData(IList<byte[]> publicKeys, ReadOnlySpan<byte> data,
             ReadOnlySpan<byte> aggregateSignature);
-        
+
         /// <summary>
         /// Imports the specified parameters into the current BLS asymmetric algorithm.
         /// </summary>

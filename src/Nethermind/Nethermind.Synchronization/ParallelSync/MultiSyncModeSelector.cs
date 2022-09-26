@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {
-            PeriodicTimer timer = new (TimeSpan.FromSeconds(1));
+            PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
@@ -388,7 +388,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool desiredPeerKnown = AnyDesiredPeerKnown(best) ;
+            bool desiredPeerKnown = AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
             bool notInFastSync = !best.IsInFastSync;
@@ -670,9 +670,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
                 || best.Processed > best.Block
-                // for any processed block we should have its full state
-                // || (best.Processed > best.State && best.Processed > best.BeamState))
-                // but we only do limited lookups for state so we need to instead fast sync to now
+            // for any processed block we should have its full state
+            // || (best.Processed > best.State && best.Processed > best.BeamState))
+            // but we only do limited lookups for state so we need to instead fast sync to now
             )
             {
                 string stateString = BuildStateString(best);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -98,7 +98,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
             if (beaconMainChainBlock.IsBeaconInfo)
             {
-               newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
+                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
                 if (beaconMainChainBlock.TotalDifficulty != 0)
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
@@ -187,7 +187,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            BlockInfo? parentBlockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
+            BlockInfo? parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
             if (parentBlockInfo == null)
             {
                 return null;

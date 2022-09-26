@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public long RequestId { get; set; } = MessageConstants.Random.NextLong();
         public T EthMessage { get; set; }
 
-        protected Eth66Message() 
+        protected Eth66Message()
         {
         }
 
@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             RequestId = requestId;
             EthMessage = ethMessage;
         }
-        
+
         public override string ToString()
             => $"{GetType().Name}Eth66({RequestId},{EthMessage})";
     }

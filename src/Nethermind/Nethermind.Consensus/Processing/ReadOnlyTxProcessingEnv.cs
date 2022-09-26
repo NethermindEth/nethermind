@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyTrieStore? trieStore,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager) 
+            ILogManager? logManager)
             : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager? logManager)
         {
             if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
-            
+
             DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Processing
             StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
             IWorldState worldState = new WorldState(StateProvider, StorageProvider);
-            
+
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 

@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 {
     public static class AbiDefinitionParserExtensions
     {
-        public static void RegisterAbiTypeFactory(this IAbiDefinitionParser parser, AbiType abiType) => 
+        public static void RegisterAbiTypeFactory(this IAbiDefinitionParser parser, AbiType abiType) =>
             parser.RegisterAbiTypeFactory(new AbiTypeFactory(abiType));
     }
 }

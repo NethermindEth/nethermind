@@ -56,12 +56,12 @@ namespace Nethermind.DataMarketplace.Core.Services
         public Task<byte[]> GetCodeAsync(Address address)
         {
             byte[] code = _stateReader.GetCode(_blockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash, address);
-            return Task.FromResult(code);   
+            return Task.FromResult(code);
         }
 
         public Task<Block?> FindBlockAsync(Keccak blockHash)
         {
-            return Task.FromResult(_blockTree.FindBlock(blockHash));   
+            return Task.FromResult(_blockTree.FindBlock(blockHash));
         }
 
         public Task<Block?> FindBlockAsync(long blockNumber) =>
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<UInt256> GetNonceAsync(Address address)
         {
-            return Task.FromResult(_stateReader.GetNonce(_blockchainBridge.HeadBlock.StateRoot, address));   
+            return Task.FromResult(_stateReader.GetNonce(_blockchainBridge.HeadBlock.StateRoot, address));
         }
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
@@ -99,7 +99,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         public Task<byte[]> CallAsync(Transaction transaction)
         {
             var callOutput = _blockchainBridge.Call(_blockchainBridge.HeadBlock?.Header, transaction, CancellationToken.None);
-            return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
+            return Task.FromResult(callOutput.OutputData ?? new byte[] { 0 });
         }
 
         public Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
             var callOutput = _blockchainBridge.Call(block.Header, transaction, CancellationToken.None);
 
-            return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
+            return Task.FromResult(callOutput.OutputData ?? new byte[] { 0 });
         }
 
         public ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction)

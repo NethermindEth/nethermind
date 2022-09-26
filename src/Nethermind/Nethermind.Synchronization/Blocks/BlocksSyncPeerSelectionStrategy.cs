@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return null;
             }
-            
+
             return (headersSpeed ?? 0) + (bodiesSpeed ?? 0);
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.Blocks
                 return bestDiffPeer.Info;
             }
 
-            decimal speedRatio = fastestPeer.TransferSpeed / (decimal) Math.Max(1L, currentSpeed);
+            decimal speedRatio = fastestPeer.TransferSpeed / (decimal)Math.Max(1L, currentSpeed);
             if (speedRatio > 1m + MinDiffPercentageForSpeedSwitch
                 && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch)
             {

@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Test
         [Test]
         public void Smoke_test()
         {
-            MongoProvider mongoProvider = new MongoProvider(new NdmMongoConfig{ConnectionString = "mongodb://mongodb0.example.com:27017/admin"}, LimboLogs.Instance);
+            MongoProvider mongoProvider = new MongoProvider(new NdmMongoConfig { ConnectionString = "mongodb://mongodb0.example.com:27017/admin" }, LimboLogs.Instance);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,21 +29,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             GetNodeDataMessage message = new(keys);
             GetNodeDataMessageSerializer serializer = new();
-            
+
             SerializerTester.TestZero(serializer, message);
         }
 
         [Test]
         public void Roundtrip()
         {
-            Keccak[] keys = {TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
+            Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Keccak[] keys = {null, TestItem.KeccakA, null, TestItem.KeccakB, null, null};
+            Keccak[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
             Test(keys);
         }
     }

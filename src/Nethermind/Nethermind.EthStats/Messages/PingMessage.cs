@@ -18,7 +18,7 @@
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.EthStats.Messages
 {
-    public class PingMessage  : IMessage
+    public class PingMessage : IMessage
     {
         public string? Id { get; set; }
         public long ClientTime { get; }

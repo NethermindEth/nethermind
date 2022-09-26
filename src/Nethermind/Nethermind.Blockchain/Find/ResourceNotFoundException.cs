@@ -20,7 +20,7 @@ using System.Transactions;
 
 namespace Nethermind.Blockchain.Find;
 
-public class ResourceNotFoundException: ArgumentException
+public class ResourceNotFoundException : ArgumentException
 {
     public ResourceNotFoundException(string message) : base(message)
     {

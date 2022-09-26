@@ -110,13 +110,13 @@ namespace Nethermind.Blockchain.Test.Producers
                 trigger,
                 timestamper,
                 specProvider,
-                new MiningConfig {Enabled = true},
+                new MiningConfig { Enabled = true },
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
             devBlockProducer.Start();
             ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
-            
+
             AutoResetEvent autoResetEvent = new(false);
 
             blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();

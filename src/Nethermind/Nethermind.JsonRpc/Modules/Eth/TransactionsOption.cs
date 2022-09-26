@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public class TransactionsOption : IJsonRpcParam
 {
     public bool IncludeTransactions { get; set; }
-        
+
     public void ReadJson(JsonSerializer serializer, string jsonValue)
     {
         JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());

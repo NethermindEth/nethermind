@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             TxReceipts = txReceipts ?? new TxReceipt[0][];
         }
-        
+
         public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
     }
 }

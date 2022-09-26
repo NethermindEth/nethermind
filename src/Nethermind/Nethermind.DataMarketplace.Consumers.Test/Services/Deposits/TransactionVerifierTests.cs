@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             result.Confirmed.Should().BeFalse();
             await _blockchainBridge.Received().GetLatestBlockAsync();
         }
-        
+
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_false_if_block_was_not_found_and_required_number_of_confirmations_was_not_achieved()
         {
@@ -62,7 +62,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.Received().GetLatestBlockAsync();
             await _blockchainBridge.Received().FindBlockAsync(block.ParentHash);
         }
-        
+
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_false_if_block_hash_is_same_as_tx_hash_and_required_number_of_confirmations_was_not_achieved()
         {
@@ -76,7 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _blockchainBridge.Received().GetLatestBlockAsync();
             await _blockchainBridge.DidNotReceive().FindBlockAsync(block.ParentHash);
         }
-        
+
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_true_if_required_number_of_confirmations_is_achieved()
         {

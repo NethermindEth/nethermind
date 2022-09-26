@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Core
                 long parentGasTarget = parent.GasLimit / Eip1559Constants.ElasticityMultiplier;
                 if (isForkBlockNumber)
                     parentGasTarget = parent.GasLimit;
-                
+
                 if (parent.GasUsed == parentGasTarget)
                 {
                     expectedBaseFee = parent.BaseFeePerGas;
@@ -45,14 +45,14 @@ namespace Nethermind.Core
                 {
                     gasDelta = parent.GasUsed - parentGasTarget;
                     feeDelta = UInt256.Max(
-                        parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator,
+                        parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator,
                         UInt256.One);
                     expectedBaseFee = parentBaseFee + feeDelta;
                 }
                 else
                 {
                     gasDelta = parentGasTarget - parent.GasUsed;
-                    feeDelta = parentBaseFee * (UInt256) gasDelta / (UInt256) parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
+                    feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
                     expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
                 }
 

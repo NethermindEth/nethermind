@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -25,7 +25,7 @@ namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.All)]
     public class DifficultyEIP2384RandomTo20MTests : TestsBase
-    {     
+    {
         public static IEnumerable<DifficultyTests> LoadEIP2384Tests()
         {
             return LoadHex("difficultyEIP2384_random_to20M.json");

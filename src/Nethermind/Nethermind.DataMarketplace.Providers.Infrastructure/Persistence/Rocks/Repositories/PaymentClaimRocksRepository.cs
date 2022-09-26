@@ -20,8 +20,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
     {
         private readonly IDb _database;
         private readonly IRlpDecoder<PaymentClaim> _rlpDecoder;
-        private  IRlpStreamDecoder<PaymentClaim> RlpStreamDecoder => (IRlpStreamDecoder<PaymentClaim>)_rlpDecoder;
-        private  IRlpObjectDecoder<PaymentClaim> RlpObjectDecoder => (IRlpObjectDecoder<PaymentClaim>)_rlpDecoder;
+        private IRlpStreamDecoder<PaymentClaim> RlpStreamDecoder => (IRlpStreamDecoder<PaymentClaim>)_rlpDecoder;
+        private IRlpObjectDecoder<PaymentClaim> RlpObjectDecoder => (IRlpObjectDecoder<PaymentClaim>)_rlpDecoder;
 
         public PaymentClaimRocksRepository(IDb database, IRlpNdmDecoder<PaymentClaim> rlpDecoder)
         {
@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
             {
                 return Task.FromResult(PagedResult<PaymentClaim>.Empty);
             }
-            
+
             var paymentClaims = GetAll();
             if (paymentClaims.Length == 0)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
             }
 
             var values = Query(paymentClaims.AsEnumerable(), depositId, assetId, consumer)
-                .Select(c => new {c.ClaimedValue, c.Income, c.Status});
+                .Select(c => new { c.ClaimedValue, c.Income, c.Status });
 
             var claimed = UInt256.Zero;
             var pending = UInt256.Zero;

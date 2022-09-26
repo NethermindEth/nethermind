@@ -23,13 +23,13 @@ namespace Nethermind.Mev.Source
     public class CompareMevBundleByBlock : IComparer<MevBundle>
     {
         public static readonly CompareMevBundleByBlock Default = new();
-        
+
         public int Compare(MevBundle? x, MevBundle? y)
         {
-            if (ReferenceEquals(x, y)) return 0; 
+            if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
+
             return x.BlockNumber.CompareTo(y.BlockNumber);
         }
     }

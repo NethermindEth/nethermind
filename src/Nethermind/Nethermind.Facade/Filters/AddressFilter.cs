@@ -23,20 +23,20 @@ namespace Nethermind.Blockchain.Filters
     public class AddressFilter
     {
         public static AddressFilter AnyAddress = new((Address)null);
-        
+
         private Core.Bloom.BloomExtract[] _addressesBloomIndexes;
         private Core.Bloom.BloomExtract? _addressBloomExtract;
-        
+
         public AddressFilter(Address address)
         {
             Address = address;
         }
-        
+
         public AddressFilter(HashSet<Address> addresses)
         {
             Addresses = addresses;
         }
-        
+
         public Address? Address { get; set; }
         public HashSet<Address>? Addresses { get; set; }
         private Core.Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Filters
 
             return Address == null || Address == address;
         }
-        
+
         public bool Accepts(ref AddressStructRef address)
         {
             if (Addresses != null)
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Filters
                 for (var i = 0; i < indexes.Length; i++)
                 {
                     var index = indexes[i];
-                    result = bloom.Matches(ref index); 
+                    result = bloom.Matches(ref index);
                     if (result)
                     {
                         break;
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Filters
                 for (var i = 0; i < indexes.Length; i++)
                 {
                     var index = indexes[i];
-                    result = bloom.Matches(ref index); 
+                    result = bloom.Matches(ref index);
                     if (result)
                     {
                         break;

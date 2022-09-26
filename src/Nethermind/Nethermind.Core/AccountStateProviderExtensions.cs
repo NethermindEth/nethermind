@@ -24,7 +24,7 @@ namespace Nethermind.Core
     {
         public static bool HasCode(this IAccountStateProvider stateProvider, Address address) =>
             stateProvider.GetAccount(address).HasCode;
-        
+
         public static bool IsInvalidContractSender(this IAccountStateProvider stateProvider, IReleaseSpec spec, Address address) =>
             spec.IsEip3607Enabled && stateProvider.HasCode(address);
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,11 +24,11 @@ namespace Nethermind.Consensus.Producers
     public class PayloadAttributes
     {
         public UInt256 Timestamp { get; set; }
-        
+
         public Keccak PrevRandao { get; set; }
-        
+
         public Address SuggestedFeeRecipient { get; set; }
-        
+
         /// <summary>
         /// GasLimit
         /// </summary>
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
         /// Only used for MEV-Boost
         /// </remarks>
         public long? GasLimit { get; set; }
-        
+
         public override string ToString()
         {
             return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";

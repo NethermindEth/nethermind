@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,7 +47,7 @@ namespace Nethermind.Db.Test.Rpc
         public void gets_through_rpc()
         {
             string result = "0x0123";
-            _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(Arg.Any<string>()).Returns(new JsonRpcSuccessResponse() {Result = result});
+            _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(Arg.Any<string>()).Returns(new JsonRpcSuccessResponse() { Result = result });
             byte[] key = new byte[1];
             byte[] elem = _rpcDb[key];
             _jsonRpcClient.Received().Post("debug_getFromDb", "Name", key.ToHexString());

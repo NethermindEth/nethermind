@@ -49,35 +49,35 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class AuRaParameters
     {
         public const long TransitionDisabled = long.MaxValue;
-        
+
         public IDictionary<long, long> StepDuration { get; set; }
 
         public IDictionary<long, UInt256> BlockReward { get; set; }
 
         public long MaximumUncleCountTransition { get; set; }
-        
+
         public long? MaximumUncleCount { get; set; }
-        
+
         public Address BlockRewardContractAddress { get; set; }
-        
+
         public long? BlockRewardContractTransition { get; set; }
-        
+
         public IDictionary<long, Address> BlockRewardContractTransitions { get; set; }
-        
+
         public long ValidateScoreTransition { get; set; }
-        
+
         public long ValidateStepTransition { get; set; }
-        
+
         public long PosdaoTransition { get; set; }
-		
+
         public Validator Validators { get; set; }
 
         public long TwoThirdsMajorityTransition { get; set; }
-        
+
         public IDictionary<long, Address> RandomnessContractAddress { get; set; }
-        
+
         public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; }
-        
+
         public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; }
 
         public enum ValidatorType
@@ -91,7 +91,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public class Validator
         {
             public ValidatorType ValidatorType { get; set; }
-        
+
             /// <summary>
             /// Dictionary of Validators per their starting block.
             /// </summary>
@@ -111,7 +111,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/> will be empty.
             /// </remarks>
             public Address[] Addresses { get; set; }
-            
+
             public Address GetContractAddress()
             {
                 switch (ValidatorType)
@@ -122,7 +122,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     default:
                         throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
                 }
-                
+
             }
         }
     }

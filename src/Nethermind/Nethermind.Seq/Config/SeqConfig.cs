@@ -21,7 +21,7 @@ namespace Nethermind.Seq.Config
     public class SeqConfig : ISeqConfig
     {
         public string MinLevel { get; set; } = "Off";
-        public string ServerUrl {get; set; } =  "http://localhost:5341";
-        public string ApiKey {get; set; } = string.Empty;
+        public string ServerUrl { get; set; } = "http://localhost:5341";
+        public string ApiKey { get; set; } = string.Empty;
     }
 }

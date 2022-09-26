@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,16 +23,16 @@ namespace Nethermind.Core2.Types
     public struct Gwei : IEquatable<Gwei>, IComparable<Gwei>
     {
         public static Gwei Zero = default;
-        
+
         public static Gwei One = new Gwei(1);
-        
+
         public Gwei(ulong amount)
         {
             Amount = amount;
         }
-        
+
         public ulong Amount { get; }
-        
+
         public static bool operator <(Gwei a, Gwei b)
         {
             return a.Amount < b.Amount;
@@ -42,7 +42,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Amount > b.Amount;
         }
-        
+
         public static bool operator <=(Gwei a, Gwei b)
         {
             return a.Amount <= b.Amount;
@@ -52,7 +52,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Amount >= b.Amount;
         }
-        
+
         public static bool operator ==(Gwei a, Gwei b)
         {
             return a.Amount == b.Amount;
@@ -77,7 +77,7 @@ namespace Nethermind.Core2.Types
         {
             return Amount.GetHashCode();
         }
-        
+
         public static explicit operator Gwei(ulong value) => new Gwei(value);
 
         public static implicit operator ulong(Gwei slot) => slot.Amount;
@@ -86,7 +86,7 @@ namespace Nethermind.Core2.Types
         {
             return new Gwei(Math.Min(val1.Amount, val2.Amount));
         }
-        
+
         public static Gwei Max(Gwei val1, Gwei val2)
         {
             return new Gwei(Math.Max(val1.Amount, val2.Amount));

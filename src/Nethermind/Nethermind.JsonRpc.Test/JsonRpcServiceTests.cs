@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(2L, (response?.Result as BlockForRpc)?.Number);
         }
-        
+
         [Test]
         public void Eth_module_populates_size_when_returning_block_data()
         {
@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(513L, (response?.Result as BlockForRpc)?.Size);
         }
-        
+
         [Test]
         public void CanHandleOptionalArguments()
         {
@@ -98,7 +98,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
             Assert.AreEqual("0x1", response?.Result);
         }
-        
+
         [Test]
         public void Case_sensitivity_test()
         {
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test
             TestRequest(ethRpcModule, "eth_chainID").Should().BeOfType<JsonRpcErrorResponse>();
             TestRequest(ethRpcModule, "eth_chainId").Should().BeOfType<JsonRpcSuccessResponse>();
         }
-        
+
         [Test]
         public void GetNewFilterTest()
         {
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_newFilter", JsonConvert.SerializeObject(parameters)) as JsonRpcSuccessResponse;
             Assert.AreEqual(UInt256.One, response?.Result);
         }
-        
+
         [Test]
         public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
         {
@@ -146,7 +146,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
             Assert.AreEqual("0x", response?.Result);
         }
-        
+
         [TestCase("")]
         [TestCase(null)]
         public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string nullValue)
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Test
         public void GetWorkTest()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] {Bytes.FromHexString("aa"), Bytes.FromHexString("01")}));
+            ethRpcModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] { Bytes.FromHexString("aa"), Bytes.FromHexString("01") }));
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_getWork") as JsonRpcSuccessResponse;
             byte[][] dataList = response?.Result as byte[][];
             Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0xaa"));

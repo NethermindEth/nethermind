@@ -37,7 +37,7 @@ namespace Nethermind.Serialization.Json
 
         public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
         }
     }

@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _createSystemAccount = createSystemAccount;
             _useNonZeroGasPrice = useNonZeroGasPrice;
         }
-        
+
         [SetUp]
         public async Task Setup()
         {
@@ -161,7 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
-            
+
             if (withHeader)
             {
                 Assert.NotNull(receiptWithProof.BlockHeader);
@@ -180,7 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void Get_receipt_when_block_has_few_receipts(bool withHeader, string expectedResult)
         {
             IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
-            LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
+            LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
             TxReceipt receipt1 = new TxReceipt()
             {
@@ -197,7 +197,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 GasUsedTotal = 2000,
                 Logs = logEntries
             };
-        
+
             TxReceipt receipt2 = new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
@@ -213,10 +213,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 GasUsedTotal = 2000,
                 Logs = logEntries
             };
-            
+
             Block block = _blockTree.FindBlock(1);
             Keccak txHash = _blockTree.FindBlock(1).Transactions[1].Hash;
-            TxReceipt[] receipts = {receipt1, receipt2};
+            TxReceipt[] receipts = { receipt1, receipt2 };
             _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
             _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1).Hash);
@@ -231,21 +231,21 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 LimboLogs.Instance);
 
             _proofRpcModule = moduleFactory.Create();
-             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
-             
-             if (withHeader)
-             {
-                 Assert.NotNull(receiptWithProof.BlockHeader);
-             }
-             else
-             {
-                 Assert.Null(receiptWithProof.BlockHeader);
-             }
-             
+            ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+
+            if (withHeader)
+            {
+                Assert.NotNull(receiptWithProof.BlockHeader);
+            }
+            else
+            {
+                Assert.Null(receiptWithProof.BlockHeader);
+            }
+
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
             Assert.AreEqual(expectedResult, response);
         }
-        
+
         [Test]
         public void Can_call()
         {
@@ -263,7 +263,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 To = TestItem.AddressB,
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
-            
+
             _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
 
             EthereumJsonSerializer serializer = new();
@@ -493,7 +493,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             CallResultWithProof result = TestCallWithCode(code);
             Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
         }
-        
+
         [Test]
         public void Can_call_with_self_balance()
         {
@@ -748,7 +748,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             TestCallWithStorageAndCode(code, _useNonZeroGasPrice ? 10.GWei() : 0);
         }
-        
+
         [Test]
         public void Can_call_with_mix_of_everything_and_storage_from_another_account_wrong_nonce()
         {
@@ -808,7 +808,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
             Assert.True(response.Contains("\"result\""));
-            
+
             return callResultWithProof;
         }
 

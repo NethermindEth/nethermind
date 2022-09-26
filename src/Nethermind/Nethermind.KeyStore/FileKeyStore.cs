@@ -32,7 +32,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
-[assembly:InternalsVisibleTo("Nethermind.KeyStore.Test")]
+[assembly: InternalsVisibleTo("Nethermind.KeyStore.Test")]
 namespace Nethermind.KeyStore
 {
     /// <summary>
@@ -102,7 +102,7 @@ namespace Nethermind.KeyStore
                 return (keyData, Result.Success);
             }
             catch (Exception)
-            {                
+            {
                 return (null, Result.Fail("Invalid key data format"));
             }
         }
@@ -216,7 +216,7 @@ namespace Nethermind.KeyStore
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
-            
+
             var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
@@ -315,7 +315,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 var msg = "Error during getting addresses";
-                if(_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) _logger.Error(msg, e);
                 return (null, Result.Fail(msg));
             }
         }
@@ -326,31 +326,31 @@ namespace Nethermind.KeyStore
             {
                 return Result.Fail("Incorrect key");
             }
-            
+
             if (keyStoreItem.Version != Version)
             {
                 return Result.Fail("KeyStore version mismatch");
             }
-            
+
             return Result.Success;
         }
 
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
             var serializedKey = _jsonSerializer.Serialize(keyData);
-            
+
             try
             {
                 var keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
                 var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
                 var path = Path.Combine(storeDirectory, keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
-                return new Result {ResultType = ResultType.Success};
+                return new Result { ResultType = ResultType.Success };
             }
             catch (Exception e)
             {
                 var msg = $"Error during persisting key for address: {address}";
-                if(_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
         }
@@ -362,7 +362,7 @@ namespace Nethermind.KeyStore
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if(_logger.IsError) _logger.Error("Trying to internally delete key which does not exist");
+                    if (_logger.IsError) _logger.Error("Trying to internally delete key which does not exist");
                     return Result.Fail("Cannot find key");
                 }
 
@@ -370,38 +370,38 @@ namespace Nethermind.KeyStore
                 {
                     File.Delete(file);
                 }
-                
+
                 return new Result { ResultType = ResultType.Success };
             }
             catch (Exception e)
             {
                 var msg = $"Error during deleting key for address: {address}";
-                if(_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
         }
-        
+
         private string ReadKey(Address address)
         {
             if (address == Address.Zero)
             {
                 return null;
             }
-            
+
             try
             {
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if(_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
+                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
                     return null;
                 }
-                
+
                 return File.ReadAllText(files[0]);
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error($"Error during reading key for address: {address}", e);
+                if (_logger.IsError) _logger.Error($"Error during reading key for address: {address}", e);
                 return null;
             }
         }

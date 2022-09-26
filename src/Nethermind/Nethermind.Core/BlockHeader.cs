@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -79,7 +79,7 @@ namespace Nethermind.Core
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
-        
+
         // ToDo we need to set this flag after reading block from db
         public bool IsPostMerge { get; set; }
 

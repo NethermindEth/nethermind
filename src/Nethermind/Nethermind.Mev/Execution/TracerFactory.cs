@@ -56,12 +56,12 @@ namespace Nethermind.Mev.Execution
             _blockTree = blockTree.AsReadOnly();
             _trieStore = trieStore;
         }
-        
+
         public ITracer Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-            
+
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
 

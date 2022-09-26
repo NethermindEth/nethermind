@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc
 
         public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
-            if(string.IsNullOrWhiteSpace(report.Method))
+            if (string.IsNullOrWhiteSpace(report.Method))
             {
                 return;
             }

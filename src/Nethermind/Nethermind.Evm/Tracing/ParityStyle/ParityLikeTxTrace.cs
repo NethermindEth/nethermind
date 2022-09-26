@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,15 +25,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public byte[]? Output { get; set; }
 
         public Keccak? BlockHash { get; set; }
-        
+
         public long BlockNumber { get; set; }
-        
+
         public int? TransactionPosition { get; set; }
-        
+
         public Keccak? TransactionHash { get; set; }
-        
+
         public ParityVmTrace? VmTrace { get; set; }
-        
+
         public ParityTraceAction? Action { get; set; }
 
         public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }

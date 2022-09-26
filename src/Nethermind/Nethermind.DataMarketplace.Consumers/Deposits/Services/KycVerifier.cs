@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _depositApprovalRepository = depositApprovalRepository;
             _logger = logManager.GetClassLogger();
         }
-    
+
         public async Task<bool> IsVerifiedAsync(Keccak dataAssetId, Address address)
         {
             var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(dataAssetId), Rlp.Encode(address)).Bytes);

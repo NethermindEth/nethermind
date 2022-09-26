@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
-        
+
         private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -361,7 +361,7 @@ namespace Nethermind.Consensus.Clique
             UInt256 timestamp = _timestamper.UnixTime.Seconds;
             IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
-            BlockHeader header = new (
+            BlockHeader header = new(
                 parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
@@ -436,7 +436,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             _stateProvider.StateRoot = parentHeader.StateRoot!;
-            
+
             IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;

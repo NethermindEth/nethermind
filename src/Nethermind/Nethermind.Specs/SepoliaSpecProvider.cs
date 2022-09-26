@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,16 +39,16 @@ public class SepoliaSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
+    public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
 
-        public long? DaoBlockNumber => null;
+    public long? DaoBlockNumber => null;
 
 
-        public ulong ChainId => Core.ChainId.Rinkeby;
+    public ulong ChainId => Core.ChainId.Rinkeby;
 
-        public long[] TransitionBlocks { get; } = { 1735371 };
+    public long[] TransitionBlocks { get; } = { 1735371 };
 
-        private SepoliaSpecProvider() { }
+    private SepoliaSpecProvider() { }
 
-        public static readonly SepoliaSpecProvider Instance = new();
+    public static readonly SepoliaSpecProvider Instance = new();
 }

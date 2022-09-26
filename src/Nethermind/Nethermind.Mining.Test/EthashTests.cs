@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -857,7 +857,7 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _dataSizes.Length; i++)
             {
-                ulong size = Ethash.GetDataSize((uint) i);
+                ulong size = Ethash.GetDataSize((uint)i);
                 Assert.AreEqual(size, _dataSizes[i], i, $"failed at epoch: {i}");
             }
         }
@@ -867,7 +867,7 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _cacheSizes.Length; i++)
             {
-                ulong size = Ethash.GetCacheSize((uint) i);
+                ulong size = Ethash.GetCacheSize((uint)i);
                 Assert.AreEqual(size, _cacheSizes[i], i);
             }
         }

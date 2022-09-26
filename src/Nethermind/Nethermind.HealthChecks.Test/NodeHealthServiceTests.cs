@@ -89,10 +89,10 @@ namespace Nethermind.HealthChecks.Test
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             INethermindApi api = Substitute.For<INethermindApi>();
 
-            ManualTimestamper timestamper = new (DateTime.Parse("18:23:00"));
+            ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
             api.Timestamper.Returns(timestamper);
             api.JsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
-            MethodStats methodStats = new ();
+            MethodStats methodStats = new();
             methodStats.Successes = 0;
             api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1").Returns(methodStats);
             api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);

@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new ();
+            MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new ();
+            MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);

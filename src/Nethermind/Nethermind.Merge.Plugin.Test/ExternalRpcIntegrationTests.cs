@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,10 +43,11 @@ namespace Nethermind.Merge.Plugin.Test
             long? currentBlockNumber = null;
             Keccak? currentHash = null;
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
-            do {
+            do
+            {
                 string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
-                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
+                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
                 if (currentHash != null)
                 {
@@ -57,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Test
                 currentBlockNumber = block.Number!.Value - 1;
             } while (currentBlockNumber != destinationBlockNumber);
         }
-        
+
         [Test]
         [Ignore("You need specify rpc for this test")]
         public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
@@ -71,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
-                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
+                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
                 if (childTimestamp != null)
                 {

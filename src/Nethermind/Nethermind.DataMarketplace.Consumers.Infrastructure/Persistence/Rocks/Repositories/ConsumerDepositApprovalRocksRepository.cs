@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
-            
+
             byte[][] depositApprovalsBytes = _database.GetAllValues().ToArray();
             if (depositApprovalsBytes.Length == 0)
             {

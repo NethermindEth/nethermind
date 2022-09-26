@@ -49,10 +49,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                 case 1:
                     return GetUniqueSession(session, previousSessions[0]);
                 default:
-                {
-                    return GetUniqueSession(session, previousSessions[1]) ??
-                           GetUniqueSession(session, previousSessions[0]);
-                }
+                    {
+                        return GetUniqueSession(session, previousSessions[1]) ??
+                               GetUniqueSession(session, previousSessions[0]);
+                    }
             }
         }
 

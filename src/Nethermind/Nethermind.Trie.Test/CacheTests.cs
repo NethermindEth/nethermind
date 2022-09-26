@@ -15,15 +15,15 @@ namespace Nethermind.Trie.Test
             MemCountingCache cache = new(1024, string.Empty);
             cache.MemorySize.Should().Be(160);
         }
-        
+
         [Test]
         public void Cache_post_init_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.Set(Keccak.Zero, new byte[0]); 
+            cache.Set(Keccak.Zero, new byte[0]);
             cache.MemorySize.Should().Be(400);
         }
-        
+
         [Test]
         public void Cache_post_capacity_growth_memory_calculated_correctly()
         {
@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakD, new byte[0]);
             cache.MemorySize.Should().Be(824);
         }
-        
+
         [Test]
         public void Limit_by_memory_works_fine()
         {
@@ -42,22 +42,22 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
-            
+
             cache.MemorySize.Should().Be(608);
             cache.Get(TestItem.KeccakA).Should().NotBeNull();
-            
+
             cache.Set(TestItem.KeccakD, new byte[0]);
             cache.MemorySize.Should().Be(608);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakD).Should().NotBeNull();
-            
+
             cache.Set(TestItem.KeccakE, new byte[0]);
             cache.MemorySize.Should().Be(608);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakC).Should().BeNull();
             cache.Get(TestItem.KeccakE).Should().NotBeNull();
         }
-        
+
         [Test]
         public void Limit_by_memory_works_fine_wth_deletes()
         {
@@ -65,12 +65,12 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
-            
+
             cache.Set(TestItem.KeccakA, null);
-            
+
             cache.MemorySize.Should().Be(504);
             cache.Get(TestItem.KeccakA).Should().BeNull();
-            
+
             cache.Set(TestItem.KeccakD, new byte[0]);
             cache.MemorySize.Should().Be(608);
             cache.Get(TestItem.KeccakB).Should().NotBeNull();
