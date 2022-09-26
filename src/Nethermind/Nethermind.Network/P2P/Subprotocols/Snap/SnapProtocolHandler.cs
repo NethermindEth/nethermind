@@ -49,6 +49,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override string ProtocolCode => Protocol.Snap;
         public override int MessageIdSpaceSize => 8;
 
+        private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
+
         private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
@@ -161,25 +163,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, "Serving snap data in not implemented in this node.");
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
