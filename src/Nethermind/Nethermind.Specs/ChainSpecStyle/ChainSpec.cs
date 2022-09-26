@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -88,6 +88,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public long? ShanghaiBlockNumber { get; set; }
+        public UInt256? ShanghaiTimestamp { get; set; }
     }
 }

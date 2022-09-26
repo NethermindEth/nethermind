@@ -39,6 +39,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         private void BuildTransitions()
         {
             SortedSet<long> transitionBlocks = new();
+            SortedSet<ulong> transitionTimestamps = new();
             transitionBlocks.Add(0L);
 
             if (_chainSpec.Ethash?.BlockRewards != null)
@@ -51,20 +52,28 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             var forks = _chainSpec.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.Name.Contains("BlockNumber") && p.Name != "TerminalPoWBlockNumber");
-            
+                .Where(p => p.Name.EndsWith("BlockNumber") && p.Name != "TerminalPoWBlockNumber");
+
+            var timestampForks = _chainSpec.GetType()
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.Name.EndsWith("Timestamp"));
+
             var baseTransitions = _chainSpec.Parameters.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.Name.Contains("Transition"));
+                .Where(p => p.Name.EndsWith("Transition"));
 
             var ethashTransitions = _chainSpec.Ethash?.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.Name.Contains("Transition")) ?? Enumerable.Empty<PropertyInfo>();
+                .Where(p => p.Name.EndsWith("Transition")) ?? Enumerable.Empty<PropertyInfo>();
 
-            var transitionProperties =
+            var timestampBaseTransitions = _chainSpec.Parameters.GetType()
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.Name.EndsWith("TransitionTimestamp"));
+
+            var blockNumberTransitionProperties =
                 forks.Union(baseTransitions.Union(ethashTransitions));
 
-            foreach (PropertyInfo propertyInfo in transitionProperties)
+            foreach (PropertyInfo propertyInfo in blockNumberTransitionProperties)
             {
                 if (propertyInfo.PropertyType == typeof(long))
                 {
@@ -79,6 +88,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                     }
                 }
             }
+
+            foreach (PropertyInfo propertyInfo in timestampBaseTransitions)
+            {
+                transitionTimestamps.Add((ulong)propertyInfo.GetValue(_chainSpec.Parameters));
+            }
+
 
             foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long,long>>())
             {
@@ -139,7 +154,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip3541Enabled = (_chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3607Enabled = (_chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
                 releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
@@ -166,6 +180,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
+            }
+
+            foreach (ulong releaseStartTimestamp in transitionTimestamps)
+            {
+                ReleaseSpec releaseSpec = new();
+                releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             }
             
             MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;

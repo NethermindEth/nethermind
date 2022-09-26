@@ -90,7 +90,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One)
+                    .WithTimestamp(1UL)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }

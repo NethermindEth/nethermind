@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
 
             Block block = producerUnderTest.Prepare();
-            block.Timestamp.Should().BeEquivalentTo(block.Difficulty);
+            new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
         }
         
         [Test]
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Producers
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
             Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
-            block.Timestamp.Should().BeEquivalentTo(block.Difficulty);
+            new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
         }
     }
 }

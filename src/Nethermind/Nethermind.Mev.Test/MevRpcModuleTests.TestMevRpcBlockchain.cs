@@ -89,7 +89,7 @@ namespace Nethermind.Mev.Test
                 };
                 Signer = new TestMevSigner(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One)
+                    .WithTimestamp(1UL)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }

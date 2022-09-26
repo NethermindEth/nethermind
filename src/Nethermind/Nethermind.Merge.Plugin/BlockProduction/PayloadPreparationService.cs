@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
@@ -181,7 +182,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
-            payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
+            new UInt256(payloadAttributes.Timestamp).ToBigEndian(inputSpan.Slice(32, 32));
             payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             long number = decoderContext.DecodeLong();
             long gasLimit = decoderContext.DecodeLong();
             long gasUsed = decoderContext.DecodeLong();
-            UInt256 timestamp = decoderContext.DecodeUInt256();
+            ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
             BlockHeader blockHeader = new(
@@ -119,7 +119,7 @@ namespace Nethermind.Serialization.Rlp
             long number = rlpStream.DecodeLong();
             long gasLimit = rlpStream.DecodeLong();
             long gasUsed = rlpStream.DecodeLong();
-            UInt256 timestamp = rlpStream.DecodeUInt256();
+            ulong timestamp = rlpStream.DecodeULong();
             byte[]? extraData = rlpStream.DecodeByteArray();
 
             BlockHeader blockHeader = new(
