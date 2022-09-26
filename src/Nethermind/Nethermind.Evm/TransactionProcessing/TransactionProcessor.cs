@@ -174,7 +174,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
             byte[] data = transaction.IsMessageCall ? transaction.Data : Array.Empty<byte>();
-            
+
             Address? caller = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");
 
@@ -346,7 +346,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         state.WarmUp(block.GasBeneficiary);
                     }
-                    
+
                     substate = _virtualMachine.Run(state, _worldState, txTracer);
                     unspentGas = state.GasAvailable;
 

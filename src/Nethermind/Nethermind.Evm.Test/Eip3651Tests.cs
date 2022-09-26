@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Op(Instruction.POP)
                 .Done;
-            TestAllTracerWithOutput result = Execute(BlockNumber -1, 100000, code);
+            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2605);
         }
@@ -64,6 +64,6 @@ namespace Nethermind.Evm.Test
             tracer.IsTracingAccess = false;
             return tracer;
         }
-        
+
     }
 }
