@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -34,7 +34,7 @@ namespace Nethermind.Trie
     public partial class TrieNode
     {
         private const int BranchesCount = 16;
-        
+
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -71,17 +71,19 @@ namespace Nethermind.Trie
                             }
                         }
                     }
-                    
+
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     void VisitSingleThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
                     {
                         // single threaded route
                         for (int i = 0; i < BranchesCount; i++)
                         {
+                            visitContext.AbsolutePathNibbles.Add((byte)i);
                             VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
+                            visitContext.AbsolutePathNibbles.RemoveAt(visitContext.AbsolutePathNibbles.Count - 1);
                         }
                     }
-                    
+
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     void VisitMultiThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
                     {
@@ -93,7 +95,9 @@ namespace Nethermind.Trie
                             {
                                 // we need to have separate context for each thread as context tracks level and branch child index
                                 TrieVisitContext childContext = visitContext.Clone();
+                                childContext.AbsolutePathNibbles.Add((byte)i);
                                 VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
+                                // no need to remove the element from AbsolutePathNibbles as the childContext is cleaned
                             }
                             finally
                             {
@@ -102,9 +106,10 @@ namespace Nethermind.Trie
                         });
                     }
 
+
                     visitor.VisitBranch(this, trieVisitContext);
                     trieVisitContext.Level++;
-                    
+
                     if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
                     {
                         // we need to preallocate children
@@ -135,13 +140,17 @@ namespace Nethermind.Trie
 
                 case NodeType.Extension:
                 {
+                    if (trieVisitContext.KeepTrackOfAbsolutePath)
+                    {
+                        trieVisitContext.AbsolutePathNibbles.AddRange(Path!);
+                    }
                     visitor.VisitExtension(this, trieVisitContext);
                     TrieNode child = GetChild(nodeResolver, 0);
                     if (child == null)
                     {
                         throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                     }
-                    
+
                     child.ResolveKey(nodeResolver, false);
                     if (visitor.ShouldVisit(child.Keccak!))
                     {
@@ -151,11 +160,20 @@ namespace Nethermind.Trie
                         trieVisitContext.Level--;
                     }
 
+                    if (trieVisitContext.KeepTrackOfAbsolutePath)
+                    {
+                        trieVisitContext.AbsolutePathNibbles.RemoveRange(trieVisitContext.AbsolutePathNibbles.Count - Path.Length, Path.Length);
+                    }
+
                     break;
                 }
 
                 case NodeType.Leaf:
                 {
+                    if (trieVisitContext.KeepTrackOfAbsolutePath)
+                    {
+                        trieVisitContext.AbsolutePathNibbles.AddRange(Path!);
+                    }
                     visitor.VisitLeaf(this, trieVisitContext, Value);
                     if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
@@ -173,7 +191,7 @@ namespace Nethermind.Trie
                             trieVisitContext.IsStorage = true;
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
-                            
+
                             if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
                             {
                                 storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
@@ -186,6 +204,10 @@ namespace Nethermind.Trie
                             trieVisitContext.Level--;
                             trieVisitContext.IsStorage = false;
                         }
+                    }
+                    if (trieVisitContext.KeepTrackOfAbsolutePath)
+                    {
+                        trieVisitContext.AbsolutePathNibbles.RemoveRange(trieVisitContext.AbsolutePathNibbles.Count - Path.Length, Path.Length);
                     }
 
                     break;
