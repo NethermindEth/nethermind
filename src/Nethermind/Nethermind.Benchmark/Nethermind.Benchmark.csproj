@@ -12,7 +12,7 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     <PackageReference Include="HexMate" Version="0.0.2" />
-    <PackageReference Include="Nethermind.Numerics.Dirichlet" Version="1.0.0-preview.1" />
+    <PackageReference Include="Nethermind.Numerics.Dirichlet" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
