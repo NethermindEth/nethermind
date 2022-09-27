@@ -592,7 +592,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         if (firstToComplete == delayTask)
                         {
-                            ReportRefreshFailed(syncPeer, "timeout");
+                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
                         }
                         else if (firstToComplete.IsFaulted)
                         {
@@ -698,7 +698,17 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+
+            if (exception is OperationCanceledException || exception is TimeoutException)
+            {
+                // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
+                // or we have some connection issue
+                ReportWeakPeer(new PeerInfo(syncPeer), AllocationContexts.All);
+            }
+            else
+            {
+                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+            }
         }
 
         public void Dispose()
