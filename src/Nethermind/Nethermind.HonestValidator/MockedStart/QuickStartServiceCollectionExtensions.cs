@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.HonestValidator.MockedStart
         public static void AddHonestValidatorQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<IValidatorKeyProvider, QuickStartKeyProvider>();
-            
+
             services.Configure<QuickStartParameters>(x =>
             {
                 // FIXME: Duplication with quickstart in beacon node... need to move configuration to Nethermind.Core2.Configuration.
@@ -41,8 +41,8 @@ namespace Nethermind.HonestValidator.MockedStart
                 {
                     x.GenesisTime = section.GetValue<ulong>("GenesisTime");
                     x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
-//                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
-//                    x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
+                    //                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
+                    //                    x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
                     x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
                     x.ValidatorStartIndex = section.GetValue<ulong>("ValidatorStartIndex");
                     x.NumberOfValidators = section.GetValue<ulong>("NumberOfValidators");
@@ -60,7 +60,7 @@ namespace Nethermind.HonestValidator.MockedStart
                 else
                 {
                     ulong genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
-                    clockOffset = (long) genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
+                    clockOffset = (long)genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
 
                 services.AddSingleton<IClock>(serviceProvider =>

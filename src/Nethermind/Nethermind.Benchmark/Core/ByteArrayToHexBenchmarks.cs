@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace Nethermind.Benchmarks.Core
     public class ByteArrayToHexBenchmarks
     {
         private byte[] array = Bytes.FromHexString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-        
+
         [GlobalSetup]
         public void Setup()
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Benchmarks.Core
         {
             return Bytes.ByteArrayToHexViaLookup32Safe(array, false);
         }
-        
+
         [Benchmark(Baseline = true)]
         public string HexMateA()
         {

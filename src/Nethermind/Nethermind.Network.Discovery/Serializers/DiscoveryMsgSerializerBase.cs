@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,16 +45,16 @@ public abstract class DiscoveryMsgSerializerBase
         Span<byte> resultSpan = result.AsSpan();
         resultSpan[32 + 65] = type;
         data.CopyTo(resultSpan.Slice(32 + 65 + 1, data.Length));
-        
+
         Span<byte> payload = resultSpan.Slice(32 + 65);
         Keccak toSign = Keccak.Compute(payload);
         Signature signature = _ecdsa.Sign(_privateKey, toSign);
         signature.Bytes.AsSpan().CopyTo(resultSpan.Slice(32, 64));
         resultSpan[32 + 64] = signature.RecoveryId;
-            
+
         Span<byte> forMdc = resultSpan.Slice(32);
         ValueKeccak mdc = ValueKeccak.Compute(forMdc);
-        mdc.BytesAsSpan.CopyTo(resultSpan.Slice(0,32));
+        mdc.BytesAsSpan.CopyTo(resultSpan.Slice(0, 32));
         return result;
     }
 
@@ -64,18 +64,18 @@ public abstract class DiscoveryMsgSerializerBase
         {
             throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
         }
-        
+
         byte[] mdc = msg.Slice(0, 32);
         Span<byte> signature = msg.AsSpan(32, 65);
         // var type = new[] { msg[97] };
         byte[] data = msg.Slice(98, msg.Length - 98);
         Span<byte> computedMdc = ValueKeccak.Compute(msg.AsSpan(32)).BytesAsSpan;
-        
+
         if (!Bytes.AreEqual(mdc, computedMdc))
         {
             throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
         }
-        
+
         PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64).ToArray(), signature[64], msg.AsSpan(97, msg.Length - 97));
         return (nodeId, mdc, data);
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
 
-        RlpStream rlpStream = new (totalLength);
+        RlpStream rlpStream = new(totalLength);
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(rlpStream);
@@ -62,7 +62,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
             string resHex = data.Slice(positionForHex).ToHexString();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
-        
+
         EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
         return msg;
     }

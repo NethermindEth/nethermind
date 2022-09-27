@@ -26,7 +26,7 @@ namespace Nethermind.Wallet
     {
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
-        
+
         public void Import(byte[] keyData, SecureString passphrase)
         {
         }
@@ -36,7 +36,7 @@ namespace Nethermind.Wallet
         }
 
         private static NullWallet _instance;
-        
+
         public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullWallet());
 
         public Address NewAccount(SecureString passphrase)

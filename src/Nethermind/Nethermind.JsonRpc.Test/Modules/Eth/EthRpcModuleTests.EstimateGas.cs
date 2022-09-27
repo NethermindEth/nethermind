@@ -171,7 +171,7 @@ public partial class EthRpcModuleTests
 
         optimizedEstimateGas.Should().BeLessThan(estimateGas);
     }
-    
+
     [Test]
     public async Task Estimate_gas_without_gas_pricing()
     {
@@ -239,7 +239,7 @@ public partial class EthRpcModuleTests
             "{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}",
             serialized);
     }
-    
+
     [Test]
     public async Task Estimate_gas_with_revert()
     {
@@ -259,14 +259,14 @@ public partial class EthRpcModuleTests
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"revert\"},\"id\":67}",
             serialized);
     }
-    
+
     [Test]
     public async Task should_estimate_transaction_with_deployed_code_when_eip3607_enabled()
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet, AllowTestChainOverride = false };
         using Context ctx = await Context.Create(specProvider);
-        
+
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
         ctx.Test.State.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakH, London.Instance);

@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
             if (result.Any())
             {
-                return (IByteBuffer) result[0];
+                return (IByteBuffer)result[0];
             }
 
             return null;

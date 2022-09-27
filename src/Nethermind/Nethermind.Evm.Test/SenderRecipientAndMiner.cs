@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
     public class SenderRecipientAndMiner
     {
         public static SenderRecipientAndMiner Default = new();
-            
+
         public SenderRecipientAndMiner()
         {
             SenderKey = TestItem.PrivateKeyA;

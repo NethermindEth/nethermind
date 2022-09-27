@@ -221,6 +221,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    class TestException: Exception {
+    class TestException : Exception
+    {
     }
 }

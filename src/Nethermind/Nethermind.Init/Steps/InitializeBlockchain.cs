@@ -214,15 +214,15 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager);
 
             // blockchain processing
-            BlockhashProvider blockhashProvider = new (
+            BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new (
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            WorldState worldState = new (stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 worldState,
@@ -347,11 +347,11 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-         protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-             _api.BlockTree,
-             _api.SealValidator,
-             _api.SpecProvider,
-             _api.LogManager);
+        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
+            _api.BlockTree,
+            _api.SealValidator,
+            _api.SpecProvider,
+            _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()

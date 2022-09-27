@@ -64,7 +64,7 @@ namespace Nethermind.Runner.Test
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainspecNotFound(string chainspecPath)
         {
-            _loader.Invoking(l=>l.LoadEmbeddedOrFromFile(chainspecPath, _logger))
+            _loader.Invoking(l => l.LoadEmbeddedOrFromFile(chainspecPath, _logger))
                 .Should().Throw<FileNotFoundException>();
         }
 

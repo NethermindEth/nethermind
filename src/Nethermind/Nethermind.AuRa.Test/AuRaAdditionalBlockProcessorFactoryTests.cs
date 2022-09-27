@@ -47,9 +47,9 @@ namespace Nethermind.AuRa.Test
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             IDb stateDb = Substitute.For<IDb>();
-            stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
-            
-            AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(), 
+            stateDb[Arg.Any<byte[]>()].Returns((byte[])null);
+
+            AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
@@ -57,20 +57,20 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
                 Substitute.For<IAuRaBlockFinalizationManager>(),
-                Substitute.For<ITxSender>(), 
+                Substitute.For<ITxSender>(),
                 Substitute.For<ITxPool>(),
                 new MiningConfig(),
                 LimboLogs.Instance,
                 Substitute.For<ISigner>(),
-                Substitute.For<ISpecProvider>(), 
-                
+                Substitute.For<ISpecProvider>(),
+
                 Substitute.For<IGasPriceOracle>(),
                 new ReportingContractBasedValidator.Cache(), long.MaxValue);
 
             AuRaParameters.Validator validator = new()
             {
                 ValidatorType = validatorType,
-                Addresses = new[] {Address.Zero},
+                Addresses = new[] { Address.Zero },
                 Validators = new Dictionary<long, AuRaParameters.Validator>()
                 {
                     {
@@ -81,9 +81,9 @@ namespace Nethermind.AuRa.Test
                     }
                 }
             };
-            
+
             IAuRaValidator result = factory.CreateValidatorProcessor(validator);
-            
+
             result.Should().BeOfType(expectedType);
         }
     }

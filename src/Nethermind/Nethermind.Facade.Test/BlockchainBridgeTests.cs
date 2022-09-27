@@ -122,7 +122,7 @@ namespace Nethermind.Facade.Test
                 .TestObject;
             _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-            _receiptStorage.Get(block).Returns(new[] {receipt});
+            _receiptStorage.Get(block).Returns(new[] { receipt });
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
                 .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
         }
@@ -202,7 +202,7 @@ namespace Nethermind.Facade.Test
             Keccak txHash = TestItem.KeccakA;
             Keccak blockHash = TestItem.KeccakB;
             UInt256 effectiveGasPrice = 123;
-            
+
             Transaction tx = Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
                 .TestObject;
@@ -217,7 +217,7 @@ namespace Nethermind.Facade.Test
             _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.RequireCanonical)).Returns(isCanonical ? block : null);
             _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.TotalDifficultyNotNeeded)).Returns(block);
             _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
-            _receiptStorage.Get(block).Returns(new[] {receipt});
+            _receiptStorage.Get(block).Returns(new[] { receipt });
 
             (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) result = isCanonical ? (receipt, effectiveGasPrice, 0) : (null, null, 0);
             _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash).Should().BeEquivalentTo(result);

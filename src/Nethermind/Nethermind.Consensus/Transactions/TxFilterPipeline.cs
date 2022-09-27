@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Transactions
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _filters = new List<ITxFilter>();
         }
-        
+
         public void AddTxFilter(ITxFilter txFilter)
         {
             _filters.Add(txFilter);
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Transactions
             {
                 return true;
             }
-            
+
             foreach (ITxFilter filter in _filters)
             {
                 AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader);

@@ -82,7 +82,7 @@ namespace Nethermind.Core.Collections
         public void IntersectWith(IEnumerable<T>? other)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            
+
             T[] ts = new T[Count];
             CopyTo(ts, 0);
             ISet<T> set = other.ToHashSet();
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Collections
         public bool IsProperSubsetOf(IEnumerable<T>? other)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            
+
             int contains = 0;
             int noContains = 0;
             foreach (T t in other)
@@ -147,7 +147,7 @@ namespace Nethermind.Core.Collections
         public bool IsSubsetOf(IEnumerable<T>? other)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            
+
             ISet<T> set = other.ToHashSet();
             return this.All(t => set.Contains(t));
         }
@@ -177,10 +177,10 @@ namespace Nethermind.Core.Collections
         public void SymmetricExceptWith(IEnumerable<T> other)
         {
             if (other == null) throw new ArgumentNullException(nameof(other));
-            
+
             T[] ts = new T[Count];
             CopyTo(ts, 0);
-            
+
             ISet<T> set = other.ToHashSet();
             for (int index = 0; index < ts.Length; index++)
             {
@@ -207,7 +207,7 @@ namespace Nethermind.Core.Collections
                 Add(t);
             }
         }
-        
+
         #endregion
 
 
@@ -246,11 +246,11 @@ namespace Nethermind.Core.Collections
 
             return false;
         }
-        
+
         #endregion
 
         #region IEnumerable<T>, IEnumerable
-        
+
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => _list.GetEnumerator();

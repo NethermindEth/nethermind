@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -82,13 +82,13 @@ namespace Nethermind.Serialization.Json
             using StreamReader reader = new(stream);
             return Deserialize<T>(reader);
         }
-        
+
         public T Deserialize<T>(string json)
         {
             using StringReader reader = new(json);
             return Deserialize<T>(reader);
         }
-        
+
         private T Deserialize<T>(TextReader reader)
         {
             using JsonReader jsonReader = new JsonTextReader(reader);

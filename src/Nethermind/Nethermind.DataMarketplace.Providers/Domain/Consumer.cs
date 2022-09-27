@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((Consumer) obj);
+            return Equals((Consumer)obj);
         }
 
         public override int GetHashCode()

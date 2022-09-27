@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.TxPool.Filters
             _accounts = accountStateProvider;
             _logger = logger;
         }
-            
+
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);

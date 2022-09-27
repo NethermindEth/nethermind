@@ -100,7 +100,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception exc)
             {
-                _logger.Error($"Error when starting IPC server over '{ _path}' path.", exc);
+                _logger.Error($"Error when starting IPC server over '{_path}' path.", exc);
             }
             finally
             {

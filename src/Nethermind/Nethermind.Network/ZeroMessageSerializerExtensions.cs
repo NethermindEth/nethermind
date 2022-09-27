@@ -25,7 +25,7 @@ namespace Nethermind.Network
         public static byte[] Serialize<T>(this IZeroMessageSerializer<T> serializer, T message) where T : MessageBase
         {
             IByteBuffer byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(
-                serializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer 
+                serializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
                     ? zeroInnerMessageSerializer.GetLength(message, out _)
                     : 64);
             try
@@ -39,7 +39,7 @@ namespace Nethermind.Network
                 byteBuffer.SafeRelease();
             }
         }
-        
+
         public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase
         {
             IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);

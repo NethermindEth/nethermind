@@ -30,7 +30,7 @@ namespace Nethermind.EvmPlayground
         {
             return ToHexString(bytes, false, false);
         }
-        
+
         public static string ToHexString(this Span<byte> bytes)
         {
             return ToHexString(bytes, false, false);
@@ -40,7 +40,7 @@ namespace Nethermind.EvmPlayground
         {
             return ToHexString(bytes, withZeroX, false);
         }
-        
+
         public static string ToHexString(this Span<byte> bytes, bool withZeroX)
         {
             return ToHexString(bytes, withZeroX, false);
@@ -65,8 +65,8 @@ namespace Nethermind.EvmPlayground
             for (int i = 0; i < bytes.Length; i++)
             {
                 uint val = Lookup32[bytes[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
 
                 if (leadingZeros <= i * 2) result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] = char1;
 
@@ -84,7 +84,7 @@ namespace Nethermind.EvmPlayground
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
 
             return result;

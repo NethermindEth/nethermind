@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             DataAsset result = await repo.GetAsync(dataAsset.Id);
             result.Should().BeEquivalentTo(dataAsset);
         }
-        
+
         [Test]
         public async Task Can_update_async()
         {
@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             DataAsset result = await repo.GetAsync(dataAsset.Id);
             result.Should().BeEquivalentTo(dataAsset);
         }
-        
+
         [Test]
         public async Task Can_check_if_exists()
         {
@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             await repo.AddAsync(dataAsset);
             (await repo.ExistsAsync(dataAsset.Id)).Should().BeTrue();
         }
-        
+
         [Test]
         public async Task Can_remove_async()
         {
@@ -91,7 +91,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             await repo.AddAsync(dataAsset);
             await repo.BrowseAsync(new GetDataAssets());
         }
-        
+
         [Test]
         public async Task Can_browse_null_query()
         {

@@ -111,12 +111,12 @@ public class AdminRpcModule : IAdminRpcModule
         {
             removed = _peerPool.TryRemove(new NetworkNode(enode).NodeId, out Peer _);
         }
-        
+
         return removed
             ? ResultWrapper<string>.Success(enode)
             : ResultWrapper<string>.Fail("Failed to remove peer.");
     }
-    
+
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
         => ResultWrapper<PeerInfo[]>.Success(
             _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());

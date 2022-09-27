@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
     internal static class Log
     {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
+
         // 1bxx preliminary
 
         public static readonly Action<ILogger, string, string, int, Exception?> PeeringWorkerStarting =
@@ -60,9 +60,9 @@ namespace Nethermind.BeaconNode.Eth1Bridge
                 "Eth genesis succeeded with block hash {BlockHash}, genesis time {GenesisTime:n0}, and {DepositCount} deposits, at check {CheckGenesisCount}.");
 
         // 2bxx 
-        
+
         // 4bxx warning
-        
+
         public static readonly Action<ILogger, ulong, ulong, ulong, Exception?> QuickStartEth1TimestampTooLow =
             LoggerMessage.Define<ulong, ulong, ulong>(LogLevel.Warning,
                 new EventId(4390, nameof(QuickStartEth1TimestampTooLow)),

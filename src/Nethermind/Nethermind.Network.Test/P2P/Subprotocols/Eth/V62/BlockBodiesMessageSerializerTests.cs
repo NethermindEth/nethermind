@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,16 +34,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             tx.SenderAddress = null;
             BlockBodiesMessage message = new();
-            message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
-            
+            message.Bodies = new[] { new BlockBody(new[] { tx }, new[] { header }) };
+
             var serializer = new BlockBodiesMessageSerializer();
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void Roundtrip_with_nulls()
         {
-            BlockBodiesMessage message = new() {Bodies = new BlockBody[1] {null}};
+            BlockBodiesMessage message = new() { Bodies = new BlockBody[1] { null } };
             var serializer = new BlockBodiesMessageSerializer();
             SerializerTester.TestZero(serializer, message);
         }

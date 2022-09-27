@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IStore _store;
         internal const string MothraDirectory = "mothra";
         private int _minimumSignedBeaconBlockLength;
-        
+
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IHostEnvironment environment,
@@ -76,12 +76,12 @@ namespace Nethermind.BeaconNode.Peering
             _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
             _signedBeaconBlockProcessor = signedBeaconBlockProcessor;
             _store = store;
-            
+
             // 396 bytes
             _minimumSignedBeaconBlockLength = Ssz.Ssz.SignedBeaconBlockLength(
                 new SignedBeaconBlock(new BeaconBlock(Slot.Zero, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
                     BlsSignature.Zero));
-            
+
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

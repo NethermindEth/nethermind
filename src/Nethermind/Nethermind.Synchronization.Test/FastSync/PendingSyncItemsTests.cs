@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             return new PendingSyncItems();
         }
-        
+
         [Test]
         public void At_start_count_is_zero()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_peek_root()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.PeekState().Should().Be(stateSyncItem);
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_recalculate_and_clear_with_root_only()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();
@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[1].NodeDataType.Should().Be(NodeDataType.Storage);
             batch[2].NodeDataType.Should().Be(NodeDataType.State);
         }
-        
+
         [Test]
         public void Prefers_left()
         {
@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[1].Rightness.Should().Be(15);
             batch[2].Rightness.Should().Be(10000);
         }
-        
+
         [Test]
         public void Prefers_left_single_branch()
         {
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static StateSyncItem PushItem(IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
         {
-            StateSyncItem stateSyncItem1 = new (Keccak.Zero, null, null, nodeDataType, level, rightness);
+            StateSyncItem stateSyncItem1 = new(Keccak.Zero, null, null, nodeDataType, level, rightness);
             items.PushToSelectedStream(stateSyncItem1, progress);
             return stateSyncItem1;
         }

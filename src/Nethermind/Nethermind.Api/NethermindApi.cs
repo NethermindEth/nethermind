@@ -96,7 +96,7 @@ namespace Nethermind.Api
                 LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-            
+
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -186,7 +186,7 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
-        
+
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
@@ -221,7 +221,7 @@ namespace Nethermind.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        
+
         public ISubscriptionFactory SubscriptionFactory { get; set; }
         public ProtectedPrivateKey? NodeKey { get; set; }
 

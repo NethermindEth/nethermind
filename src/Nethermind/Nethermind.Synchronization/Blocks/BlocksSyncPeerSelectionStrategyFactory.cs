@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.Blocks
                 throw new ArgumentNullException(
                     $"NULL received for allocation in {nameof(BlocksSyncPeerAllocationStrategyFactory)}");
             }
-            
+
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
 
             TotalDiffStrategy totalDiffStrategy = new(baseStrategy);

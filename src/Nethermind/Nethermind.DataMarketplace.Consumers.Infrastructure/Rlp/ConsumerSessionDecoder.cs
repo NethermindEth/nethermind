@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             PublicKey consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
             Address providerAddress = rlpStream.DecodeAddress();
             PublicKey providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            SessionState state = (SessionState) rlpStream.DecodeInt();
+            SessionState state = (SessionState)rlpStream.DecodeInt();
             uint startUnitsFromProvider = rlpStream.DecodeUInt();
             uint startUnitsFromConsumer = rlpStream.DecodeUInt();
             ulong startTimestamp = rlpStream.DecodeUlong();
@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             uint paidUnits = rlpStream.DecodeUInt();
             uint settledUnits = rlpStream.DecodeUInt();
             uint consumedUnitsFromProvider = rlpStream.DecodeUInt();
-            DataAvailability dataAvailability = (DataAvailability) rlpStream.DecodeInt();
+            DataAvailability dataAvailability = (DataAvailability)rlpStream.DecodeInt();
 
             return new ConsumerSession(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state, startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.ConsumerNodeId.Bytes),
                 Serialization.Rlp.Rlp.Encode(item.ProviderAddress),
                 Serialization.Rlp.Rlp.Encode(item.ProviderNodeId.Bytes),
-                Serialization.Rlp.Rlp.Encode((int) item.State),
+                Serialization.Rlp.Rlp.Encode((int)item.State),
                 Serialization.Rlp.Rlp.Encode(item.StartUnitsFromProvider),
                 Serialization.Rlp.Rlp.Encode(item.StartUnitsFromConsumer),
                 Serialization.Rlp.Rlp.Encode(item.StartTimestamp),
@@ -88,9 +88,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.PaidUnits),
                 Serialization.Rlp.Rlp.Encode(item.SettledUnits),
                 Serialization.Rlp.Rlp.Encode(item.ConsumedUnitsFromProvider),
-                Serialization.Rlp.Rlp.Encode((int) item.DataAvailability));
+                Serialization.Rlp.Rlp.Encode((int)item.DataAvailability));
         }
-        
+
         public int GetLength(ConsumerSession item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();

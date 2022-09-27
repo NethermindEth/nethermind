@@ -35,11 +35,11 @@ namespace Nethermind.JsonRpc.Modules
         JsonSerializer Serializer { get; }
 
         ModuleResolution Check(string methodName, JsonRpcContext context);
-        
+
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
-        
+
         Task<IRpcModule> Rent(string methodName, bool canBeShared);
-        
+
         void Return(string methodName, IRpcModule rpcModule);
     }
 }

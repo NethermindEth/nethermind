@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,9 +35,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         protected BlockForRpc()
         {
-            
+
         }
-        
+
         public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             else
             {
                 Step = block.Header.AuRaStep;
-                Signature = block.Header.AuRaSignature;                    
+                Signature = block.Header.AuRaSignature;
             }
 
             if (specProvider != null)
@@ -82,23 +82,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
             TransactionsRoot = block.TxRoot;
             Uncles = block.Uncles.Select(o => o.Hash);
         }
-        
+
         public Address Author { get; set; }
         public UInt256 Difficulty { get; set; }
         public byte[] ExtraData { get; set; }
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak Hash { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; }
         public Address Miner { get; set; }
         public Keccak MixHash { get; set; }
-        
+
         public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash != null;
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Nonce { get; set; }
 
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public bool ShouldSerializeStep() => _isAuRaBlock;
         public UInt256 TotalDifficulty { get; set; }
         public UInt256 Timestamp { get; set; }
-        
+
         public UInt256? BaseFeePerGas { get; set; }
         public IEnumerable<object> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }

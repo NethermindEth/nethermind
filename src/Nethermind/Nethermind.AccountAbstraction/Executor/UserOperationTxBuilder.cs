@@ -37,8 +37,8 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IAbiEncoder _abiEncoder;
 
         public UserOperationTxBuilder(
-            AbiDefinition entryPointContractAbi, 
-            ISigner signer, 
+            AbiDefinition entryPointContractAbi,
+            ISigner signer,
             Address entryPointContractAddress,
             ISpecProvider specProvider)
         {
@@ -75,8 +75,8 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public Transaction BuildTransactionFromUserOperations(
-            IEnumerable<UserOperation> userOperations, 
-            BlockHeader parent, 
+            IEnumerable<UserOperation> userOperations,
+            BlockHeader parent,
             long gasLimit,
             UInt256 nonce,
             IReleaseSpec spec)
@@ -124,7 +124,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 return null;
             }
-            
+
         }
     }
 }

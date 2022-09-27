@@ -72,7 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FileSystem,
                     _api.LogManager);
 
-                
+
                 if (initConfig.WebSocketsEnabled)
                 {
                     JsonRpcWebSocketsModule webSocketsModule = new(

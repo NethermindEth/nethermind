@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             ProviderSession session = BuildDummySession();
             await repo.AddAsync(session);
         }
-        
+
         [Test]
         public async Task Can_update_async()
         {
@@ -40,7 +40,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             await repo.UpdateAsync(session);
             var result = await repo.GetAsync(session.Id);
             result.Should().BeEquivalentTo(session);
-            
+
         }
 
         private static ProviderSession BuildDummySession()

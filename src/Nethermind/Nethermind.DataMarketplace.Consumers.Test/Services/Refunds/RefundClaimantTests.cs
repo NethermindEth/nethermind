@@ -173,7 +173,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)},
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) },
                 earlyRefundTicket: new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, null));
 
         private static DataAsset GetDataAsset()

@@ -433,7 +433,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_deliver_messages()
         {
             Metrics.P2PBytesSent = 0;
-            
+
             Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
@@ -511,7 +511,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_receive_messages()
         {
             Metrics.P2PBytesReceived = 0;
-            
+
             Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);

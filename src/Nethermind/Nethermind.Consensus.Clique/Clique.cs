@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Clique
         /// Number of blocks between the checkpoints
         /// </summary>
         public const int CheckpointInterval = 1024;
-        
+
         /// <summary>
         /// Number of blocks within the Clique epoch
         /// </summary>
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Clique
         /// Snapshots cache size
         /// </summary>
         public const int InMemorySnapshots = 128;
-        
+
         /// <summary>
         /// Signatures cache size
         /// </summary>
@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Clique
         /// Length of extra vanity within the extra data
         /// </summary>
         public const int ExtraVanityLength = 32;
-        
+
         /// <summary>
         /// Length of an extra seal within the extra data
         /// </summary>
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Clique
         /// Nonce to set on the block header when adding a vote
         /// </summary>
         public const ulong NonceAuthVote = ulong.MaxValue;
-        
+
         /// <summary>
         /// Nonce to set on the block header when removing a previous signer vote
         /// </summary>
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
         /// Difficulty of a block produced by a signer in turn
         /// </summary>
         public static UInt256 DifficultyInTurn = 2;
-        
+
         /// <summary>
         /// Difficulty of a block produced by an alternative signer (out of turn)
         /// </summary>

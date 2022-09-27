@@ -37,7 +37,7 @@ namespace Nethermind.Api
     public interface IApiWithNetwork : IApiWithBlockchain
     {
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
-        
+
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }

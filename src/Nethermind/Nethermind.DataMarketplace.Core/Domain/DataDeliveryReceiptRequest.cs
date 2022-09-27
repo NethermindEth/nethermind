@@ -54,14 +54,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((DataDeliveryReceiptRequest) obj);
+            return Equals((DataDeliveryReceiptRequest)obj);
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                return ((int) Number * 397) ^ (DepositId != null ? DepositId.GetHashCode() : 0);
+                return ((int)Number * 397) ^ (DepositId != null ? DepositId.GetHashCode() : 0);
             }
         }
     }

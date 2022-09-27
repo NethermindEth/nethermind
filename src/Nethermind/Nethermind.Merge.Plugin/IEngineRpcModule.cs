@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,25 +36,25 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         ResultWrapper<ExecutionStatusResult> engine_executionStatus();
-        
+
         [JsonRpcMethod(
             Description = "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId);
-        
+
         [JsonRpcMethod(
             Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload);
-        
+
         [JsonRpcMethod(
             Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
-        
+
         [JsonRpcMethod(
             Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
             IsSharable = true,

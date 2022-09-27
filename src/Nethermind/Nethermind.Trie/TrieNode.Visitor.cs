@@ -34,7 +34,7 @@ namespace Nethermind.Trie
     public partial class TrieNode
     {
         private const int BranchesCount = 16;
-        
+
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -52,144 +52,144 @@ namespace Nethermind.Trie
             switch (NodeType)
             {
                 case NodeType.Branch:
-                {
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                     {
-                        if (child != null)
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                        void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                         {
-                            child.ResolveKey(resolver, false);
-                            if (v.ShouldVisit(child.Keccak!))
+                            if (child != null)
                             {
-                                context.BranchChildIndex = i;
-                                child.Accept(v, resolver, context);
-                            }
+                                child.ResolveKey(resolver, false);
+                                if (v.ShouldVisit(child.Keccak!))
+                                {
+                                    context.BranchChildIndex = i;
+                                    child.Accept(v, resolver, context);
+                                }
 
-                            if (child.IsPersisted)
-                            {
-                                UnresolveChild(i);
+                                if (child.IsPersisted)
+                                {
+                                    UnresolveChild(i);
+                                }
                             }
                         }
-                    }
-                    
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    void VisitSingleThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
-                    {
-                        // single threaded route
-                        for (int i = 0; i < BranchesCount; i++)
-                        {
-                            VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
-                        }
-                    }
-                    
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    void VisitMultiThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
-                    {
-                        // multithreaded route
-                        Parallel.For(0, BranchesCount, i =>
-                        {
-                            visitContext.Semaphore.Wait();
-                            try
-                            {
-                                // we need to have separate context for each thread as context tracks level and branch child index
-                                TrieVisitContext childContext = visitContext.Clone();
-                                VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
-                            }
-                            finally
-                            {
-                                visitContext.Semaphore.Release();
-                            }
-                        });
-                    }
 
-                    visitor.VisitBranch(this, trieVisitContext);
-                    trieVisitContext.Level++;
-                    
-                    if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
-                    {
-                        // we need to preallocate children
-                        TrieNode?[] children = new TrieNode?[BranchesCount];
-                        for (int i = 0; i < BranchesCount; i++)
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                        void VisitSingleThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
                         {
-                            children[i] = GetChild(nodeResolver, i);
+                            // single threaded route
+                            for (int i = 0; i < BranchesCount; i++)
+                            {
+                                VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
+                            }
                         }
 
-                        if (trieVisitContext.Semaphore.CurrentCount > 1)
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                        void VisitMultiThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
                         {
-                            VisitMultiThread(visitor, nodeResolver, trieVisitContext, children);
+                            // multithreaded route
+                            Parallel.For(0, BranchesCount, i =>
+                            {
+                                visitContext.Semaphore.Wait();
+                                try
+                                {
+                                    // we need to have separate context for each thread as context tracks level and branch child index
+                                    TrieVisitContext childContext = visitContext.Clone();
+                                    VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
+                                }
+                                finally
+                                {
+                                    visitContext.Semaphore.Release();
+                                }
+                            });
+                        }
+
+                        visitor.VisitBranch(this, trieVisitContext);
+                        trieVisitContext.Level++;
+
+                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
+                        {
+                            // we need to preallocate children
+                            TrieNode?[] children = new TrieNode?[BranchesCount];
+                            for (int i = 0; i < BranchesCount; i++)
+                            {
+                                children[i] = GetChild(nodeResolver, i);
+                            }
+
+                            if (trieVisitContext.Semaphore.CurrentCount > 1)
+                            {
+                                VisitMultiThread(visitor, nodeResolver, trieVisitContext, children);
+                            }
+                            else
+                            {
+                                VisitSingleThread(visitor, nodeResolver, trieVisitContext);
+                            }
                         }
                         else
                         {
                             VisitSingleThread(visitor, nodeResolver, trieVisitContext);
                         }
-                    }
-                    else
-                    {
-                        VisitSingleThread(visitor, nodeResolver, trieVisitContext);
-                    }
 
-                    trieVisitContext.Level--;
-                    trieVisitContext.BranchChildIndex = null;
-                    break;
-                }
+                        trieVisitContext.Level--;
+                        trieVisitContext.BranchChildIndex = null;
+                        break;
+                    }
 
                 case NodeType.Extension:
-                {
-                    visitor.VisitExtension(this, trieVisitContext);
-                    TrieNode child = GetChild(nodeResolver, 0);
-                    if (child == null)
                     {
-                        throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                    }
-                    
-                    child.ResolveKey(nodeResolver, false);
-                    if (visitor.ShouldVisit(child.Keccak!))
-                    {
-                        trieVisitContext.Level++;
-                        trieVisitContext.BranchChildIndex = null;
-                        child.Accept(visitor, nodeResolver, trieVisitContext);
-                        trieVisitContext.Level--;
-                    }
+                        visitor.VisitExtension(this, trieVisitContext);
+                        TrieNode child = GetChild(nodeResolver, 0);
+                        if (child == null)
+                        {
+                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
+                        }
 
-                    break;
-                }
+                        child.ResolveKey(nodeResolver, false);
+                        if (visitor.ShouldVisit(child.Keccak!))
+                        {
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+                            child.Accept(visitor, nodeResolver, trieVisitContext);
+                            trieVisitContext.Level--;
+                        }
+
+                        break;
+                    }
 
                 case NodeType.Leaf:
-                {
-                    visitor.VisitLeaf(this, trieVisitContext, Value);
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
-                        Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                        if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                        visitor.VisitLeaf(this, trieVisitContext, Value);
+                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
-                            trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, trieVisitContext);
-                            trieVisitContext.Level--;
-                        }
-
-                        if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
-                        {
-                            trieVisitContext.IsStorage = true;
-                            trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
-                            
-                            if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                            if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                             {
-                                storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
-                            }
-                            else
-                            {
-                                visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+                                visitor.VisitCode(account.CodeHash, trieVisitContext);
+                                trieVisitContext.Level--;
                             }
 
-                            trieVisitContext.Level--;
-                            trieVisitContext.IsStorage = false;
+                            if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
+                            {
+                                trieVisitContext.IsStorage = true;
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+
+                                if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                {
+                                    storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                }
+                                else
+                                {
+                                    visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                }
+
+                                trieVisitContext.Level--;
+                                trieVisitContext.IsStorage = false;
+                            }
                         }
+
+                        break;
                     }
-
-                    break;
-                }
 
                 default:
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");

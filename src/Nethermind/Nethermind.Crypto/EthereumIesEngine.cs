@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ namespace Nethermind.Crypto
      * @param hash   hash ing function
      * @param cipher the actual cipher
      */
-        public EthereumIesEngine(IMac mac, IDigest hash,BufferedBlockCipher cipher)
+        public EthereumIesEngine(IMac mac, IDigest hash, BufferedBlockCipher cipher)
         {
             _mac = mac;
             _hash = hash;
@@ -69,13 +69,13 @@ namespace Nethermind.Crypto
             _kdfKey = kdfKey;
             _forEncryption = forEncryption;
             _iv = parameters.GetIV();
-            _iesParameters = (IesParameters) parameters.Parameters;
+            _iesParameters = (IesParameters)parameters.Parameters;
         }
 
         private byte[] EncryptBlock(byte[] input, int inOff, int inLen, byte[] macData)
         {
             // Block cipher mode.
-            byte[] k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            byte[] k1 = new byte[((IesWithCipherParameters)_iesParameters).CipherKeySize / 8];
             byte[] k2 = new byte[_iesParameters.MacKeySize / 8];
             byte[] k = _kdfKey;
 
@@ -130,12 +130,12 @@ namespace Nethermind.Crypto
             }
 
             // Block cipher mode.
-            byte[] k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            byte[] k1 = new byte[((IesWithCipherParameters)_iesParameters).CipherKeySize / 8];
             byte[] k2 = new byte[_iesParameters.MacKeySize / 8];
             byte[] k = _kdfKey;
             Array.Copy(k, 0, k1, 0, k1.Length);
             Array.Copy(k, k1.Length, k2, 0, k2.Length);
-            
+
             _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
 
             byte[] M = new byte[_cipher.GetOutputSize(inLen - _mac.GetMacSize())];

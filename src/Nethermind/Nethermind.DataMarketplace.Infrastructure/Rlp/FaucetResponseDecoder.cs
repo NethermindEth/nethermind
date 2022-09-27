@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-        
+
         static FaucetResponseDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();
@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
-            FaucetRequestStatus status = (FaucetRequestStatus) rlpStream.DecodeInt();
+            FaucetRequestStatus status = (FaucetRequestStatus)rlpStream.DecodeInt();
             FaucetRequestDetails request = Serialization.Rlp.Rlp.Decode<FaucetRequestDetails>(rlpStream);
 
             return new FaucetResponse(status, request);
@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             return Serialization.Rlp.Rlp.Encode(
-                Serialization.Rlp.Rlp.Encode((int) item.Status),
+                Serialization.Rlp.Rlp.Encode((int)item.Status),
                 Serialization.Rlp.Rlp.Encode(item.LatestRequest));
         }
 

@@ -12,7 +12,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
             var receipt = node.Receipts.Single(r => r.Number == number);
             receipt.Request.UnitsRange.Should().Be(new UnitsRange(from, to));
         }
-        
+
         public static void ShouldNotDeliverReceipt(this TestConsumerNode node)
         {
             node.Receipts.Should().BeEmpty();

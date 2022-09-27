@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _prices = new ConcurrentDictionary<string, PriceInfo>();
         private ulong _updatedAt;
         private readonly ulong _updateInterval;
-        
+
         public PriceService(IHttpClient httpClient, ITimestamper timestamper, ILogManager logManager,
             ulong updateInterval = 5)
         {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _updatedAt = _timestamper.UnixTime.Seconds;
             _updateInterval = updateInterval;
         }
-        
+
         public async Task UpdateAsync(params string[] currencies)
         {
             var currentTime = _timestamper.UnixTime.Seconds;
@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public PriceInfo? Get(string currency) => _prices.TryGetValue(currency, out var price) ? price : null;
     }
-    
+
     internal class PriceResult
     {
         [JsonProperty("last")]

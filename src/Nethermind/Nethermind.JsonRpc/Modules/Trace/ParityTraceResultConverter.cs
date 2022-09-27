@@ -28,17 +28,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             if (value.Address != null)
             {
-                writer.WriteProperty("address", value.Address, serializer);    
+                writer.WriteProperty("address", value.Address, serializer);
                 writer.WriteProperty("code", value.Code, serializer);
             }
-            
+
             writer.WriteProperty("gasUsed", string.Concat("0x", value.GasUsed.ToString("x")));
-            
-            if(value.Address == null)
+
+            if (value.Address == null)
             {
-                writer.WriteProperty("output", value.Output, serializer);    
+                writer.WriteProperty("output", value.Output, serializer);
             }
-            
+
             writer.WriteEndObject();
         }
 

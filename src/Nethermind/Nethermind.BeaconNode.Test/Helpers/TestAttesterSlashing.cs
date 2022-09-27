@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             Attestation attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
 
-            Root targetRoot2 = new Root(Enumerable.Repeat((byte) 0x01, 32).ToArray());
+            Root targetRoot2 = new Root(Enumerable.Repeat((byte)0x01, 32).ToArray());
             Attestation attestation2 = new Attestation(
                 attestation1.AggregationBits,
                 new AttestationData(attestation1.Data.Slot,
@@ -44,7 +44,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                     new Checkpoint(
                         attestation1.Data.Target.Epoch,
                         targetRoot2
-                        )), 
+                        )),
                 BlsSignature.Zero
                 );
             if (signed2)

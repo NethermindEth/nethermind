@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,12 +23,12 @@ namespace Nethermind.Blockchain.Services
     public class HealthHintService : IHealthHintService
     {
         private readonly ChainSpec _chainSpec;
-        
+
         public HealthHintService(ChainSpec chainSpec)
         {
             _chainSpec = chainSpec;
         }
-        
+
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             ulong? blockProcessorHint;
@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Services
                 blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.EthashProcessingSafetyMultiplier;
             else
                 blockProcessorHint = HealthHintConstants.InfinityHint;
-               
+
             return blockProcessorHint;
         }
 

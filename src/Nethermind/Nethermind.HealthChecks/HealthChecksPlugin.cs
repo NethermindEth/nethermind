@@ -29,7 +29,7 @@ using Nethermind.Monitoring.Config;
 
 namespace Nethermind.HealthChecks
 {
-    public class HealthChecksPlugin: INethermindPlugin, INethermindServicesPlugin
+    public class HealthChecksPlugin : INethermindPlugin, INethermindServicesPlugin
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
@@ -52,7 +52,7 @@ namespace Nethermind.HealthChecks
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
 
             _logger = api.LogManager.GetClassLogger();
-            
+
             return Task.CompletedTask;
         }
 
@@ -60,7 +60,7 @@ namespace Nethermind.HealthChecks
         {
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
-                    "node-health", 
+                    "node-health",
                     args: new object[] { _nodeHealthService, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.HealthChecks
                     setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
-                    if (_healthChecksConfig.WebhooksEnabled) 
+                    if (_healthChecksConfig.WebhooksEnabled)
                     {
                         setup.AddWebhookNotification("webhook",
                         uri: _healthChecksConfig.WebhooksUri,

@@ -36,11 +36,11 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
     {
         IProviderService providerService;
         IConfigManager configManager;
-        string configId; 
-        IConsumerRepository consumerRepository; 
+        string configId;
+        IConsumerRepository consumerRepository;
         IProviderDepositApprovalRepository providerDepositApprovalRepository;
         IPaymentClaimRepository paymentClaimRepository;
-        IPaymentClaimProcessor paymentClaimProcessor; 
+        IPaymentClaimProcessor paymentClaimProcessor;
         IProviderSessionRepository sessionRepository;
         IDataAssetRepository dataAssetRepository;
         ITimestamper timestamper;
@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
         INdmDataPublisher ndmDataPublisher;
         IGasPriceService gasPriceService;
         IDataAvailabilityValidator dataAvaliabilityValidator;
-        ISessionManager sessionManager; 
+        ISessionManager sessionManager;
         ITransactionVerifier transactionVerifier;
         IDepositManager depositManager;
         IRefundPolicy refundPolicy;
@@ -120,7 +120,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             providerName = "test";
             filesPath = config.FilesPath;
             fileMaxSize = config.FileMaxSize;
-            requiredBlockConfirmations = config.BlockConfirmations; 
+            requiredBlockConfirmations = config.BlockConfirmations;
             paymentGasLimit = 70000;
             skipDepositVerification = true;
             backgroundServicesDisabled = false;
@@ -134,7 +134,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             gasPriceService.GetCurrentPaymentClaimGasPriceAsync().Returns(Task.FromResult(new UInt256(10)));
 
             providerService = new ProviderService(configManager, configId, consumerRepository, dataAssetRepository, providerDepositApprovalRepository, paymentClaimRepository, paymentClaimProcessor, sessionRepository, timestamper, ecdsa, abiEncoder, ndmDataPublisher, gasPriceService, dataAvaliabilityValidator, sessionManager, transactionVerifier, depositManager, refundPolicy, depositService, wallet, blockchainBridge, providerAddress, coldWalletAddress, nodeId, providerName, filesPath, fileMaxSize, requiredBlockConfirmations, paymentGasLimit, logManager, skipDepositVerification, backgroundServicesDisabled);
-        }  
+        }
 
         [Test, Order(1)]
         public void returns_correct_address()
@@ -205,7 +205,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             WaitForPaymentClaimsProcessing();
 
             var addedClaim = await paymentClaimRepository.GetAsync(claim.Id);
-            Assert.IsTrue(addedClaim.Status == PaymentClaimStatus.Sent); 
+            Assert.IsTrue(addedClaim.Status == PaymentClaimStatus.Sent);
         }
 
         [Test]
@@ -241,7 +241,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             transactionVerifier.VerifyAsync(testTransaction).Returns(Task.FromResult(new TransactionVerifierResult(true, 5, 5)));
 
             WaitForPaymentClaimsProcessing();
-        
+
             var addedClaim = await paymentClaimRepository.GetAsync(claim.Id);
             Assert.IsTrue(addedClaim.Status == PaymentClaimStatus.Claimed);
         }
@@ -260,8 +260,8 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             transactionVerifier.VerifyAsync(testTransaction).Returns(Task.FromResult(new TransactionVerifierResult(true, 2, 5)));
 
             WaitForPaymentClaimsProcessing();
-        
-           var addedClaim = await paymentClaimRepository.GetAsync(claim.Id);
+
+            var addedClaim = await paymentClaimRepository.GetAsync(claim.Id);
             Assert.IsTrue(addedClaim.Status != PaymentClaimStatus.Claimed);
         }
 
@@ -270,7 +270,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
         {
             Keccak id = await providerService.AddDataAssetAsync("test-asset", "Testing", new UInt256(10), DataAssetUnitType.Unit, 1, 10, new DataAssetRules(new DataAssetRule(10)));
 
-            var addedDataAsset = dataAssetRepository.GetAsync(id); 
+            var addedDataAsset = dataAssetRepository.GetAsync(id);
 
             Assert.IsNotNull(addedDataAsset);
         }
@@ -279,10 +279,10 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
         public async Task can_remove_data_asset()
         {
             Keccak id = await providerService.AddDataAssetAsync("test-asset2", "Testing2", new UInt256(1), DataAssetUnitType.Unit, 1, 10, new DataAssetRules(new DataAssetRule(10)));
-            
+
             bool isRemoved = await providerService.RemoveDataAssetAsync(id);
 
-            if(isRemoved)
+            if (isRemoved)
             {
                 var removedDataAsset = await dataAssetRepository.GetAsync(id);
                 Assert.IsNull(removedDataAsset);
@@ -314,7 +314,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
                 .WithNode(1).AddSession().WithUnpaidUnits(10)
                 .And.Build();
 
-            await consumerRepository.AddAsync(testConsumer.Consumer);            
+            await consumerRepository.AddAsync(testConsumer.Consumer);
             var consumerNode = testConsumer.Node(1).Node;
 
             sessionManager.AddPeer(consumerNode.Peer);

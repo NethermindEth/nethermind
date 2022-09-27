@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Benchmarks.Mining
     public class EthashHashimotoBenchmarks
     {
         private Ethash _ethash = new Ethash(LimboLogs.Instance);
-        
+
         private BlockHeader _header;
 
         private BlockHeader[] _scenarios =
@@ -44,13 +44,13 @@ namespace Nethermind.Benchmarks.Mining
         {
             _header = _scenarios[ScenarioIndex];
         }
-        
+
         [Benchmark]
         public (Keccak, ulong) Improved()
         {
             return _ethash.Mine(_header, 0UL);
         }
-        
+
         [Benchmark]
         public (Keccak, ulong) Current()
         {

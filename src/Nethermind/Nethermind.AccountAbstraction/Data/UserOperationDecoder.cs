@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Data
             {
                 return Rlp.OfEmptySequence;
             }
-            
+
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data!);
@@ -45,7 +45,7 @@ namespace Nethermind.AccountAbstraction.Data
             }
 
             int contentLength = GetContentLength(opWithEntryPoint);
-            
+
             UserOperation op = opWithEntryPoint.UserOperation;
             Address entryPoint = opWithEntryPoint.EntryPoint;
 
@@ -65,7 +65,7 @@ namespace Nethermind.AccountAbstraction.Data
             stream.Encode(op.Signature);
             stream.Encode(entryPoint);
         }
-        
+
 
         public UserOperationWithEntryPoint Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -75,25 +75,25 @@ namespace Nethermind.AccountAbstraction.Data
         public UserOperationWithEntryPoint Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.SkipLength();
-            
+
             UserOperationRpc userOperationRpc = new UserOperationRpc
-                {
-                    Sender = rlpStream.DecodeAddress() ?? Address.Zero,
-                    Nonce = rlpStream.DecodeUInt256(),
-                    InitCode = rlpStream.DecodeByteArray(),
-                    CallData = rlpStream.DecodeByteArray(),
-                    CallGas = rlpStream.DecodeUInt256(),
-                    VerificationGas = rlpStream.DecodeUInt256(),
-                    PreVerificationGas = rlpStream.DecodeUInt256(),
-                    MaxFeePerGas = rlpStream.DecodeUInt256(),
-                    MaxPriorityFeePerGas = rlpStream.DecodeUInt256(),
-                    Paymaster = rlpStream.DecodeAddress() ?? Address.Zero,
-                    PaymasterData = rlpStream.DecodeByteArray(),
-                    Signature = rlpStream.DecodeByteArray()
-                };
+            {
+                Sender = rlpStream.DecodeAddress() ?? Address.Zero,
+                Nonce = rlpStream.DecodeUInt256(),
+                InitCode = rlpStream.DecodeByteArray(),
+                CallData = rlpStream.DecodeByteArray(),
+                CallGas = rlpStream.DecodeUInt256(),
+                VerificationGas = rlpStream.DecodeUInt256(),
+                PreVerificationGas = rlpStream.DecodeUInt256(),
+                MaxFeePerGas = rlpStream.DecodeUInt256(),
+                MaxPriorityFeePerGas = rlpStream.DecodeUInt256(),
+                Paymaster = rlpStream.DecodeAddress() ?? Address.Zero,
+                PaymasterData = rlpStream.DecodeByteArray(),
+                Signature = rlpStream.DecodeByteArray()
+            };
 
             Address entryPoint = rlpStream.DecodeAddress() ?? Address.Zero;
-            
+
             // TODO: Make instantiation simpler?
             return new UserOperationWithEntryPoint(new UserOperation(userOperationRpc), entryPoint);
         }
@@ -102,12 +102,12 @@ namespace Nethermind.AccountAbstraction.Data
         {
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
-        
+
         private static int GetContentLength(UserOperationWithEntryPoint opWithEntryPoint)
         {
             UserOperation op = opWithEntryPoint.UserOperation;
             Address entryPoint = opWithEntryPoint.EntryPoint;
-            
+
             return Rlp.LengthOf(op.Sender)
                    + Rlp.LengthOf(op.Nonce)
                    + Rlp.LengthOf(op.InitCode)
@@ -122,6 +122,6 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.Signature)
                    + Rlp.LengthOf(entryPoint);
         }
-        
+
     }
 }

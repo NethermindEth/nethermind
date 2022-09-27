@@ -27,11 +27,11 @@ namespace Nethermind.Evm.Benchmark
     {
         public IEnumerable<UInt256> ValueSource => new[]
         {
-            UInt256.Parse("125124123718263172357123"), 
-            UInt256.Parse("0"), 
+            UInt256.Parse("125124123718263172357123"),
+            UInt256.Parse("0"),
             UInt256.MaxValue
         };
-        
+
         private byte[] _stack;
 
         [GlobalSetup]
@@ -45,19 +45,19 @@ namespace Nethermind.Evm.Benchmark
         public UInt256 Uint256(UInt256 v)
         {
             EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
-            
+
             stack.PushUInt256(in v);
             stack.PopUInt256(out UInt256 value);
-            
+
             stack.PushUInt256(in value);
             stack.PopUInt256(out value);
-            
+
             stack.PushUInt256(in value);
             stack.PopUInt256(out value);
-            
+
             stack.PushUInt256(in value);
             stack.PopUInt256(out value);
-            
+
             return value;
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Benchmark
         public Int256.Int256 Int256(UInt256 v)
         {
             EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
-            
+
             stack.PushSignedInt256(new Int256.Int256(v));
             stack.PopSignedInt256(out Int256.Int256 value);
 
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
             EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             byte b = 1;
-            
+
             stack.PushByte(b);
             b = stack.PopByte();
 
@@ -136,7 +136,7 @@ namespace Nethermind.Evm.Benchmark
             stack.Swap(2);
             stack.Swap(2);
         }
-        
+
         [Benchmark(OperationsPerInvoke = 4)]
         public void Dup()
         {

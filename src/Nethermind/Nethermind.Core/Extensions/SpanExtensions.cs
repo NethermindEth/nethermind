@@ -26,17 +26,17 @@ namespace Nethermind.Core.Extensions
         {
             return ToHexString(span, withZeroX, false, false);
         }
-        
+
         public static string ToHexString(this in Span<byte> span)
         {
             return ToHexString(span, false, false, false);
         }
-        
+
         public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
         {
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
-        
+
         [DebuggerStepThrough]
         private static string ToHexViaLookup(in Span<byte> span, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
@@ -57,8 +57,8 @@ namespace Nethermind.Core.Extensions
             for (int i = 0; i < span.Length; i++)
             {
                 uint val = Lookup32[span[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
 
                 if (leadingZeros <= i * 2)
                 {
@@ -84,7 +84,7 @@ namespace Nethermind.Core.Extensions
 
             return new string(result);
         }
-        
+
         private static readonly uint[] Lookup32 = CreateLookup32("x2");
 
         private static uint[] CreateLookup32(string format)
@@ -93,12 +93,12 @@ namespace Nethermind.Core.Extensions
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
 
             return result;
         }
-        
+
         private static int CountLeadingZeros(in Span<byte> span)
         {
             int leadingZeros = 0;

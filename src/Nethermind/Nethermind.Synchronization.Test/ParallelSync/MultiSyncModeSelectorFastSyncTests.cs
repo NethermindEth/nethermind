@@ -503,7 +503,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
             syncConfig.FastSync = true;
-            
+
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             selector.Stop();

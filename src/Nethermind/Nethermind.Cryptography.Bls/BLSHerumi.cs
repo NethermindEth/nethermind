@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -324,10 +324,10 @@ namespace Nethermind.Cryptography
             var publicKeysIndex = 0;
             for (var blsPublicKeyIndex = 0; blsPublicKeyIndex < publicKeyCount; blsPublicKeyIndex++)
             {
-                var publicKey = (publicKeyList != null) 
-                    ? publicKeyList[blsPublicKeyIndex] 
+                var publicKey = (publicKeyList != null)
+                    ? publicKeyList[blsPublicKeyIndex]
                     : publicKeysSpan.Slice(publicKeysIndex, PublicKeyLength);
-                
+
                 int publicKeyBytesRead;
                 unsafe
                 {

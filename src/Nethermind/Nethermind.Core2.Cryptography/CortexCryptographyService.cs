@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -112,7 +112,7 @@ namespace Nethermind.Core2.Cryptography
 
         public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)
         {
-            BLSParameters blsParameters = new BLSParameters() {PublicKey = publicKey.AsSpan().ToArray()};
+            BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
             return signatureAlgorithm.VerifyHash(signingRoot.AsSpan(), signature.AsSpan());
         }

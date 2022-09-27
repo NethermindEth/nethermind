@@ -32,26 +32,26 @@ namespace Nethermind.Store.Test.Witnesses
             Assert.Throws<InvalidOperationException>(
                 () => NullWitnessCollector.Instance.Add(Keccak.Zero));
         }
-        
+
         [Test]
         public void Collected_is_empty()
         {
             NullWitnessCollector.Instance.Collected.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Reset_does_nothing()
         {
             NullWitnessCollector.Instance.Reset();
             NullWitnessCollector.Instance.Reset();
         }
-        
+
         [Test]
         public void Persist_does_nothing()
         {
             NullWitnessCollector.Instance.Persist(Keccak.Zero);
         }
-        
+
         [Test]
         public void Load_throws()
         {

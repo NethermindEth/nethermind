@@ -21,13 +21,13 @@ namespace Nethermind.Network.Rlpx
     public static class Frame
     {
         public const int MacSize = 16;
-        
+
         public const int HeaderSize = 16;
-        
+
         public const int BlockSize = 16;
-        
+
         public const int DefaultMaxFrameSize = BlockSize * 64;
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculatePadding(int size)
         {

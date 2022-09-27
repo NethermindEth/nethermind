@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ public class IpEntry : EnrContentEntry<IPAddress>
     public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
 
     public override string Key => EnrContentKey.Ip;
-    
+
     protected override int GetRlpLengthOfValue()
     {
         return 5;

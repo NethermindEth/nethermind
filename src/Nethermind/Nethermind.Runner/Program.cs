@@ -183,7 +183,7 @@ namespace Nethermind.Runner
                 try
                 {
                     await ethereumRunner.Start(_processCloseCancellationSource.Token);
-                
+
                     _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
                 }
                 catch (Exception e)
@@ -501,7 +501,7 @@ namespace Nethermind.Runner
             ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger.IsInfo) 
+                if (_logger.IsInfo)
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }

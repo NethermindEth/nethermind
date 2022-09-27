@@ -28,7 +28,7 @@ namespace Nethermind.Network
         }
 
         public byte[] ForkHash { get; }
-        
+
         public long Next { get; }
 
         public bool Equals(ForkId other)

@@ -35,8 +35,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
     {
         private readonly IDb _database;
         private readonly IRlpDecoder<Consumer> _rlpDecoder;
-        private  IRlpStreamDecoder<Consumer> RlpStreamDecoder => (IRlpStreamDecoder<Consumer>)_rlpDecoder;
-        private  IRlpObjectDecoder<Consumer> RlpObjectDecoder => (IRlpObjectDecoder<Consumer>)_rlpDecoder;
+        private IRlpStreamDecoder<Consumer> RlpStreamDecoder => (IRlpStreamDecoder<Consumer>)_rlpDecoder;
+        private IRlpObjectDecoder<Consumer> RlpObjectDecoder => (IRlpObjectDecoder<Consumer>)_rlpDecoder;
 
         public ConsumerRocksRepository(IDb database, IRlpNdmDecoder<Consumer> rlpDecoder)
         {
@@ -51,8 +51,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
             {
                 return Task.FromResult<Consumer?>(null);
             }
-            
-            return Task.FromResult<Consumer?>(Decode(fromDb));   
+
+            return Task.FromResult<Consumer?>(Decode(fromDb));
         }
 
         public Task<PagedResult<Consumer>> BrowseAsync(GetConsumers? query)

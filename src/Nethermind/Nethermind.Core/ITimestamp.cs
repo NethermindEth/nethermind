@@ -23,7 +23,7 @@ namespace Nethermind.Core
         DateTime UtcNow { get; }
 
         public DateTimeOffset UtcNowOffset => new(UtcNow);
-        
+
         public UnixTime UnixTime => new(UtcNow);
     }
 }

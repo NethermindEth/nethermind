@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Receipts
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
             var canRecover = block.Transactions.Length == receipts?.Length;
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
 
             return ReceiptsRecoveryResult.Fail;
         }
-        
+
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (forceRecoverSender && receipts[0].Sender == null));
 
         private void RecoverReceiptData(IReleaseSpec releaseSpec, TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore, bool force)
@@ -73,9 +73,9 @@ namespace Nethermind.Blockchain.Receipts
             receipt.Index = transactionIndex;
             receipt.Sender = transaction.SenderAddress ?? (force ? _ecdsa.RecoverAddress(transaction, !releaseSpec.ValidateChainId) : null);
             receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
-            
+
             // how would it be in CREATE2?
-            receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null; 
+            receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
             receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
             if (receipt.StatusCode != StatusCode.Success)
             {

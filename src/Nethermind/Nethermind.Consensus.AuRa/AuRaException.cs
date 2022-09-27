@@ -26,9 +26,9 @@ namespace Nethermind.Consensus.AuRa
 
         public AuRaException(string message) : base(message)
         {
-            
+
         }
-        
+
         public AuRaException(string message, Exception inner) : base(message, inner)
         {
         }

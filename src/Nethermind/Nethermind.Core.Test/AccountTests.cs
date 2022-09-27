@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test
             Assert.False(account.IsTotallyEmpty, "totally empty");
             Assert.True(account.IsEmpty, "empty");
         }
-        
+
         [Test]
         public void Test_has_code()
         {
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test
             account = account.WithChangedCodeHash(TestItem.KeccakA);
             Assert.True(account.HasCode);
         }
-        
+
         [Test]
         public void Test_has_storage()
         {

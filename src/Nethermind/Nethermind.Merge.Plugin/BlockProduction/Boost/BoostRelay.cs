@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ public class BoostRelay : IBoostRelay
 {
     public const string GetPayloadAttributesPath = "/eth/v1/relay/payload_attributes";
     public const string SendPayloadPath = "/eth/v1/relay/submit_block";
-    
+
     private readonly IHttpClient _httpClient;
     private readonly string _relayUrl;
 
@@ -36,12 +36,12 @@ public class BoostRelay : IBoostRelay
         _httpClient = httpClient;
         _relayUrl = relayUrl;
     }
-    
-    public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) => 
+
+    public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<PayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
 
-    public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) => 
+    public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, SendPayloadPath), executionPayloadV1, cancellationToken);
-    
+
     private string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
 }

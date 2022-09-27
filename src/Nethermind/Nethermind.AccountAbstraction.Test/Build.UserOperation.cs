@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Test
 
         public static Build A => new Build();
         public static Build An => new Build();
-        
+
         public UserOperationBuilder UserOperation => new UserOperationBuilder();
     }
 }

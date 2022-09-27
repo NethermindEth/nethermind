@@ -43,7 +43,7 @@ namespace Nethermind.Api
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
-        
+
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -82,7 +82,7 @@ namespace Nethermind.Api
         IHealthHintService? HealthHintService { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
-        
+
         /// <summary>
         /// Manager of block finalization
         /// </summary>
@@ -90,17 +90,17 @@ namespace Nethermind.Api
         /// Currently supported in <see cref="SealEngineType.AuRa"/> and Eth2Merge.
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
-        
+
         IGasLimitCalculator GasLimitCalculator { get; set; }
-        
+
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
-        
+
         IGasPriceOracle? GasPriceOracle { get; set; }
-        
+
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
         CompositePruningTrigger PruningTrigger { get; }
-      
+
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
     }
 }

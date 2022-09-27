@@ -92,7 +92,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is ReadOnlyDb);
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is ReadOnlyDb);
         }
-        
+
         [OneTimeTearDown]
         public void TearDown()
         {

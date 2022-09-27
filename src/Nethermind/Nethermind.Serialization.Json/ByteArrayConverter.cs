@@ -24,7 +24,7 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
-            if(value is null)
+            if (value is null)
             {
                 writer.WriteNull();
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Json
                 return null;
             }
 
-            string s = (string) reader.Value;
+            string s = (string)reader.Value;
             return Bytes.FromHexString(s);
         }
     }

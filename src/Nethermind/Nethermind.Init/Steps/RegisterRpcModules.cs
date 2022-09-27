@@ -87,7 +87,7 @@ namespace Nethermind.Init.Steps
             {
                 _api.RpcModuleProvider ??= NullModuleProvider.Instance;
             }
-            
+
             IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
@@ -96,7 +96,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            
+
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
@@ -119,9 +119,9 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 _api.GasPriceOracle,
                 _api.EthSyncingInfo);
-            
+
             rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
-            
+
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
@@ -129,22 +129,22 @@ namespace Nethermind.Init.Steps
             if (_api.KeyStore == null) throw new StepDependencyException(nameof(_api.KeyStore));
             if (_api.PeerPool == null) throw new StepDependencyException(nameof(_api.PeerPool));
             if (_api.WitnessRepository == null) throw new StepDependencyException(nameof(_api.WitnessRepository));
-            
+
             ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
             DebugModuleFactory debugModuleFactory = new(
-                _api.DbProvider, 
+                _api.DbProvider,
                 _api.BlockTree,
-				rpcConfig, 
-                _api.BlockValidator, 
-                _api.BlockPreprocessor, 
-                _api.RewardCalculatorSource, 
+                rpcConfig,
+                _api.BlockValidator,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource,
                 _api.ReceiptStorage,
                 new ReceiptMigration(_api),
-                _api.ReadOnlyTrieStore, 
-                _api.ConfigProvider, 
-                _api.SpecProvider, 
+                _api.ReadOnlyTrieStore,
+                _api.ConfigProvider,
+                _api.SpecProvider,
                 _api.LogManager);
             rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
@@ -154,22 +154,22 @@ namespace Nethermind.Init.Steps
                 _api.ReadOnlyTrieStore,
                 rpcConfig,
                 _api.BlockPreprocessor,
-                _api.RewardCalculatorSource, 
+                _api.RewardCalculatorSource,
                 _api.ReceiptStorage,
                 _api.SpecProvider,
                 _api.LogManager);
 
             rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout);
-            
+
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
-            
+
             PersonalRpcModule personalRpcModule = new(
                 _api.EthereumEcdsa,
                 _api.Wallet,
                 _api.KeyStore);
             rpcModuleProvider.RegisterSingle<IPersonalRpcModule>(personalRpcModule);
-            
+
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
             if (_api.StaticNodesManager == null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
             if (_api.Enode == null) throw new StepDependencyException(nameof(_api.Enode));
@@ -185,12 +185,12 @@ namespace Nethermind.Init.Steps
                 initConfig.BaseDbPath,
                 pruningTrigger);
             rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
-            
+
             if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
             TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
             rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-            
+
             if (_api.SyncServer == null) throw new StepDependencyException(nameof(_api.SyncServer));
             if (_api.EngineSignerStore == null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 
@@ -211,7 +211,7 @@ namespace Nethermind.Init.Steps
 
             WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
             rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
-            
+
             if (_api.ReceiptMonitor == null) throw new StepDependencyException(nameof(_api.ReceiptMonitor));
 
             SubscriptionFactory subscriptionFactory = new(
@@ -225,9 +225,9 @@ namespace Nethermind.Init.Steps
                 rpcModuleProvider.Serializer);
 
             _api.SubscriptionFactory = subscriptionFactory;
-            
+
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
-            
+
             SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
             rpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
 
@@ -241,7 +241,7 @@ namespace Nethermind.Init.Steps
             {
                 await plugin.InitRpcModules();
             }
-            
+
             RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
             rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 

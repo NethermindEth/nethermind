@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             var pullDataDelay = GetDefaultDataOptions("PULL_DATA_DELAY");
             var pullDataRetries = GetDefaultDataOptions("PULL_DATA_RETRIES");
             var pullDataFailures = GetDefaultDataOptions("PULL_DATA_FAILURES", 100);
-            
+
             Console.WriteLine($"JSON RPC URL: {jsonRpcUrl}, Client: {client}, Pull data delay: {pullDataDelay} ms, " +
                               $"Retries: {pullDataRetries}, Failures: {pullDataFailures}");
 
@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             {
                 Console.WriteLine(ex);
             }
-            
+
             if (!inputDisabled)
             {
                 Console.WriteLine("Press any key to quit.");

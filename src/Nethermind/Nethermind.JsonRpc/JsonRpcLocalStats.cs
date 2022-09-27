@@ -60,14 +60,14 @@ namespace Nethermind.JsonRpc
 
         public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
             ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
-        
+
         public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
-            if(string.IsNullOrWhiteSpace(report.Method))
+            if (string.IsNullOrWhiteSpace(report.Method))
             {
                 return;
             }
-            
+
             DateTime thisTime = _timestamper.UtcNow;
             if (thisTime - _lastReport > _reportingInterval)
             {

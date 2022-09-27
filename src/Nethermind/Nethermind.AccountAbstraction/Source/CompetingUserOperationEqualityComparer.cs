@@ -24,9 +24,9 @@ namespace Nethermind.AccountAbstraction.Source
     public class CompetingUserOperationEqualityComparer : IEqualityComparer<UserOperation?>
     {
         public static readonly CompetingUserOperationEqualityComparer Instance = new();
-        
+
         private CompetingUserOperationEqualityComparer() { }
-        
+
         public bool Equals(UserOperation? x, UserOperation? y)
         {
             if (ReferenceEquals(x, y)) return true;

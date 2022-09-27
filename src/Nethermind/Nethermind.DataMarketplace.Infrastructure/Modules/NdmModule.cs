@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
         private readonly INdmApi _api;
         public NdmModule(INdmApi api)
         {
-            _api = api ?? throw new ArgumentNullException(nameof(api)); 
+            _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
         public Task InitAsync()
@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 {
                     throw new InvalidDataException("JSON RPC proxy is enabled but the proxies were not initialized properly.");
                 }
-                
+
                 _api.JsonRpcClientProxy!.SetUrls(config.JsonRpcUrlProxies!);
                 _api.BlockchainBridge = new NdmBlockchainBridgeProxy(
                     _api.EthJsonRpcClientProxy);
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 = new DepositService(_api.BlockchainBridge, _api.AbiEncoder, _api.Wallet, _api.ContractAddress);
             _api.JsonRpcNdmConsumerChannel
                 = new JsonRpcNdmConsumerChannel(_api.LogManager);
-            
+
             if (config.JsonRpcDataChannelEnabled)
             {
                 _api.NdmConsumerChannelManager.Add(_api.JsonRpcNdmConsumerChannel);

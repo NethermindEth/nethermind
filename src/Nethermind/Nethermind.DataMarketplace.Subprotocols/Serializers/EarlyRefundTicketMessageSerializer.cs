@@ -25,14 +25,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(EarlyRefundTicketMessage message)
             => Rlp.Encode(Rlp.Encode(message.Ticket),
-                Rlp.Encode((int) message.Reason)).Bytes;
+                Rlp.Encode((int)message.Reason)).Bytes;
 
         public EarlyRefundTicketMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var ticket = Rlp.Decode<EarlyRefundTicket>(context);
-            var reason = (RefundReason) context.DecodeInt();
+            var reason = (RefundReason)context.DecodeInt();
 
             return new EarlyRefundTicketMessage(ticket, reason);
         }

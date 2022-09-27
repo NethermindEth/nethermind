@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -23,16 +23,17 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class TransactionTests : GeneralStateTestBase
     {
         // ToDo: This tests are passing on hive tests, but failing here
         private readonly string[] ignored =
-        { 
+        {
             "HighGasPrice_d0g0v0",
             "ValueOverflow"
         };
-        
+
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
         {
@@ -40,11 +41,14 @@ namespace Ethereum.Blockchain.Test
             {
                 return;
             }
-            
+
             Assert.True(RunTest(test).Pass);
         }
-        
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stTransactionTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
+
+        public static IEnumerable<GeneralStateTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stTransactionTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }

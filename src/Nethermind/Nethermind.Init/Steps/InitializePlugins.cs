@@ -38,12 +38,12 @@ namespace Nethermind.Init.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
-            if(logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
+            if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 try
                 {
-                    if(logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
+                    if (logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     await plugin.Init(_api);
                     stopwatch.Stop();
@@ -52,7 +52,7 @@ namespace Nethermind.Init.Steps
                 }
                 catch (Exception e)
                 {
-                    if(logger.IsError) logger.Error($"Failed to initialize plugin {plugin.Name} by {plugin.Author}", e);
+                    if (logger.IsError) logger.Error($"Failed to initialize plugin {plugin.Name} by {plugin.Author}", e);
                     throw;
                 }
             }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -65,12 +65,12 @@ namespace Nethermind.Evm.Tracing
         public void ReportOperationRemainingGas(long gas) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationMemorySize(ulong newSize) => throw new OperationCanceledException(ErrorMessage);
-        
+
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => throw new OperationCanceledException(ErrorMessage);
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationStack(List<string> stackTrace) => throw new OperationCanceledException(ErrorMessage);
-        
+
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
@@ -86,11 +86,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new OperationCanceledException(ErrorMessage);
-        
+
         public void ReportAccountRead(Address address) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
-        
+
         public void ReportStorageRead(StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
@@ -102,9 +102,9 @@ namespace Nethermind.Evm.Tracing
         public void ReportBlockHash(Keccak blockHash) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportByteCode(byte[] byteCode) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)=> throw new OperationCanceledException(ErrorMessage);
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) => throw new OperationCanceledException(ErrorMessage);
         public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage); 
+        public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     }
 }

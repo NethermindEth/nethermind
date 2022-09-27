@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
             Rlp.Encode(msg.ExpirationTime)
         ).Bytes;
 
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, data);
+        byte[] serializedMsg = Serialize((byte)msg.MsgType, data);
         return serializedMsg;
     }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,47 +49,47 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-          
+
             // Note that ByteToMessageDecoder handles input.Release calls for us.
             // In fact, we receive here a potentially surviving _internalBuffer of the base class
             // that is being built by its cumulator.
-            
+
             // Output buffers that we create will be released by the next handler in the pipeline.
             while (input.ReadableBytes >= Frame.BlockSize)
             {
                 switch (_state)
                 {
                     case FrameDecoderState.WaitingForHeader:
-                    {
-                        ReadHeader(input);
-                        _state = FrameDecoderState.WaitingForHeaderMac;
-                        break;
-                    }
-                    case FrameDecoderState.WaitingForHeaderMac:
-                    {
-                        AuthenticateHeader(input);
-                        DecryptHeader();
-                        ReadFrameSize();
-                        AllocateFrameBuffer(context); // it will be released by the next handler in the pipeline
-                        _state = FrameDecoderState.WaitingForPayload;
-                        break;
-                    }
-                    case FrameDecoderState.WaitingForPayload:
-                    {
-                        ProcessOneBlock(input);
-                        if (_remainingPayloadBlocks == 0)
                         {
-                            _state = FrameDecoderState.WaitingForPayloadMac;
+                            ReadHeader(input);
+                            _state = FrameDecoderState.WaitingForHeaderMac;
+                            break;
                         }
-                        break;
-                    }
+                    case FrameDecoderState.WaitingForHeaderMac:
+                        {
+                            AuthenticateHeader(input);
+                            DecryptHeader();
+                            ReadFrameSize();
+                            AllocateFrameBuffer(context); // it will be released by the next handler in the pipeline
+                            _state = FrameDecoderState.WaitingForPayload;
+                            break;
+                        }
+                    case FrameDecoderState.WaitingForPayload:
+                        {
+                            ProcessOneBlock(input);
+                            if (_remainingPayloadBlocks == 0)
+                            {
+                                _state = FrameDecoderState.WaitingForPayloadMac;
+                            }
+                            break;
+                        }
                     case FrameDecoderState.WaitingForPayloadMac:
-                    {
-                        AuthenticatePayload(input);
-                        PassFrame(output);
-                        _state = FrameDecoderState.WaitingForHeader;
-                        break;
-                    }
+                        {
+                            AuthenticatePayload(input);
+                            PassFrame(output);
+                            _state = FrameDecoderState.WaitingForHeader;
+                            break;
+                        }
                     default:
                         throw new NotSupportedException($"{nameof(ZeroFrameDecoder)} does not support {_state} state.");
                 }

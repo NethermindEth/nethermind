@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Producers
     public class BuildBlocksRegularly : IBlockProductionTrigger, IDisposable
     {
         private readonly Timer _timer;
-        
+
         public BuildBlocksRegularly(TimeSpan interval)
         {
             _timer = new Timer(interval.TotalMilliseconds);
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Producers
             _timer.AutoReset = false;
             _timer.Start();
         }
-        
+
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());

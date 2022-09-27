@@ -34,7 +34,7 @@ namespace Nethermind.Core
         public const int RefSize = 8;
 
         public const int SmallObjectOverhead = 24;
-        
+
         public const int SmallObjectFreeDataSize = 8;
 
         // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
@@ -60,8 +60,8 @@ namespace Nethermind.Core
         /// <returns></returns>
         public static BitArray ESieve(int upperLimit)
         {
-            int sieveBound = (int) (upperLimit - 1);
-            int upperSqrt = (int) Math.Sqrt(sieveBound);
+            int sieveBound = (int)(upperLimit - 1);
+            int upperSqrt = (int)Math.Sqrt(sieveBound);
             BitArray primeBits = new(sieveBound + 1, true);
             primeBits[0] = false;
             primeBits[1] = false;

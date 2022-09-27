@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Peering
             string? activityId = Activity.Current?.Id;
             return _channel.Writer.TryWrite((item, activityId));
         }
-        
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try

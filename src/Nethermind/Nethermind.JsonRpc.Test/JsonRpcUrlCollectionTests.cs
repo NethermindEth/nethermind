@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _enabledModules = new [] { ModuleType.Eth, ModuleType.Web3, ModuleType.Net };
+            _enabledModules = new[] { ModuleType.Eth, ModuleType.Web3, ModuleType.Net };
         }
 
         private string[] _enabledModules;
@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new [] { "https://localhost:1234|https;wss|admin;debug" }
+                AdditionalRpcUrls = new[] { "https://localhost:1234|https;wss|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new [] { "http://localhost:1234|ws|admin;debug" }
+                AdditionalRpcUrls = new[] { "http://localhost:1234|ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new [] { "http://localhost:1234|http;ws|admin;debug" }
+                AdditionalRpcUrls = new[] { "http://localhost:1234|http;ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -178,7 +178,7 @@ namespace Nethermind.JsonRpc.Test
                 Enabled = true,
                 EnabledModules = _enabledModules,
                 WebSocketsPort = 9876,
-                AdditionalRpcUrls = new []
+                AdditionalRpcUrls = new[]
                 {
                     "http://localhost:8545|http;ws|admin;debug",
                     "https://127.0.0.1:1234|https;wss|eth;web3",
@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new []
+                AdditionalRpcUrls = new[]
                 {
                     string.Empty,
                     "test",
@@ -226,13 +226,13 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new []
+                AdditionalRpcUrls = new[]
                 {
                     "http://127.0.0.1:8551|http|eth;web3;engine"
                 },
                 EngineHost = "127.0.0.1",
                 EnginePort = 8551,
-                EngineEnabledModules = new[] {"eth"}
+                EngineEnabledModules = new[] { "eth" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
@@ -250,14 +250,14 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRpcUrls = new []
+                AdditionalRpcUrls = new[]
                 {
                     "http://127.0.0.1:8551|http|eth;web3;engine",
                     "http://127.0.0.1:1234|http|eth;web3"
                 },
                 EngineHost = "127.0.0.1",
                 EnginePort = 8552,
-                EngineEnabledModules = new []{"eth"}
+                EngineEnabledModules = new[] { "eth" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);

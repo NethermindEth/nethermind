@@ -70,20 +70,20 @@ namespace Nethermind.State.Snap.Storage
         {
             foreach (var item in sourceLayer.Where(n => n.Key >= startingHash && n.Key <= endHash))
             {
-                if(item.Value is null)
+                if (item.Value is null)
                 {
                     resultLayer.Remove(item.Key);
                 }
                 else
                 {
                     resultLayer[item.Key] = item.Value;
-                }               
+                }
             }
         }
 
         private void ReorgLayers(UInt256 maxBlockNumber)
         {
-            if(_bottomLayer is null)
+            if (_bottomLayer is null)
             {
                 _bottomLayer = new();
                 _bottomBlockNumber = maxBlockNumber;

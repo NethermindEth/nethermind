@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
     [TestFixture]
     public class NdmWebSocketsClientTests
     {
-        
+
         private IJsonSerializer _serializer = Substitute.For<IJsonSerializer>();
 
         [Test]

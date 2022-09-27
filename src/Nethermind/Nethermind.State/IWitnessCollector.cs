@@ -27,11 +27,11 @@ namespace Nethermind.State
     public interface IWitnessCollector
     {
         IReadOnlyCollection<Keccak> Collected { get; }
-        
+
         void Add(Keccak hash);
 
         void Reset();
-        
+
         void Persist(Keccak blockHash);
 
         IDisposable TrackOnThisThread();

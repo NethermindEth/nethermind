@@ -27,5 +27,5 @@ namespace Nethermind.JsonRpc.Data
         public string[] TraceTypes { get; set; }
     }
 
-    
+
 }
