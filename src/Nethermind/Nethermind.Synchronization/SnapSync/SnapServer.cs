@@ -107,9 +107,10 @@ public class SnapServer
         return response.ToArray();
     }
 
-    public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
+    public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
     {
-        (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash, limitHash, byteLimit);
+
+        (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash, limitHash == null ? Keccak.MaxValue : limitHash, byteLimit);
         StateTree tree = new(_store, _logManager);
         PathWithAccount[] nodes = (PathWithAccount[]) accountNodes;
 
@@ -132,7 +133,7 @@ public class SnapServer
         return (nodes, proofs.ToArray());
     }
 
-    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak startingHash, Keccak limitHash, long byteLimit)
+    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
     {
         long responseSize = 0;
         StateTree tree = new(_store, _logManager);
@@ -145,6 +146,10 @@ public class SnapServer
             }
             // TODO: is it a good idea to get storage root from here?
             var storageRoot = accounts[i].Account.StorageRoot;
+
+            // TODO: handle null values in the node visitor - will be more efficient.
+            startingHash = startingHash == null ? Keccak.Zero : startingHash;
+            limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
             (object []? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot, startingHash, limitHash, byteLimit - responseSize);
             PathWithStorageSlot[] nodes = (PathWithStorageSlot[]) storageNodes;
