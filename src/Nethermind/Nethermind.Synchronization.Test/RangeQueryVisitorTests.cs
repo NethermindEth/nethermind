@@ -54,14 +54,16 @@ public class RangeQueryVisitorTests
             KeepTrackOfAbsolutePath = true
         };
         _inputTree.Accept(visitor, _inputTree.RootHash, opt);
-        byte[][] nodes = visitor.GetNodes();
+        var nodes = visitor.GetNodes();
 
-        Assert.AreEqual(nodes.Length, 4);
+        Assert.AreEqual(nodes.Count, 4);
 
-        Rlp.Encode(TestItem.Tree.AccountsWithPaths[2].Account).Bytes.Should().BeEquivalentTo(nodes[0]);
-        Rlp.Encode(TestItem.Tree.AccountsWithPaths[3].Account).Bytes.Should().BeEquivalentTo(nodes[1]);
-        Rlp.Encode(TestItem.Tree.AccountsWithPaths[4].Account).Bytes.Should().BeEquivalentTo(nodes[2]);
-        Rlp.Encode(TestItem.Tree.AccountsWithPaths[5].Account).Bytes.Should().BeEquivalentTo(nodes[3]);
+        int k = 0;
+        foreach (KeyValuePair<byte[], byte[]> pair in nodes)
+        {
+            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k+2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
+            k += 1;
+        }
     }
 
     [Test]
@@ -77,14 +79,14 @@ public class RangeQueryVisitorTests
             KeepTrackOfAbsolutePath = true
         };
         inputStorageTree.Accept(visitor, inputStorageTree.RootHash, opt);
-        byte[][] nodes = visitor.GetNodes();
-        Assert.AreEqual(nodes.Length, 6);
+        var nodes = visitor.GetNodes();
+        Assert.AreEqual(nodes.Count, 6);
 
-        nodes[0].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[0].SlotRlpValue);
-        nodes[1].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[1].SlotRlpValue);
-        nodes[2].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[2].SlotRlpValue);
-        nodes[3].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[3].SlotRlpValue);
-        nodes[4].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[4].SlotRlpValue);
-        nodes[5].Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[5].SlotRlpValue);
+        int k = 0;
+        foreach (KeyValuePair<byte[], byte[]> pair in nodes)
+        {
+            pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k+0].SlotRlpValue);
+            k += 1;
+        }
     }
 }
