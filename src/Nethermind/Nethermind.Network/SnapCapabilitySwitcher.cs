@@ -16,6 +16,7 @@
 //
 
 using System;
+using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -28,11 +29,13 @@ public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
     private readonly MultiSyncModeSelector _multiSyncModeSelector;
+    private readonly ILogger _logger;
 
-    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, MultiSyncModeSelector? multiSyncModeSelector)
+    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, MultiSyncModeSelector? multiSyncModeSelector, ILogManager? logManager)
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
         _multiSyncModeSelector = multiSyncModeSelector ?? throw new ArgumentNullException(nameof(multiSyncModeSelector));
+        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>
@@ -51,5 +54,6 @@ public class SnapCapabilitySwitcher
     {
         _multiSyncModeSelector.SnapSyncFinished -= OnSnapSyncFinished;
         _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
+        if (_logger.IsWarn) _logger.Warn("Sync finished. Disabled Snap capability.");
     }
 }

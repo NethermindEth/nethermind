@@ -85,8 +85,10 @@ namespace Nethermind.Synchronization.ParallelSync
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
-        public event EventHandler<EventArgs> SnapSyncFinished;
 
+        // Temporary event and variable used for removing snap capability after SnapSync finish.
+        // Will be removed after implementing missing functionality - serving data via snap protocol.
+        public event EventHandler<EventArgs> SnapSyncFinished;
         public bool SyncFinished = false;
 
         public SyncMode Current { get; private set; } = SyncMode.Disconnected;
@@ -409,6 +411,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           stateSyncFinished &&
                           notNeedToWaitForHeaders;
 
+            // ToDo: remove after implementing serving data via snap protocol
             if (!SyncFinished && result)
             {
                 SyncFinished = true;
