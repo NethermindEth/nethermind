@@ -81,12 +81,12 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(SnapSyncBatch? batch, PeerInfo? peer)
         {
             if (batch == null)
             {
                 if (_logger.IsError) _logger.Error("Received empty batch as a response");
-                return SyncResponseHandlingResult.InternalError;
+                return new(SyncResponseHandlingResult.InternalError);
             }
 
             AddRangeResult result = AddRangeResult.OK;
@@ -113,19 +113,19 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (peer == null)
                 {
-                    return SyncResponseHandlingResult.NotAssigned;
+                    return new(SyncResponseHandlingResult.NotAssigned);
                 }
                 else
                 {
                     _logger.Trace($"SNAP - timeout {peer}");
-                    return SyncResponseHandlingResult.LesserQuality;
+                    return new(SyncResponseHandlingResult.LesserQuality);
                 }
             }
 
-            return AnalyzeResponsePerPeer(result, peer);
+            return new(AnalyzeResponsePerPeer(result, peer));
         }
 
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer)
         {
             if (peer == null)
             {

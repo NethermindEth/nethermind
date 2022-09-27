@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -39,12 +40,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ISyncPeerPool _syncPeerPool;
 
         private readonly long _pivotNumber;
         private readonly long _barrier;
 
-        private SyncStatusList _syncStatusList;
+        private readonly SyncStatusList _syncStatusList;
 
         public BodiesSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -53,6 +55,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             ISpecProvider specProvider,
+            IBlockProcessingQueue blockProcessingQueue,
             ILogManager logManager) : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -61,6 +64,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blockProcessingQueue = blockProcessingQueue;
 
             if (!_syncConfig.FastBlocks)
             {
@@ -126,17 +130,19 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo? peer = null)
+        public override async ValueTask<SyncResponseHandlingResult> HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
         {
-            batch?.MarkHandlingStart();
+            if (batch == null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                return SyncResponseHandlingResult.InternalError;
+            }
+
+            await _blockProcessingQueue.Emptied();
+
+            batch.MarkHandlingStart();
             try
             {
-                if (batch == null)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                    return SyncResponseHandlingResult.InternalError;
-                }
-
                 int added = InsertBodies(batch);
                 return added == 0
                     ? SyncResponseHandlingResult.NoProgress
@@ -144,7 +150,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                batch?.MarkHandlingEnd();
+                batch.MarkHandlingEnd();
             }
         }
 

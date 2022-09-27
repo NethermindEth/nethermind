@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -46,7 +47,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            Assert.Throws<InvalidOperationException>(() => new HeadersSyncFeed(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig(), Substitute.For<ISyncReport>(), LimboLogs.Instance));
+            Assert.Throws<InvalidOperationException>(() => new HeadersSyncFeed(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig(), Substitute.For<ISyncReport>(), new EmptyBlockProcessingQueue(), LimboLogs.Instance));
         }
 
         [Test]
@@ -54,10 +55,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, Substitute.For<ISyncReport>(), LimboLogs.Instance);
-            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch3 = await feed.PrepareRequest();
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, Substitute.For<ISyncReport>(), new EmptyBlockProcessingQueue(), LimboLogs.Instance);
+            HeadersSyncBatch? batch1 = feed.PrepareRequest();
+            HeadersSyncBatch? batch2 = feed.PrepareRequest();
+            HeadersSyncBatch? batch3 = feed.PrepareRequest();
         }
 
         [Test]
@@ -65,13 +66,13 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, Substitute.For<ISyncReport>(), LimboLogs.Instance);
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, Substitute.For<ISyncReport>(),new EmptyBlockProcessingQueue(), LimboLogs.Instance);
             for (int i = 0; i < 10; i++)
             {
-                await feed.PrepareRequest();
+                feed.PrepareRequest();
             }
 
-            var result = await feed.PrepareRequest();
+            var result = feed.PrepareRequest();
             result.Should().BeNull();
         }
 
@@ -84,10 +85,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
-            await feed.PrepareRequest();
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, new EmptyBlockProcessingQueue(), LimboLogs.Instance);
+            feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
-            var result = await feed.PrepareRequest();
+            var result = feed.PrepareRequest();
             result.Should().BeNull();
             feed.CurrentState.Should().Be(SyncFeedState.Finished);
             measuredProgress.HasEnded.Should().BeTrue();

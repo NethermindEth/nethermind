@@ -173,6 +173,7 @@ namespace Nethermind.Init.Steps
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
                     syncReport,
+                    _api.BlockProcessingQueue!,
                     _api.LogManager);
             }
 

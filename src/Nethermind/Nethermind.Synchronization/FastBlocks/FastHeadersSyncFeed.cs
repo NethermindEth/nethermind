@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -46,6 +47,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         protected readonly ISyncReport _syncReport;
+        private readonly IBlockProcessingQueue _blockProcessingQueue;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
 
@@ -96,12 +98,14 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
+            IBlockProcessingQueue blockProcessingQueue,
             ILogManager? logManager,
             bool alwaysStartHeaderSync = false)
         : base(syncModeSelector)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _blockProcessingQueue = blockProcessingQueue;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
@@ -267,7 +271,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
+        public override async ValueTask<SyncResponseHandlingResult> HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
         {
             if (batch == null)
             {
@@ -284,12 +288,14 @@ namespace Nethermind.Synchronization.FastBlocks
                 return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
             }
 
+            if (batch.RequestSize == 0)
+            {
+                return SyncResponseHandlingResult.OK; // 1
+            }
+
             try
             {
-                if (batch.RequestSize == 0)
-                {
-                    return SyncResponseHandlingResult.OK; // 1
-                }
+                await _blockProcessingQueue.Emptied();
 
                 lock (_handlerLock)
                 {

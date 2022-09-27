@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,11 +59,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncPeerPool? syncPeerPool,
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
+        IBlockProcessingQueue blockProcessingQueue,
         IPivot? pivot,
         IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
-        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager,
+        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, blockProcessingQueue, logManager,
             true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));

@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private ConcurrentQueue<TestBatch> _returned = new();
 
-            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo peer = null)
+            public override ValueTask<SyncResponseHandlingResult> HandleResponse(TestBatch response, PeerInfo peer = null)
             {
                 if (response.Result == null)
                 {
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 }
 
                 Console.WriteLine($"Decrementing Pending Requests {Interlocked.Decrement(ref _pendingRequests)}");
-                return SyncResponseHandlingResult.OK;
+                return new(SyncResponseHandlingResult.OK);
             }
 
             public override bool IsMultiFeed { get; }

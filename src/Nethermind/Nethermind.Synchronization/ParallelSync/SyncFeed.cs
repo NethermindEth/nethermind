@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         private readonly TaskCompletionSource _taskCompletionSource = new();
         public abstract T PrepareRequest(CancellationToken token = default);
-        public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
+        public abstract ValueTask<SyncResponseHandlingResult> HandleResponse(T response, PeerInfo peer = null);
         public abstract bool IsMultiFeed { get; }
         public abstract AllocationContexts Contexts { get; }
         public int FeedId { get; } = FeedIdProvider.AssignId();

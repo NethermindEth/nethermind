@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,24 @@
 //
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Synchronization.Peers;
+using Nethermind.Core;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Consensus.Processing;
+
+public class EmptyBlockProcessingQueue : IBlockProcessingQueue
 {
-    public interface ISyncFeed<T>
+    public void Enqueue(Block block, ProcessingOptions processingOptions)
     {
-        int FeedId { get; }
-        SyncFeedState CurrentState { get; }
-        event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        T PrepareRequest(CancellationToken token = default);
-        ValueTask<SyncResponseHandlingResult> HandleResponse(T response, PeerInfo? peer = null);
-
-        /// <summary>
-        /// Multifeed can prepare and handle multiple requests concurrently.
-        /// </summary>
-        bool IsMultiFeed { get; }
-
-        AllocationContexts Contexts { get; }
-        void Activate();
-        void Finish();
-        Task FeedTask { get; }
+        BlockRemoved?.Invoke(this, new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
     }
+
+    public event EventHandler? ProcessingQueueEmpty;
+    public event EventHandler<BlockHashEventArgs>? BlockRemoved;
+    public int Count => 0;
+    public ValueTask Emptied() => default;
 }

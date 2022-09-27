@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -23,6 +23,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -135,6 +136,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                new EmptyBlockProcessingQueue(),
                 LimboLogs.Instance);
         }
 
@@ -151,11 +153,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                     _syncPeerPool,
                     _syncConfig,
                     _syncReport,
+                    new EmptyBlockProcessingQueue(),
                     LimboLogs.Instance));
         }
 
         [Test]
-        public async Task Should_finish_on_start_when_receipts_not_stored()
+        public void Should_finish_on_start_when_receipts_not_stored()
         {
             _feed = new ReceiptsSyncFeed(
                 _selector,
@@ -165,9 +168,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                new EmptyBlockProcessingQueue(),
                 LimboLogs.Instance);
 
-            var request = await _feed.PrepareRequest();
+            ReceiptsSyncBatch? request = _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -208,16 +212,16 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void When_no_bodies_downloaded_then_request_will_be_empty()
         {
-            _feed.PrepareRequest().Result.Should().BeNull();
+            _feed.PrepareRequest().Should().BeNull();
         }
 
         [Test]
         public void Returns_same_batch_until_filled()
         {
             LoadScenario(_256BodiesWithOneTxEach);
-            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch request = _feed.PrepareRequest();
             _feed.HandleResponse(request);
-            ReceiptsSyncBatch request2 = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch request2 = _feed.PrepareRequest();
             request2!.MinNumber.Should().Be(request!.MinNumber);
         }
 
@@ -225,7 +229,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_create_a_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
-            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch request = _feed.PrepareRequest();
             request.Should().NotBeNull();
             request!.MinNumber.Should().Be(1024);
             request.Prioritized.Should().Be(true);
@@ -237,7 +241,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             LoadScenario(_256BodiesWithOneTxEach);
             _syncConfig.DownloadReceiptsInFastSync = false;
 
-            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch request = _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
             _measuredProgress.HasEnded.Should().BeTrue();
@@ -263,6 +267,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                new EmptyBlockProcessingQueue(),
                 LimboLogs.Instance);
 
             _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
@@ -307,7 +312,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             List<ReceiptsSyncBatch> batches = new();
             for (int i = 0; i < 100; i++)
             {
-                batches.Add(_feed.PrepareRequest().Result);
+                batches.Add(_feed.PrepareRequest());
             }
 
             for (int i = 0; i < 2; i++)
@@ -323,10 +328,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
+        public async Task If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
         {
             LoadScenario(_1024BodiesWithOneTxEach);
-            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch = _feed.PrepareRequest();
             batch!.Response = new TxReceipt[batch.Infos.Length][];
 
             // default receipts that we use when constructing receipt root for tests have stats code 0
@@ -336,7 +341,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
 
-            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            SyncResponseHandlingResult handlingResult = await _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
             _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, Arg.Any<string>());
@@ -355,12 +360,12 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_sync_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEach);
-            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch = _feed.PrepareRequest();
 
             FillBatchResponses(batch);
             _feed.HandleResponse(batch);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
-            _feed.PrepareRequest().Result.Should().Be(null);
+            _feed.PrepareRequest().Should().Be(null);
 
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }

@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -41,11 +42,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
+        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
 
-        private SyncStatusList _syncStatusList;
+        private readonly SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
         private readonly long _barrier;
 
@@ -60,6 +62,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IBlockProcessingQueue blockProcessingQueue,
             ILogManager logManager)
             : base(syncModeSelector)
         {
@@ -69,6 +72,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _blockProcessingQueue = blockProcessingQueue;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             if (!_syncConfig.FastBlocks)
@@ -147,23 +151,25 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(ReceiptsSyncBatch? batch, PeerInfo peer = null)
+        public override async ValueTask<SyncResponseHandlingResult> HandleResponse(ReceiptsSyncBatch? batch, PeerInfo peer = null)
         {
-            batch?.MarkHandlingStart();
+            if (batch is null)
+            {
+                if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                return SyncResponseHandlingResult.InternalError;
+            }
+
+            await _blockProcessingQueue.Emptied();
+
+            batch.MarkHandlingStart();
             try
             {
-                if (batch is null)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                    return SyncResponseHandlingResult.InternalError;
-                }
-
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
             finally
             {
-                batch?.MarkHandlingEnd();
+                batch.MarkHandlingEnd();
             }
         }
 

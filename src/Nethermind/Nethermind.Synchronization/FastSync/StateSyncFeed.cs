@@ -77,9 +77,9 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo peer = null)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(StateSyncBatch? batch, PeerInfo peer = null)
         {
-            return _treeSync.HandleResponse(batch);
+            return new(_treeSync.HandleResponse(batch));
         }
 
         public void Dispose()

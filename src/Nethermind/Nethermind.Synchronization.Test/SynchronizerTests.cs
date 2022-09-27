@@ -396,6 +396,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         snapProvider,
                         blockDownloaderFactory,
+                        new EmptyBlockProcessingQueue(),
                         pivot,
                         poSSwitcher,
                         mergeConfig,
@@ -430,6 +431,7 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
+                        new EmptyBlockProcessingQueue(),
                         _logManager);
                 }
 

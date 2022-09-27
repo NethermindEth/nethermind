@@ -56,10 +56,10 @@ namespace Nethermind.Synchronization.Blocks
 
         public override BlocksRequest PrepareRequest(CancellationToken token = default) => _blocksRequest;
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer = null)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(BlocksRequest response, PeerInfo peer = null)
         {
             FallAsleep();
-            return SyncResponseHandlingResult.OK;
+            return new(SyncResponseHandlingResult.OK);
         }
 
         public override bool IsMultiFeed => false;

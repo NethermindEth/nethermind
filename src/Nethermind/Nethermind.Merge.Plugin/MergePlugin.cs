@@ -439,6 +439,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.SnapProvider,
                     _api.BlockDownloaderFactory,
+                    _api.BlockProcessingQueue!,
                     _api.Pivot,
                     _poSSwitcher,
                     _mergeConfig,

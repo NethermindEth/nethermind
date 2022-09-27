@@ -54,6 +54,7 @@ public class MergeSynchronizer : Synchronizer
         ISyncConfig syncConfig,
         ISnapProvider snapProvider,
         IBlockDownloaderFactory blockDownloaderFactory,
+        IBlockProcessingQueue blockProcessingQueue,
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
@@ -73,6 +74,7 @@ public class MergeSynchronizer : Synchronizer
             blockDownloaderFactory,
             pivot,
             syncReport,
+            blockProcessingQueue,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;
@@ -95,7 +97,7 @@ public class MergeSynchronizer : Synchronizer
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
+            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _blockProcessingQueue, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
             new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
