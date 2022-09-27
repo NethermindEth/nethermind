@@ -109,8 +109,7 @@ public class SnapServer
 
     public (PathWithNode[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
     {
-        // TODO: use the ITreeVisitor interface instead
-        (PathWithNode[]? nodes, long _, bool _) = GetNodesFromTrieBruteForce(rootHash, startingHash, limitHash, byteLimit);
+        (PathWithNode[]? nodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash, limitHash, byteLimit);
         StateTree tree = new(_store, _logManager);
 
         // TODO: add error handling when proof is null
@@ -145,8 +144,7 @@ public class SnapServer
             }
             var storageRoot = accounts[i].Account.StorageRoot;
 
-            // TODO: this is a very very very very bad idea - find a way to know which nodes are present easily
-            (PathWithNode[]? nodes, long innerResponseSize, bool stopped) = GetNodesFromTrieBruteForce(storageRoot, startingHash, limitHash, byteLimit - responseSize);
+            (PathWithNode[]? nodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot, startingHash, limitHash, byteLimit - responseSize);
             responseNodes.AddRange(nodes);
             if (stopped || startingHash != Keccak.Zero)
             {
@@ -214,6 +212,35 @@ public class SnapServer
                 responseSize += 32 + blob.Length;
             }
             itr++;
+        }
+
+        return (nodes.ToArray(), responseSize, stopped);
+    }
+
+    private (PathWithNode[], long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
+    {
+        // TODO: incase of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
+
+        long responseSize = 0;
+        bool stopped = false;
+        PatriciaTree tree = new(_store, _logManager);
+
+
+        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, byteLimit);
+        VisitingOptions opt = new()
+        {
+            ExpectAccounts = false,
+            KeepTrackOfAbsolutePath = true
+        };
+        tree.Accept(visitor, rootHash, opt);
+        Dictionary<byte[], byte[]>? requiredNodes = visitor.GetNodes();
+
+        PathWithNode[] nodes = new PathWithNode[requiredNodes.Count];
+        int i = 0;
+        foreach (PathWithNode? result in requiredNodes.Select(res => new PathWithNode(res.Key, res.Value)))
+        {
+            nodes[i] = result;
+            i += 1;
         }
 
         return (nodes.ToArray(), responseSize, stopped);
