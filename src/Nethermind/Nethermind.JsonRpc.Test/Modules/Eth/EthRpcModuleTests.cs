@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using MathNet.Numerics.LinearAlgebra.Solvers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -45,6 +46,7 @@ using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -529,6 +531,16 @@ public partial class EthRpcModuleTests
         Assert.AreEqual(expectedResult, serialized2, serialized2);
     }
 
+    [TestCase("0x0")]
+    public async Task Eth_get_block_by_number_should_not_recover_tx_senders_for_request_without_tx_details(string blockParameter)
+    {
+        IBlockchainBridge? blockchainBridge = Substitute.For<IBlockchainBridge>();
+        TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
+        ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
+        blockchainBridge.Received(0).RecoverTxSenders(Arg.Any<Block>());
+    }
+
+
     [Test]
     public async Task Eth_get_block_by_number_null()
     {
@@ -937,7 +949,7 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
     {
-        var rpcTx = new TransactionForRpc();
+        TransactionForRpc rpcTx = new TransactionForRpc();
 
         rpcTx.EnsureDefaults(gasCap);
 
@@ -992,10 +1004,10 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null) =>
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge blockchainBridge = null) =>
             new()
             {
-                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider),
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(specProvider),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
             };
 
