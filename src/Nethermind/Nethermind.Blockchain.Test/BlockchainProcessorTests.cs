@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -365,9 +366,16 @@ namespace Nethermind.Blockchain.Test
                     .ProcessedFail(block);
             }
 
-            public ProcessingTestContext QueueIsEmpty(int count)
+            public ValueTask<ProcessingTestContext> QueueIsEmpty(int count)
             {
                 _queueEmptyResetEvent.WaitOne(ProcessingWait);
+                Assert.AreEqual(count, _processingQueueEmptyFired, $"Processing queue fired {_processingQueueEmptyFired} times.");
+                return new ValueTask<ProcessingTestContext>(this);
+            }
+
+            public async ValueTask<ProcessingTestContext> QueueEmptied(int count)
+            {
+                await _processor.Emptied();
                 Assert.AreEqual(count, _processingQueueEmptyFired, $"Processing queue fired {_processingQueueEmptyFired} times.");
                 return this;
             }
@@ -686,15 +694,22 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void QueueCount_returns_correctly()
+        public async Task QueueCount_returns_correctly([Values(false, true)] bool useTask)
         {
-            When.ProcessingBlocks
-                .QueueIsEmpty(1)
+            Func<ProcessingTestContext, int, ValueTask<ProcessingTestContext>> queueEmpty = useTask
+                ? (t, c) => t.QueueEmptied(c)
+                : (t, c) => t.QueueIsEmpty(c);
+
+            ProcessingTestContext currentContext = When.ProcessingBlocks;
+
+            currentContext = await queueEmpty(currentContext, 1);
+            currentContext = currentContext
                 .FullyProcessed(_block0)
-                .BecomesGenesis()
-                .QueueIsEmpty(2)
+                .BecomesGenesis();
 
+            currentContext = await queueEmpty(currentContext, 2);
 
+            await currentContext
                 .Suggested(_block1D2)
                 .Recovered(_block1D2)
                 .CountIs(1)
