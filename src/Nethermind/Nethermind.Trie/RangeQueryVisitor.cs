@@ -40,8 +40,6 @@ public class RangeQueryVisitor: ITreeVisitor
         _limitHash = new byte[64];
         Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
 
-        Console.WriteLine("Nibbles Limit Hash");
-        Console.WriteLine(String.Join(", ", _limitHash));
         _nodeLimit = nodeLimit;
     }
 
@@ -186,7 +184,7 @@ public class RangeQueryVisitor: ITreeVisitor
             return;
         }
 
-        _collectedNodes.Add(node.FullRlp);
+        _collectedNodes.Add(node.Value);
     }
 
     public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
