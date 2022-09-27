@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -329,12 +329,22 @@ namespace Nethermind.Facade
 
         public void RecoverTxSenders(Block block)
         {
-            for (int i = 0; i < block.Transactions.Length; i++)
+            TxReceipt[] receipts = _receiptFinder.Get(block);
+            if (block.Transactions.Length == receipts.Length)
             {
-                Transaction transaction = block.Transactions[i];
-                if (transaction.SenderAddress == null)
+                for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    RecoverTxSender(transaction);
+                    Transaction transaction = block.Transactions[i];
+                    TxReceipt receipt = receipts[i];
+                    transaction.SenderAddress ??= receipt.Sender ?? RecoverTxSender(transaction);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    Transaction transaction = block.Transactions[i];
+                    transaction.SenderAddress ??= RecoverTxSender(transaction);
                 }
             }
         }
@@ -342,10 +352,7 @@ namespace Nethermind.Facade
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
 
-        public void RecoverTxSender(Transaction tx)
-        {
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx);
-        }
+        public Address? RecoverTxSender(Transaction tx) => _ecdsa.RecoverAddress(tx);
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
         {
