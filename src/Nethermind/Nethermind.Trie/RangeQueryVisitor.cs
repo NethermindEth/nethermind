@@ -25,14 +25,16 @@ namespace Nethermind.Trie;
 public class RangeQueryVisitor: ITreeVisitor
 {
     private bool _shouldVisit = true;
-    private List<byte[]> _collectedNodes = new();
+    private Dictionary<byte[], byte[]> _collectedNodes = new();
+    private long _currentBytesCount = 0;
     private byte[] _startHash;
     private byte[] _limitHash;
     private int _nodeLimit = 1000;
     private bool _checkStartRange = true;
     private HashSet<Keccak> _nodeToVisitFilter = new();
+    private long _byteLimit;
 
-    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, int nodeLimit = 1000)
+    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, long byteLimit=-1, int nodeLimit = 1000)
     {
         _startHash = new byte[64];
         Nibbles.BytesToNibbleBytes(startHash, _startHash);
@@ -41,6 +43,7 @@ public class RangeQueryVisitor: ITreeVisitor
         Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
 
         _nodeLimit = nodeLimit;
+        _byteLimit = byteLimit;
     }
 
     private static int ComparePath(IReadOnlyList<byte> path, byte[] hash)
@@ -61,7 +64,7 @@ public class RangeQueryVisitor: ITreeVisitor
 
     private bool ShouldVisit(IReadOnlyList<byte> path)
     {
-        if (_collectedNodes.Count >= _nodeLimit)
+        if (_collectedNodes.Count >= _nodeLimit || (_byteLimit > 0 && _currentBytesCount >= _byteLimit))
         {
             return false;
         }
@@ -74,9 +77,9 @@ public class RangeQueryVisitor: ITreeVisitor
         return _checkStartRange ? _nodeToVisitFilter.Contains(nextNode) : _shouldVisit;
     }
 
-    public byte[][] GetNodes()
+    public Dictionary<byte[], byte[]> GetNodes()
     {
-        return _collectedNodes.ToArray();
+        return _collectedNodes;
     }
 
     public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
@@ -184,7 +187,8 @@ public class RangeQueryVisitor: ITreeVisitor
             return;
         }
 
-        _collectedNodes.Add(node.Value);
+        _collectedNodes[Nibbles.ToBytes(path.ToArray())] = node.Value;
+        _currentBytesCount += 32 + node.Value!.Length;
     }
 
     public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
