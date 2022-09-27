@@ -592,7 +592,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         if (firstToComplete == delayTask)
                         {
-                            ReportRefreshFailed(syncPeer, "timeout");
+                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
                         }
                         else if (firstToComplete.IsFaulted)
                         {
