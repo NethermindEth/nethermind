@@ -1,24 +1,24 @@
 //  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Network;
 
@@ -27,12 +27,12 @@ namespace Nethermind.Network;
 public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
-    private readonly ProgressTracker _progressTracker;
+    private readonly MultiSyncModeSelector _multiSyncModeSelector;
 
-    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ProgressTracker? progressTracker)
+    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, MultiSyncModeSelector? multiSyncModeSelector)
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
-        _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+        _multiSyncModeSelector = multiSyncModeSelector ?? throw new ArgumentNullException(nameof(multiSyncModeSelector));
     }
 
     /// <summary>
@@ -40,16 +40,16 @@ public class SnapCapabilitySwitcher
     /// </summary>
     public void EnableSnapCapabilityUntilSynced()
     {
-        if (!_progressTracker.IsSnapGetRangesFinished())
+        if (!_multiSyncModeSelector.SyncFinished)
         {
             _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            _progressTracker.SnapSyncFinished += OnSnapSyncFinished;
+            _multiSyncModeSelector.SnapSyncFinished += OnSnapSyncFinished;
         }
     }
 
     private void OnSnapSyncFinished(object? sender, EventArgs e)
     {
-        _progressTracker.SnapSyncFinished -= OnSnapSyncFinished;
+        _multiSyncModeSelector.SnapSyncFinished -= OnSnapSyncFinished;
         _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
     }
 }

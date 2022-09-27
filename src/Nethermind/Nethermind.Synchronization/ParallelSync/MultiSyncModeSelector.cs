@@ -85,6 +85,9 @@ namespace Nethermind.Synchronization.ParallelSync
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
+        public event EventHandler<EventArgs> SnapSyncFinished;
+
+        public bool SyncFinished = false;
 
         public SyncMode Current { get; private set; } = SyncMode.Disconnected;
 
@@ -405,6 +408,12 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInStateSync &&
                           stateSyncFinished &&
                           notNeedToWaitForHeaders;
+
+            if (!SyncFinished && result)
+            {
+                SyncFinished = true;
+                SnapSyncFinished?.Invoke(this, EventArgs.Empty);
+            }
 
             if (_logger.IsTrace)
             {
