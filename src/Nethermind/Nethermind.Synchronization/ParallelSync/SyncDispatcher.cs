@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
+                        T request = Feed.PrepareRequest(cancellationToken); // just to avoid null refs
                         if (request == null)
                         {
                             if (!Feed.IsMultiFeed)

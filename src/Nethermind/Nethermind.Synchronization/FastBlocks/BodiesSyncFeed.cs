@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.BodiesInQueue.MarkEnd();
         }
 
-        public override Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
+        public override BodiesSyncBatch? PrepareRequest(CancellationToken token = default)
         {
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
@@ -117,18 +117,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 _syncStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {
-                    batch = new BodiesSyncBatch(infos);
-                    batch.MinNumber = infos[0].BlockNumber;
-                    batch.Prioritized = true;
+                    batch = new BodiesSyncBatch(infos) { MinNumber = infos[0].BlockNumber, Prioritized = true };
                 }
             }
 
             _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
 
-            return Task.FromResult(batch);
+            return batch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo? peer = null)
         {
             batch?.MarkHandlingStart();
             try

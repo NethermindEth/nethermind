@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+        public override HeadersSyncBatch? PrepareRequest(CancellationToken cancellationToken = default)
         {
             HandleDependentBatches(cancellationToken);
 
@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 LogStateOnPrepare();
             }
 
-            return Task.FromResult(batch);
+            return batch;
         }
 
         protected virtual HeadersSyncBatch BuildNewBatch()

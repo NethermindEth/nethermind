@@ -122,6 +122,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         private class TestBatch
         {
+            public TestBatch() : this(0, 0)
+            {
+                Result = Array.Empty<int>();
+            }
+
             public TestBatch(int start, int length)
             {
                 Start = start;
@@ -205,18 +210,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private int _pendingRequests;
 
-            public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
+            public override TestBatch PrepareRequest(CancellationToken token = default)
             {
                 TestBatch testBatch;
-                if (_returned.TryDequeue(out TestBatch returned))
+                if (_returned.TryDequeue(out TestBatch? returned))
                 {
                     Console.WriteLine("Sending previously failed batch");
                     testBatch = returned;
                 }
                 else
                 {
-                    await Task.CompletedTask;
-
                     int start;
 
                     if (_highestRequested >= Max)
@@ -228,7 +231,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             Finish();
                         }
 
-                        return null;
+                        return new TestBatch();
                     }
 
                     lock (_results)

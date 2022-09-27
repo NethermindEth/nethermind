@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastSync
             _branchProgress = new BranchProgress(0, _logger);
         }
 
-        public async Task<StateSyncBatch?> PrepareRequest(SyncMode syncMode)
+        public StateSyncBatch? PrepareRequest(SyncMode syncMode)
         {
             try
             {
@@ -100,7 +100,7 @@ namespace Nethermind.Synchronization.FastSync
                     _pendingRequests.TryAdd(result, null);
 
                     Interlocked.Increment(ref Metrics.StateSyncRequests);
-                    return await Task.FromResult(result);
+                    return result;
                 }
 
                 if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.TotalSeconds)
@@ -109,12 +109,12 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Increment(ref _hintsToResetRoot);
                 }
 
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 
