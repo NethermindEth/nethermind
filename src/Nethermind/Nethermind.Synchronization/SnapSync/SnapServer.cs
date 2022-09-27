@@ -55,6 +55,7 @@ public class SnapServer
 
     public byte[][]?  GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
     {
+        // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
         List<byte[]> response = new ();
         StateTree tree = new(_store, _logManager);
