@@ -699,7 +699,7 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
-            if (exception is OperationCanceledException)
+            if (exception is OperationCanceledException || exception is TimeoutException)
             {
                 // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
                 // or we have some connection issue
