@@ -211,9 +211,9 @@ namespace Nethermind.Init.Steps
                 }
             });
 
-            if (_syncConfig.SnapSync)
+            if (_api.SyncModeSelector is MultiSyncModeSelector multiSyncModeSelector && multiSyncModeSelector.SnapSyncEnabled)
             {
-                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, (MultiSyncModeSelector) _api.SyncModeSelector, _api.LogManager);
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, multiSyncModeSelector, _api.LogManager);
                 snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
             }
 

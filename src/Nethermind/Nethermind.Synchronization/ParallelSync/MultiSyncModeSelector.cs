@@ -65,11 +65,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
-        private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
+        private bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private readonly long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
-        private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
+        public bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
@@ -86,10 +86,9 @@ namespace Nethermind.Synchronization.ParallelSync
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
 
-        // Temporary event and variable used for removing snap capability after SnapSync finish.
+        // Temporary event used for removing snap capability after SnapSync finish.
         // Will be removed after implementing missing functionality - serving data via snap protocol.
         public event EventHandler<EventArgs> SnapSyncFinished;
-        public bool SyncFinished = false;
 
         public SyncMode Current { get; private set; } = SyncMode.Disconnected;
 
@@ -412,9 +411,9 @@ namespace Nethermind.Synchronization.ParallelSync
                           notNeedToWaitForHeaders;
 
             // ToDo: remove after implementing serving data via snap protocol
-            if (!SyncFinished && result)
+            if (!_isSnapSyncDisabledAfterAnyStateSync && result)
             {
-                SyncFinished = true;
+                _isSnapSyncDisabledAfterAnyStateSync = true;
                 SnapSyncFinished?.Invoke(this, EventArgs.Empty);
             }
 
