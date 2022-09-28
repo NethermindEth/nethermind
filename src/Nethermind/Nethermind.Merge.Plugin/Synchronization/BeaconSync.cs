@@ -100,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +
                 $" BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}," +
+                $" LowestInsertedBeaconHeaderHash: {_blockTree.LowestInsertedBeaconHeader?.Hash}," +
                 $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
                 $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
                 $" ChainMerged: {chainMerged}," +
@@ -117,6 +118,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <param name="blockHeader"></param>
         /// <returns></returns>
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
+
+        public long? GetTargetBlockHeight()
+        {
+            if (_beaconPivot.BeaconPivotExists())
+            {
+                return _beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
+            }
+            return null;
+        }
     }
 
     public interface IMergeSyncController
