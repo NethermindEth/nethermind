@@ -274,12 +274,15 @@ namespace Nethermind.Synchronization.SnapSync
             if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
-                _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished. Healing (Phase 2) starting...");
+                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
                     MoreAccountsToRight = false;
+                }
+                else
+                {
+                    _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
                 }
             }
         }
