@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
         // on slow peer which might reduces overall overall throughput. This is still an improvement though.
         public const int MAX_ACCOUNT_REQUEST_WAIT = 200;
         private readonly TimeSpan _maxAccountRequestWait = TimeSpan.FromMilliseconds(MAX_ACCOUNT_REQUEST_WAIT);
-        private readonly AutoResetEvent _accountRequestCompleted = new(false);
+        private readonly ManualResetEventSlim _accountRequestCompleted = new(true);
 
         private readonly ILogger _logger;
         private readonly IDb _db;
@@ -104,12 +104,12 @@ namespace Nethermind.Synchronization.SnapSync
                 return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
             }
 
-            if (StoragesToRetrieve.Count >= STORAGE_BATCH_SIZE)
+            if (StoragesToRetrieve.Count >= STORAGE_BATCH_SIZE/4)
             {
                 return CreateStorageRangeRequest(rootHash, blockNumber, request);
             }
 
-            if (CodesToRetrieve.Count >= CODES_BATCH_SIZE)
+            if (CodesToRetrieve.Count >= CODES_BATCH_SIZE/4)
             {
                 return CreateCodesRequest(request);
             }
@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.SnapSync
             // which would fill in more request. This increases overall throughput as it encourage larger batch.
             // Even if there are idle peer, we want the best peer (the first one selected) to go to account request
             // so that we can get account faster and fill the request queue faster.
-            if (MoreAccountsToRight && _accountRequestCompleted.WaitOne(_maxAccountRequestWait))
+            if (MoreAccountsToRight && _accountRequestCompleted.Wait(_maxAccountRequestWait))
             {
                 if (MoreAccountsToRight && _activeAccountRequests == 0)
                 {
@@ -223,6 +223,7 @@ namespace Nethermind.Synchronization.SnapSync
             LogRequest("AccountRange");
 
             Interlocked.Increment(ref _activeAccountRequests);
+            _accountRequestCompleted.Reset();
 
             request.AccountRangeRequest = range;
 
