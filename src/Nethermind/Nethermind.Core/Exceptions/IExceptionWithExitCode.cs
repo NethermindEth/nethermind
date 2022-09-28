@@ -15,25 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-using System.Threading.Tasks;
+namespace Nethermind.Core.Exceptions;
 
-namespace Nethermind.Api.Extensions
+public interface IExceptionWithExitCode
 {
-    public interface INethermindPlugin : IAsyncDisposable
-    {
-        string Name { get; }
-
-        string Description { get; }
-
-        string Author { get; }
-
-        Task Init(INethermindApi nethermindApi);
-
-        Task InitNetworkProtocol();
-
-        Task InitRpcModules();
-
-        bool MustInitialize { get => false; }
-    }
+    int ExitCode { get; }
 }

@@ -73,7 +73,7 @@ public class StartMonitoring : IStep
             if (logger.IsInfo)
                 logger.Info("Grafana / Prometheus metrics are disabled in configuration");
         }
-    }
 
-    public bool MustInitialize => false;
+        public bool MustInitialize => false;
+    }
 }
