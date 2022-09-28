@@ -211,11 +211,11 @@ public class InitializeNetwork : IStep
             }
         });
 
-            if (_api.SyncModeSelector is MultiSyncModeSelector multiSyncModeSelector && multiSyncModeSelector.SnapSyncEnabled)
-            {
-                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, multiSyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
+        if (_api.SyncModeSelector is MultiSyncModeSelector multiSyncModeSelector && multiSyncModeSelector.SnapSyncEnabled)
+        {
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, multiSyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
