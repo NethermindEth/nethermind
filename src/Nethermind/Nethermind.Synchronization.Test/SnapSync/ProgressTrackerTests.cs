@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 
 public class ProgressTrackerTests
 {
-    [TestCase(500, true, false, ProgressTracker.MAX_ACCOUNT_REQUEST_WAIT)]
+    [TestCase(100, true, false, ProgressTracker.MAX_ACCOUNT_REQUEST_WAIT)]
     [TestCase(10000, false, false, 0)]
     [TestCase(5000, true, false, 0)]
     [TestCase(500, true, true, 0)]
