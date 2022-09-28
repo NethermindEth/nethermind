@@ -164,24 +164,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             Metrics.SnapGetAccountRangeReceived++;
             Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
             Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
             Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
             Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
