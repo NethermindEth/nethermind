@@ -182,7 +182,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = false;
             }
-            if (header.TotalDifficulty != null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            else if (header.TotalDifficulty != null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
                 isTerminal = false;
