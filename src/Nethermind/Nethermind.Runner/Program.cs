@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -34,6 +34,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
@@ -193,7 +194,7 @@ namespace Nethermind.Runner
 
                 _appClosed.Reset();
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                bool runFailed = false;
+                int exitCode = ExitCodes.Ok;
                 try
                 {
                     await ethereumRunner.Start(_processCloseCancellationSource.Token);
@@ -203,7 +204,14 @@ namespace Nethermind.Runner
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
-                    runFailed = true;
+                    if (e is IExceptionWithExitCode withExit)
+                    {
+                        exitCode = withExit.ExitCode;
+                    }
+                    else
+                    {
+                        exitCode = ExitCodes.GeneralError;
+                    }
                     _processCloseCancellationSource.Cancel();
                 }
 
@@ -212,20 +220,23 @@ namespace Nethermind.Runner
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
-                if (runFailed)
-                {
-                    return -1;
-                }
-                return 0;
+                return exitCode;
             });
 
             try
             {
                 Environment.ExitCode = app.Execute(args);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                Environment.ExitCode = -1;
+                if (e is IExceptionWithExitCode withExit)
+                {
+                    Environment.ExitCode = withExit.ExitCode;
+                }
+                else
+                {
+                    Environment.ExitCode = ExitCodes.GeneralError;
+                }
                 throw;
             }
             finally
