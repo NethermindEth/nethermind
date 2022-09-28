@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int lastBlockToIgnore);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -52,7 +52,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int lastBlockToIgnore)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
@@ -64,7 +64,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is {startingPoint}");
 
-        int effectiveMax = maxCount + lastBlockToIgnore;
+        int effectiveMax = maxCount + skipLastBlockCount;
         List<BlockHeader> headers = new(effectiveMax);
         int i = 0;
 
@@ -130,7 +130,7 @@ public class ChainLevelHelper : IChainLevelHelper
             ++startingPoint;
         }
 
-        int toTake = headers.Count - lastBlockToIgnore;
+        int toTake = headers.Count - skipLastBlockCount;
         if (toTake <= 0)
         {
             headers.Clear();
