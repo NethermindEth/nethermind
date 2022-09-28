@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Text.RegularExpressions;
@@ -30,7 +30,8 @@ namespace Nethermind.Synchronization.Peers
 
         public static bool SupportsAllocation(this PeerInfo peerInfo, AllocationContexts contexts)
         {
-            if ((contexts & AllocationContexts.State) != 0 // only for State allocations 
+            // check if OpenEthereum supports state sync
+            if ((contexts & AllocationContexts.State) != 0 // only for State allocations
                 && peerInfo.SyncPeer.ClientType == NodeClientType.OpenEthereum) // only for OE
             {
                 // try get OpenEthereum version
@@ -40,6 +41,13 @@ namespace Nethermind.Synchronization.Peers
                     int versionComparision = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);
                     return versionComparision >= 0 || openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
                 }
+            }
+
+            // check if peer supports snap sync
+            if ((contexts & AllocationContexts.Snap) != 0)
+            {
+                // TODO: Remove when Nethermind implements snap server
+                return peerInfo.SyncPeer.ClientType != NodeClientType.Nethermind;
             }
 
             return true;

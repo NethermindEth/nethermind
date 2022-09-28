@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.AspNetCore.Connections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -189,6 +190,19 @@ namespace Nethermind.Synchronization.Test
             await WaitForPeersInitialization(ctx);
             ctx.Pool.DropUselessPeers(true);
             Assert.True(peers.Any(p => p.DisconnectRequested));
+        }
+
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public async Task Will_disconnect_when_refresh_exception_is_not_cancelled(bool isExceptionOperationCanceled, bool isDisconnectRequested)
+        {
+            await using Context ctx = new();
+            var peers = await SetupPeers(ctx, 25);
+            var peer = peers[0];
+
+            var refreshException = isExceptionOperationCanceled ? new OperationCanceledException() : new Exception();
+            ctx.Pool.ReportRefreshFailed(peer, "test with cancellation", refreshException);
+            peer.DisconnectRequested.Should().Be(isDisconnectRequested);
         }
 
         [TestCase(0)]

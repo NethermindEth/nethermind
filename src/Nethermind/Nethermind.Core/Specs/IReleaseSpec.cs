@@ -256,6 +256,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3675Enabled { get; }
 
         /// <summary>
+        /// Warm COINBASE
+        /// </summary>
+        bool IsEip3651Enabled { get; }
+
+        /// <summary>
         /// Transient storage
         /// </summary>
         bool IsEip1153Enabled { get; }
@@ -283,6 +288,8 @@ namespace Nethermind.Core.Specs
         public bool UseHotAndColdStorage => IsEip2929Enabled;
 
         public bool UseTxAccessLists => IsEip2930Enabled;
+
+        public bool AddCoinbaseToTxAccessList => IsEip3651Enabled;
 
         public bool ModExpEnabled => IsEip198Enabled;
 

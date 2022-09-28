@@ -342,6 +342,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(recipient); // eip-2929
                     }
 
+                    if (spec.AddCoinbaseToTxAccessList)
+                    {
+                        state.WarmUp(block.GasBeneficiary);
+                    }
+
                     substate = _virtualMachine.Run(state, _worldState, txTracer);
                     unspentGas = state.GasAvailable;
 
