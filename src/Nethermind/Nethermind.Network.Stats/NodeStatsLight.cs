@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -28,12 +28,12 @@ namespace Nethermind.Stats
     {
         private readonly StatsParameters _statsParameters;
 
-        private long _headersTransferSpeedEventCount;
-        private long _bodiesTransferSpeedEventCount;
-        private long _receiptsTransferSpeedEventCount;
-        private long _nodesTransferSpeedEventCount;
-        private long _snapRangesTransferSpeedEventCount;
-        private long _latencyEventCount;
+        // How much weight to put on latest speed.
+        // 1.0m means that the reported speed will always replaced with latest speed.
+        // 0.5m means that the reported speed will be (oldSpeed + newSpeed)/2;
+        // 0.25m here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
+        // modification to account for jitter.
+        private readonly decimal _latestSpeedWeight;
 
         private decimal? _averageNodesTransferSpeed;
         private decimal? _averageHeadersTransferSpeed;
@@ -54,10 +54,11 @@ namespace Nethermind.Stats
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
 
-        public NodeStatsLight(Node node)
+        public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
         {
             _statCountersArray = new int[_statsLength];
             _statsParameters = StatsParameters.Instance;
+            _latestSpeedWeight = latestSpeedWeight;
             Node = node;
         }
 
@@ -152,27 +153,32 @@ namespace Nethermind.Stats
                 switch (transferSpeedType)
                 {
                     case TransferSpeedType.Latency:
-                        _averageLatency = ((_latencyEventCount * (_averageLatency ?? 0)) + bytesPerMillisecond) / (++_latencyEventCount);
+                        UpdateValue(ref _averageLatency, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.NodeData:
-                        _averageNodesTransferSpeed = ((_nodesTransferSpeedEventCount * (_averageNodesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_nodesTransferSpeedEventCount);
+                        UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Headers:
-                        _averageHeadersTransferSpeed = ((_headersTransferSpeedEventCount * (_averageHeadersTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_headersTransferSpeedEventCount);
+                        UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Bodies:
-                        _averageBodiesTransferSpeed = ((_bodiesTransferSpeedEventCount * (_averageBodiesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_bodiesTransferSpeedEventCount);
+                        UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Receipts:
-                        _averageReceiptsTransferSpeed = ((_receiptsTransferSpeedEventCount * (_averageReceiptsTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_receiptsTransferSpeedEventCount);
+                        UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.SnapRanges:
-                        _averageSnapRangesTransferSpeed = ((_snapRangesTransferSpeedEventCount * (_averageSnapRangesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_snapRangesTransferSpeedEventCount);
+                        UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
                 }
             }
+        }
+
+        private void UpdateValue(ref decimal? currentValue, decimal newValue)
+        {
+            currentValue = ((currentValue ?? newValue) * ( 1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         }
 
         public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
@@ -193,12 +199,12 @@ namespace Nethermind.Stats
         {
             return (transferSpeedType switch
             {
-                TransferSpeedType.Latency => $"{_averageLatency ?? 0,5:0}",
-                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.Latency => $"{_averageLatency ?? -1,5:0}",
+                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? -1,5:0}",
+                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? -1,5:0}",
                 _ => throw new ArgumentOutOfRangeException()
             });
         }
