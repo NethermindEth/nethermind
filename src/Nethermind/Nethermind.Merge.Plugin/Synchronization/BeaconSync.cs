@@ -94,8 +94,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 lowestInsertedBeaconHeader != null &&
                 _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
             bool finished = lowestInsertedBeaconHeader == null
-                            || lowestInsertedBeaconHeader.Number <= _syncConfig.PivotNumberParsed + 1
-                            || chainMerged;
+                            || lowestInsertedBeaconHeader.Number <= _beaconPivot.PivotDestinationNumber
+                            || (!_syncConfig.StrictMode && chainMerged);
 
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +
@@ -103,6 +103,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
                 $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
                 $" ChainMerged: {chainMerged}," +
+                $" StrictMode: {_syncConfig.StrictMode}," +
                 $" BeaconPivot: {_beaconPivot.PivotNumber}," +
                 $" BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;

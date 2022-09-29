@@ -166,7 +166,7 @@ public class ChainLevelHelper : IChainLevelHelper
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool shouldContinue;
 
-        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, process destination: {_beaconPivot.ProcessDestination?.Number}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
         if (beaconMainChainBlock == null) return null;
@@ -202,7 +202,7 @@ public class ChainLevelHelper : IChainLevelHelper
             // MergeBlockDownloader does not download the first header so this is deliberate
             --startingPoint;
             currentHash = header.ParentHash!;
-            if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
+            if (_syncConfig.FastSync && startingPoint <= _beaconPivot.PivotDestinationNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;

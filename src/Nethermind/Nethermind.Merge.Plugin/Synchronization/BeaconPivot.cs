@@ -79,9 +79,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 
-        public long PivotDestinationNumber => CurrentBeaconPivot is null
-            ? 0
-            : _syncConfig.PivotNumberParsed + 1;
+        // The stopping point for the reverse beacon header sync. If head is not null, that means we processed some block before.
+        // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
+        public long PivotDestinationNumber
+        {
+            get
+            {
+                return ((_blockTree.Head?.Number ?? 0) != 0) ? (_blockTree.Head?.Number ?? 0 + 1) : (_syncConfig.PivotNumberParsed + 1);
+            }
+        }
+
         public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
