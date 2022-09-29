@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -50,10 +50,25 @@ public class BeaconPivotTests
     [Test]
     public void Beacon_pivot_defaults_to_sync_config_values_when_there_is_no_pivot()
     {
-        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), Substitute.For<IBlockTree>(), LimboLogs.Instance);
         pivot.PivotHash.Should().Be(_syncConfig.PivotHashParsed);
         pivot.PivotNumber.Should().Be(_syncConfig.PivotNumberParsed);
         pivot.PivotDestinationNumber.Should().Be(0);
+    }
+
+    [TestCase(0, 1001)]
+    [TestCase(500, 436)]
+    public void Beacon_pivot_set_to_pivot_when_set(int processedBlocks, int expectedPivotDestinationNumber)
+    {
+        IBlockTree blockTree = Build.A.BlockTree()
+            .WithOnlySomeBlocksProcessed(1000, processedBlocks)
+            .TestObject;
+        IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
+
+        BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid);
+        pivot.EnsurePivot(pivotHeader);
+        pivot.PivotHash.Should().Be(pivotHeader.Hash);
+        pivot.PivotNumber.Should().Be(pivotHeader.Number);
+        pivot.PivotDestinationNumber.Should().Be(expectedPivotDestinationNumber);
     }
 }
