@@ -80,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 
-        // The stopping point for the reverse beacon header sync.
+        // The stopping point (inclusive) for the reverse beacon header sync.
         public long PivotDestinationNumber
         {
             get
@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     // However, the head may not be canon, so the destination need to be before that.
                     long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
-                    return Math.Max(0, safeNumber);
+                    return Math.Max(1, safeNumber);
                 }
 
                 return _syncConfig.PivotNumberParsed + 1;
