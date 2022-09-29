@@ -211,15 +211,15 @@ public class InitializeNetwork : IStep
             }
         });
 
-            if (_syncConfig.SnapSync)
-            {
-                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+        if (_syncConfig.SnapSync)
+        {
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
 
-                // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is no longer available).
-                // it is added here and never removed - when syncing process is finished we can run with eth67 and without snap.
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            }
+            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is no longer available).
+            // it is added here and never removed - when syncing process is finished we can run with eth67 and without snap.
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
