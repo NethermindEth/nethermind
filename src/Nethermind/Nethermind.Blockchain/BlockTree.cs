@@ -572,7 +572,9 @@ namespace Nethermind.Blockchain
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
-            BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+            (BlockInfo? blockInfo, ChainLevelInfo _) = GetInfo(header.Number, header.Hash);
+
+            blockInfo ??= new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
