@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -34,6 +34,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
@@ -147,7 +148,6 @@ namespace Nethermind.Runner
 
             app.OnExecute(async () =>
             {
-                _appClosed.Reset();
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -192,25 +192,57 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
+                _appClosed.Reset();
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
+                int exitCode = ExitCodes.Ok;
+                try
                 {
-                    if (x.IsFaulted && _logger.IsError)
-                        _logger.Error("Error during ethereum runner start", x.Exception);
-                });
+                    await ethereumRunner.Start(_processCloseCancellationSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                    _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
+                    if (e is IExceptionWithExitCode withExit)
+                    {
+                        exitCode = withExit.ExitCode;
+                    }
+                    else
+                    {
+                        exitCode = ExitCodes.GeneralError;
+                    }
+                    _processCloseCancellationSource.Cancel();
+                }
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
-                return 0;
+                return exitCode;
             });
 
-            _ = app.Execute(args);
-            _appClosed.Wait();
+            try
+            {
+                Environment.ExitCode = app.Execute(args);
+            }
+            catch (Exception e)
+            {
+                if (e is IExceptionWithExitCode withExit)
+                {
+                    Environment.ExitCode = withExit.ExitCode;
+                }
+                else
+                {
+                    Environment.ExitCode = ExitCodes.GeneralError;
+                }
+                throw;
+            }
+            finally
+            {
+                _appClosed.Wait();
+            }
         }
 
         private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)

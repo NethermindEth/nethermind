@@ -16,24 +16,15 @@
 //
 
 using System;
-using System.Threading.Tasks;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Core.Exceptions;
+
+public class InvalidConfigurationException: Exception, IExceptionWithExitCode
 {
-    public interface INethermindPlugin : IAsyncDisposable
+    public InvalidConfigurationException(string message, int exitCode): base(message)
     {
-        string Name { get; }
-
-        string Description { get; }
-
-        string Author { get; }
-
-        Task Init(INethermindApi nethermindApi);
-
-        Task InitNetworkProtocol();
-
-        Task InitRpcModules();
-
-        bool MustInitialize { get => false; }
+        ExitCode = exitCode;
     }
+
+    public int ExitCode { get; }
 }
