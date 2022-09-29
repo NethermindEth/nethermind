@@ -85,12 +85,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             get
             {
+                if (CurrentBeaconPivot is null)
+                {
+                    // Need to rethink if this is expected. Maybe it need to forward sync without a pivot.
+                    return 0;
+                }
+
                 // If head is not null, that means we processed some block before.
                 // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
-                if (_blockTree.Head?.Number != 0)
+                if (_blockTree.Head != null && _blockTree.Head?.Number != 0)
                 {
                     // However, the head may not be canon, so the destination need to be before that.
-                    long safeNumber = (_blockTree.Head?.Number ?? 0) - Reorganization.MaxDepth + 1;
+                    long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
                     return Math.Max(0, safeNumber);
                 }
 
