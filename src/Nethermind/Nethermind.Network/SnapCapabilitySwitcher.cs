@@ -52,6 +52,6 @@ public class SnapCapabilitySwitcher
     {
         _multiSyncModeSelector.SnapSyncFinished -= OnSnapSyncFinished;
         _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
-        if (_logger.IsWarn) _logger.Warn("State sync finished. Disabled snap capability.");
+        if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
     }
 }
