@@ -202,7 +202,7 @@ public class ChainLevelHelper : IChainLevelHelper
             // MergeBlockDownloader does not download the first header so this is deliberate
             --startingPoint;
             currentHash = header.ParentHash!;
-            if (_syncConfig.FastSync && startingPoint <= _beaconPivot.PivotDestinationNumber)
+            if (_syncConfig.FastSync && startingPoint < _beaconPivot.PivotDestinationNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;

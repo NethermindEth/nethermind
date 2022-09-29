@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -79,13 +80,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 
-        // The stopping point for the reverse beacon header sync. If head is not null, that means we processed some block before.
-        // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
+        // The stopping point for the reverse beacon header sync.
         public long PivotDestinationNumber
         {
             get
             {
-                return ((_blockTree.Head?.Number ?? 0) != 0) ? (_blockTree.Head?.Number ?? 0 + 1) : (_syncConfig.PivotNumberParsed + 1);
+                // If head is not null, that means we processed some block before.
+                // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
+                if (_blockTree.Head?.Number != 0)
+                {
+                    // However, the head may not be canon, so the destination need to be before that.
+                    long safeNumber = (_blockTree.Head?.Number ?? 0) - Reorganization.MaxDepth + 1;
+                    return Math.Max(0, safeNumber);
+                }
+
+                return _syncConfig.PivotNumberParsed + 1;
             }
         }
 
