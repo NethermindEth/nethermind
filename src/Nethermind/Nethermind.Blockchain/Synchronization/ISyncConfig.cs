@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Synchronization
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
 
-        [ConfigItem(Description = "Disable some optimization and run a more extensive check. Useful for broken sync state but normally not needed", DefaultValue = "false")]
+        [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
         public bool StrictMode { get; set; }
     }
 }
