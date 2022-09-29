@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,8 +32,11 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -42,23 +45,13 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using BlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage;
-using BlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage;
-using GetBlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage;
-using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
-using GetNodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage;
-using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
-using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
-using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
-using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
-using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
+
+[TestFixture, Parallelizable(ParallelScope.Self)]
+public class Eth67ProtocolHandlerTests
 {
-    [TestFixture, Parallelizable(ParallelScope.Self)]
-    public class Eth66ProtocolHandlerTests
-    {
-        private ISession _session;
+    private ISession _session;
         private IMessageSerializationService _svc;
         private ISyncServer _syncManager;
         private ITxPool _transactionPool;
@@ -87,7 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            _handler = new Eth66ProtocolHandler(
+            _handler = new Eth67ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
@@ -110,8 +103,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Metadata_correct()
         {
             _handler.ProtocolCode.Should().Be("eth");
-            _handler.Name.Should().Be("eth66");
-            _handler.ProtocolVersion.Should().Be(66);
+            _handler.Name.Should().Be("eth67");
+            _handler.ProtocolVersion.Should().Be(67);
             _handler.MessageIdSpaceSize.Should().Be(17);
             _handler.IncludeInTxPool.Should().BeTrue();
             _handler.ClientId.Should().Be(_session.Node?.ClientId);
@@ -208,36 +201,36 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_get_node_data()
+        public void Can_ignore_get_node_data()
         {
             var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
+            _session.DidNotReceive().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
         }
 
         [Test]
-        public void Can_handle_node_data()
+        public void Can_ignore_node_data()
         {
             var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetNodeData(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            // handler is receiving unrequested NodeData - in eth/67 it should be ignored and not throw
             HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
         }
 
         [Test]
-        public void Should_throw_when_receiving_unrequested_node_data()
+        public void Should_not_throw_when_receiving_unrequested_node_data()
         {
             var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-            act.Should().Throw<SubprotocolException>();
+            act.Should().NotThrow<SubprotocolException>();
         }
 
         [Test]
@@ -248,7 +241,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
         }
 
         [Test]
@@ -275,9 +267,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+            getZeroPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
         }
         private void HandleIncomingStatusMessage()
         {
@@ -289,5 +281,4 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
-    }
 }
