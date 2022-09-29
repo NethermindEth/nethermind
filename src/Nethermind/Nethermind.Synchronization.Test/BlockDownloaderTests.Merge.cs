@@ -212,6 +212,53 @@ public partial class BlockDownloaderTests
         notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
     }
 
+    [TestCase(32L, 32L, 0,  32)]
+    [TestCase(32L, 32L, 10,  22)]
+    public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    {
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(4, (int)headNumber + 1)
+            .InsertBeaconPivot(pivot)
+            .InsertBeaconHeaders(4, pivot - 1);
+
+        BlockTree notSyncedTree = blockTrees.NotSyncedTree;
+        BlockTree syncedTree = blockTrees.SyncedTree;
+        Context ctx = new(notSyncedTree);
+        InMemoryReceiptStorage receiptStorage = new();
+        MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
+        BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
+        beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
+        beaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
+
+        MergeBlockDownloader downloader = new(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            notSyncedTree,
+            Always.Valid,
+            Always.Valid,
+            NullSyncReport.Instance,
+            receiptStorage,
+            RopstenSpecProvider.Instance,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(notSyncedTree, beaconPivot,  new SyncConfig(),  LimboLogs.Instance),
+            Substitute.For<ISyncProgressResolver>(),
+            LimboLogs.Instance);
+
+        Response responseOptions = Response.AllCorrect;
+
+        SyncPeerMock syncPeer = new(syncedTree, false, responseOptions, 16000000);
+        PeerInfo peerInfo = new(syncPeer);
+        BlocksRequest blocksRequest = new BlocksRequest(DownloaderOptions.Process, blocksToIgnore);
+        await downloader.DownloadBlocks(peerInfo, blocksRequest, CancellationToken.None);
+
+        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, expectedBestKnownNumber));
+    }
+
     [Test]
     public async Task Recalculate_header_total_difficulty()
     {

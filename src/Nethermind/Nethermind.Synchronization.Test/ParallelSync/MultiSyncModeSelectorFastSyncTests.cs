@@ -258,6 +258,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
+        public void Finished_fast_sync_via_fast_sync_lag_but_not_state_sync()
+        {
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .WhenBeaconProcessDestinationWithinFastSyncLag()
+                .AndGoodPeersAreKnown()
+                .WhenFastSyncWithFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
+        }
+
+        [Test]
         public void Finished_fast_sync_but_not_state_sync_and_fast_blocks_in_progress()
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)

@@ -26,6 +26,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -80,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Epoch = CliqueConfig.Default.Epoch,
                 Period = CliqueConfig.Default.BlockPeriod
             };
-            _plugin = new MergePlugin(new EnvironmentExitMock());
+            _plugin = new MergePlugin();
 
             _consensusPlugin = new();
         }
@@ -140,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             await _plugin.Invoking((plugin) => plugin.Init(_context))
                 .Should()
-                .ThrowAsync<InvalidOperationException>();
+                .ThrowAsync<InvalidConfigurationException>();
         }
 
         [Test]
@@ -187,25 +188,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
             else
             {
-                await invocation.Should().ThrowAsync<InvalidOperationException>();
-            }
-        }
-
-        private class EnvironmentExitMock : IEnvironment
-        {
-            public string GetEnvironmentVariable(string variableName)
-            {
-                throw new NotImplementedException();
-            }
-
-            public IDictionary GetEnvironmentVariables()
-            {
-                throw new NotImplementedException();
-            }
-
-            public void Exit(int exitCode)
-            {
-                throw new InvalidOperationException($"Exit with exitCode: {exitCode}");
+                await invocation.Should().ThrowAsync<InvalidConfigurationException>();
             }
         }
     }

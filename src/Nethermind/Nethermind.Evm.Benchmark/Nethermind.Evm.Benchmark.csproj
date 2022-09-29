@@ -11,6 +11,7 @@
 
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -18,7 +19,6 @@
       <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
       <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
       <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
-      <ProjectReference Include="..\..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj" />
     </ItemGroup>
 
     <ItemGroup>
