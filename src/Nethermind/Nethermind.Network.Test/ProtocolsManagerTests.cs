@@ -39,6 +39,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -70,6 +71,7 @@ namespace Nethermind.Network.Test
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
             private ISyncServer _syncServer;
+            private ISnapServer _snapServer;
             private ISyncPeerPool _syncPeerPool;
             private ITxPool _txPool;
             private IPooledTxsRequestor _pooledTxsRequestor;
@@ -90,7 +92,7 @@ namespace Nethermind.Network.Test
                 _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
                 _packetSender = Substitute.For<IPacketSender>();
                 _syncServer = Substitute.For<ISyncServer>();
-                _syncServer = Substitute.For<ISyncServer>();
+                _snapServer = Substitute.For<ISnapServer>();
                 _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _txPool = Substitute.For<ITxPool>();
@@ -112,6 +114,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    _snapServer,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,
