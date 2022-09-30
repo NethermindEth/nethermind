@@ -99,9 +99,18 @@ public class SnapServer: ISnapServer
     {
         List<byte[]> response = new ();
 
-        for (int codeHashIndex = 0; codeHashIndex < requestedHashes.Length; codeHashIndex++)
+        foreach (Keccak codeHash in requestedHashes)
         {
-            response.Add(_dbProvider.CodeDb.Get(requestedHashes[codeHashIndex]));
+            // TODO: handle empty code in the DB itself?
+            if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+            {
+                response.Add(new byte[] { });
+            }
+            byte[]? code = _dbProvider.CodeDb.Get(codeHash);
+            if (code is not null)
+            {
+                response.Add(code);
+            }
         }
 
         return response.ToArray();
