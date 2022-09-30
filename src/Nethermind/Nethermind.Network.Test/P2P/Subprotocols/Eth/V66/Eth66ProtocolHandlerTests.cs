@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Collections.Generic;
 using System.Net;
@@ -30,6 +30,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -126,6 +127,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
+            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage>());
         }
 
         [Test]
@@ -140,6 +142,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Should_throw_when_receiving_unrequested_block_headers()
+        {
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
+
+            HandleIncomingStatusMessage();
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
+            act.Should().Throw<SubprotocolException>();
+        }
+
+        [Test]
         public void Can_handle_get_block_bodies()
         {
             var msg62 = new GetBlockBodiesMessage(new[] { Keccak.Zero, TestItem.KeccakA });
@@ -147,6 +160,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
+            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
         }
 
         [Test]
@@ -161,6 +175,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Should_throw_when_receiving_unrequested_block_bodies()
+        {
+            var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
+
+            HandleIncomingStatusMessage();
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
+            act.Should().Throw<SubprotocolException>();
+        }
+
+        [Test]
         public void Can_handle_get_pooled_transactions()
         {
             var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
@@ -168,6 +193,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
+            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
         }
 
         [Test]
@@ -189,6 +215,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
+            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
         }
 
         [Test]
@@ -203,6 +230,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Should_throw_when_receiving_unrequested_node_data()
+        {
+            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
+
+            HandleIncomingStatusMessage();
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+            act.Should().Throw<SubprotocolException>();
+        }
+
+        [Test]
         public void Can_handle_get_receipts()
         {
             var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
@@ -210,6 +248,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
+            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
         }
 
         [Test]
@@ -221,6 +260,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             ((ISyncPeer)_handler).GetReceipts(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
+        }
+
+        [Test]
+        public void Should_throw_when_receiving_unrequested_receipts()
+        {
+            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
+
+            HandleIncomingStatusMessage();
+            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
+            act.Should().Throw<SubprotocolException>();
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
