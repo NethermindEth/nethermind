@@ -330,7 +330,24 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public byte[]? GetNode(Span<byte> rawKey, Keccak? rootHash = null)
+        public byte[]? GetNodeByPath(byte[] nibbles, Keccak? rootHash = null)
+        {
+            try
+            {
+                int nibblesCount = nibbles.Length;
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                return result ?? new byte[] { };
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException(
+                    $"Failed to load by path {nibbles.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+        }
+
+        [DebuggerStepThrough]
+        public byte[]? GetNodeByKey(Span<byte> rawKey, Keccak? rootHash = null)
         {
             try
             {
@@ -342,7 +359,7 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash, isNodeRead: true);
                 if (array != null) ArrayPool<byte>.Shared.Return(array);
-                return result;
+                return result ?? new byte[] { };
             }
             catch (TrieException e)
             {
