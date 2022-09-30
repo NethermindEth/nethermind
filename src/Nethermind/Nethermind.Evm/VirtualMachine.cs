@@ -632,9 +632,8 @@ namespace Nethermind.Evm
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-            int codeSectionStart  = code.CodeStartIndex();
-            int codeSectionLength = code.CodeSize();
-            int codeSectionEnd    = code.CodeEndIndex();
+            (int codeSectionStart, int codeSectionEnd) = code.CodeSectionOffsets();
+            int codeSectionLength = codeSectionEnd - codeSectionStart;
 
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)

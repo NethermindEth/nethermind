@@ -63,8 +63,7 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec src_spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-            ReleaseSpec spec = new ReleaseSpec(src_spec);
+            ReleaseSpec spec = (ReleaseSpec)(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
             spec.IsEip3670Enabled = false;
 
             var expectedHeader = codeSize == 0 && dataSize == 0

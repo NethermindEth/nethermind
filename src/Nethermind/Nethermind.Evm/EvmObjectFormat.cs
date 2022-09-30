@@ -169,7 +169,7 @@ namespace Nethermind.Evm
                     case Instruction.RETURN:
                     case Instruction.REVERT:
                     case Instruction.INVALID:
-                    case Instruction.SELFDESTRUCT:
+                    case Instruction.SELFDESTRUCT: // might be retired and replaced with SELLALL?
                         return true;
                     default:
                         return false;
