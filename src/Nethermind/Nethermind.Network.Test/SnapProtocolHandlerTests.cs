@@ -32,6 +32,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -60,6 +61,7 @@ public class SnapProtocolHandlerTests
         }
 
         public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
+        public ISnapServer SnapServer { get; set; } = Substitute.For<ISnapServer>();
 
 
         private SnapProtocolHandler _snapProtocolHandler;
@@ -69,6 +71,7 @@ public class SnapProtocolHandlerTests
                 Session,
                 NodeStatsManager,
                 MessageSerializationService,
+                SnapServer,
                 LimboLogs.Instance
             );
             set

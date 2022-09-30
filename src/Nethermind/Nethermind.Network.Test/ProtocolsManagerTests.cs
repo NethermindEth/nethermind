@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -41,6 +41,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -72,6 +73,7 @@ namespace Nethermind.Network.Test
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
             private ISyncServer _syncServer;
+            private ISnapServer _snapServer;
             private ISyncPeerPool _syncPeerPool;
             private ITxPool _txPool;
             private IPooledTxsRequestor _pooledTxsRequestor;
@@ -92,7 +94,7 @@ namespace Nethermind.Network.Test
                 _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
                 _packetSender = Substitute.For<IPacketSender>();
                 _syncServer = Substitute.For<ISyncServer>();
-                _syncServer = Substitute.For<ISyncServer>();
+                _snapServer = Substitute.For<ISnapServer>();
                 _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _txPool = Substitute.For<ITxPool>();
@@ -114,6 +116,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    _snapServer,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,

@@ -32,7 +32,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class SnapServer
+public class SnapServer: ISnapServer
 {
     private readonly ITrieStore _store;
     private readonly IDbProvider _dbProvider;
