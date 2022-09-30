@@ -95,22 +95,29 @@ public class SnapServer: ISnapServer
         return response.ToArray();
     }
 
-    public byte[][] GetByteCodes(Keccak[] requestedHashes)
+    public byte[][] GetByteCodes(Keccak[] requestedHashes, long byteLimit)
     {
+        long currentByteCount = 0;
         List<byte[]> response = new ();
 
         foreach (Keccak codeHash in requestedHashes)
         {
+            // break when the response size exceeds the byteLimit - it is a soft limit
+            // so not a big issue if we so over slightly.
+            if (currentByteCount > byteLimit)
+            {
+                break;
+            }
+
             // TODO: handle empty code in the DB itself?
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 response.Add(new byte[] { });
             }
             byte[]? code = _dbProvider.CodeDb.Get(codeHash);
-            if (code is not null)
-            {
-                response.Add(code);
-            }
+            if (code is null) continue;
+            response.Add(code);
+            currentByteCount += code.Length;
         }
 
         return response.ToArray();
