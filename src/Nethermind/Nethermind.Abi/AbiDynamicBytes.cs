@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Abi
         {
             (UInt256 length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
             int paddingSize = packed ? (int)length : GetPaddingSize((int)length);
-            return (data.Slice(currentPosition, (int) length), currentPosition + paddingSize);
+            return (data.Slice(currentPosition, (int)length), currentPosition + paddingSize);
         }
 
         public override byte[] Encode(object? arg, bool packed)

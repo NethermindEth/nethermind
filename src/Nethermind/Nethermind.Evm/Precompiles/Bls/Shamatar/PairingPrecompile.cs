@@ -29,9 +29,9 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
         private const int PairSize = 384;
 
         private PairingPrecompile() { }
-        
+
         public Address Address { get; } = Address.FromNumber(16);
-        
+
         public static IPrecompile Instance = new PairingPrecompile();
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             }
 
             (byte[], bool) result;
-            
+
             Span<byte> output = stackalloc byte[32];
             bool success = ShamatarLib.BlsPairing(inputData.Span, output);
             if (success)

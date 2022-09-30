@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     public class GetTrieNodesMessage : SnapMessageBase
     {
         public override int PacketType => SnapMessageCode.GetTrieNodes;
-        
+
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// Trie paths to retrieve the nodes for, grouped by account
         /// </summary>
         public PathGroup[] Paths { get; set; }
-        
+
         /// <summary>
         /// Soft limit at which to stop returning data
         /// </summary>

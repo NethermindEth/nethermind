@@ -35,11 +35,11 @@ namespace Nethermind.Stats
         string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType);
 
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
-        
+
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
-        
+
         P2PNodeDetails P2PNodeDetails { get; }
         SyncPeerNodeDetails EthNodeDetails { get; }
         SyncPeerNodeDetails LesNodeDetails { get; }

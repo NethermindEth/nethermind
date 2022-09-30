@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -61,7 +61,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             var eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
                 0,
-                new Core2.Containers.Fork(new ForkVersion(new byte[ForkVersion.Length]), new ForkVersion(new byte[ForkVersion.Length]), Epoch.Zero), 
+                new Core2.Containers.Fork(new ForkVersion(new byte[ForkVersion.Length]), new ForkVersion(new byte[ForkVersion.Length]), Epoch.Zero),
                 new Eth1Data(Root.Zero, numberOfValidators, eth1BlockHash),
                 //numberOfValidators,
                 new BeaconBlockHeader(cryptographyService.HashTreeRoot(BeaconBlockBody.Zero)),

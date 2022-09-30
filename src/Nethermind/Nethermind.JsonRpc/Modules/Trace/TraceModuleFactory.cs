@@ -74,11 +74,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
-            
+
             IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
             RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
-            
+
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv,
                 Always.Valid,
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _specProvider,
                 _logManager,
                 rpcBlockTransactionsExecutor);
-            
+
             Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);

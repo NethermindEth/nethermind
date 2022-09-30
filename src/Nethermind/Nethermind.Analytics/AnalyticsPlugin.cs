@@ -64,7 +64,7 @@ namespace Nethermind.Analytics
                     getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(AnalyticsPlugin)} plugin disabled due to {nameof(AnalyticsConfig)} settings set to false");
                 }
             }
-            
+
             return Task.CompletedTask;
         }
 
@@ -87,7 +87,7 @@ namespace Nethermind.Analytics
             {
                 getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
             }
-            
+
             if (_isOn)
             {
                 AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);

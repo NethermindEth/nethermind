@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -87,9 +87,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
         {
-            int contentLength = Rlp.LengthOf(item.BlockNumber) 
-                                + Rlp.LengthOf(item.BlockHash) 
-                                + Rlp.LengthOf(item.AreFinalized); 
+            int contentLength = Rlp.LengthOf(item.BlockNumber)
+                                + Rlp.LengthOf(item.BlockHash)
+                                + Rlp.LengthOf(item.AreFinalized);
 
             var addressesLength = GetAddressesLength(item.Addresses);
             contentLength += Rlp.LengthOfSequence(addressesLength);
@@ -99,4 +99,4 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
     }
-} 
+}

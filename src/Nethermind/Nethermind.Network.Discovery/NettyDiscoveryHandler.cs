@@ -100,7 +100,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         IByteBuffer copiedBuffer = Unpooled.CopiedBuffer(msgBytes);
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(copiedBuffer, discoveryMsg.FarAddress);
-        
+
         await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
         {
             if (t.IsFaulted)
@@ -118,7 +118,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         byte[] msgBytes = new byte[content.ReadableBytes];
         content.ReadBytes(msgBytes);
-            
+
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
 
         if (msgBytes.Length < 98)
@@ -128,13 +128,13 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
 
         byte typeRaw = msgBytes[97];
-        if (!FastEnum.IsDefined<MsgType>((int) typeRaw))
+        if (!FastEnum.IsDefined<MsgType>((int)typeRaw))
         {
             if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.ToHexString()}");
             return;
         }
 
-        MsgType type = (MsgType) typeRaw;
+        MsgType type = (MsgType)typeRaw;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
         DiscoveryMsg msg;
@@ -142,7 +142,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         try
         {
             msg = Deserialize(type, msgBytes);
-            msg.FarAddress = (IPEndPoint) address;
+            msg.FarAddress = (IPEndPoint)address;
         }
         catch (Exception e)
         {
@@ -183,12 +183,12 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     {
         return msg.MsgType switch
         {
-            MsgType.Ping => _msgSerializationService.Serialize((PingMsg) msg),
-            MsgType.Pong => _msgSerializationService.Serialize((PongMsg) msg),
-            MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg) msg),
-            MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg) msg),
-            MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg) msg),
-            MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg) msg),
+            MsgType.Ping => _msgSerializationService.Serialize((PingMsg)msg),
+            MsgType.Pong => _msgSerializationService.Serialize((PongMsg)msg),
+            MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg)msg),
+            MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg)msg),
+            MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg)msg),
+            MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg)msg),
             _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
         };
     }
@@ -202,7 +202,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
-        
+
         if (msg.FarAddress == null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has null far address");
@@ -210,7 +210,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             return false;
         }
 
-        if (!msg.FarAddress.Equals((IPEndPoint) packet.Sender))
+        if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has incorrect far address");
             if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
@@ -226,18 +226,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         return true;
     }
-        
+
     private static void ReportMsgByType(DiscoveryMsg msg)
     {
         if (msg is PingMsg pingMsg)
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");    
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");
         }
         else
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());    
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());
         }
     }
-        
+
     public event EventHandler? OnChannelActivated;
 }

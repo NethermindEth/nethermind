@@ -17,16 +17,16 @@
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
     //        {
-//            "cost": 0.0,
-//            "ex": {
-//                "mem": null,
-//                "push": [],
-//                "store": null,
-//                "used": 16961.0
-//            },
-//            "pc": 526.0,
-//            "sub": null
-//        }
+    //            "cost": 0.0,
+    //            "ex": {
+    //                "mem": null,
+    //                "push": [],
+    //                "store": null,
+    //                "used": 16961.0
+    //            },
+    //            "pc": 526.0,
+    //            "sub": null
+    //        }
     public class ParityVmOperationTrace
     {
         public long Cost { get; set; }

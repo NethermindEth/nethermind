@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ public class NodeTable : INodeTable
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator));
-            
+
         Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
         for (int i = 0; i < Buckets.Length; i++)
         {
@@ -46,14 +46,14 @@ public class NodeTable : INodeTable
         }
     }
 
-    public Node? MasterNode { get; private set; }    
-        
+    public Node? MasterNode { get; private set; }
+
     public NodeBucket[] Buckets { get; }
 
     public NodeAddResult AddNode(Node node)
     {
         CheckInitialization();
-            
+
         if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
         int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
@@ -63,7 +63,7 @@ public class NodeTable : INodeTable
     public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
     {
         CheckInitialization();
-            
+
         int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.ReplaceNode(nodeToRemove, nodeToAdd);
@@ -80,7 +80,7 @@ public class NodeTable : INodeTable
     public void RefreshNode(Node node)
     {
         CheckInitialization();
-            
+
         int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.RefreshNode(node);
@@ -90,7 +90,7 @@ public class NodeTable : INodeTable
     {
         int count = 0;
         int bucketSize = _discoveryConfig.BucketSize;
-            
+
         foreach (NodeBucket nodeBucket in Buckets)
         {
             foreach (NodeBucketItem nodeBucketItem in nodeBucket.BondedItems)
@@ -114,11 +114,11 @@ public class NodeTable : INodeTable
     public IEnumerable<Node> GetClosestNodes(byte[] nodeId)
     {
         CheckInitialization();
-            
+
         Keccak idHash = Keccak.Compute(nodeId);
         return Buckets.SelectMany(x => x.BondedItems)
             .Where(x => x.Node?.IdHash != idHash && x.Node is not null)
-            .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId)})
+            .Select(x => new { x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId) })
             .OrderBy(x => x.Distance)
             .Take(_discoveryConfig.BucketSize)
             .Select(x => x.Node!);

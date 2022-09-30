@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
         private readonly BlockingCollection<Request<RequestDataDeliveryReceiptMessage, DataDeliveryReceipt>>
             _receiptsRequests =
                 new BlockingCollection<Request<RequestDataDeliveryReceiptMessage, DataDeliveryReceipt>>();
-        
+
         private readonly IProviderService _providerService;
 
         public NdmProviderSubprotocol(ISession p2PSession, INodeStatsManager nodeStatsManager,
@@ -72,21 +72,21 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                 _providerService.AddConsumerPeer(this);
             }
         }
-        
+
         private void Handle(GetDataAssetsMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: getdataassets");
             SendDataAssets();
         }
-        
+
         private void SendDataAssets()
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataassets");
             _providerService.GetDataAssetsAsync(new GetDataAssets
-                {
-                    OnlyPublishable = true,
-                    Results = int.MaxValue
-                })
+            {
+                OnlyPublishable = true,
+                Results = int.MaxValue
+            })
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted && Logger.IsError)
@@ -129,7 +129,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataassetstatechanged");
             Send(new DataAssetStateChangedMessage(assetId, state));
         }
-        
+
         public void SendDataAssetRemoved(Keccak assetId)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataassetremoved");
@@ -141,19 +141,19 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: dataavailability");
             Send(new DataAvailabilityMessage(depositId, dataAvailability));
         }
-        
+
         public void SendEarlyRefundTicket(EarlyRefundTicket ticket, RefundReason reason)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: earlyrefundticket");
             Send(new EarlyRefundTicketMessage(ticket, reason));
         }
-        
+
         public void SendSessionStarted(Session session)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: sessionstarted");
             Send(new SessionStartedMessage(session));
         }
-        
+
         public void SendProviderAddressChanged(Address consumer)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: provideraddresschanged");
@@ -165,7 +165,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: sessionfinished");
             Send(new SessionFinishedMessage(session));
         }
-        
+
         public void SendDepositApprovals(IReadOnlyList<DepositApproval> depositApprovals)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: depositapprovals");
@@ -195,13 +195,13 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: depositapprovalconfirmed");
             Send(new DepositApprovalConfirmedMessage(assetId, consumer));
         }
-        
+
         public void SendDepositApprovalRejected(Keccak assetId, Address consumer)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: depositapprovalrejected");
             Send(new DepositApprovalRejectedMessage(assetId, consumer));
         }
-        
+
         public async Task<DataDeliveryReceipt> SendRequestDataDeliveryReceiptAsync(
             DataDeliveryReceiptRequest receiptRequest, CancellationToken? token = null)
         {
@@ -252,7 +252,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     }
                 });
         }
-        
+
         private void Handle(FinishSessionMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: finishsession");
@@ -264,14 +264,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                 }
             });
         }
-        
+
         private void Handle(RequestDepositApprovalMessage message)
         {
             if (ConsumerAddress == null)
             {
                 throw new InvalidOperationException("Cannot handle request for deposit approval because the consumer address is null.");
             }
-            
+
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: requestdepositapproval");
             _providerService.RequestDepositApprovalAsync(message.DataAssetId, ConsumerAddress, message.Kyc)
                 .ContinueWith(t =>
@@ -282,13 +282,13 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     }
                 });
         }
-        
+
         private void Handle(GetDepositApprovalsMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: getdepositapprovals");
             _providerService.SendDepositApprovalsAsync(this, message.DataAssetId, message.OnlyPending);
         }
-        
+
         private void Handle(EnableDataStreamMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: enabledatastream");
@@ -299,14 +299,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     {
                         Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                     }
-                    
+
                     if (!t.Result)
                     {
                         return;
                     }
                 });
         }
-        
+
         private void Handle(DisableDataStreamMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: disabledatastream");
@@ -317,7 +317,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     {
                         Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                     }
-                    
+
                     if (!t.Result)
                     {
                         return;
@@ -337,14 +337,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     }
                 });
         }
-        
+
         private void Handle(DataDeliveryReceiptMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datadeliveryreceipt");
             var request = _receiptsRequests.Take();
             request.CompletionSource.SetResult(message.Receipt);
         }
-        
+
         private void Handle(RequestEthMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: requesteth");
@@ -355,7 +355,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                     return;
                 }
-                
+
                 if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: ethrequested");
                 Send(new EthRequestedMessage(t.Result));
             });
@@ -395,7 +395,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                 }
             });
-            
+
             DepositApprovalsRequests?.CompleteAdding();
             DepositApprovalsRequests?.Dispose();
         }

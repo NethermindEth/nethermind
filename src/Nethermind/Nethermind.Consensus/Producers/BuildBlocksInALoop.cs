@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Producers
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
         private Task? _loopTask;
         protected ILogger Logger { get; }
-        
+
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
         public BuildBlocksInALoop(ILogManager logManager, bool autoStart = true)
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Producers
                 StartLoop();
             }
         }
-        
+
         public void StartLoop()
         {
             if (_loopTask is null)
@@ -74,11 +74,11 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual async Task ProducerLoopStep(CancellationToken token)
         {
-            BlockProductionEventArgs args = new(cancellationToken:token);
+            BlockProductionEventArgs args = new(cancellationToken: token);
             TriggerBlockProduction?.Invoke(this, args);
             await args.BlockProductionTask;
         }
-        
+
         public async ValueTask DisposeAsync()
         {
             _loopCancellationTokenSource.Cancel();

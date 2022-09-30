@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
     {
-       public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+        public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             GetBlockHeadersMessage message = new();
             rlpStream.ReadSequenceLength();
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            
+
             rlpStream.StartSequence(contentLength);
             if (message.StartBlockHash == null)
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 rlpStream.Encode(message.StartBlockHash);
             }
-            
+
             rlpStream.Encode(message.MaxHeaders);
             rlpStream.Encode(message.Skip);
             rlpStream.Encode(message.Reverse);

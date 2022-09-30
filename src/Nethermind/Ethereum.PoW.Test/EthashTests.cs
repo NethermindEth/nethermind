@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -72,10 +72,10 @@ namespace Ethereum.PoW.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(EthashTest test)
         {
-            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));          
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
             Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
             Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
-            
+
             Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 

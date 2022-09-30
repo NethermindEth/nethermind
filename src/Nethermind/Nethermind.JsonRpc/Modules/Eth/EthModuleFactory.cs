@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly ISpecProvider _specProvider;
-        private readonly IReceiptStorage _receiptStorage;		
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
 
@@ -72,10 +72,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));			
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _blockTree = blockTree.AsReadOnly();
         }
-        
+
         public override IEthRpcModule Create()
         {
             return new EthRpcModule(

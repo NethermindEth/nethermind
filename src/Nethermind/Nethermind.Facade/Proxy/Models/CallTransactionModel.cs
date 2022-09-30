@@ -35,7 +35,7 @@ namespace Nethermind.Facade.Proxy.Models
                 To = transaction.To,
                 Data = transaction.Data,
                 Value = transaction.Value,
-                Gas = (UInt256) transaction.GasLimit,
+                Gas = (UInt256)transaction.GasLimit,
                 GasPrice = transaction.GasPrice
             };
     }

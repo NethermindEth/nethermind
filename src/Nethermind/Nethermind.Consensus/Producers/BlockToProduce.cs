@@ -25,7 +25,7 @@ using Nethermind.Core;
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
 namespace Nethermind.Consensus.Producers
-{   
+{
     internal class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
         public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles)
             : base(blockHeader, Array.Empty<Transaction>(), uncles)
         {
-            Transactions = transactions; 
+            Transactions = transactions;
         }
     }
 }

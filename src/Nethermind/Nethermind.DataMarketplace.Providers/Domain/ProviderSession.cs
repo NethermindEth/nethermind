@@ -35,18 +35,18 @@ namespace Nethermind.DataMarketplace.Providers.Domain
 
         public DataAvailability DataAvailability
         {
-            get => (DataAvailability) _dataAvailability;
-            private set => _dataAvailability = (int) value;
+            get => (DataAvailability)_dataAvailability;
+            private set => _dataAvailability = (int)value;
         }
-        
+
         public IEnumerable<SessionClient> Clients => _clients.Values;
 
         public SessionClient? GetClient(string client)
             => _clients.TryGetValue(client, out SessionClient? sessionClient) ? sessionClient : null;
-        
+
         public uint GraceUnits
         {
-            get => (uint) _graceUnits;
+            get => (uint)_graceUnits;
             private set => _graceUnits = value;
         }
 
@@ -61,13 +61,13 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             PublicKey consumerNodeId, Address providerAddress, PublicKey providerNodeId, SessionState state,
             uint startUnitsFromConsumer, uint startUnitsFromProvider, ulong startTimestamp = 0,
             ulong finishTimestamp = 0, uint consumedUnits = 0, uint unpaidUnits = 0, uint paidUnits = 0,
-            uint settledUnits = 0, uint graceUnits = 0, DataAvailability dataAvailability = DataAvailability.Unknown):
+            uint settledUnits = 0, uint graceUnits = 0, DataAvailability dataAvailability = DataAvailability.Unknown) :
             base(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress, providerNodeId, state,
                 startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp, consumedUnits,
                 unpaidUnits, paidUnits, settledUnits)
         {
             _graceUnits = graceUnits;
-            _dataAvailability = (int) dataAvailability;
+            _dataAvailability = (int)dataAvailability;
         }
 
         public void Start(ulong timestamp)
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
         }
 
         public void SetDataAvailability(DataAvailability dataAvailability)
-            => Interlocked.Exchange(ref _dataAvailability, (int) dataAvailability);
+            => Interlocked.Exchange(ref _dataAvailability, (int)dataAvailability);
 
         public bool IsDataStreamEnabled(string client)
             => _clients.TryGetValue(client, out var sessionClient) && sessionClient.StreamEnabled;
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             {
                 throw new ArgumentException("Invalid session client id.", nameof(client));
             }
-            
+
             ValidateIfSessionStarted();
             _clients.AddOrUpdate(client,
                 _ => new SessionClient(client, true, args),
@@ -168,7 +168,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             ValidateIfSessionStarted();
             Interlocked.Add(ref _unpaidUnits, units);
         }
-        
+
         public void SubtractUnpaidUnits(uint units)
         {
             ValidateIfSessionStarted();
@@ -197,7 +197,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
 
             Interlocked.Exchange(ref _settledUnits, units);
         }
-        
+
         public void AddGraceUnits(uint units)
         {
             ValidateIfSessionStarted();

@@ -39,7 +39,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode.AllowBranchValues = false;
         }
-        
+
         [Test]
         public void Two_children_store_encode()
         {

@@ -27,9 +27,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         [JsonProperty(PropertyName = "method", Order = 1)]
         public new string MethodName => "eth_subscription";
-        
+
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 3, NullValueHandling = NullValueHandling.Ignore)]
-        public new object? Id { get { return base.Id;} set { base.Id = value; } }
+        public new object? Id { get { return base.Id; } set { base.Id = value; } }
     }
 }

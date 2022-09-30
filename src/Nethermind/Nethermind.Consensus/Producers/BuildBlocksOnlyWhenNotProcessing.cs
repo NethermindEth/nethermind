@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Producers
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Can produce blocks, current best suggested {_blockTree.BestSuggestedHeader}" +
-                    $"{Environment.NewLine}current head {_blockTree.Head}{Environment.NewLine}{new StackTrace()}");        
+                    $"{Environment.NewLine}current head {_blockTree.Head}{Environment.NewLine}{new StackTrace()}");
 
         }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         private bool CanTriggerBlockProduction => _canProduce == 1 && _blockProcessingQueue.IsEmpty;
-        
+
 
         private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
         {
@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
-        
+
         public void Dispose()
         {
             DetachEvents();
@@ -138,13 +138,13 @@ namespace Nethermind.Consensus.Producers
         public async ValueTask DisposeAsync()
         {
             DetachEvents();
-            
+
             if (_blockProductionTrigger is IAsyncDisposable disposableTrigger)
             {
                 await disposableTrigger.DisposeAsync();
             }
         }
-        
+
         private void DetachEvents()
         {
             _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;

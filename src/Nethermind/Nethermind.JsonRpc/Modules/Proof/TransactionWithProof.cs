@@ -21,9 +21,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
     public class TransactionWithProof
     {
         public TransactionForRpc Transaction { get; set; }
-        
+
         public byte[][] TxProof { get; set; }
-        
+
         public byte[] BlockHeader { get; set; }
     }
 }

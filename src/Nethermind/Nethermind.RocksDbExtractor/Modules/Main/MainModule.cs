@@ -30,7 +30,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
         public Window Init()
         {
             AddDecoders();
-            var window = new Window("NDM RocksDb Extractor") {X = 0, Y = 0, Width = Dim.Fill(), Height = 10};
+            var window = new Window("NDM RocksDb Extractor") { X = 0, Y = 0, Width = Dim.Fill(), Height = 10 };
             var examplePathLabel = new Label(3, 3, "Example path: \"Users/Desktop/nethermind_db/ndm_consumer/local\"");
             var pathLbl = new Label(3, 5, "Enter DB path: ");
             var pathTxtField = new TextField(20, 5, 70, "");

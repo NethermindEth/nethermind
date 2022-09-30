@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Core2.Cryptography.Ssz
         {
             return new SszBasicVector(item.AsSpan());
         }
-        
+
         public static SszVector ToSszVector(this IEnumerable<Bytes32> vector)
         {
             return new SszVector(vector.Select(x => ToSszBasicVector(x)));

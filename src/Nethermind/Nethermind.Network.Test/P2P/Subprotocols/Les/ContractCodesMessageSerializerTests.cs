@@ -1,4 +1,4 @@
-﻿///  Copyright (c) 2021 Demerzel Solutions Limited
+///  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
+            byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
             ContractCodesMessage message = new(data, 13452, 134);
 
             ContractCodesMessageSerializer serializer = new();

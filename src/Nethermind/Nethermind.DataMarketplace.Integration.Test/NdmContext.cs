@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
         public NdmContext(NdmState state) : base(state)
         {
         }
-        
+
         public NdmContext DC
         {
             get
@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_addDataAsset",
-                () => client.PostAsync<string>(nameof(AddDataAsset), new object[] {dataAsset()}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(AddDataAsset), new object[] { dataAsset() }), validator, stateUpdater);
         }
 
         public NdmContext GetDataAssets(string name = "Get data assets",
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
             Func<string, bool> validator = null, Action<NdmState, JsonRpcResponse<string>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc(name, "npm_makeDeposit", () => client.PostAsync<string>(nameof(MakeDeposit), new object[] {deposit()}), validator, stateUpdater);
+            return AddJsonRpc(name, "npm_makeDeposit", () => client.PostAsync<string>(nameof(MakeDeposit), new object[] { deposit() }), validator, stateUpdater);
         }
 
         public NdmContext SendDataRequest(Func<string> depositId, string name = "Send data request",
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_sendDataRequest",
-                () => client.PostAsync<string>(nameof(SendDataRequest), new object[] {depositId()}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(SendDataRequest), new object[] { depositId() }), validator, stateUpdater);
         }
 
 
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_enableDataStream",
-                () => client.PostAsync<string>(nameof(EnableDataStream), new object[] {depositId(), args}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(EnableDataStream), new object[] { depositId(), args }), validator, stateUpdater);
         }
 
         public NdmContext DisableDataStream(Func<string> depositId, string name = "Disable data stream",
@@ -123,14 +123,14 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_disableDataStream",
-                () => client.PostAsync<string>(nameof(DisableDataStream), new object[] {depositId()}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(DisableDataStream), new object[] { depositId() }), validator, stateUpdater);
         }
 
         public NdmContext SendData(Func<DataAssetDataDto> data, string name = "Send data",
             Func<string, bool> validator = null, Action<NdmState, JsonRpcResponse<string>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc(name, "npm_sendData", () => client.PostAsync<string>(nameof(SendData), new object[] {data()}), validator, stateUpdater);
+            return AddJsonRpc(name, "npm_sendData", () => client.PostAsync<string>(nameof(SendData), new object[] { data() }), validator, stateUpdater);
         }
 
         public NdmContext DeployNdmContract(string name = "Deploy contract")
@@ -144,7 +144,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
 
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "eth_sendTransaction",
-                () => client.PostAsync<string>("eth_sendTransaction", new object[] {deployContract}));
+                () => client.PostAsync<string>("eth_sendTransaction", new object[] { deployContract }));
         }
 
         public NdmContext PullData(Func<string> depositId, string name = "Pull data",
@@ -152,7 +152,7 @@ namespace Nethermind.DataMarketplace.Integration.Test
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
             return AddJsonRpc(name, "npm_pullData",
-                () => client.PostAsync<string>(nameof(PullData), new object[] {depositId()}), validator, stateUpdater);
+                () => client.PostAsync<string>(nameof(PullData), new object[] { depositId() }), validator, stateUpdater);
         }
 
         public NdmContext StartDataProvider(string name = DataProviderName)

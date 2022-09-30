@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(approval);
             }
 
-            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {DataAssetId = TestItem.KeccakB});
+            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals { DataAssetId = TestItem.KeccakB });
             depositApprovals.Items.Should().ContainSingle(da => da.AssetId == TestItem.KeccakB);
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(approval);
             }
 
-            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {Provider = TestItem.AddressB});
+            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals { Provider = TestItem.AddressB });
             depositApprovals.Items.Should().ContainSingle(da => da.Provider == TestItem.AddressB);
         }
 
@@ -141,10 +141,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(approval);
             }
 
-            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {OnlyPending = true});
+            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals { OnlyPending = true });
             depositApprovals.Items.Should().ContainSingle(da => da.State == DepositApprovalState.Pending);
         }
-        
+
         [Test]
         public void Null_query_throws()
         {
@@ -163,7 +163,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 await repository.AddAsync(approval);
             }
 
-            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {DataAssetId = Keccak.Zero});
+            PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals { DataAssetId = Keccak.Zero });
             depositApprovals.Items.Should().HaveCount(0);
         }
 

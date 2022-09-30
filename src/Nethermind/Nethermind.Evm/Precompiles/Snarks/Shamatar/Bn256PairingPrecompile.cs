@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                     inputDataSpan.Slice(i * PairSize + 160, 32).CopyTo(inputReshuffled.Slice(128, 32));
                     inputReshuffled.CopyTo(inputDataSpan.Slice(i * PairSize, PairSize));
                 }
-                
+
                 bool success = ShamatarLib.Bn256Pairing(inputDataSpan, output);
 
                 if (success)

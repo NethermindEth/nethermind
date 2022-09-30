@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _blockchainBridge = blockchainBridge;
             _requiredBlockConfirmations = requiredBlockConfirmations;
         }
-        
+
         public async Task<TransactionVerifierResult> VerifyAsync(NdmTransaction transaction)
         {
             int confirmations = 0;
@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 {
                     break;
                 }
-                
+
                 if (latestBlock.ParentHash is null)
                 {
                     break;
@@ -59,14 +59,14 @@ namespace Nethermind.DataMarketplace.Core.Services
                     confirmations = 0;
                     break;
                 }
-                
+
                 if (confirmations == _requiredBlockConfirmations)
                 {
                     break;
                 }
-                
+
             } while (confirmations < _requiredBlockConfirmations);
-            
+
             return new TransactionVerifierResult(true, confirmations, _requiredBlockConfirmations);
         }
     }

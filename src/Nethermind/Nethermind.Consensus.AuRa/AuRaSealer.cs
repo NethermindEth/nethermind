@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ISigner _signer;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
-        
+
         public AuRaSealer(
             IBlockTree blockTree,
             IValidatorStore validatorStore,
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             Block sealedBlock = Seal(block);
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa
             Keccak headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
             Signature signature = _signer.Sign(headerHash);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
-            
+
             return block;
         }
 

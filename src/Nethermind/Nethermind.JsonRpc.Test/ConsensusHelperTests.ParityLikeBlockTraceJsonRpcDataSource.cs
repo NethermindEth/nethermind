@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,15 +26,15 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ParityLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ParityTxTraceFromStore>>, 
-            IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>>, 
+        private class ParityLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ParityTxTraceFromStore>>,
+            IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>>,
             IConsensusDataSourceWithParameter<long>
         {
             public ParityLikeBlockTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
             }
 
-            public override async Task<string> GetJsonData() => 
+            public override async Task<string> GetJsonData() =>
                 await SendRequest(CreateRequest("trace_block", Parameter.ToHexString(true)));
 
             public long Parameter { get; set; }

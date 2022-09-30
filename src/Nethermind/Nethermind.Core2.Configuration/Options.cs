@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 
 namespace Nethermind.Core2.Configuration
 {
@@ -9,7 +9,7 @@ namespace Nethermind.Core2.Configuration
         {
             return new StaticOptionsMonitor<T>(options);
         }
-        
+
         public static IOptionsMonitor<T> Default<T>()
             where T : class, new()
         {

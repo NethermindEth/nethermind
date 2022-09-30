@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Core
         BeaconBody = 8,
         BeaconMainChain = 16
     }
-    
+
     public class BlockInfo
     {
         public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
@@ -39,9 +39,9 @@ namespace Nethermind.Core
             TotalDifficulty = totalDifficulty;
             Metadata = metadata;
         }
-        
+
         public UInt256 TotalDifficulty { get; set; }
-        
+
         public bool WasProcessed { get; set; }
 
         public Keccak BlockHash { get; }
@@ -61,8 +61,8 @@ namespace Nethermind.Core
                 }
             }
         }
-        
-        
+
+
         public bool IsBeaconHeader
         {
             get => (Metadata & BlockMetadata.BeaconHeader) != 0;
@@ -72,12 +72,12 @@ namespace Nethermind.Core
         {
             get => (Metadata & BlockMetadata.BeaconBody) != 0;
         }
-        
+
         public bool IsBeaconMainChain
         {
             get => (Metadata & BlockMetadata.BeaconMainChain) != 0;
         }
-        
+
         public bool IsBeaconInfo
         {
             get => (Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader)) != 0;

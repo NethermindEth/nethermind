@@ -84,7 +84,7 @@ namespace Nethermind.Core.Extensions
 
                 return y.Length > x.Length ? 1 : 0;
             }
-            
+
             public int Compare(Span<byte> x, Span<byte> y)
             {
                 if (x.Length == 0)
@@ -123,7 +123,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte) (1 << (7 - bitNumber));
+            byte mask = (byte)(1 << (7 - bitNumber));
             b = b |= mask;
         }
 
@@ -149,12 +149,12 @@ namespace Nethermind.Core.Extensions
         {
             return IsZero((ReadOnlySpan<byte>)bytes);
         }
-        
+
         public static bool IsZero(this Span<byte> bytes)
         {
             return IsZero((ReadOnlySpan<byte>)bytes);
         }
-        
+
         public static bool IsZero(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length == 32)
@@ -219,7 +219,7 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            return new byte[] {0};
+            return new byte[] { 0 };
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -265,7 +265,7 @@ namespace Nethermind.Core.Extensions
         {
             if (bytes.Length == length)
             {
-                return (byte[]) bytes.Clone();
+                return (byte[])bytes.Clone();
             }
 
             if (bytes.Length > length)
@@ -331,7 +331,7 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes)
         {
-            return ToUnsignedBigInteger((ReadOnlySpan<byte>) bytes);
+            return ToUnsignedBigInteger((ReadOnlySpan<byte>)bytes);
         }
 
         public static BigInteger ToUnsignedBigInteger(this ReadOnlySpan<byte> bytes)
@@ -341,7 +341,7 @@ namespace Nethermind.Core.Extensions
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
-            return ReadEthUInt32((ReadOnlySpan<byte>) bytes);
+            return ReadEthUInt32((ReadOnlySpan<byte>)bytes);
         }
 
         public static uint ReadEthUInt32(this ReadOnlySpan<byte> bytes)
@@ -380,7 +380,7 @@ namespace Nethermind.Core.Extensions
 
         public static int ReadEthInt32(this Span<byte> bytes)
         {
-            return ReadEthInt32((ReadOnlySpan<byte>) bytes);
+            return ReadEthInt32((ReadOnlySpan<byte>)bytes);
         }
 
         public static int ReadEthInt32(this ReadOnlySpan<byte> bytes)
@@ -402,7 +402,7 @@ namespace Nethermind.Core.Extensions
 
         public static ulong ReadEthUInt64(this Span<byte> bytes)
         {
-            return ReadEthUInt64((ReadOnlySpan<byte>) bytes);
+            return ReadEthUInt64((ReadOnlySpan<byte>)bytes);
         }
 
         public static ulong ReadEthUInt64(this ReadOnlySpan<byte> bytes)
@@ -454,9 +454,9 @@ namespace Nethermind.Core.Extensions
 
         private static byte Reverse(byte b)
         {
-            b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
-            b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);
-            b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);
+            b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
+            b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2);
+            b = (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1);
             return b;
         }
 
@@ -512,8 +512,8 @@ namespace Nethermind.Core.Extensions
             for (int i = 0; i < bytes.Length; i++)
             {
                 uint val = Lookup32[bytes[i]];
-                streamWriter.Write((char) val);
-                streamWriter.Write((char) (val >> 16));
+                streamWriter.Write((char)val);
+                streamWriter.Write((char)(val >> 16));
             }
         }
 
@@ -632,7 +632,7 @@ namespace Nethermind.Core.Extensions
             return string.Create(length, stateToPass, (chars, state) =>
             {
                 string? hashHex = null;
-                bool isWithChecksum = state.WithEip55Checksum; 
+                bool isWithChecksum = state.WithEip55Checksum;
                 if (isWithChecksum)
                 {
                     // this path is rarely used - only in wallets
@@ -655,14 +655,14 @@ namespace Nethermind.Core.Extensions
                     uint val = Lookup32[state.Bytes[(i - offset0x + state.LeadingZeros) / 2]];
                     if (i != offset0x || !odd)
                     {
-                        char char1 = (char) val;
+                        char char1 = (char)val;
                         chars[i - oddity] =
                             isWithChecksum && char.IsLetter(char1) && hashHex![i - offset0x] > '7'
                                 ? char.ToUpper(char1)
                                 : char1;
                     }
 
-                    char char2 = (char) (val >> 16);
+                    char char2 = (char)(val >> 16);
                     chars[i + 1 - oddity] =
                         isWithChecksum && char.IsLetter(char2) && hashHex![i + 1 - offset0x] > '7'
                             ? char.ToUpper(char2)
@@ -679,7 +679,7 @@ namespace Nethermind.Core.Extensions
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
 
             return result;
@@ -782,17 +782,17 @@ namespace Nethermind.Core.Extensions
             {
                 if (odd && i == 0)
                 {
-                    bytes[0] += FromHexNibble2Table[(byte) hexString[startIndex]];
+                    bytes[0] += FromHexNibble2Table[(byte)hexString[startIndex]];
                 }
                 else if (odd)
                 {
-                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex - 1]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex]];
+                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex - 1]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex]];
                 }
                 else
                 {
-                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex + 1]];
+                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex + 1]];
                 }
             }
 

@@ -57,7 +57,7 @@ namespace Nethermind.Network
                 {
                     continue;
                 }
-                
+
                 try
                 {
                     nodes.Add(GetNode(nodeRlp));
@@ -92,7 +92,7 @@ namespace Nethermind.Network
         }
 
         private IBatch? _currentBatch;
-        
+
         public void StartBatch()
         {
             _currentBatch = _fullDb.StartBatch();

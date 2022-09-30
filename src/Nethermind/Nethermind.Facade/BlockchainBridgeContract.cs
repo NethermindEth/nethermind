@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Facade
         public BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : base(abiEncoder, contractAddress, abiDefinition)
         {
         }
-        
+
         /// <summary>
         /// Gets constant version of the contract. Allowing to call contract methods without state modification.
         /// </summary>
@@ -55,7 +55,7 @@ namespace Nethermind.Facade
                 {
                     throw new AbiException(result.Error);
                 }
-                
+
                 return callInfo.Result = DecodeReturnData(callInfo.FunctionName, result.OutputData);
             }
         }

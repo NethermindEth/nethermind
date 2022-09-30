@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,9 +27,9 @@ namespace Nethermind.TxPool.Comparison
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
     {
         public static readonly CompetingTransactionEqualityComparer Instance = new();
-        
+
         private CompetingTransactionEqualityComparer() { }
-        
+
         public bool Equals(Transaction? x, Transaction? y) =>
             ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
 

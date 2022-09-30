@@ -27,7 +27,7 @@ namespace Nethermind.Evm
             return executionType == ExecutionType.Create || executionType == ExecutionType.Create2;
         }
     }
-    
+
     public enum ExecutionType
     {
         Transaction,

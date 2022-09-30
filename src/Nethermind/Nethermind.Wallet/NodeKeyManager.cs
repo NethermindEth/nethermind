@@ -40,9 +40,9 @@ namespace Nethermind.Wallet
         private readonly IFileSystem _fileSystem;
 
         public NodeKeyManager(
-            ICryptoRandom cryptoRandom, 
-            IKeyStore keyStore, 
-            IKeyStoreConfig config, 
+            ICryptoRandom cryptoRandom,
+            IKeyStore keyStore,
+            IKeyStoreConfig config,
             ILogManager logManager,
             IPasswordProvider passwordProvider,
             IFileSystem fileSystem)
@@ -75,7 +75,7 @@ namespace Nethermind.Wallet
             secureString.MakeReadOnly();
             return secureString;
         }
-        
+
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
         public ProtectedPrivateKey LoadNodeKey()
         {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Core2.Containers
         }
 
         public Bytes32 BlockHash { get; }
-        
+
         // TODO: is it ulong? then the tree would not be enough with 32 levels?
         public ulong DepositCount { get; private set; }
         public Root DepositRoot { get; private set; }

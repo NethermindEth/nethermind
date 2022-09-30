@@ -77,7 +77,7 @@ namespace Nethermind.GitBook
                 if (parameters.Length > 0) parameters.Append(", ");
                 parameters.Append(argument);
             }
-            return string.Concat("{\"method\":\"", method, "\",\"params\":[", parameters,"]}");
+            return string.Concat("{\"method\":\"", method, "\",\"params\":[", parameters, "]}");
         }
 
         public string GetCliInvocationExample(string methodName, List<string> arguments, bool isFunction)
@@ -95,12 +95,12 @@ namespace Nethermind.GitBook
                 }
                 parameters.Append(argument);
             }
-            
+
             if (parameters.Length > 0) parameters.Append(')');
-            
+
             if (parameters.Length == 0
                 && isFunction) parameters.Append("()");
-            
+
             return string.Concat(methodName, parameters);
         }
     }

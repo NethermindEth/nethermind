@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,11 +22,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
     public class BlockWitnessHashesMessage : P2PMessage
     {
         public override int PacketType { get; } = WitMessageCode.BlockWitnessHashes;
-        
+
         public override string Protocol { get; } = "wit";
-        
+
         public long RequestId { get; }
-        
+
         public Keccak[] Hashes { get; }
 
         public BlockWitnessHashesMessage(long requestId, Keccak[] hashes)

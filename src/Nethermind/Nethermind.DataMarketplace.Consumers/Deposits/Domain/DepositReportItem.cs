@@ -117,12 +117,12 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 throw new InvalidDataException(
                     $"Deposit {nameof(Value)} ({Value}) cannot be less than a sum of {nameof(ClaimedValue)} ({ClaimedValue}) and {nameof(RefundedValue)} ({RefundedValue})");
             }
-            
+
             if (Units < ConsumedUnits)
             {
                 ConsumedUnits = Units;
             }
-            
+
             RemainingValue = Value - ClaimedValue - RefundedValue;
             RemainingUnits = Units - ConsumedUnits;
             Completed = ClaimedUnits + RefundedUnits >= Units;

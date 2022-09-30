@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 testRpc.BlockTree,
                 Substitute.For<IBlockProductionTrigger>(),
-                testRpc.Timestamper, 
+                testRpc.Timestamper,
                 testRpc.SpecProvider,
                 new MiningConfig(),
                 LimboLogs.Instance);
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task AuraTestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -154,15 +154,15 @@ namespace Nethermind.Blockchain.Test.Producers
 
         private async Task AssertIsProducingBlocks(IBlockProducer blockProducer)
         {
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
             await blockProducer.Start();
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
             Thread.Sleep(5000);
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(1));
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(1000));
-            Assert.AreEqual(true,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(1));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(1000));
+            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
             await blockProducer.StopAsync();
-            Assert.AreEqual(false,blockProducer.IsProducingBlocks(null));
+            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
         }
     }
 }

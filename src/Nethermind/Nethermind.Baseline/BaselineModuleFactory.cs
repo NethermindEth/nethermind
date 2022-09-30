@@ -41,7 +41,7 @@ namespace Nethermind.Baseline
         private readonly IBlockProcessor _blockProcessor;
         private readonly DisposableStack _disposableStack;
         private readonly IDbProvider _dbProvider;
-        
+
         public BaselineModuleFactory(
             ITxSender txSender,
             IStateReader stateReader,
@@ -65,7 +65,7 @@ namespace Nethermind.Baseline
             _disposableStack = disposableStack ?? throw new ArgumentNullException(nameof(disposableStack));
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         }
-        
+
         public override IBaselineModule Create()
         {
             return new BaselineModule(

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Merkleization
             merkleizer.FeedBitvector(value);
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void IzeBitlist(out UInt256 root, BitArray value, ulong maximumBitlistLength)
         {
             Merkleizer merkleizer = new Merkleizer(0);

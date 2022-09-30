@@ -38,6 +38,6 @@ namespace Nethermind.AccountAbstraction.Data
                 AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty,
                 Error = error
             };
-        } 
+        }
     }
 }

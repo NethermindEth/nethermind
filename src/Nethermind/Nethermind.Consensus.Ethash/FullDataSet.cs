@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Ethash
     internal class FullDataSet : IEthashDataSet
     {
         private uint[][] Data { get; set; }
-        
+
         public uint Size => (uint)(Data.Length * Ethash.HashBytes);
 
         public FullDataSet(ulong setSize, IEthashDataSet cache)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,7 +77,7 @@ namespace Nethermind.Crypto
         }
 
         [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512? _hash;
-        
+
         public static uint[] ComputeToUInts(byte[] input)
         {
             if (input is null || input.Length == 0)
@@ -107,7 +107,7 @@ namespace Nethermind.Crypto
 
             return _hash.ComputeUIntsToUint(input);
         }
-        
+
         public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
         {
             if (input.Length == 0)
@@ -127,7 +127,7 @@ namespace Nethermind.Crypto
         {
             return HashFactory.Crypto.SHA3.CreateKeccak512();
         }
-        
+
         private static Keccak512 InternalCompute(byte[] input)
         {
             if (_hash is null)

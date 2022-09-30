@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,14 +25,14 @@ namespace Nethermind.Consensus.Transactions
     public class TxFilterPipelineBuilder
     {
         private readonly ITxFilterPipeline _filterPipeline;
-        
+
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
             ISpecProvider? specProvider,
             IMiningConfig? miningConfig = null)
         {
             if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
-            
+
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)
                 .WithBaseFeeFilter(specProvider)
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Transactions
         {
             _filterPipeline = new TxFilterPipeline(logManager);
         }
-        
+
         public TxFilterPipelineBuilder WithMinGasPriceFilter(in UInt256 minGasPrice, ISpecProvider specProvider)
         {
             _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(minGasPrice, specProvider));
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Transactions
             _filterPipeline.AddTxFilter(new BaseFeeTxFilter(specProvider));
             return this;
         }
-        
+
         public TxFilterPipelineBuilder WithCustomTxFilter(ITxFilter txFilter)
         {
             _filterPipeline.AddTxFilter(txFilter);

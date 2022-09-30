@@ -85,13 +85,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void module_type_should_be_ndm_consumer()
         {
-             typeof(INdmRpcConsumerModule).GetCustomAttribute<RpcModuleAttribute>().ModuleType.Should().Be(ModuleType.NdmConsumer);
+            typeof(INdmRpcConsumerModule).GetCustomAttribute<RpcModuleAttribute>().ModuleType.Should().Be(ModuleType.NdmConsumer);
         }
 
         [Test]
         public void given_wallet_list_accounts_should_return_accounts()
         {
-            _wallet.GetAccounts().Returns(new[] {TestItem.AddressA});
+            _wallet.GetAccounts().Returns(new[] { TestItem.AddressA });
             var result = _rpc.ndm_listAccounts();
             _wallet.Received().GetAccounts();
             result.Data.Should().ContainSingle();
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
-                NullWallet.Instance, 
+                NullWallet.Instance,
                 _timestamper,
                 _priceService);
             var result = _rpc.ndm_listAccounts();
@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void get_discovered_data_assets_should_return_data_assets()
         {
-            _consumerService.GetDiscoveredDataAssets().Returns(new List<DataAsset> {GetDataAsset()});
+            _consumerService.GetDiscoveredDataAssets().Returns(new List<DataAsset> { GetDataAsset() });
             var result = _rpc.ndm_getDiscoveredDataAssets();
             _consumerService.Received().GetDiscoveredDataAssets();
             result.Data.Should().ContainSingle();
@@ -150,7 +150,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task get_known_data_assets_should_return_data_asset_info()
         {
             _consumerService.GetKnownDataAssetsAsync()
-                .Returns(new[] {new DataAssetInfo(Keccak.Zero, "test", "test")});
+                .Returns(new[] { new DataAssetInfo(Keccak.Zero, "test", "test") });
             var result = await _rpc.ndm_getKnownDataAssets();
             await _consumerService.Received().GetKnownDataAssetsAsync();
             result.Data.Should().ContainSingle();
@@ -163,7 +163,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public async Task get_known_providers_should_return_providers_info()
         {
-            _consumerService.GetKnownProvidersAsync().Returns(new[] {new ProviderInfo("test", TestItem.AddressA)});
+            _consumerService.GetKnownProvidersAsync().Returns(new[] { new ProviderInfo("test", TestItem.AddressA) });
             var result = await _rpc.ndm_getKnownProviders();
             await _consumerService.Received().GetKnownProvidersAsync();
             result.Data.Should().ContainSingle();
@@ -175,7 +175,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void get_connected_providers_should_return_providers_addresses()
         {
-            _consumerService.GetConnectedProviders().Returns(new[] {TestItem.AddressA});
+            _consumerService.GetConnectedProviders().Returns(new[] { TestItem.AddressA });
             var result = _rpc.ndm_getConnectedProviders();
             _consumerService.Received().GetConnectedProviders();
             result.Data.Should().ContainSingle();
@@ -185,7 +185,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void get_active_consumer_sessions_should_return_sessions()
         {
-            _consumerService.GetActiveSessions().Returns(new[] {GetConsumerSession()});
+            _consumerService.GetActiveSessions().Returns(new[] { GetConsumerSession() });
             var result = _rpc.ndm_getActiveConsumerSessions();
             _consumerService.Received().GetActiveSessions();
             result.Data.Should().ContainSingle();
@@ -198,7 +198,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var query = new GetDeposits();
             _consumerService.GetDepositsAsync(query)
-                .Returns(PagedResult<DepositDetails>.Create(new[] {GetDepositDetails()}, 1, 1, 1, 1));
+                .Returns(PagedResult<DepositDetails>.Create(new[] { GetDepositDetails() }, 1, 1, 1, 1));
             var result = await _rpc.ndm_getDeposits(query);
             await _consumerService.Received().GetDepositsAsync(query);
             result.Data.Items.Should().ContainSingle();
@@ -289,7 +289,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var depositId = TestItem.KeccakA;
             var client = "client";
-            var args = new[] {"test"};
+            var args = new[] { "test" };
             _consumerService.EnableDataStreamAsync(depositId, client, args).Returns(depositId);
             var result = await _rpc.ndm_enableDataStream(depositId, client, args);
             await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
@@ -301,7 +301,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var depositId = TestItem.KeccakA;
             var client = "client";
-            var args = new[] {"test"};
+            var args = new[] { "test" };
             var result = await _rpc.ndm_enableDataStream(depositId, client, args);
             await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
             result.Data.Should().BeNull();
@@ -333,7 +333,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task disable_data_streams_should_return_deposit_id()
         {
@@ -362,7 +362,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var query = new GetDepositsReport();
             var item = GetDepositReportItem();
             var report = new DepositsReport(1, 1, 0,
-                PagedResult<DepositReportItem>.Create(new[] {item}, 1, 1, 1, 1));
+                PagedResult<DepositReportItem>.Create(new[] { item }, 1, 1, 1, 1));
             _depositReportService.GetAsync(query).Returns(report);
             var result = await _rpc.ndm_getDepositsReport(query);
             await _depositReportService.Received().GetAsync(query);
@@ -388,7 +388,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var approval = new DepositApproval(TestItem.KeccakA, "test", "kyc",
                 TestItem.AddressA, TestItem.AddressB, 1, DepositApprovalState.Pending);
             _consumerService.GetDepositApprovalsAsync(query)
-                .Returns(PagedResult<DepositApproval>.Create(new[] {approval}, 1, 1, 1, 1));
+                .Returns(PagedResult<DepositApproval>.Create(new[] { approval }, 1, 1, 1, 1));
             var result = await _rpc.ndm_getConsumerDepositApprovals(query);
             await _consumerService.Received().GetDepositApprovalsAsync(query);
             result.Data.Should().NotBeNull();
@@ -459,22 +459,22 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel.Received().Pull(depositId);
             result.Data.Should().Be(data);
         }
-        
+
         [Test]
         public async Task get_proxy_should_return_proxy_info()
         {
-            var ndmProxy = new NdmProxy(true, new[] {"http://localhost:8545"});
+            var ndmProxy = new NdmProxy(true, new[] { "http://localhost:8545" });
             _consumerService.GetProxyAsync().Returns(ndmProxy);
             var result = await _rpc.ndm_getProxy();
             result.Data.Enabled.Should().Be(ndmProxy.Enabled);
             result.Data.Urls.Should().BeSameAs(ndmProxy.Urls);
             await _consumerService.Received().GetProxyAsync();
         }
-        
+
         [Test]
         public async Task set_proxy_should_return_true()
         {
-            var urls = new[] {"http://localhost:8545"};
+            var urls = new[] { "http://localhost:8545" };
             var result = await _rpc.ndm_setProxy(urls);
             result.Data.Should().BeTrue();
             await _consumerService.Received().SetProxyAsync(urls);
@@ -520,7 +520,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.Should().BeTrue();
             await _gasPriceService.Received().SetGasPriceOrTypeAsync(type);
         }
-        
+
         [Test]
         public async Task update_deposit_gas_price_should_return_transaction_hash()
         {
@@ -533,7 +533,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().UpdateDepositGasPriceAsync(depositId, gasPrice);
         }
-        
+
         [Test]
         public async Task update_refund_gas_price_should_return_transaction_hash()
         {
@@ -546,7 +546,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().UpdateRefundGasPriceAsync(depositId, gasPrice);
         }
-        
+
         [Test]
         public async Task cancel_deposit_should_return_transaction_hash()
         {
@@ -558,7 +558,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().CancelDepositAsync(depositId);
         }
-        
+
         [Test]
         public async Task cancel_refund_should_return_transaction_hash()
         {
@@ -579,7 +579,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 new ResourceTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
                     1.Ether(), 20.GWei(), 10, _timestamper.UnixTime.Seconds))
             };
-            
+
             var transaction = pendingTransactions[0];
             _consumerTransactionsService.GetPendingAsync().Returns(pendingTransactions);
             var result = await _rpc.ndm_getConsumerPendingTransactions();
@@ -594,7 +594,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 t.Transaction.MaxFee == transaction.Transaction.GasPrice * transaction.Transaction.GasLimit &&
                 t.Transaction.Timestamp == transaction.Transaction.Timestamp);
         }
-        
+
         [Test]
         public void get_consumer_gas_limits_should_return_data()
         {
@@ -610,7 +610,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             rpcGasPrice.Price.Should().Be(gasPrice.Price);
             rpcGasPrice.WaitTime.Should().Be(gasPrice.WaitTime);
         }
-        
+
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)
         {
             rpcItem.Id.Should().Be(item.Id);
@@ -746,7 +746,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new[] {TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)});
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) });
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

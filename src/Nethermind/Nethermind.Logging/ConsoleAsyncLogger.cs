@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Logging
         }
 
         private Task _task;
-        
+
         public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {
             _logLevel = logLevel;
@@ -95,10 +95,10 @@ namespace Nethermind.Logging
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
 
-        public bool IsInfo => (int) _logLevel >= 2;
-        public bool IsWarn => (int) _logLevel >= 1;
-        public bool IsDebug => (int) _logLevel >= 3;
-        public bool IsTrace => (int) _logLevel >= 4;
+        public bool IsInfo => (int)_logLevel >= 2;
+        public bool IsWarn => (int)_logLevel >= 1;
+        public bool IsDebug => (int)_logLevel >= 3;
+        public bool IsTrace => (int)_logLevel >= 4;
         public bool IsError => true;
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Find
                     throw new InvalidOperationException(
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
-                
+
                 BlockHeader parent = finder.FindHeader(header.ParentHash, options);
                 header.MaybeParent = new WeakReference<BlockHeader>(parent);
                 return parent;
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Find
                     throw new InvalidOperationException(
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
-                
+
                 BlockHeader parent = finder.FindHeader(header.ParentHash, options);
                 header.MaybeParent.SetTarget(parent);
                 return parent;
@@ -59,12 +59,12 @@ namespace Nethermind.Blockchain.Find
                     throw new InvalidOperationException(
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
-                
+
                 BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options);
                 maybeParent.TotalDifficulty = fromDb?.TotalDifficulty;
             }
-            
-            return maybeParent; 
+
+            return maybeParent;
         }
 
         public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Find
                 throw new InvalidOperationException(
                     $"Cannot find parent when parent hash is null on block with hash {block.Hash}.");
             }
-            
+
             return finder.FindBlock(block.Header.ParentHash, options);
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Find
                 throw new InvalidOperationException(
                     $"Cannot find parent when parent hash is null on block with hash {blockHeader.Hash}.");
             }
-            
+
             return finder.FindBlock(blockHeader.ParentHash, options);
         }
 

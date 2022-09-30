@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,11 +43,11 @@ namespace Nethermind.Core.Test
             header.Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1");
             header.Difficulty = Bytes.FromHexString("0x020000").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
-            header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsed = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
+            header.GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b"));
-            header.Nonce = (ulong) Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger();
-            header.Number = (long) Bytes.FromHexString("0x01").ToUInt256();
+            header.Nonce = (ulong)Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger();
+            header.Number = (long)Bytes.FromHexString("0x01").ToUInt256();
             header.ParentHash = new Keccak(Bytes.FromHexString("0x5a39ed1020c04d4d84539975b893a4e7c53eab6c2965db8bc3468093a31bc5ae"));
             header.ReceiptsRoot = new Keccak(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"));
             header.StateRoot = new Keccak(Bytes.FromHexString("0x5c2e5a51a79da58791cdfe572bcfa3dfe9c860bf7fad7d9738a1aace56ef9332"));
@@ -67,11 +67,11 @@ namespace Nethermind.Core.Test
             header.Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1");
             header.Difficulty = Bytes.FromHexString("0x020080").ToUInt256();
             header.ExtraData = Array.Empty<byte>();
-            header.GasLimit = (long) Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
-            header.GasUsed = (long) Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
+            header.GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger();
+            header.GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger();
             header.MixHash = new Keccak(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149"));
-            header.Nonce = (ulong) Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger();
-            header.Number = (long) Bytes.FromHexString("0x03").ToUInt256();
+            header.Nonce = (ulong)Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger();
+            header.Number = (long)Bytes.FromHexString("0x03").ToUInt256();
             header.ParentHash = new Keccak(Bytes.FromHexString("0xde1457da701ef916533750d46c124e9ae50b974410bd590fbcf4c935a4d19465"));
             header.ReceiptsRoot = new Keccak(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2"));
             header.StateRoot = new Keccak(Bytes.FromHexString("0xfb4084a7f8b57e370fefe24a3da3aaea6c4dd8b6f6251916c32440336035160b"));
@@ -99,14 +99,14 @@ namespace Nethermind.Core.Test
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip1559Enabled.Returns(false);
-            
+
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = 100;
             UInt256 baseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual(UInt256.Zero, baseFee);
         }
-        
+
         [TestCase(100, 100, 88, 0)]
         [TestCase(100, 300, 267, 10)]
         [TestCase(500, 200, 185, 200)]
@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip1559Enabled.Returns(true);
             releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
-            
+
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
@@ -130,7 +130,7 @@ namespace Nethermind.Core.Test
             UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
         }
-        
+
         [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
         [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
         public class BaseFeeTestCases
@@ -140,13 +140,13 @@ namespace Nethermind.Core.Test
             public int ParentTargetGasUsed { get; set; }
             public int ExpectedBaseFee { get; set; }
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Eip_1559_CalculateBaseFee_shared_test_cases((BaseFeeTestCases Info, string Description) testCase)
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip1559Enabled.Returns(true);
-            
+
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
@@ -155,7 +155,7 @@ namespace Nethermind.Core.Test
             UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);
         }
-        
+
         public static IEnumerable<(BaseFeeTestCases, string)> TestCaseSource()
         {
             string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");

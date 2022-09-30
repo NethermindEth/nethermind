@@ -42,7 +42,7 @@ namespace Nethermind.Monitoring.Metrics
             {
                 _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name));
             }
-            
+
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
                 _gauges[gaugeName] = CreateGauge(BuildGaugeName(fieldInfo.Name));
@@ -58,20 +58,20 @@ namespace Nethermind.Monitoring.Metrics
                 _propertiesCache[type] = type.GetProperties().Where(p => !p.PropertyType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
                     p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
             }
-            
+
             if (!_fieldsCache.ContainsKey(type))
             {
                 _fieldsCache[type] = type.GetFields().Where(f => !f.FieldType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
                     f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
             }
 
-            if(!_dynamicPropCache.ContainsKey(type))
+            if (!_dynamicPropCache.ContainsKey(type))
             {
                 var p = type.GetProperties().Where(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>))).FirstOrDefault();
-                if(p != null)
+                if (p != null)
                 {
                     _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
-                }              
+                }
             }
         }
 
@@ -105,17 +105,17 @@ namespace Nethermind.Monitoring.Metrics
                 UpdateMetrics(metricType);
             }
         }
-        
+
         private void UpdateMetrics(Type type)
         {
-            EnsurePropertiesCached(type);          
-            
+            EnsurePropertiesCached(type);
+
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
                 double value = Convert.ToDouble(propertyInfo.GetValue(null));
                 ReplaceValueIfChanged(value, gaugeName);
             }
-            
+
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
                 double value = Convert.ToDouble(fieldInfo.GetValue(null));
@@ -129,7 +129,7 @@ namespace Nethermind.Monitoring.Metrics
                     double value = Convert.ToDouble(kvp.Value);
                     var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
 
-                    if(ReplaceValueIfChanged(value, gaugeName) == null)
+                    if (ReplaceValueIfChanged(value, gaugeName) == null)
                     {
                         var gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeName] = gauge;

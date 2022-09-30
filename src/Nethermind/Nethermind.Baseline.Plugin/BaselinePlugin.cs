@@ -29,17 +29,17 @@ namespace Nethermind.Plugin.Baseline
     public class BaselinePlugin : INethermindPlugin
     {
         private INethermindApi _api;
-        
+
         private ILogger _logger;
-        
+
         private IBaselineConfig _baselineConfig;
 
         public string Name => "Baseline";
-        
+
         public string Description => "Ethereum Baseline for Enterprise";
-        
+
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi api)
         {
             _baselineConfig = api.Config<IBaselineConfig>();
@@ -79,7 +79,7 @@ namespace Nethermind.Plugin.Baseline
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);
-                
+
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
             }
             else

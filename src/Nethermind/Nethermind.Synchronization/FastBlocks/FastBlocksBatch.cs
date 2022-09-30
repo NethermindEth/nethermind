@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long? _waitingStartTime;
         private long? _handlingStartTime;
         private long? _handlingEndTime;
-        
+
         /// <summary>
         /// We want to make sure that we do not let the queues grow too much.
         /// In order to do that we prioritize batches that are most likely to be added immediately instead of being put to dependencies.
@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _stopwatch.Start();
             _scheduledLastTime = _stopwatch.ElapsedMilliseconds;
         }
-        
+
         public void MarkRetry()
         {
             Retries++;
@@ -53,34 +53,34 @@ namespace Nethermind.Synchronization.FastBlocks
             _handlingStartTime = null;
             _handlingEndTime = null;
         }
-        
+
         public void MarkSent()
         {
             _requestSentTime = _stopwatch.ElapsedMilliseconds;
-            
+
         }
-        
+
         public void MarkValidation()
         {
             _validationStartTime = _stopwatch.ElapsedMilliseconds;
         }
-        
+
         public void MarkWaiting()
         {
             _waitingStartTime = _stopwatch.ElapsedMilliseconds;
         }
-        
+
         public void MarkHandlingStart()
         {
             _handlingStartTime = _stopwatch.ElapsedMilliseconds;
             _validationStartTime ??= _handlingStartTime;
         }
-        
+
         public void MarkHandlingEnd()
         {
             _handlingEndTime = _stopwatch.ElapsedMilliseconds;
         }
-        
+
         public int Retries { get; private set; }
         public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
         public double? SchedulingTime

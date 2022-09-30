@@ -246,7 +246,7 @@ namespace Nethermind.Evm.Test
 
             Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             Address deploymentAddress = ContractAddress.From(deployingContractAddress, new byte[32], baseInitCode);
-            
+
             byte[] deploy = Prepare.EvmCode
                 .CallWithValue(deployingContractAddress, 100000)
                 .Op(Instruction.STOP).Done;
@@ -309,8 +309,8 @@ namespace Nethermind.Evm.Test
             AssertStorage(new StorageCell(deploymentAddress, 2), 0);
             AssertStorage(new StorageCell(deploymentAddress, 3), 2);
         }
-        
-         [Test]
+
+        [Test]
         public void Destroy_restore_store_different_cells_previously_existing()
         {
             byte[] baseInitCodeStore = Prepare.EvmCode
@@ -335,7 +335,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SELFDESTRUCT)
                 .Op(Instruction.JUMPDEST)
                 .Done;
-            
+
             byte[] baseInitCodeAfterStore = Prepare.EvmCode
                 .ForInitOf(contractCode)
                 .Done;
@@ -352,7 +352,7 @@ namespace Nethermind.Evm.Test
 
             Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             Address deploymentAddress = ContractAddress.From(deployingContractAddress, new byte[32], baseInitCode);
-            
+
             byte[] deploy = Prepare.EvmCode
                 .CallWithValue(deployingContractAddress, 100000)
                 .Op(Instruction.STOP).Done;
@@ -368,17 +368,17 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             //TestState.Commit(SpecProvider.GenesisSpec);
             //TestState.CommitTree(0);
-            
+
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             Keccak codeHash = TestState.UpdateCode(contractCode);
             TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
-            
-            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] {7});
+
+            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
-            
+
             long gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);

@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Test
         {
             _txPoolConfig.Size = 128;
             _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
-            _initConfig.MemoryHint = (long) memoryHint;
+            _initConfig.MemoryHint = (long)memoryHint;
             SetMemoryAllowances(cpuCount);
             _networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);
         }
@@ -135,13 +135,13 @@ namespace Nethermind.Runner.Test
             if (_initConfig.DiagnosticMode != DiagnosticMode.MemDb)
             {
                 // some rounding differences are OK
-                totalMem.Should().BeGreaterThan((ulong) ((memoryHint - 200.MB()) * 0.6));
-                totalMem.Should().BeLessThan((ulong) ((memoryHint - 200.MB()) * 0.9));
+                totalMem.Should().BeGreaterThan((ulong)((memoryHint - 200.MB()) * 0.6));
+                totalMem.Should().BeLessThan((ulong)((memoryHint - 200.MB()) * 0.9));
             }
             else
             {
-                _memoryHintMan.DbMemory.Should().BeGreaterThan((long) ((memoryHint - 100.MB()) * 0.6));
-                _memoryHintMan.DbMemory.Should().BeLessThan((long) ((memoryHint - 100.MB()) * 0.9));
+                _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB()) * 0.6));
+                _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB()) * 0.9));
             }
         }
 
@@ -151,7 +151,7 @@ namespace Nethermind.Runner.Test
         [TestCase(384 * MB, 1u, 1)]
         public void Will_not_change_non_default_arena_order(long memoryHint, uint cpuCount, int differenceFromDefault)
         {
-            _initConfig.MemoryHint = (long) memoryHint;
+            _initConfig.MemoryHint = (long)memoryHint;
             int manuallyConfiguredArenaOrder = INetworkConfig.DefaultNettyArenaOrder + differenceFromDefault;
             _networkConfig.NettyArenaOrder = manuallyConfiguredArenaOrder;
             SetMemoryAllowances(cpuCount);

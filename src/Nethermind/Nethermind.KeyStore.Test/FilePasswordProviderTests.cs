@@ -32,7 +32,7 @@ namespace Nethermind.KeyStore.Test
         };
 
         private string TestDir => TestContext.CurrentContext.WorkDirectory;
-        
+
         [SetUp]
         public void SetUp()
         {

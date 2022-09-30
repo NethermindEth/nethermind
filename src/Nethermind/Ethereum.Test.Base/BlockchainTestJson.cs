@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -26,7 +26,7 @@ namespace Ethereum.Test.Base
     {
         public new Keccak PostState { get; set; }
     }
-    
+
     public class BlockchainTestJson
     {
         public string? Network { get; set; }
@@ -41,9 +41,9 @@ namespace Ethereum.Test.Base
 
         public Dictionary<string, AccountStateJson>? Pre { get; set; }
         public Dictionary<string, AccountStateJson>? PostState { get; set; }
-        
+
         public Keccak? PostStateHash { get; set; }
-        
+
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }
     }

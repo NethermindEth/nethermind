@@ -22,9 +22,9 @@ namespace Nethermind.Blockchain
 {
     public class FinalizeEventArgs : EventArgs
     {
-        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks) 
+        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks)
             : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
-        
+
         public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
         {
             FinalizingBlock = finalizingBlock;

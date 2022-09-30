@@ -25,13 +25,13 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int EpochLength = sizeof(ulong);
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, Epoch value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span, value.Number);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Epoch DecodeEpoch(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -39,12 +39,12 @@ namespace Nethermind.Ssz
             offset += Ssz.EpochLength;
             return epoch;
         }
-        
+
         public static Epoch DecodeEpoch(Span<byte> span)
         {
             return new Epoch(BinaryPrimitives.ReadUInt64LittleEndian(span));
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Epoch value, ref int offset)
         {

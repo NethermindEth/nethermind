@@ -41,25 +41,25 @@ namespace Nethermind.KeyStore
                 switch (cipherType)
                 {
                     case "aes-128-cbc":
-                    {
-                        using var aes = Aes.Create();
-                        aes.BlockSize = _config.SymmetricEncrypterBlockSize;
-                        aes.KeySize = _config.SymmetricEncrypterKeySize;
-                        aes.Padding = PaddingMode.PKCS7;
-                        aes.Key = key;
-                        aes.IV = iv;
-                        
-                        var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-                        return Execute(encryptor, content);
-                    }
+                        {
+                            using var aes = Aes.Create();
+                            aes.BlockSize = _config.SymmetricEncrypterBlockSize;
+                            aes.KeySize = _config.SymmetricEncrypterKeySize;
+                            aes.Padding = PaddingMode.PKCS7;
+                            aes.Key = key;
+                            aes.IV = iv;
+
+                            var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+                            return Execute(encryptor, content);
+                        }
                     case "aes-128-ctr":
-                    {
-                        using var outputEncryptedStream = new MemoryStream();
-                        using var inputStream = new MemoryStream(content);
-                        AesCtr(key, iv, inputStream, outputEncryptedStream);
-                        outputEncryptedStream.Position = 0;
-                        return outputEncryptedStream.ToArray();
-                    }
+                        {
+                            using var outputEncryptedStream = new MemoryStream();
+                            using var inputStream = new MemoryStream(content);
+                            AesCtr(key, iv, inputStream, outputEncryptedStream);
+                            outputEncryptedStream.Position = 0;
+                            return outputEncryptedStream.ToArray();
+                        }
                     default:
                         throw new Exception($"Unsupported cipherType: {cipherType}");
                 }
@@ -78,24 +78,24 @@ namespace Nethermind.KeyStore
                 switch (cipherType)
                 {
                     case "aes-128-cbc":
-                    {
-                        using var aes = Aes.Create();
-                        aes.BlockSize = _config.SymmetricEncrypterBlockSize;
-                        aes.KeySize = _config.SymmetricEncrypterKeySize;
-                        aes.Padding = PaddingMode.PKCS7;
-                        aes.Key = key;
-                        aes.IV = iv;
-                        var decryptor = aes.CreateDecryptor(key, aes.IV);
-                        return Execute(decryptor, cipher);
-                    }
+                        {
+                            using var aes = Aes.Create();
+                            aes.BlockSize = _config.SymmetricEncrypterBlockSize;
+                            aes.KeySize = _config.SymmetricEncrypterKeySize;
+                            aes.Padding = PaddingMode.PKCS7;
+                            aes.Key = key;
+                            aes.IV = iv;
+                            var decryptor = aes.CreateDecryptor(key, aes.IV);
+                            return Execute(decryptor, cipher);
+                        }
                     case "aes-128-ctr":
-                    {
-                        using var outputEncryptedStream = new MemoryStream(cipher);
-                        using var outputDecryptedStream = new MemoryStream();
-                        AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
-                        outputDecryptedStream.Position = 0;
-                        return outputDecryptedStream.ToArray();
-                    }
+                        {
+                            using var outputEncryptedStream = new MemoryStream(cipher);
+                            using var outputDecryptedStream = new MemoryStream();
+                            AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
+                            outputDecryptedStream.Position = 0;
+                            return outputDecryptedStream.ToArray();
+                        }
                     default:
                         throw new Exception($"Unsupported cipherType: {cipherType}");
                 }
@@ -131,7 +131,7 @@ namespace Nethermind.KeyStore
                 throw new ArgumentException($"Salt size must be same as block size ({salt.Length} != {blockSize})");
             }
 
-            var counter = (byte[]) salt.Clone();
+            var counter = (byte[])salt.Clone();
             var xorMask = new Queue<byte>();
             var zeroIv = new byte[blockSize];
             var encryptor = aes.CreateEncryptor(key, zeroIv);
@@ -159,7 +159,7 @@ namespace Nethermind.KeyStore
                 }
 
                 var mask = xorMask.Dequeue();
-                outputStream.WriteByte((byte) ((byte) @byte ^ mask));
+                outputStream.WriteByte((byte)((byte)@byte ^ mask));
             }
         }
     }

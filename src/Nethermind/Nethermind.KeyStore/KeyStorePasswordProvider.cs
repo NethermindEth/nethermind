@@ -35,7 +35,7 @@ namespace Nethermind.KeyStore
 
         private static string GetNthOrLast(int n, string[] items)
             => items?.Length > 0 ? items[Math.Min(n, items.Length - 1)] : null;
-        
+
         private string Map(Address address)
         {
             string result = string.Empty;
@@ -49,12 +49,12 @@ namespace Nethermind.KeyStore
 
             return result;
         }
-        
+
         public override SecureString GetPassword(Address address)
         {
             SecureString password = null;
             int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
-            
+
             if (keyStoreConfigPasswordIndex >= 0)
             {
                 password = _filePasswordProvider.GetPassword(address);

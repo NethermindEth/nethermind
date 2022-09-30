@@ -75,7 +75,7 @@ namespace Nethermind.Trie
 
         public long Size => StateSize + StorageSize + CodeSize;
 
-//        public List<string> MissingNodes { get; set; } = new List<string>();
+        //        public List<string> MissingNodes { get; set; } = new List<string>();
 
         public int[] StateLevels => _stateLevels;
         public int[] StorageLevels => _storageLevels;

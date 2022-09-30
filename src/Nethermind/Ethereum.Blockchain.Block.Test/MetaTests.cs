@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -24,7 +24,8 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         [Test]
@@ -33,9 +34,9 @@ namespace Ethereum.Blockchain.Block.Test
             string[] directories =
                 Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
-                .Where(d =>d.StartsWith("bc"))
+                .Where(d => d.StartsWith("bc"))
                 .ToArray();
-            
+
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
             foreach (string directory in directories)
@@ -47,7 +48,7 @@ namespace Ethereum.Blockchain.Block.Test
                     {
                         continue;
                     }
-                    
+
                     missingCategories.Add(directory + " expected " + expectedTypeName);
                 }
             }
@@ -72,7 +73,7 @@ namespace Ethereum.Blockchain.Block.Test
                 }
                 else
                 {
-                    expectedTypeName += "s";    
+                    expectedTypeName += "s";
                 }
             }
 

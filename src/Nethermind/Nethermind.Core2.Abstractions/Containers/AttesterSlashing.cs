@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ namespace Nethermind.Core2.Containers
     public class AttesterSlashing
     {
         public static readonly AttesterSlashing Zero = new AttesterSlashing(IndexedAttestation.Zero, IndexedAttestation.Zero);
-        
+
         public AttesterSlashing(
             IndexedAttestation attestation1,
             IndexedAttestation attestation2)
@@ -37,7 +37,7 @@ namespace Nethermind.Core2.Containers
         {
             return $"A1:({Attestation1}) A2:({Attestation2})";
         }
-        
+
         public bool Equals(AttesterSlashing other)
         {
             return Equals(Attestation1, other.Attestation1) &&

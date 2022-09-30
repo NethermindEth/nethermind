@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -68,7 +68,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
-        _poSSwitcher.IsPostMerge(block.Header) 
-            ? PostMergeProcessBlock(block, blockTracer, options) 
+        _poSSwitcher.IsPostMerge(block.Header)
+            ? PostMergeProcessBlock(block, blockTracer, options)
             : base.ProcessBlock(block, blockTracer, options);
 }

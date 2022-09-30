@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ namespace Nethermind.Config
         public static string RemoveStart(this string thisString, char removeChar) =>
             thisString.StartsWith(removeChar) ? thisString.Substring(1, thisString.Length - 1) : thisString;
 
-        public static string  RemoveEnd(this string thisString, char removeChar) => 
+        public static string RemoveEnd(this string thisString, char removeChar) =>
             thisString.EndsWith(removeChar) ? thisString.Substring(0, thisString.Length - 1) : thisString;
     }
 }

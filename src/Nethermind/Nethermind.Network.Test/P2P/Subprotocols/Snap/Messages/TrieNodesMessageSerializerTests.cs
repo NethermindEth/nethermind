@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,12 +26,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip()
         {
-            byte[][] data = {new byte[]{0xde, 0xad, 0xc0, 0xde}, new byte[]{0xfe, 0xed}};
+            byte[][] data = { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            TrieNodesMessage message = new (data);
-            
-            TrieNodesMessageSerializer serializer = new ();
-            
+            TrieNodesMessage message = new(data);
+
+            TrieNodesMessageSerializer serializer = new();
+
             SerializerTester.TestZero(serializer, message);
         }
     }

@@ -36,7 +36,7 @@ namespace Nethermind.Core.Caching
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
-            if (maxCapacity < 1) 
+            if (maxCapacity < 1)
             {
                 throw new ArgumentOutOfRangeException();
             }
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Caching
             : this(maxCapacity, 0, name)
         {
         }
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {

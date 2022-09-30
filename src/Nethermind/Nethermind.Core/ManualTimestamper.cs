@@ -26,14 +26,14 @@ namespace Nethermind.Core
         {
             UtcNow = initialValue;
         }
-        
+
         public DateTime UtcNow { get; set; }
 
         public void Add(TimeSpan timeSpan)
         {
             UtcNow += timeSpan;
         }
-        
+
         public void Set(DateTime utcNow)
         {
             UtcNow = utcNow;

@@ -53,73 +53,73 @@ namespace Nethermind.AccountAbstraction.Test
             TestObjectInternal.Sender = sender;
             return this;
         }
-        
+
         public UserOperationBuilder WithNonce(UInt256 nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
         }
-        
+
         public UserOperationBuilder WithPaymaster(Address paymaster)
         {
             TestObjectInternal.Paymaster = paymaster;
             return this;
         }
-        
+
         public UserOperationBuilder WithCallData(byte[] bytes)
         {
             TestObjectInternal.CallData = bytes;
             return this;
         }
-        
+
         public UserOperationBuilder WithInitCode(byte[] bytes)
         {
             TestObjectInternal.InitCode = bytes;
             return this;
         }
-        
+
         public UserOperationBuilder WithPaymasterData(byte[] bytes)
         {
             TestObjectInternal.PaymasterData = bytes;
             return this;
         }
-        
+
         public UserOperationBuilder WithMaxFeePerGas(ulong maxFeePerGas)
         {
             TestObjectInternal.MaxFeePerGas = maxFeePerGas;
             return this;
         }
-        
+
         public UserOperationBuilder WithMaxPriorityFeePerGas(ulong maxPriorityFeePerGas)
         {
             TestObjectInternal.MaxPriorityFeePerGas = maxPriorityFeePerGas;
             return this;
         }
-        
+
         public UserOperationBuilder WithCallGas(ulong callGas)
         {
             TestObjectInternal.CallGas = callGas;
             return this;
         }
-        
+
         public UserOperationBuilder WithVerificationGas(UInt256 verificationGas)
         {
             TestObjectInternal.VerificationGas = verificationGas;
             return this;
         }
-        
+
         public UserOperationBuilder WithPreVerificationGas(UInt256 preVerificationGas)
         {
             TestObjectInternal.PreVerificationGas = preVerificationGas;
             return this;
         }
-        
+
         public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null!, Address? entryPointAddress = null!, ulong? chainId = null!)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
             entryPointAddress ??= Address.Zero;
             chainId ??= 1;
-            
+
             //Build the hash before attempting to construct the RequestID and signing it.
             AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey, entryPointAddress, chainId.Value);
             return this;

@@ -23,7 +23,7 @@ namespace Nethermind.Mev.Source
     public class CompareMevBundleBySequenceNumber : IComparer<MevBundle>
     {
         public static readonly CompareMevBundleBySequenceNumber Default = new();
-        
+
         public int Compare(MevBundle? x, MevBundle? y)
         {
             if (ReferenceEquals(x, y)) return 0;

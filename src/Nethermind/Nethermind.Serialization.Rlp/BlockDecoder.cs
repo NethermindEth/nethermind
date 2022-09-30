@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,20 +23,20 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly TxDecoder _txDecoder = new();
-        
+
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)
             {
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
             }
-            
+
             if (rlpStream.IsNextItemNull())
             {
                 rlpStream.ReadByte();
                 return null;
             }
-            
+
             int sequenceLength = rlpStream.ReadSequenceLength();
             int blockCheck = rlpStream.Position + sequenceLength;
 
@@ -71,9 +71,9 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private (int Total, int Txs, int Uncles) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
-        {   
+        {
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
-            
+
             int txLength = GetTxLength(item, rlpBehaviors);
             contentLength += Rlp.LengthOfSequence(txLength);
 
@@ -111,7 +111,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return 1;
             }
-            
+
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
@@ -122,7 +122,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.ReadByte();
                 return null;
             }
-            
+
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
@@ -162,12 +162,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 return Rlp.OfEmptySequence;
             }
-            
+
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
-        
+
         public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
                 stream.EncodeNullObject();
                 return;
             }
-            
+
             (int contentLength, int txsLength, int unclesLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.Header);
@@ -184,7 +184,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 stream.Encode(item.Transactions[i]);
             }
-            
+
             stream.StartSequence(unclesLength);
             for (int i = 0; i < item.Uncles.Length; i++)
             {

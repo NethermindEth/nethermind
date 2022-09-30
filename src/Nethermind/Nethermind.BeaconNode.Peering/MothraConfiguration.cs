@@ -25,11 +25,11 @@ namespace Nethermind.BeaconNode.Peering
         public int? DiscoveryPort { get; set; }
 
         public string? ListenAddress { get; set; }
-        
+
         public bool LogSignedBeaconBlockJson { get; set; }
 
         public int? MaximumPeers { get; set; }
-        
+
         public int? Port { get; set; }
     }
 }

@@ -59,7 +59,7 @@ namespace Nethermind.Config.Test
                     {
                         throw new Exception($"Missing config implementation for {configType}");
                     }
-                    
+
                     object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)

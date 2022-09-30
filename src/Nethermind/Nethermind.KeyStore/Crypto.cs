@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,19 +22,19 @@ namespace Nethermind.KeyStore
     {
         [JsonProperty(PropertyName = "ciphertext", Order = 0)]
         public string CipherText { get; set; }
-        
+
         [JsonProperty(PropertyName = "cipherparams", Order = 1)]
         public CipherParams CipherParams { get; set; }
-        
+
         [JsonProperty(PropertyName = "cipher", Order = 2)]
         public string Cipher { get; set; }
-        
+
         [JsonProperty(PropertyName = "kdf", Order = 3)]
         public string KDF { get; set; }
-        
+
         [JsonProperty(PropertyName = "kdfparams", Order = 4)]
         public KdfParams KDFParams { get; set; }
-        
+
         [JsonProperty(PropertyName = "mac", Order = 5)]
         public string MAC { get; set; }
     }

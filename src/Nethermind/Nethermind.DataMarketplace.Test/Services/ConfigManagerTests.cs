@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var config = await _configManager.GetAsync(_configId);
             config.Should().Be(_defaultConfig);
         }
-        
+
         [Test]
         public async Task given_store_config_in_database_equal_true_config_from_database_should_be_returned()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var config = await _configManager.GetAsync(_configId);
             config.Should().Be(configFromDatabase);
         }
-        
+
         [Test]
         public async Task given_store_config_in_database_equal_false_config_should_not_be_updated()
         {
@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _configRepository.DidNotReceiveWithAnyArgs().AddAsync(Arg.Any<NdmConfig>());
             await _configRepository.DidNotReceiveWithAnyArgs().UpdateAsync(Arg.Any<NdmConfig>());
         }
-        
+
         [Test]
         public async Task given_store_config_in_database_equal_true_and_no_previous_config_it_should_be_added()
         {
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _configRepository.Received().AddAsync(config);
             await _configRepository.DidNotReceiveWithAnyArgs().UpdateAsync(Arg.Any<NdmConfig>());
         }
-        
+
         [Test]
         public async Task given_store_config_in_database_equal_true_and_no_previous_config_it_should_be_updated()
         {

@@ -30,7 +30,7 @@ namespace Nethermind.Evm
                     : spec.UseConstantinopleNetGasMetering
                         ? RefundOf.SResetReversedEip1283
                         : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
-        
+
         public static long GetSetReversalRefund(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? RefundOf.SSetReversedHotCold
@@ -44,7 +44,7 @@ namespace Nethermind.Evm
             spec.UseHotAndColdStorage
                 ? GasCostOf.SReset - GasCostOf.ColdSLoad
                 : GasCostOf.SReset;
-        
+
         public static long GetNetMeteredSStoreCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? GasCostOf.WarmStateRead
@@ -78,14 +78,14 @@ namespace Nethermind.Evm
                 : spec.UseLargeStateDDosProtection
                     ? GasCostOf.ExtCodeHashEip1884
                     : GasCostOf.ExtCodeHash;
-        
+
         public static long GetExtCodeCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? 0L
                 : spec.UseShanghaiDDosProtection
                     ? GasCostOf.ExtCodeEip150
                     : GasCostOf.ExtCode;
-        
+
         public static long GetCallCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? 0L

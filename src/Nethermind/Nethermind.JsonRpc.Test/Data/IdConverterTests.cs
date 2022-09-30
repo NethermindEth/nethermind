@@ -34,14 +34,14 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
         }
-        
+
         [Test]
         public void Can_handle_int()
         {
             IdConverter converter = new();
             converter.WriteJson(new JsonTextWriter(new StringWriter()), 1, JsonSerializer.CreateDefault());
         }
-        
+
         [Test]
         public void Throws_on_writing_decimal()
         {
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.Throws<NotSupportedException>(
                 () => converter.WriteJson(new JsonTextWriter(new StringWriter()), 1.1, JsonSerializer.CreateDefault()));
         }
-        
+
         [TestCase(typeof(int))]
         [TestCase(typeof(string))]
         [TestCase(typeof(long))]
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Data
             IdConverter converter = new();
             converter.CanConvert(type).Should().Be(true);
         }
-        
+
         [TestCase(typeof(object))]
         [TestCase(typeof(IdConverterTests))]
         public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
@@ -88,13 +88,13 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             TestRoundtrip<SomethingWithId>("{\"id\":null}");
         }
-        
+
         [Test]
         public void Decimal_not_supported()
         {
             Assert.Throws<NotSupportedException>(() =>
                 TestRoundtrip<SomethingWithId>("{\"id\":2.1}"));
-            
+
             Assert.Throws<NotSupportedException>(() =>
                 TestRoundtrip<SomethingWithDecimalId>("{\"id\":2.1}"));
         }
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             public string Something { get; set; }
         }
-        
+
         public class SomethingWithDecimalId
         {
             [JsonConverter(typeof(IdConverter))]

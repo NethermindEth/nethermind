@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -58,7 +58,8 @@ namespace Nethermind.Runner.JsonRpc
 
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
-            services.Configure<KestrelServerOptions>(options => {
+            services.Configure<KestrelServerOptions>(options =>
+            {
                 options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);

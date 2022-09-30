@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
         {
-            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int) selectionType, typeof(TotalDiffSelectionType));
+            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(TotalDiffSelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _selectionType = selectionType;
         }
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;
             if (currentDiffOrNull == null)
             {
-                return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);    
+                return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             }
 
             UInt256 currentDiff = currentDiffOrNull.Value;
@@ -68,12 +68,12 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                     {
                         currentDiff -= lastBlockDiff;
                     }
-                    
+
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-            
+
             return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);
         }
     }

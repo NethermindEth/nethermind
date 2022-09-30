@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
         private readonly AbiSignature _dataDeliveryReceiptAbiSig = new AbiSignature("dataDeliveryReceipt",
             new AbiBytes(32),
             new AbiFixedLengthArray(new AbiUInt(32), 2));
-        
+
         private readonly IDepositProvider _depositProvider;
         private readonly IProviderService _providerService;
         private readonly IReceiptRequestValidator _receiptRequestValidator;
@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
         private readonly IEthereumEcdsa _ecdsa;
         private readonly PublicKey _nodePublicKey;
         private readonly ILogger _logger;
-        
+
         public ReceiptService(IDepositProvider depositProvider, IProviderService providerService,
             IReceiptRequestValidator receiptRequestValidator, ISessionService sessionService, ITimestamper timestamper,
             IReceiptRepository receiptRepository, IConsumerSessionRepository sessionRepository, IAbiEncoder abiEncoder,
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             _nodePublicKey = nodePublicKey;
             _logger = logManager.GetClassLogger();
         }
-        
+
         public async Task SendAsync(DataDeliveryReceiptRequest request, int fetchSessionRetries = 3,
             int fetchSessionRetryDelayMilliseconds = 3000)
         {
@@ -108,7 +108,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             }
 
             var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _dataDeliveryReceiptAbiSig,
-                depositId.Bytes, new[] {request.UnitsRange.From, request.UnitsRange.To});
+                depositId.Bytes, new[] { request.UnitsRange.From, request.UnitsRange.To });
             var receiptHash = Keccak.Compute(abiHash);
             var signature = _wallet.Sign(receiptHash, deposit.Consumer);
             var recoveredAddress = _ecdsa.RecoverPublicKey(signature, receiptHash)?.Address;
@@ -141,10 +141,10 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                     session.SettleUnits(paidUnits);
                     if (_logger.IsInfo) _logger.Info($"Settled {paidUnits} units for deposit: '{session.DepositId}', session: '{session.Id}'.");
                 }
-                
+
                 await _sessionRepository.UpdateAsync(session);
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Sending data delivery receipt for deposit: '{depositId}', range: [{request.UnitsRange.From}, {request.UnitsRange.To}].");
             var deliveryReceipt = new DataDeliveryReceipt(StatusCodes.Ok, session.ConsumedUnits,
                 session.UnpaidUnits, signature);
@@ -170,12 +170,12 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             {
                 return (deposit, session);
             }
-            
+
             if (fetchSessionRetries <= 0)
             {
                 return (deposit, null);
             }
-            
+
             var retry = 0;
             while (retry < fetchSessionRetries)
             {
@@ -190,7 +190,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
                 if (_logger.IsInfo) _logger.Info($"Found an active session: '{session.Id}' for deposit: '{deposit.Id}'.");
                 break;
             }
-            
+
             return (session is null) ? (deposit, null) : (deposit, session);
         }
     }

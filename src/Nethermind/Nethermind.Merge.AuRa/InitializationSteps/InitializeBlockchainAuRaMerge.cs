@@ -14,7 +14,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
     public class InitializeBlockchainAuRaMerge : InitializeBlockchainAuRa
     {
         private readonly AuRaNethermindApi _api;
-        
+
         public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
         {
             _api = api;

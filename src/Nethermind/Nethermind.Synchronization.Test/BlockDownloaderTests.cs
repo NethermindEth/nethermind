@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Test
         public async Task Happy_path(long headNumber, int options, int threshold)
         {
             Context ctx = new();
-            DownloaderOptions downloaderOptions = (DownloaderOptions) options;
+            DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
             InMemoryReceiptStorage receiptStorage = new();
             BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.Test
             ctx.BlockTree.IsMainChain(ctx.BlockTree!.BestSuggestedHeader!.Hash!).Should().Be(downloaderOptions != DownloaderOptions.Process);
 
             int receiptCount = 0;
-            for (int i = (int) Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
+            for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
             {
                 if (i % 3 == 0)
                 {
@@ -537,7 +537,7 @@ namespace Nethermind.Synchronization.Test
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
             Context ctx = new();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, sealValidator, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);;
+            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, sealValidator, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance); ;
 
             BlockHeader[] blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -678,7 +678,7 @@ namespace Nethermind.Synchronization.Test
         public async Task Throws_on_receipt_task_exception_when_downloading_receipts(int options, bool shouldThrow)
         {
             Context ctx = new();
-            DownloaderOptions downloaderOptions = (DownloaderOptions) options;
+            DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             BlockDownloader downloader = CreateBlockDownloader(ctx);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -975,7 +975,7 @@ namespace Nethermind.Synchronization.Test
                     builder = builder.WithTransactions(_receiptStorage, MainnetSpecProvider.Instance);
                 }
 
-                builder = builder.OfChainLength((int) chainLength);
+                builder = builder.OfChainLength((int)chainLength);
                 BlockTree = builder.TestObject;
 
                 HeadNumber = BlockTree.Head.Number;

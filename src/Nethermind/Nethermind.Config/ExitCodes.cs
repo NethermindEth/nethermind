@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,9 @@ namespace Nethermind.Config;
 
 public static class ExitCodes
 {
+    public const int Ok = 0;
+    public const int GeneralError = 1;
+
     // config errors 100...199
     public const int NoEngineModule = 100;
 

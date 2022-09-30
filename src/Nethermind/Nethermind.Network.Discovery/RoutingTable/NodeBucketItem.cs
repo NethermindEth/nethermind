@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ public class NodeBucketItem
     }
 
     public Node? Node { get; }
-        
+
     public DateTime LastContactTime { get; private set; }
 
     public bool IsBonded => LastContactTime > DateTime.UtcNow - TimeSpan.FromDays(2);
@@ -43,7 +43,7 @@ public class NodeBucketItem
         {
             return true;
         }
-            
+
         if (obj is NodeBucketItem item && Node != null)
         {
             return Node.IdHash.Equals(item.Node?.IdHash);
