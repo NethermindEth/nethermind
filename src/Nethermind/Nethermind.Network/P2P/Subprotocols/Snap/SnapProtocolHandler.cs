@@ -163,31 +163,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests.Handle(msg, size);
         }
 
-        private void Handle(GetAccountRangeMessage msg)
+        private void Handle(GetAccountRangeMessage getAccountRangeMessage)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            var response = FulfillAccountRangeMessage(msg);
+            AccountRangeMessage? response = FulfillAccountRangeMessage(getAccountRangeMessage);
+            response.RequestId = getAccountRangeMessage.RequestId;
             Send(response);
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            var response = FulfillStorageRangeMessage(getStorageRangesMessage);
+            StorageRangeMessage? response = FulfillStorageRangeMessage(getStorageRangesMessage);
+            response.RequestId = getStorageRangesMessage.RequestId;
             Send(response);
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            var response = FulfillByteCodesMessage(getByteCodesMessage);
+            ByteCodesMessage? response = FulfillByteCodesMessage(getByteCodesMessage);
+            response.RequestId = getByteCodesMessage.RequestId;
             Send(response);
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            var response = FulfillTrieNodesMessage(getTrieNodesMessage);
+            TrieNodesMessage? response = FulfillTrieNodesMessage(getTrieNodesMessage);
+            response.RequestId = getTrieNodesMessage.RequestId;
             Send(response);
         }
 
