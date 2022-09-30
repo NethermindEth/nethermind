@@ -72,20 +72,8 @@ public class SnapServer: ISnapServer
                     response.Add(rlp);
                     break;
                 default:
-                    int length = requestedPath[0].Length;
-                    byte[] keyHash = new byte[32];
-                    Buffer.BlockCopy(requestedPath[0], 0, keyHash, 32-length, length);
-                    byte[]? accBytes = tree.GetNodeByKey(keyHash, rootHash);
-                    if (accBytes is null || accBytes.SequenceEqual(new byte[] {}))
-                    {
-                        break;
-                    }
-                    Account? account;
-                    try
-                    {
-                        account = _decoder.Decode(accBytes.AsRlpStream());
-                    }
-                    catch (Exception)
+                    Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
+                    if (account is null)
                     {
                         break;
                     }
@@ -173,8 +161,10 @@ public class SnapServer: ISnapServer
             {
                 break;
             }
-            // TODO: is it a good idea to get storage root from here?
-            var storageRoot = accounts[i].Account.StorageRoot;
+            // TODO: is it a good idea to get storage root from here? - No - it is not there at times
+            // var storageRoot = accounts[i].Account.StorageRoot;
+            Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
+            Keccak? storageRoot = accountNeth.StorageRoot;
 
             // TODO: handle null values in the node visitor - will be more efficient.
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
@@ -293,6 +283,41 @@ public class SnapServer: ISnapServer
             return (nodes.ToArray(), responseSize, stopped);
         }
 
+    }
+
+    private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)
+    {
+        int length = accountPath.Length;
+        byte[]? accBytes;
+        if (length == 32)
+        {
+            accBytes = tree.GetNodeByKey(accountPath, rootHash);
+        }
+        else
+        {
+            byte[] keyHash = new byte[32];
+            Buffer.BlockCopy(accountPath, 0, keyHash, 32-length, length);
+
+            accBytes  = tree.GetNodeByKey(keyHash, rootHash);
+        }
+
+
+        if (accBytes is null || accBytes.SequenceEqual(new byte[] {}))
+        {
+            return null;
+        }
+
+        Account? account;
+        try
+        {
+            account = _decoder.Decode(accBytes.AsRlpStream());
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        return account;
     }
 
 }
