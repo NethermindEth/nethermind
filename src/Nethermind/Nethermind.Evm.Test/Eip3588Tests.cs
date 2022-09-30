@@ -26,21 +26,34 @@ using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
 using FluentAssertions.Execution;
+using Nethermind.Core.Specs;
+using NSubstitute;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
-
+        const long ForkTestBlockNumber = 4_370_000;
+        protected override ISpecProvider SpecProvider
+        {
+            get
+            {
+                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+                specProvider.GetSpec(Arg.Is<long>(x => x >= ForkTestBlockNumber)).Returns(Shanghai.Instance);
+                specProvider.GetSpec(Arg.Is<long>(x => x < ForkTestBlockNumber)).Returns(GrayGlacier.Instance);
+                return specProvider;
+            }
+        }
         private void AssertEip3855(Address address, byte[] code)
         {
             AssertCodeHash(address, Keccak.Compute(code));
         }
 
-        private TestAllTracerWithOutput testBase(int repeat)
+        private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
         {
+            long blockNumberParam = isShanghai ? ForkTestBlockNumber : ForkTestBlockNumber - 1;
             Prepare codeInitializer = Prepare.EvmCode;
             for (int i = 0; i < repeat; i++)
             {
@@ -48,30 +61,38 @@ namespace Nethermind.Evm.Test
             }
 
             byte[] code = codeInitializer.Done;
-            TestAllTracerWithOutput receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(blockNumberParam, 1_000_000, code);
             return receipt;
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(123)]
-        [TestCase(1024)]
-        public void Test_Eip3855(int repeat)
+        [TestCase(0, true)]
+        [TestCase(1, true)]
+        [TestCase(123, true)]
+        [TestCase(1024, true)]
+        public void Test_Eip3855_should_pass(int repeat, bool isShanghai)
         {
-            TestAllTracerWithOutput receipt = testBase(repeat);
+            TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
             receipt.StatusCode.Should().Be(StatusCode.Success);
             receipt.GasSpent.Should().Be(repeat * GasCostOf.Base + GasCostOf.Transaction);
         }
 
-        [TestCase(1025)]
-        [TestCase(1026)]
-        public void Test_StackvOverFlow(int repeat)
+
+        [TestCase(1   , false, Description = "Shanghai fork deactivated")]
+        [TestCase(123 , false, Description = "Shanghai fork deactivated")]
+        [TestCase(1025, true , Description = "Shanghai fork activated, stackoverflow")]
+        [TestCase(1026, true , Description = "Shanghai fork activated, stackoverflow")]
+        public void Test_Eip3855_should_fail(int repeat, bool isShanghai)
         {
-            TestAllTracerWithOutput receipt = testBase(repeat);
+            TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
 
             receipt.StatusCode.Should().Be(StatusCode.Failure);
-            receipt.Error.Should().Be(EvmExceptionType.StackOverflow.ToString());
-
+            if (isShanghai)
+            {
+                receipt.Error.Should().Be(EvmExceptionType.StackOverflow.ToString());
+            } else
+            {
+                receipt.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+            }
         }
 
     }
