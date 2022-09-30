@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public static readonly TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(1000);
         private const double BytesLimitAdjustmentFactor = 2;
 
-        protected SnapServer SyncServer { get; }
+        protected ISnapServer SyncServer { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -63,6 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
+            ISnapServer snapServer,
             ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
@@ -70,6 +71,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
+            SyncServer = snapServer;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
