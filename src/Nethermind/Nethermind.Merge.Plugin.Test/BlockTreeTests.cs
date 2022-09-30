@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -320,7 +320,8 @@ public partial class BlockTreeTests
                 int splitFrom = 0,
                 int syncedSplitVariant = 0,
                 int syncedSplitFrom = 0
-            ) {
+            )
+            {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd != null) testSpecProvider.TerminalTotalDifficulty = ttd;
                 NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
@@ -395,7 +396,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
-                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
+                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
                 while (headers != null && headers.Length > 1)
                 {
                     BlockDownloadContext blockDownloadContext = new(
@@ -426,7 +427,7 @@ public partial class BlockTreeTests
                         Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                     }
 
-                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
+                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
                 }
 
                 return this;
@@ -686,7 +687,7 @@ public partial class BlockTreeTests
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
-            .InsertBeaconBlocks(18,19);
+            .InsertBeaconBlocks(18, 19);
 
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToHeaderDb(beaconBlock.Header);
@@ -698,7 +699,7 @@ public partial class BlockTreeTests
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
-            .InsertBeaconBlocks(18,19);
+            .InsertBeaconBlocks(18, 19);
 
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToBlockDb(beaconBlock);

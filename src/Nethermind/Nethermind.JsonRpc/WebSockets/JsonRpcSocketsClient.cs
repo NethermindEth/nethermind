@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
             }
         }
-        
+
         private void IncrementBytesSentMetric(int size)
         {
             if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,13 +25,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public IReadOnlyList<Keccak> BlockHashes { get; }
         public override int PacketType { get; } = Eth62MessageCode.GetBlockBodies;
         public override string Protocol { get; } = "eth";
-        
+
         public GetBlockBodiesMessage(IReadOnlyList<Keccak> blockHashes)
         {
             BlockHashes = blockHashes;
         }
 
-        public GetBlockBodiesMessage (params Keccak[] blockHashes) : this((IReadOnlyList<Keccak>)blockHashes)
+        public GetBlockBodiesMessage(params Keccak[] blockHashes) : this((IReadOnlyList<Keccak>)blockHashes)
         {
         }
 

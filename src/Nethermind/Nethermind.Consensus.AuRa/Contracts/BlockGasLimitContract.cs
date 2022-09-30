@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,12 +35,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private IConstantContract Constant { get; }
         public long Activation { get; }
-        
+
         public BlockGasLimitContract(
-            IAbiEncoder abiEncoder, 
+            IAbiEncoder abiEncoder,
             Address contractAddress,
             long transitionBlock,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Activation = transitionBlock;
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             this.BlockActivationCheck(parentHeader);
             var function = nameof(BlockGasLimit);
             var returnData = Constant.Call(new CallInfo(parentHeader, function, Address.Zero));
-            return (returnData?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) returnData[0];
+            return (returnData?.Length ?? 0) == 0 ? (UInt256?)null : (UInt256)returnData[0];
         }
     }
 }

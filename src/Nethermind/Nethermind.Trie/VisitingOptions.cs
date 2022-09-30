@@ -25,15 +25,15 @@ namespace Nethermind.Trie
     public class VisitingOptions
     {
         public static readonly VisitingOptions Default = new();
-        
+
         /// <summary>
         /// Should visit accounts.
         /// </summary>
         public bool ExpectAccounts { get; init; } = true;
-        
+
         /// <summary>
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
-        public int MaxDegreeOfParallelism { get; init; } = 1; 
+        public int MaxDegreeOfParallelism { get; init; } = 1;
     }
 }

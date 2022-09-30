@@ -49,11 +49,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
         }
 
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized {
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized
+        {
             add { }
             remove { }
         }
-        
+
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested
         {
             add { }

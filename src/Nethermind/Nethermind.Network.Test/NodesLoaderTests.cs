@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test
             _discoveryConfig = new DiscoveryConfig();
             _statsManager = Substitute.For<INodeStatsManager>();
             _peerStorage = Substitute.For<INetworkStorage>();
-            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>(); 
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
             _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, rlpxHost, LimboLogs.Instance);
         }
 
@@ -87,7 +87,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_load_persisted()
         {
-            _peerStorage.GetPersistedNodes().Returns(new[] {new NetworkNode(enode1String), new NetworkNode(enode2String)});
+            _peerStorage.GetPersistedNodes().Returns(new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) });
             List<Node> nodes = _loader.LoadInitialList();
             Assert.AreEqual(2, nodes.Count);
             foreach (Node node in nodes)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -130,7 +130,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_4_regression()
         {
@@ -139,7 +139,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_5_frontier()
         {
@@ -148,7 +148,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_5_byzantium()
         {
@@ -157,7 +157,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_9_byzantium()
         {
@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [TestCase(0, false)]
         [TestCase(1, true)]
         [TestCase(1000, false)]
@@ -175,7 +175,7 @@ namespace Nethermind.Core.Test
             Address address = Address.FromNumber((UInt256)number);
             Assert.AreEqual(isPrecompile, address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
         [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
         public void Of_contract(long nonce, string expectedAddress)
@@ -183,7 +183,7 @@ namespace Nethermind.Core.Test
             Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
             Assert.AreEqual(address, new Address(expectedAddress));
         }
-        
+
         [Test]
         public void There_are_no_duplicates_in_known_addresses()
         {

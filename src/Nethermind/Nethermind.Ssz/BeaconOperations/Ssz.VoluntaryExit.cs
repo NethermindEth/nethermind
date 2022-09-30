@@ -26,7 +26,7 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int VoluntaryExitLength = Ssz.EpochLength + Ssz.ValidatorIndexLength + Ssz.BlsSignatureLength;
-        
+
         public static void Encode(Span<byte> span, VoluntaryExit container)
         {
             if (span.Length != Ssz.VoluntaryExitLength) ThrowTargetLength<VoluntaryExit>(span.Length, Ssz.VoluntaryExitLength);
@@ -45,7 +45,7 @@ namespace Nethermind.Ssz
             VoluntaryExit container = new VoluntaryExit(epoch, validatorIndex);
             return container;
         }
-        
+
         private static VoluntaryExit DecodeVoluntaryExit(ReadOnlySpan<byte> span, ref int offset)
         {
             VoluntaryExit container =
@@ -53,7 +53,7 @@ namespace Nethermind.Ssz
             offset += VoluntaryExitLength;
             return container;
         }
-        
+
         private static void Encode(Span<byte> span, VoluntaryExit value, ref int offset)
         {
             Encode(span.Slice(offset, VoluntaryExitLength), value);

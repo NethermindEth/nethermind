@@ -31,12 +31,12 @@ namespace Nethermind.Consensus
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
-        
+
         public long GetGasLimit(BlockHeader parentHeader)
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
-            
+
             long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);

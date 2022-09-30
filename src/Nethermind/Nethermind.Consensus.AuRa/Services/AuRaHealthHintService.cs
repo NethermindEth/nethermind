@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Services
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IValidatorStore _validatorStore;
-        
+
         public AuraHealthHintService(
             IAuRaStepCalculator auRaStepCalculator,
             IValidatorStore validatorStore)
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Services
             _auRaStepCalculator = auRaStepCalculator;
             _validatorStore = validatorStore;
         }
-        
+
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             return CurrentStepDuration() * HealthHintConstants.ProcessingSafetyMultiplier;

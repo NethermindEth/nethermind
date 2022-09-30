@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Stats
                 return obj?.GetHashCode() ?? 0;
             }
         }
-        
+
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
         private readonly ITimer _cleanupTimer;
@@ -84,7 +84,7 @@ namespace Nethermind.Stats
                     _nodeStats.TryRemove(node, out _);
                     i++;
                 }
-                
+
                 if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
             }
         }
@@ -93,7 +93,7 @@ namespace Nethermind.Stats
         {
             return new NodeStatsLight(node);
         }
-        
+
         public INodeStats GetOrAdd(Node node)
         {
             if (node == null)
@@ -106,7 +106,7 @@ namespace Nethermind.Stats
             {
                 return stats;
             }
-            
+
             return _nodeStats.GetOrAdd(node, AddStats);
         }
 
@@ -121,7 +121,7 @@ namespace Nethermind.Stats
             INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsSyncEvent(nodeStatsEvent);
         }
-        
+
         public void ReportEvent(Node node, NodeStatsEventType eventType)
         {
             INodeStats stats = GetOrAdd(node);

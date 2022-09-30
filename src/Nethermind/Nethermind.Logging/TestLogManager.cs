@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,9 +21,9 @@ namespace Nethermind.Logging
     public class TestLogManager : ILogManager
     {
         public static readonly TestLogManager Instance = new TestLogManager();
-        
+
         private readonly LogLevel _level;
-        
+
         public TestLogManager(LogLevel level = LogLevel.Info)
         {
             _level = level;
@@ -91,13 +91,13 @@ namespace Nethermind.Logging
             public bool IsDebug => CheckLevel(LogLevel.Debug);
             public bool IsTrace => CheckLevel(LogLevel.Trace);
             public bool IsError => CheckLevel(LogLevel.Error);
-                
+
             private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
-                
+
             private static void Log(string text, Exception ex = null)
             {
                 Console.WriteLine(text);
-                    
+
                 if (ex != null)
                 {
                     Console.WriteLine(ex.ToString());

@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected static StorageTree SetStorage(ITrieStore trieStore, byte i)
         {
             StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
-            for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256) j, new[] {(byte) j, i});
+            for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
             remoteStorageTree.Commit(0);
             return remoteStorageTree;
@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 var result = new byte[request.Count][];
 
                 int i = 0;
-                foreach (Keccak _ in request) result[i++] = new byte[] {1, 2, 3};
+                foreach (Keccak _ in request) result[i++] = new byte[] { 1, 2, 3 };
 
                 return Task.FromResult(result);
             };

@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Precompiles
                 return ModExpPrecompilePreEip2565.Instance.DataGasCost(inputData, releaseSpec);
 #pragma warning restore 618
             }
-            
+
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Precompiles
             gmp_lib.mpz_init(result);
             ulong memorySize = ulong.Parse(data.Length.ToString());
             using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
-            
+
             Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
             gmp_lib.mpz_import(result, ulong.Parse(data.Length.ToString()), 1, 1, 1, 0, memoryChunk);
 
@@ -131,19 +131,19 @@ namespace Nethermind.Evm.Precompiles
 
             byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
             using mpz_t baseInt = ImportDataToGmp(baseData);
-            
+
             byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
             using mpz_t expInt = ImportDataToGmp(expData);
 
             using mpz_t powmResult = new();
             gmp_lib.mpz_init(powmResult);
             gmp_lib.mpz_powm(powmResult, baseInt, expInt, modulusInt);
-            
-            
-            using void_ptr data = gmp_lib.allocate((size_t) modulusLength);
+
+
+            using void_ptr data = gmp_lib.allocate((size_t)modulusLength);
             ptr<size_t> countp = new(0);
             gmp_lib.mpz_export(data, countp, 1, 1, 1, 0, powmResult);
-            int count = (int) countp.Value;
+            int count = (int)countp.Value;
 
 
             byte[] result = new byte[modulusLength];
@@ -151,12 +151,12 @@ namespace Nethermind.Evm.Precompiles
 
             return (result, true);
         }
-        
+
         [Obsolete("This is a previous implementation using BigInteger instead of GMP")]
         public static (ReadOnlyMemory<byte>, bool) OldRun(byte[] inputData)
         {
             Metrics.ModExpPrecompile++;
-            
+
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
 
             BigInteger modulusInt = inputData

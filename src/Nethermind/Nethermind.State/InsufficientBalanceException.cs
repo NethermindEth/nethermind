@@ -21,7 +21,7 @@ namespace Nethermind.State
     public class InsufficientBalanceException : StateException
     {
         public InsufficientBalanceException(Address address)
-            :base($"insufficient funds for transfer: address {address}")
-        {}
+            : base($"insufficient funds for transfer: address {address}")
+        { }
     }
 }

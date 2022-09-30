@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool ShouldBeInBeaconHeaders()
         {
-            bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();
+            bool beaconPivotExists = _beaconPivot.BeaconPivotExists();
             bool notInBeaconModeControl = !_isInBeaconModeControl;
             bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
 
@@ -100,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +
                 $" BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}," +
+                $" LowestInsertedBeaconHeaderHash: {_blockTree.LowestInsertedBeaconHeader?.Hash}," +
                 $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
                 $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
                 $" ChainMerged: {chainMerged}," +
@@ -117,6 +118,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <param name="blockHeader"></param>
         /// <returns></returns>
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
+
+        public long? GetTargetBlockHeight()
+        {
+            if (_beaconPivot.BeaconPivotExists())
+            {
+                return _beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
+            }
+            return null;
+        }
     }
 
     public interface IMergeSyncController

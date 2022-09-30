@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ public class NodeRecordTests
     [Test]
     public void Get_value_or_obj_can_return_when_not_null()
     {
-        NodeRecord nodeRecord = new ();
+        NodeRecord nodeRecord = new();
         nodeRecord.SetEntry(new UdpEntry(12345));
         nodeRecord.SetEntry(new Secp256K1Entry(
             new CompressedPublicKey(new byte[33])));
@@ -37,19 +37,19 @@ public class NodeRecordTests
         nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1).Should().Be(
             new CompressedPublicKey(new byte[33]));
     }
-    
+
     [Test]
     public void Get_value_or_obj_can_handle_missing_values()
     {
-        NodeRecord nodeRecord = new ();
+        NodeRecord nodeRecord = new();
         nodeRecord.GetValue<int>(EnrContentKey.Udp).Should().BeNull();
         nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1).Should().BeNull();
     }
-    
+
     [Test]
     public void Cannot_get_enr_string_when_signature_missing()
     {
-        NodeRecord nodeRecord = new ();
+        NodeRecord nodeRecord = new();
         Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
     }
 
@@ -59,7 +59,7 @@ public class NodeRecordTests
         EnrContentEntry a = IdEntry.Instance;
         _ = a.GetHashCode();
     }
-    
+
     [Test]
     public void Enr_content_entry_has_to_string()
     {

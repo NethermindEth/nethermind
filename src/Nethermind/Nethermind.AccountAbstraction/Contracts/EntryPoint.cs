@@ -25,8 +25,8 @@ namespace Nethermind.AccountAbstraction.Contracts
 {
     public sealed class EntryPoint : CallableContract
     {
-        public EntryPoint(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) 
-            : base(transactionProcessor, abiEncoder, contractAddress?? throw new ArgumentNullException(nameof(contractAddress)))
+        public EntryPoint(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
+            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
         }
     }

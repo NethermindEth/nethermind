@@ -36,7 +36,7 @@ namespace Nethermind.Facade.Proxy
             {
                 return;
             }
-            
+
             UpdateUrls(urls.ToArray());
         }
 

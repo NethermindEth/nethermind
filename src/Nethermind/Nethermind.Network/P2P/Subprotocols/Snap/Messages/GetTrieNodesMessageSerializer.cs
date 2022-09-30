@@ -25,13 +25,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
-            (int contentLength, int allPathsLength, int[] pathsLengths)  = CalculateLengths(message);
+            (int contentLength, int allPathsLength, int[] pathsLengths) = CalculateLengths(message);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
-            NettyRlpStream stream = new (byteBuffer);
+            NettyRlpStream stream = new(byteBuffer);
 
             stream.StartSequence(contentLength);
-            
+
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
 
@@ -55,26 +55,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                     }
                 }
             }
-            
+
             stream.Encode(message.Bytes);
         }
 
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             GetTrieNodesMessage message = new();
-            NettyRlpStream stream = new (byteBuffer);
-            
+            NettyRlpStream stream = new(byteBuffer);
+
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
             message.Paths = stream.DecodeArray(DecodeGroup);
-            
+
             message.Bytes = stream.DecodeLong();
 
             return message;
         }
-        
+
         private PathGroup DecodeGroup(RlpStream stream)
         {
             PathGroup group = new PathGroup();
@@ -82,12 +82,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             return group;
         }
-        
+
         private (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.RootHash);
-            
+
             int allPathsLength = 0;
             int[] pathsLengths = new int[message.Paths.Length];
 

@@ -26,7 +26,7 @@ namespace Nethermind.Config
         {
             _provider.AddSource(new JsonConfigSource(jsonConfigFile));
         }
-        
+
         public T GetConfig<T>() where T : IConfig
         {
             return _provider.GetConfig<T>();

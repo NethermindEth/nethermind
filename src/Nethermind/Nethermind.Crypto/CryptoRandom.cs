@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Crypto
     {
         private readonly RandomNumberGenerator _secureRandom = RandomNumberGenerator.Create();
         private readonly Random _random = new();
-        
+
         public void GenerateRandomBytes(Span<byte> bytes)
         {
             _secureRandom.GetBytes(bytes);

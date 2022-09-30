@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ public class EvictionManager : IEvictionManager
 
     public void StartEvictionProcess(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
     {
-        if(_logger.IsTrace) _logger.Trace($"Starting eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
+        if (_logger.IsTrace) _logger.Trace($"Starting eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
 
         EvictionPair newPair = new(evictionCandidate, replacementCandidate);
         EvictionPair? pair = _evictionPairs.GetOrAdd(evictionCandidate.ManagedNode.IdHash, newPair);
@@ -43,10 +43,10 @@ public class EvictionManager : IEvictionManager
         {
             //existing eviction in process
             //TODO add queue for further evictions
-            if(_logger.IsTrace) _logger.Trace($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
+            if (_logger.IsTrace) _logger.Trace($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
             return;
         }
-            
+
         evictionCandidate.StartEvictionProcess();
         evictionCandidate.OnStateChanged += OnStateChange;
     }
@@ -71,7 +71,7 @@ public class EvictionManager : IEvictionManager
         if (state == NodeLifecycleState.Active)
         {
             //survived eviction
-            if(_logger.IsTrace) _logger.Trace($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
+            if (_logger.IsTrace) _logger.Trace($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
             evictionPair.ReplacementCandidate.LostEvictionProcess();
             CloseEvictionProcess(evictionCandidate);
         }
@@ -79,7 +79,7 @@ public class EvictionManager : IEvictionManager
         {
             //lost eviction, being replaced in nodeTable
             _nodeTable.ReplaceNode(evictionCandidate.ManagedNode, evictionPair.ReplacementCandidate.ManagedNode);
-            if(_logger.IsTrace) _logger.Trace($"Lost eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
+            if (_logger.IsTrace) _logger.Trace($"Lost eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
             CloseEvictionProcess(evictionCandidate);
         }
     }

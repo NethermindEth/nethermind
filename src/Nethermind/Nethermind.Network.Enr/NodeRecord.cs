@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -252,7 +252,7 @@ public class NodeRecord
             try
             {
                 string base64String = resultBuffer.ReadString(resultBuffer.ReadableBytes, Encoding.UTF8);
-                int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0; 
+                int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
                 return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
             }
             finally

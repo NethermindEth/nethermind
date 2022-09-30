@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _protocolsManager.P2PProtocolInitialized += Raise.EventWith(_protocolsManager, new ProtocolInitializedEventArgs(null));
             _capabilityConnector.CapabilityAdded.Should().BeTrue();
         }
-        
+
         [Test]
         public void init_should_not_add_capability_for_invalid_address()
         {
@@ -83,7 +83,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _protocolsManager.DidNotReceiveWithAnyArgs().AddSupportedCapability(_capability);
             _capabilityConnector.CapabilityAdded.Should().BeFalse();
         }
-        
+
         [Test]
         public void capability_should_be_added_when_consumer_address_is_changed_to_valid_one()
         {
@@ -94,13 +94,13 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _accountService.Received().GetAddress();
             _protocolsManager.DidNotReceiveWithAnyArgs().AddSupportedCapability(_capability);
             _capabilityConnector.CapabilityAdded.Should().BeFalse();
-            
+
             var newConsumerAddress = Address.FromNumber(2);
             _accountService.AddressChanged += Raise.EventWith(_accountService,
                 new AddressChangedEventArgs(_consumerAddress, newConsumerAddress));
             _capabilityConnector.CapabilityAdded.Should().BeTrue();
         }
-        
+
         [Test]
         public void capability_should_not_be_added_again_when_consumer_address_is_changed()
         {
@@ -113,11 +113,11 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _protocolsManager.P2PProtocolInitialized += Raise.EventWith(_protocolsManager, new ProtocolInitializedEventArgs(null));
             _capabilityConnector.CapabilityAdded.Should().BeTrue();
             _protocolsManager.ClearReceivedCalls();
-            
+
             var newConsumerAddress = Address.FromNumber(2);
             _accountService.AddressChanged += Raise.EventWith(_accountService,
                 new AddressChangedEventArgs(_consumerAddress, newConsumerAddress));
-            
+
             _protocolsManager.DidNotReceiveWithAnyArgs().AddSupportedCapability(_capability);
         }
 

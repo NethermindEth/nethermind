@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public DataAssetRuleForRpc()
         {
         }
-        
+
         public DataAssetRuleForRpc(DataAssetRule rule)
         {
             Value = rule.Value;

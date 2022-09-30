@@ -28,7 +28,7 @@ namespace Nethermind.Core.Resettables
         private readonly int _resetRatio;
 
         private IDictionary<TKey, TValue> _wrapped;
-        
+
         public ResettableDictionary(
             IEqualityComparer<TKey>? comparer,
             int startCapacity = Resettable.StartCapacity,

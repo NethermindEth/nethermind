@@ -88,7 +88,7 @@ namespace Nethermind.Network.StaticNodes
             }
             catch (JsonException)
             {
-                nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
+                nodes = data.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             }
 
             return nodes.Distinct().ToArray();
@@ -151,7 +151,7 @@ namespace Nethermind.Network.StaticNodes
         }
 
         public event EventHandler<NodeEventArgs>? NodeAdded;
-        
+
         public event EventHandler<NodeEventArgs>? NodeRemoved;
     }
 }

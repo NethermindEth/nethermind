@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
         public IEnumerable<ProviderSession> Sessions => Nodes.SelectMany(n => n.Sessions);
 
         public TestConsumerNode Node(int id) => Nodes.SingleOrDefault(n => n.Id == id);
-        
+
         public void AddReceipts(params DataDeliveryReceiptDetails[] receipts)
         {
             if (receipts is null)
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
             public TestConsumer Build() => _consumer;
 
             private static DataRequest CreateDataRequest(Keccak dataAssetId)
-                => new DataRequest(dataAssetId, 1000, 1000, 1, Array.Empty<byte>(), Address.Zero, Address.Zero, new Signature(1, 2 , 37));
+                => new DataRequest(dataAssetId, 1000, 1000, 1, Array.Empty<byte>(), Address.Zero, Address.Zero, new Signature(1, 2, 37));
 
             private static DataAsset CreateDataAsset()
                 => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1, DataAssetUnitType.Unit,
@@ -92,9 +92,9 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
                     "time test",
                     1,
                     DataAssetUnitType.Time,
-                    1, 
-                    10000, 
-                    new DataAssetRules(new DataAssetRule(1)), 
+                    1,
+                    10000,
+                    new DataAssetRules(new DataAssetRule(1)),
                     new DataAssetProvider(Address.Zero, "test"));
             }
         }
@@ -148,11 +148,11 @@ namespace Nethermind.DataMarketplace.Providers.Test.Consumers
                 Node = nodeBuilder;
                 And = builder;
             }
-            
+
             public SessionBuilder WithUnpaidUnits(uint unpaidUnits)
             {
                 _session.SetUnpaidUnits(unpaidUnits);
-                
+
                 return this;
             }
 

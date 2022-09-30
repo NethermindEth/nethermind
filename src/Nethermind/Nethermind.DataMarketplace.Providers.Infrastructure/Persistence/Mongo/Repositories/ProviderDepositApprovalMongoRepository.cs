@@ -8,7 +8,7 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.DataMarketplace.Providers.Queries;
 using Nethermind.DataMarketplace.Providers.Repositories;
 
-[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Providers.Infrastructure.Tests")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Providers.Infrastructure.Tests")]
 namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Mongo.Repositories
 {
     internal class ProviderDepositApprovalMongoRepository : IProviderDepositApprovalRepository
@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Mongo.
             {
                 return PagedResult<DepositApproval>.Empty;
             }
-            
+
             var depositApprovals = DepositApprovals.AsQueryable();
             if (!(query.DataAssetId is null))
             {

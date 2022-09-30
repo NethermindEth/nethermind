@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private Address _address = Address.Zero;
         private byte[] _data = Array.Empty<byte>();
-        private Keccak[] _topics = new [] {Keccak.Zero}; 
+        private Keccak[] _topics = new[] { Keccak.Zero };
 
         public LogEntryBuilder()
         {
@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test.Builders
         public LogEntryBuilder WithAddress(Address address)
         {
             _address = address;
-            
+
             return Build();
         }
 
@@ -47,14 +47,14 @@ namespace Nethermind.Core.Test.Builders
         public LogEntryBuilder WithTopics(params Keccak[] topics)
         {
             _topics = topics;
-            
+
             return Build();
         }
 
         private LogEntryBuilder Build()
         {
             TestObjectInternal = new LogEntry(_address, _data, _topics);
-            
+
             return this;
         }
     }

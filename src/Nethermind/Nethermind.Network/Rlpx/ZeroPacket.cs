@@ -27,7 +27,7 @@ namespace Nethermind.Network.Rlpx
             Protocol = packet.Protocol;
             PacketType = (byte)packet.PacketType;
         }
-        
+
         public string Protocol { get; set; }
         public byte PacketType { get; set; }
 

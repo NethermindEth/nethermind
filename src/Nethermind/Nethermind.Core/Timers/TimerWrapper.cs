@@ -35,13 +35,13 @@ namespace Nethermind.Core.Timers
             get => _timer.AutoReset;
             set => _timer.AutoReset = value;
         }
-        
+
         public bool Enabled
         {
             get => _timer.Enabled;
             set => _timer.Enabled = value;
         }
-        
+
         public TimeSpan Interval
         {
             get => TimeSpan.FromMilliseconds(_timer.Interval);

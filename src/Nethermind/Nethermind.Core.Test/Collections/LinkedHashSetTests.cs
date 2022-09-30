@@ -26,9 +26,9 @@ namespace Nethermind.Core.Test.Collections
 {
     public class LinkedHashSetTests
     {
-        private static readonly int[] _defaultSet = new[] {1, 2, 3};
+        private static readonly int[] _defaultSet = new[] { 1, 2, 3 };
         private static readonly int _unknownElement = 100;
-        private readonly int[] _testSet = new[] {2, _unknownElement};
+        private readonly int[] _testSet = new[] { 2, _unknownElement };
 
         [Test]
         public void new_is_empty()
@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
             linkedHashSet.Count.Should().Be(0);
         }
-        
+
         [Test]
         public void initializes_from_enumerable()
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.Should().BeEquivalentTo(_defaultSet);
             linkedHashSet.Count.Should().Be(_defaultSet.Length);
         }
-        
+
         [Test]
         public void initializes_with_capacity()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
             linkedHashSet.Count.Should().Be(0);
         }
-        
+
         [Test]
         public void can_copy()
         {
@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.CopyTo(array, 1);
             array.Skip(1).Should().BeEquivalentTo(_defaultSet);
         }
-        
+
         [Test]
         public void contains_added_elements()
         {
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test.Collections
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             linkedHashSet.Contains(_unknownElement).Should().BeFalse();
         }
-        
+
         [Test]
         public void removes_elements([Values(false, true)] bool reverse)
         {
@@ -113,10 +113,10 @@ namespace Nethermind.Core.Test.Collections
                 linkedHashSet.Remove(i).Should().BeTrue();
                 linkedHashSet.Count.Should().Be(--expectedCount);
             }
-            
+
             linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
         }
-        
+
         [Test]
         public void not_removes_unknown_elements()
         {
@@ -125,26 +125,26 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.Should().BeEquivalentTo(_defaultSet);
             linkedHashSet.Count.Should().Be(_defaultSet.Length);
         }
-        
-        
+
+
         [Test]
         public void except_with()
         {
             ChangeSetTest(_defaultSet.Except(_testSet), s => s.ExceptWith(_testSet));
         }
-        
+
         [Test]
         public void intersect_with()
         {
             ChangeSetTest(_defaultSet.Intersect(_testSet), s => s.IntersectWith(_testSet));
         }
-        
+
         [Test]
         public void symmetric_except_with()
         {
             ChangeSetTest(_defaultSet.Concat(_testSet).Except(_defaultSet.Intersect(_testSet)), s => s.SymmetricExceptWith(_testSet));
         }
-        
+
         [Test]
         public void union_with()
         {
@@ -159,60 +159,60 @@ namespace Nethermind.Core.Test.Collections
             linkedHashSet.Count.Should().Be(expected.Count());
             linkedHashSet.Should().BeEquivalentTo(expected);
         }
-        
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = true)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = false)]
-        [TestCase(new[] {1, 2}, ExpectedResult = false)]
+
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = false)]
         public bool set_equals(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             return linkedHashSet.SetEquals(set);
         }
-        
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = true)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = true)]
-        [TestCase(new[] {1, 2}, ExpectedResult = true)]
-        [TestCase(new[] {4}, ExpectedResult = false)]
+
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = true)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = true)]
+        [TestCase(new[] { 4 }, ExpectedResult = false)]
         public bool overlaps(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             return linkedHashSet.Overlaps(set);
         }
 
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = true)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = false)]
-        [TestCase(new[] {1, 2}, ExpectedResult = false)]
-        [TestCase(new[] {5, 4, 3, 2, 1}, ExpectedResult = true)]
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = false)]
+        [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = true)]
         public bool is_subset_of(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             return linkedHashSet.IsSubsetOf(set);
         }
-        
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = true)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = false)]
-        [TestCase(new[] {1, 2}, ExpectedResult = true)]
-        [TestCase(new[] {5, 4, 3, 2, 1}, ExpectedResult = false)]
+
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = true)]
+        [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = false)]
         public bool is_superset_of(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             return linkedHashSet.IsSupersetOf(set);
         }
-        
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = false)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = false)]
-        [TestCase(new[] {1, 2}, ExpectedResult = false)]
-        [TestCase(new[] {5, 4, 3, 2, 1}, ExpectedResult = true)]
+
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = false)]
+        [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = true)]
         public bool is_proper_subset_of(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             return linkedHashSet.IsProperSubsetOf(set);
         }
-        
-        [TestCase(new[] {1, 2, 3}, ExpectedResult = false)]
-        [TestCase(new[] {1, 3, 4}, ExpectedResult = false)]
-        [TestCase(new[] {1, 2}, ExpectedResult = true)]
-        [TestCase(new[] {5, 4, 3, 2, 1}, ExpectedResult = false)]
+
+        [TestCase(new[] { 1, 2, 3 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 3, 4 }, ExpectedResult = false)]
+        [TestCase(new[] { 1, 2 }, ExpectedResult = true)]
+        [TestCase(new[] { 5, 4, 3, 2, 1 }, ExpectedResult = false)]
         public bool is_proper_superset_of(IEnumerable<int> set)
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);

@@ -46,7 +46,7 @@ namespace Nethermind.Mev.Execution
             _specProvider = specProvider;
             _signer = signer;
         }
-            
+
         public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
@@ -61,13 +61,13 @@ namespace Nethermind.Mev.Execution
         private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
         {
             BlockHeader header = new(
-                parent.Hash ?? Keccak.OfAnEmptySequenceRlp, 
-                Keccak.OfAnEmptySequenceRlp, 
-                Beneficiary, 
-                parent.Difficulty,  
-                bundle.BlockNumber, 
-                GetGasLimit(parent), 
-                timestamp ?? parent.Timestamp, 
+                parent.Hash ?? Keccak.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
+                Beneficiary,
+                parent.Difficulty,
+                bundle.BlockNumber,
+                GetGasLimit(parent),
+                timestamp ?? parent.Timestamp,
                 Bytes.Empty)
             {
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
@@ -85,9 +85,9 @@ namespace Nethermind.Mev.Execution
 
         protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
-        protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
+        protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
             ResultWrapper<TResult>.Fail(result.Error ?? string.Empty, ErrorCodes.InvalidInput);
-            
+
 
     }
 }

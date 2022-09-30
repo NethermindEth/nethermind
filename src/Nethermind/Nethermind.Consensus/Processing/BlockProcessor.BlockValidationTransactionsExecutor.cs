@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,8 +43,8 @@ namespace Nethermind.Consensus.Processing
                 _stateProvider = stateProvider;
             }
 
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
-        
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
-        
+
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);

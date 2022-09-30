@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,12 +25,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
     internal class DataContract<T> : IDataContract<T>
     {
         public delegate bool TryGetChangesFromBlockDelegate(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items);
-        
+
         private readonly Func<BlockHeader, IEnumerable<T>> _getAll;
         private readonly TryGetChangesFromBlockDelegate _tryGetChangesFromBlock;
 
         public DataContract(
-            Func<BlockHeader, IEnumerable<T>> getAll, 
+            Func<BlockHeader, IEnumerable<T>> getAll,
             TryGetChangesFromBlockDelegate tryGetChangesFromBlock)
         {
             IncrementalChanges = false;
@@ -40,13 +40,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public DataContract(
             Func<BlockHeader, IEnumerable<T>> getAll,
-            Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock) 
+            Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock)
             : this(getAll, GetTryGetChangesFromBlock(getChangesFromBlock))
         {
             IncrementalChanges = true;
         }
 
-        private static TryGetChangesFromBlockDelegate GetTryGetChangesFromBlock(Func<BlockHeader,TxReceipt[],IEnumerable<T>> getChangesFromBlock)
+        private static TryGetChangesFromBlockDelegate GetTryGetChangesFromBlock(Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock)
         {
             return (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
             {

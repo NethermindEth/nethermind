@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,10 +21,10 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
-// Decompiled with JetBrains decompiler
-// Type: NLog.Internal.StackTraceUsageUtils
-// Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
-// MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
+    // Decompiled with JetBrains decompiler
+    // Type: NLog.Internal.StackTraceUsageUtils
+    // Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
+    // MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
     /// <summary>
     /// Utilities for dealing with <see cref="T:NLog.Config.StackTraceUsage" /> values.
     /// Copied from NLog internals to skip one more class

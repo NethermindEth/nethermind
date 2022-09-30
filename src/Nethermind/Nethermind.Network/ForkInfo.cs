@@ -24,7 +24,7 @@ namespace Nethermind.Network
     public static class ForkInfo
     {
         private const long ImpossibleBlockNumberWithSpaceForImpossibleForks = long.MaxValue - 100;
-        
+
         public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
             uint crc = 0;
@@ -38,7 +38,7 @@ namespace Nethermind.Network
                     break;
                 }
 
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong) transitionBlocks[i]);
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i]);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
             }
 
@@ -57,7 +57,7 @@ namespace Nethermind.Network
                 {
                     continue;
                 }
-                
+
                 long transition = specProvider.TransitionBlocks[i];
                 if (transition > headNumber)
                 {

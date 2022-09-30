@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
-        
+
         public HashSet<Address> Accounts { get; } = new();
 
         public HashSet<StorageCell> Storages { get; } = new();
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
@@ -123,7 +123,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             // and so we do not need to add account to Accounts
             Storages.Add(storageCell);
         }
-        
+
         public void ReportStorageRead(StorageCell storageCell)
         {
             // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         }
 
         private bool _wasSystemAccountAccessedOnceAlready;
-        
+
         public void ReportAccountRead(Address address)
         {
             if (_treatSystemAccountDifferently && !_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)

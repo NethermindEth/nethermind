@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,17 +52,17 @@ namespace Nethermind.AuRa.Test.Transactions
             _certifierContract = Substitute.For<ICertifierContract>();
             _notCertifiedFilter = Substitute.For<ITxFilter>();
             _specProvider = Substitute.For<ISpecProvider>();
-            
+
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns(AcceptTxResult.Invalid);
-            
-            _certifierContract.Certified(Arg.Any<BlockHeader>(), 
+
+            _certifierContract.Certified(Arg.Any<BlockHeader>(),
                 Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
                 .Returns(true);
-            
+
             _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
         }
-        
+
         [Test]
         public void should_allow_addresses_from_contract()
         {
@@ -71,19 +71,19 @@ namespace Nethermind.AuRa.Test.Transactions
             ShouldAllowAddress(TestItem.Addresses.Skip(1).First());
             ShouldAllowAddress(TestItem.Addresses.Skip(2).First());
         }
-        
+
         [Test]
         public void should_not_allow_addresses_from_outside_contract()
         {
             ShouldAllowAddress(TestItem.AddressA, expected: false);
         }
-        
+
         [Test]
         public void should_not_allow_null_sender()
         {
             ShouldAllowAddress(null, expected: false);
         }
-        
+
         [Test]
         public void should_not_allow_addresses_on_contract_error()
         {
@@ -91,17 +91,17 @@ namespace Nethermind.AuRa.Test.Transactions
             _certifierContract.Certified(Arg.Any<BlockHeader>(), address).Throws(new AbiException(string.Empty));
             ShouldAllowAddress(address, expected: false);
         }
-        
+
         [TestCase(false)]
         [TestCase(true)]
         public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
         {
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
-            
+
             ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
         }
-        
+
         private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true)
         {
             _filter.IsAllowed(
@@ -116,7 +116,7 @@ namespace Nethermind.AuRa.Test.Transactions
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, TestItem.AddressA).Should().BeFalse();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")).Should().BeTrue();
         }
-        
+
         [Test]
         public async Task registry_contract_returns_correct_address()
         {
@@ -124,14 +124,14 @@ namespace Nethermind.AuRa.Test.Transactions
             chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address address).Should().BeTrue();
             address.Should().Be(new Address("0x5000000000000000000000000000000000000001"));
         }
-        
+
         [Test]
         public async Task registry_contract_returns_not_found_when_key_doesnt_exist()
         {
             using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, "not existing key", out Address _).Should().BeFalse();
         }
-        
+
         [Test]
         public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
         {
@@ -139,13 +139,13 @@ namespace Nethermind.AuRa.Test.Transactions
             RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
             contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
         }
-        
+
         public class TestTxPermissionsBlockchain : TestContractBlockchain
         {
             public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
             public RegisterContract RegisterContract { get; private set; }
             public CertifierContract CertifierContract { get; private set; }
-            
+
             protected override BlockProcessor CreateBlockProcessor()
             {
                 AbiEncoder abiEncoder = AbiEncoder.Instance;
@@ -156,10 +156,10 @@ namespace Nethermind.AuRa.Test.Transactions
                     LimboLogs.Instance);
                 RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
                 CertifierContract = new CertifierContract(
-                    abiEncoder, 
+                    abiEncoder,
                     RegisterContract,
                     ReadOnlyTransactionProcessorSource);
-                
+
                 return new AuRaBlockProcessor(
                     SpecProvider,
                     Always.Valid,

@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
         {
             UInt256 balanceOnNewBlock = _stateProvider.GetBalance(_accountAddress);
 
-            if(balanceOnNewBlock == _balance)
+            if (balanceOnNewBlock == _balance)
             {
                 return;
             }
@@ -50,12 +50,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             _balance = balanceOnNewBlock;
             await _webSocketsModule.SendAsync(new SocketsMessage("update-balance", "", _balance));
         }
-            
+
         private async void UpdateColdWalletBalance(object? sender, BlockProcessedEventArgs? args)
         {
             UInt256 balanceOnNewBlock = _stateProvider.GetBalance(_coldWalletAddress);
 
-            if(balanceOnNewBlock == _coldBalance)
+            if (balanceOnNewBlock == _coldBalance)
             {
                 return;
             }
@@ -66,9 +66,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
 
         private async void UpdateAccountNonce(object? sender, BlockProcessedEventArgs? args)
         {
-            UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_accountAddress); 
+            UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_accountAddress);
 
-            if(nonceOnNewBlock == _nonce)
+            if (nonceOnNewBlock == _nonce)
             {
                 return;
             }
@@ -79,9 +79,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
 
         private async void UpdateColdWalletNonce(object? sender, BlockProcessedEventArgs? args)
         {
-            UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_coldWalletAddress); 
+            UInt256 nonceOnNewBlock = _stateProvider.GetNonce(_coldWalletAddress);
 
-            if(nonceOnNewBlock == _coldNonce)
+            if (nonceOnNewBlock == _coldNonce)
             {
                 return;
             }

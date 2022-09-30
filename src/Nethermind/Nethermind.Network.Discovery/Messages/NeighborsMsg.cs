@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,16 +28,16 @@ public class NeighborsMsg : DiscoveryMsg
     {
         Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
     }
-    
+
     public NeighborsMsg(PublicKey farPublicKey, long expirationTime, Node[] nodes) : base(farPublicKey, expirationTime)
     {
         Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
     }
-    
+
     public override string ToString()
     {
         return base.ToString() + $", Nodes: {(Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
     }
-        
+
     public override MsgType MsgType => MsgType.Neighbors;
 }

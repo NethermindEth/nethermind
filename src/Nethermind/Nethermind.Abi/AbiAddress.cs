@@ -42,19 +42,19 @@ namespace Nethermind.Abi
                 switch (arg)
                 {
                     case Address input:
-                    {
-                        byte[] bytes = input.Bytes;
-                        return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
-                    }
+                        {
+                            byte[] bytes = input.Bytes;
+                            return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
+                        }
                     case string stringInput:
-                    {
-                        arg = new Address(stringInput);
-                        continue;
-                    }
+                        {
+                            arg = new Address(stringInput);
+                            continue;
+                        }
                     default:
-                    {
-                        throw new AbiException(AbiEncodingExceptionMessage);
-                    }
+                        {
+                            throw new AbiException(AbiEncodingExceptionMessage);
+                        }
                 }
             }
         }

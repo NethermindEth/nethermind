@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.FullPruning;
 public class ManualPruningTrigger : IPruningTrigger
 {
     public event EventHandler<PruningTriggerEventArgs>? Prune;
-        
+
     /// <summary>
     /// Triggers full pruning.
     /// </summary>

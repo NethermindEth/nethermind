@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -63,11 +63,11 @@ namespace Nethermind.Init.Steps
                 {
                     _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
                 }
-                
+
                 await _autoResetEvent.WaitOneAsync(cancellationToken);
-                
+
                 if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
-                
+
                 changedAnything = false;
                 foreach (StepInfo stepInfo in _allSteps)
                 {
@@ -120,7 +120,7 @@ namespace Nethermind.Init.Steps
             foreach (StepInfo stepInfo in _allSteps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                
+
                 if (stepInfo.Stage != StepInitializationStage.WaitingForExecution)
                 {
                     continue;
@@ -135,40 +135,13 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
                 stepInfo.Stage = StepInitializationStage.Executing;
-                Task task = step.Execute(cancellationToken);
                 startedThisRound++;
-                Task continuationTask = task.ContinueWith(t =>
-                {
-                    stopwatch.Stop();
-
-                    if (t.IsFaulted && step.MustInitialize)
-                    {
-                        if (_logger.IsError) _logger.Error(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
-                            t.Exception);
-                    }
-                    else if(t.IsFaulted)
-                    {
-                        if (_logger.IsWarn) _logger.Warn(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug(
-                            $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
-                    }
-                    
-                    stepInfo.Stage = StepInitializationStage.Complete;
-                    _autoResetEvent.Set();
-
-                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
-                });
+                Task task = ExecuteStep(step, stepInfo, cancellationToken);
 
                 if (step.MustInitialize)
                 {
-                    _allPending.Enqueue(continuationTask);
+                    _allPending.Enqueue(task);
                 }
                 else
                 {
@@ -183,6 +156,46 @@ namespace Nethermind.Init.Steps
                 {
                     if (_logger.IsWarn) _logger.Warn($"Didn't start any initialization steps during initialization round and all previous steps are already completed.");
                 }
+            }
+        }
+
+        private async Task ExecuteStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            try
+            {
+                await step.Execute(cancellationToken);
+
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+            }
+            catch (Exception exception)
+            {
+                if (step.MustInitialize)
+                {
+                    if (_logger.IsError)
+                        _logger.Error(
+                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
+                            exception);
+
+                    throw;
+                }
+
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms {exception}");
+                }
+            }
+            finally
+            {
+                stopwatch.Stop();
+
+                stepInfo.Stage = StepInitializationStage.Complete;
+                _autoResetEvent.Set();
+
+                if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
             }
         }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,17 +54,17 @@ namespace Nethermind.Specs.Test
             var specProvider = new CustomSpecProvider(
                 (0L, Frontier.Instance),
                 (daoBlockNumber, Dao.Instance));
-            
+
             Assert.AreEqual(daoBlockNumber, specProvider.DaoBlockNumber);
         }
-        
+
         [Test]
         public void If_no_dao_then_no_dao_block_number()
         {
             var specProvider = new CustomSpecProvider(
                 (0L, Frontier.Instance),
                 (1L, Homestead.Instance));
-            
+
             Assert.IsNull(specProvider.DaoBlockNumber);
         }
 

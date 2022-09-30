@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,13 +43,13 @@ namespace Nethermind.JsonRpc.Modules.Personal
             _keyStore = keyStore;
         }
 
-         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-         public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
-         {
-             PrivateKey privateKey = new(keyData);
-             _keyStore.StoreKey(privateKey, passphrase.Secure());
-             return ResultWrapper<Address>.Success(privateKey.Address);
-         }
+        [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
+        public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
+        {
+            PrivateKey privateKey = new(keyData);
+            _keyStore.StoreKey(privateKey, passphrase.Secure());
+            return ResultWrapper<Address>.Success(privateKey.Address);
+        }
 
         public ResultWrapper<Address[]> personal_listAccounts()
         {
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             var notSecuredHere = passphrase.Secure();
             return ResultWrapper<Address>.Success(_wallet.NewAccount(notSecuredHere));
         }
-        
+
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
         {
@@ -106,11 +106,11 @@ namespace Nethermind.JsonRpc.Modules.Personal
             {
                 if (passphrase != null)
                 {
-                    var notSecuredHere = passphrase.Secure();                    
+                    var notSecuredHere = passphrase.Secure();
                     _wallet.UnlockAccount(address, notSecuredHere);
                 }
             }
-            
+
             message = ToEthSignedMessage(message);
             return ResultWrapper<byte[]>.Success(_wallet.Sign(Keccak.Compute(message), address).Bytes);
         }

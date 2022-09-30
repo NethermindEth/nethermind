@@ -41,23 +41,23 @@ namespace Nethermind.Blockchain.Test.Producers
             block.Should().Be(context.DefaultBlock);
             context.TriggeredCount.Should().Be(1);
         }
-        
+
         [Test]
         public async Task should_trigger_block_production_when_queue_empties()
         {
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
             Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock();
-            
+
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
-            
+
             context.BlockProcessingQueue.IsEmpty.Returns(true);
             Block block = await buildTask;
             block.Should().Be(context.DefaultBlock);
             context.TriggeredCount.Should().Be(1);
         }
-        
+
         [Test]
         public async Task should_cancel_triggering_block_production()
         {
@@ -65,12 +65,12 @@ namespace Nethermind.Blockchain.Test.Producers
             context.BlockProcessingQueue.IsEmpty.Returns(false);
             using CancellationTokenSource cancellationTokenSource = new();
             Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellationTokenSource.Token);
-            
+
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
 
             cancellationTokenSource.Cancel();
-            
+
             Func<Task> f = async () => { await buildTask; };
             await f.Should().ThrowAsync<OperationCanceledException>();
         }

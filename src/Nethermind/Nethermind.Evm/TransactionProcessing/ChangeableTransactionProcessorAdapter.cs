@@ -30,7 +30,7 @@ namespace Nethermind.Evm.TransactionProcessing
             CurrentAdapter = adapter;
         }
 
-        public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) 
+        public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
             : this(new ExecuteTransactionProcessorAdapter(transactionProcessor))
         {
             TransactionProcessor = transactionProcessor;

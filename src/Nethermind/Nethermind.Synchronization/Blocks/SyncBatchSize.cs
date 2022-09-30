@@ -24,24 +24,24 @@ namespace Nethermind.Synchronization.Blocks
     public struct SyncBatchSize
     {
         private ILogger _logger;
-        
+
         public const int Max = 512;
         public const int Min = 2;
 
         public int Current { get; private set; }
 
         public bool IsMin => Current == Min;
-        
+
         public bool IsMax => Current == Max;
 
         public SyncBatchSize(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             /* headers batch could start at max as headers are predictable in size, unlike blocks */
             Current = Max / 2;
         }
-        
+
         public void Expand()
         {
             if (Current == Max)

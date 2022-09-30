@@ -442,8 +442,8 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
             }
-            
-            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port);
+
+            Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             if (manager != null)
             {

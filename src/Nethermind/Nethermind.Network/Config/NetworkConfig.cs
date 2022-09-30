@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Network.Config
         public string? StaticPeers { get; set; }
         public bool OnlyStaticPeers { get; set; }
         public bool IsPeersPersistenceOn { get; set; } = true;
-        
+
         [Obsolete]
         public int ActivePeersMaxCount { get => MaxActivePeers; set => MaxActivePeers = value; }
         public int MaxActivePeers { get; set; } = 50;

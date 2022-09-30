@@ -31,13 +31,13 @@ namespace Nethermind.Network.IP
             _config = config;
             _logger = logManager.GetClassLogger<NetworkConfigExternalIPSource>();
         }
-        
+
         public Task<(bool, IPAddress)> TryGetIP()
         {
             if (_config.ExternalIp != null)
             {
                 bool result = IPAddress.TryParse(_config.ExternalIp, out IPAddress ipAddress);
-                
+
                 if (result)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_config.ExternalIp}");
@@ -49,7 +49,7 @@ namespace Nethermind.Network.IP
 
                 return Task.FromResult((result, ipAddress));
             }
-            
+
             return Task.FromResult((false, (IPAddress)null));
         }
     }

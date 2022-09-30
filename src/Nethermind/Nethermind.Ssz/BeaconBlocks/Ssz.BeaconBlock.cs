@@ -52,22 +52,22 @@ namespace Nethermind.Ssz
             var stateRoot = DecodeRoot(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
             var body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
-            
+
             BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body);
             return beaconBlock;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BeaconBlock container, ref int offset)
         {
             // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
-            
+
             // Static
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
             Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
-            
+
             // Variable
             Encode(span, container.Body, ref offset);
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -78,17 +78,17 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
             Console.Write($"Provide nonce for {depositGroup.Key}: ");
             int nonce = int.Parse(Console.ReadLine());
             Console.Write($"Provide address to send the refund to: ");
-            string hexAddress = Console.ReadLine();            
+            string hexAddress = Console.ReadLine();
             Address refundTo = new Address(hexAddress);
-            ConsoleUtils consoleUtils= new ConsoleUtils(new ConsoleWrapper());
-            
+            ConsoleUtils consoleUtils = new ConsoleUtils(new ConsoleWrapper());
+
             SecureString securedPassword = consoleUtils.ReadSecret("Provide password: ");
 
             Console.WriteLine();
 
             bool unlockSuccessful = wallet.UnlockAccount(depositGroup.Key, securedPassword);
             securedPassword.Dispose();
-            
+
             if (unlockSuccessful)
             {
                 Console.WriteLine("Password has been accepted.");
@@ -111,9 +111,9 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                     transaction.SenderAddress = depositDetails.Consumer;
                     transaction.GasLimit = 100000;
                     transaction.GasPrice = gasPrice;
-                    transaction.Nonce = (UInt256) nonce++;
+                    transaction.Nonce = (UInt256)nonce++;
                     wallet.Sign(transaction, ChainId.Mainnet);
-                    
+
                     EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
                     Address recoveredAddress = ecdsa.RecoverAddress(transaction);
                     if (recoveredAddress != transaction.SenderAddress)
@@ -121,13 +121,13 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                         Console.WriteLine("Signature failure");
                         return new Transaction[0];
                     }
-                    
+
                     transactions.Add(transaction);
                 }
 
                 return transactions.ToArray();
             }
-            
+
             Console.WriteLine("Incorrect password.");
             return new Transaction[0];
         }

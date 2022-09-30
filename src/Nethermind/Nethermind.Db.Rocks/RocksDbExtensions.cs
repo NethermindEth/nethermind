@@ -55,6 +55,6 @@ internal static class RocksDbExtensions
 
         var span = new Span<byte>((void*)result, (int)valueLength);
 
-        return span; 
+        return span;
     }
 }

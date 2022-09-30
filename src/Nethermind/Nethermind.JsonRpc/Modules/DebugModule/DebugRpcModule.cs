@@ -37,13 +37,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly ILogger _logger;
         private readonly TimeSpan _traceTimeout;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-         
+
         public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig)
         {
             _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _logger = logManager.GetClassLogger();
-            _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout); 
+            _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
         public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.ResourceNotFound)
                 : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
         }
-        
+
         public ResultWrapper<int> debug_deleteChainSlice(in long startNumber)
         {
             return ResultWrapper<int>.Success(_debugBridge.DeleteChainSlice(startNumber));
@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             Transaction tx = call.ToTransaction();
             using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-            
+
             GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
             if (transactionTrace == null)
             {
@@ -135,9 +135,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
             }
 
-            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
-        
+
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
         {
             using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
@@ -149,10 +149,10 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
             }
 
-            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) => 
+        public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) =>
             ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
 
         public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
@@ -223,20 +223,20 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             byte[] rlp = _debugBridge.GetBlockRlp(blockNumber);
             if (rlp == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
+                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);
             }
-            
+
             return ResultWrapper<byte[]>.Success(rlp);
         }
-        
+
         public ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash)
         {
             byte[] rlp = _debugBridge.GetBlockRlp(hash);
             if (rlp == null)
             {
-                return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);    
+                return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);
             }
-            
+
             return ResultWrapper<byte[]>.Success(rlp);
         }
 
@@ -266,7 +266,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             var configValue = _debugBridge.GetConfigValue(category, name);
             return ResultWrapper<object>.Success(configValue);
         }
-        
+
         public ResultWrapper<bool> debug_resetHead(Keccak blockHash)
         {
             _debugBridge.UpdateHeadBlock(blockHash);

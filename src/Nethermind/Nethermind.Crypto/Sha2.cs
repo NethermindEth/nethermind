@@ -32,7 +32,7 @@ namespace Nethermind.Crypto
         {
             return Compute(input).ToHexString(false);
         }
-        
+
         public static string ComputeString(string input)
         {
             return ComputeString(System.Text.Encoding.UTF8.GetBytes(input));

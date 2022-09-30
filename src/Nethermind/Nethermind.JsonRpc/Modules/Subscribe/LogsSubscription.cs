@@ -66,16 +66,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     BlockParameter.Latest);
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
-            
+
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
-            if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
+            if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
             TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
         }
-        
+
         private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed)
         {
             ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _receiptCanonicalityMonitor.ReceiptsInserted -= OnReceiptsInserted;
             base.Dispose();
-            if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
+            if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
         }
     }
 }

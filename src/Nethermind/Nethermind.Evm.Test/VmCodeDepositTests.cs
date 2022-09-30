@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
             base.Setup();
             _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
         }
-        
+
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]
         public void Regression_mainnet_6108276()
         {
@@ -72,13 +72,13 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
+            Assert.AreEqual(new byte[] { 0 }, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
-            
+
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.AreEqual(new byte[1], returnData, "address returned");
         }
-        
+
         [Test(Description = "Deposit OutOfGas before EIP-2")]
         public void Regression_mainnet_226522()
         {
@@ -113,9 +113,9 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
+            Assert.AreEqual(new byte[] { 0 }, result, "storage reverted");
             Assert.AreEqual(83199, receipt.GasSpent, "with refund");
-            
+
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.AreEqual(deployed.Bytes, returnData, "address returned");
         }

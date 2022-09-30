@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,14 +36,14 @@ namespace Nethermind.Blockchain.Test.Consensus
             ITxSource txSource = Substitute.For<ITxSource>();
             CompositeTxSource selector = new(txSource);
             _ = selector.ToString();
-        } 
-        
+        }
+
         [Test]
         public void Throws_on_null_argument()
         {
             Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null));
-        } 
-        
+        }
+
         [Test]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
         {
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Consensus
                     {
                         var transaction = Build.A.GeneratedTransaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
                         txs.Add(transaction);
-                        return new[] {transaction};
+                        return new[] { transaction };
                     }
                     else
                     {
@@ -65,26 +65,26 @@ namespace Nethermind.Blockchain.Test.Consensus
                 });
                 return immediateTransactionSource;
             }
-            
+
             var parentHeader = Build.A.BlockHeader.TestObject;
             var gasLimit = 1000;
             List<Transaction> expected = new();
-            
+
             var innerPendingTxSelector = Substitute.For<ITxSource>();
-            
+
             var immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressB, expected, true);
             var immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressC, expected, false);
             var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressD, expected, true);
-            
+
             var originalTxs = Build.A.Transaction.TestObjectNTimes(5);
             innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>()).Returns(originalTxs);
 
             var compositeTxSource = new CompositeTxSource(
                 immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
-            
+
             var transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
             expected.AddRange(originalTxs);
-            
+
             transactions.Should().BeEquivalentTo(expected);
         }
     }

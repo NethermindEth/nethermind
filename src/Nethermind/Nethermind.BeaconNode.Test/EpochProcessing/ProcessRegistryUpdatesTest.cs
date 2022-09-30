@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,10 +50,10 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             {
                 TestState.NextEpoch(testServiceProvider, state);
             }
-            
+
             // eligibility must be finalized
             Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch + new Epoch(2), Root.Zero));
 
             // Act
             RunProcessRegistryUpdates(testServiceProvider, state);
@@ -61,7 +61,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             // Assert
             Validator validator = state.Validators[index];
             validator.ActivationEligibilityEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
-            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch); 
+            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
             bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch + timeParameters.MaximumSeedLookahead + Epoch.One);
             isActive.ShouldBeTrue();
         }
@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             }
 
             // eligibility must be finalized
-            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch + new Epoch(2), Root.Zero));
 
             // give the last priority over the others
             state.Validators[mockActivations - 1].SetEligible(currentEpoch);

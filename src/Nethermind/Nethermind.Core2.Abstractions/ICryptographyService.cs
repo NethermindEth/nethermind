@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.Core2
         {
             return depositData.Root ?? (depositData.Root = HashTreeRoot(depositData.Item));
         }
-        
+
         Root HashTreeRoot(DepositMessage depositMessage);
         Root HashTreeRoot(List<Ref<DepositData>> depositData);
         Root HashTreeRoot(List<DepositData> depositData);

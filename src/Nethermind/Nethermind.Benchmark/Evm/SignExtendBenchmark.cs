@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,9 +43,9 @@ namespace Nethermind.Benchmarks.Evm
             120, 21, 123, 12, 76, 121, 1, 12, 23, 8,
             55, 255
         };
-        
+
         private byte[] c = new byte[32];
-        
+
         [Benchmark(Baseline = true)]
         public void Current()
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Benchmarks.Evm
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         };
-        
+
         private readonly byte[] BytesMax32 =
         {
             255, 255, 255, 255, 255, 255, 255, 255,
@@ -77,7 +77,7 @@ namespace Nethermind.Benchmarks.Evm
             255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255
         };
-        
+
         [Benchmark]
         public void Improved()
         {
@@ -93,10 +93,10 @@ namespace Nethermind.Benchmarks.Evm
             {
                 BytesMax32.AsSpan().Slice(0, position).CopyTo(localB.Slice(0, position));
             }
-            
+
             localB.CopyTo(c);
         }
-        
+
         [Benchmark]
         public void Improved2()
         {
@@ -106,7 +106,7 @@ namespace Nethermind.Benchmarks.Evm
 
             Span<byte> signBytes = sign < 0 ? BytesZero32.AsSpan() : BytesMax32.AsSpan();
             signBytes.Slice(0, position).CopyTo(b.Slice(0, position));
-            
+
             localB.CopyTo(c);
         }
     }

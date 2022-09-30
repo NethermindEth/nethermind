@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Network
             {
                 return zeroMessageSerializer.Deserialize(buffer);
             }
-            
+
             // 3% allocation of a sample run of Goerli 3 million blocks fast sync on buffer.ReadAllBytes
             // this can be improved by adding ZeroMessageSerializer for a new message type
             return Deserialize<T>(buffer.ReadAllBytes());
@@ -99,7 +99,7 @@ namespace Nethermind.Network
         {
             _serializers[typeof(T).TypeHandle] = messageSerializer;
         }
-        
+
         public void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase
         {
             _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
@@ -137,8 +137,8 @@ namespace Nethermind.Network
         }
         public byte[] Serialize<T>(T messageBase) where T : MessageBase
         {
-            return TryGetSerializer(out IMessageSerializer<T> messageSerializer) 
-                ? messageSerializer.Serialize(messageBase) 
+            return TryGetSerializer(out IMessageSerializer<T> messageSerializer)
+                ? messageSerializer.Serialize(messageBase)
                 : throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 

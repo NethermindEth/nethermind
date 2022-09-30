@@ -41,7 +41,7 @@ namespace Nethermind.Mining.Test
             FollowOtherMiners followOtherMiners = new(MainnetSpecProvider.Instance);
             followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
-        
+
         [TestCase(1000000, 2000000)]
         [TestCase(2000000, 4000000)]
         [TestCase(2000001, 4000002)]

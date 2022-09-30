@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa
             IAuraConfig config,
             IGasLimitCalculator gasLimitCalculator,
             ISpecProvider specProvider,
-            ILogManager logManager) 
+            ILogManager logManager)
             : base(
                 txSource,
                 processor,

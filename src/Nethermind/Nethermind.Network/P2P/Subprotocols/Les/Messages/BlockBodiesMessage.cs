@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
-    public class BlockBodiesMessage: P2PMessage
+    public class BlockBodiesMessage : P2PMessage
     {
         public override int PacketType { get; } = LesMessageCode.BlockBodies;
         public override string Protocol { get; } = P2P.Protocol.Les;

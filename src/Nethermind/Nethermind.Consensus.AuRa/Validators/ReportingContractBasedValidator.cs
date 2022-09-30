@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
         private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);
-        
+
         private readonly ContractBasedValidator _contractValidator;
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
@@ -72,7 +72,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         private IReportingValidatorContract ValidatorContract { get; }
-        
+
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
             Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
@@ -85,9 +85,9 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (_logger.IsWarn) _logger.Warn($"Not reporting {validator} on block {blockNumber}: Not a validator");
                 return null;
             }
-            
-            var persistentReport = new PersistentReport(validator, (UInt256) blockNumber, proof);
-            
+
+            var persistentReport = new PersistentReport(validator, (UInt256)blockNumber, proof);
+
             if (IsPosdao(blockNumber))
             {
                 _persistentReports.AddLast(persistentReport);
@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             Report(ReportType.Benign, validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
         }
 
-        private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256) blockNumber);
+        private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256)blockNumber);
 
         private void Report(ReportType reportType, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
@@ -158,11 +158,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             TxHandlingOptions handlingOptions = reportType switch
             {
-                ReportType.Benign     => TxHandlingOptions.ManagedNonce,
-                ReportType.Malicious  => TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast,
-                _                     => TxHandlingOptions.ManagedNonce
+                ReportType.Benign => TxHandlingOptions.ManagedNonce,
+                ReportType.Malicious => TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast,
+                _ => TxHandlingOptions.ManagedNonce
             };
-            
+
             txSender.SendTransaction(transaction, handlingOptions);
         }
 
@@ -180,17 +180,17 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 return;
             }
-            
+
             var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
                 Address[] validators = Validators;
-                
+
                 if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap indicating skipped steps. " +
                                                    $"Current step: {header.AuRaStep} at block {header.Number}, parent step: {parent.AuRaStep} at block {parent.Number}. " +
                                                    $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
-                
+
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {

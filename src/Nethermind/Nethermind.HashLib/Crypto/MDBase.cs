@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.HashLib.Crypto
         protected const uint C7 = 0x7a6d76e9;
         protected const uint C8 = 0xa953fd4e;
 
-        protected MDBase(int a_state_length, int a_hash_size) 
+        protected MDBase(int a_state_length, int a_hash_size)
             : base(a_hash_size, 64)
         {
             m_state = new uint[a_state_length];

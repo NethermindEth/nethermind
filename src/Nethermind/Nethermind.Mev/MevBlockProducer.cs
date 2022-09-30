@@ -30,7 +30,7 @@ namespace Nethermind.Mev
         public MevBlockProducer(
             IBlockProductionTrigger blockProductionTrigger,
             ILogManager logManager,
-            params MevBlockProducerInfo[] blockProducers) 
+            params MevBlockProducerInfo[] blockProducers)
             : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }
@@ -66,8 +66,8 @@ namespace Nethermind.Mev
             public IBlockTracer BlockTracer => BeneficiaryTracer;
             public BeneficiaryTracer BeneficiaryTracer { get; }
             public MevBlockProducerInfo(
-                IBlockProducer blockProducer, 
-                IManualBlockProductionTrigger blockProductionTrigger, 
+                IBlockProducer blockProducer,
+                IManualBlockProductionTrigger blockProductionTrigger,
                 BeneficiaryTracer beneficiaryTracer)
             {
                 BlockProducer = blockProducer;

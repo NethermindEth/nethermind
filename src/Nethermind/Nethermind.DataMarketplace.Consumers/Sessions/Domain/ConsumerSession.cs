@@ -35,13 +35,13 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
 
         public DataAvailability DataAvailability
         {
-            get => (DataAvailability) _dataAvailability;
-            private set => _dataAvailability = (int) value;
+            get => (DataAvailability)_dataAvailability;
+            private set => _dataAvailability = (int)value;
         }
 
         public uint ConsumedUnitsFromProvider
         {
-            get => (uint) _consumedUnitsFromProvider;
+            get => (uint)_consumedUnitsFromProvider;
             private set => _consumedUnitsFromProvider = value;
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
                 unpaidUnits, paidUnits, settledUnits)
         {
             _consumedUnitsFromProvider = consumedUnitsFromProvider;
-            _dataAvailability = (int) dataAvailability;
+            _dataAvailability = (int)dataAvailability;
         }
 
         public static ConsumerSession From(Session session) => new ConsumerSession(session.Id, session.DepositId,
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             session.ProviderNodeId, session.State, session.StartUnitsFromConsumer, session.StartUnitsFromProvider,
             session.StartTimestamp, session.FinishTimestamp, session.ConsumedUnits, session.UnpaidUnits,
             session.PaidUnits, session.SettledUnits);
-        
+
         public SessionClient? GetClient(string client)
             => _clients.TryGetValue(client, out var sessionClient) ? sessionClient : null;
 
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
         }
 
         public void SetDataAvailability(DataAvailability dataAvailability) =>
-            Interlocked.Exchange(ref _dataAvailability, (int) dataAvailability);
+            Interlocked.Exchange(ref _dataAvailability, (int)dataAvailability);
 
         public void EnableStream(string client, string?[] args)
         {
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             {
                 throw new ArgumentException("Invalid session client id.", nameof(client));
             }
-            
+
             ValidateIfSessionStarted();
             _clients.AddOrUpdate(client,
                 _ => new SessionClient(client, true, args),

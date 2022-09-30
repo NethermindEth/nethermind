@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,10 +28,10 @@ namespace Nethermind.Consensus.AuRa.Validators
         public class Cache
         {
             internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
-            
-            private readonly LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports = 
-                new LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool>(MaxQueuedReports, "ReportCache"); 
-        
+
+            private readonly LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports =
+                new LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool>(MaxQueuedReports, "ReportCache");
+
             internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber)
             {
                 (Address Validator, ReportType ReportType, long BlockNumber) key = (validator, reportType, blockNumber);

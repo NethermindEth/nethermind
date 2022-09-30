@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
             ulong time = store.Time + timeParameters.SecondsPerSlot * 2;
             await forkChoice.OnTickAsync(store, time);
 
@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
             ulong time = store.Time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
@@ -121,7 +121,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             // move time forward 2 epochs
             ulong time = store.Time + 2 * timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;

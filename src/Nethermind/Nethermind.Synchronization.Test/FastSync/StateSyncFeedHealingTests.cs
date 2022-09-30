@@ -109,10 +109,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                         {
                             dbContext.RemoteStateTree.Set(path, null);
                             accounts.Remove(path);
-                            deletionsCount++;   
+                            deletionsCount++;
                         }
 
-                        
+
                     }
                     else
                     {
@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.LocalStateTree.UpdateRootHash();
             dbContext.CompareTrees("END");
             _logger.Info($"REQUESTED NODES TO HEAL: {data.RequestedNodesCount}");
-            Assert.IsTrue(data.RequestedNodesCount < accounts.Count/2);
+            Assert.IsTrue(data.RequestedNodesCount < accounts.Count / 2);
         }
 
         private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)

@@ -67,7 +67,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucketItem nodeBucketItem2 = new(node, DateTime.UtcNow);
             nodeBucketItem.Should().Be(nodeBucketItem2);
         }
-        
+
         [Test]
         public void Different_should_not_be_equal()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucketItem nodeBucketItem2 = new(node2, DateTime.UtcNow);
             nodeBucketItem.Should().NotBe(nodeBucketItem2);
         }
-        
+
         [Test]
         public void Two_with_same_node_have_same_hash_code()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucketItem nodeBucketItem2 = new(node, DateTime.UtcNow);
             nodeBucketItem.GetHashCode().Should().Be(nodeBucketItem2.GetHashCode());
         }
-        
+
         [Test]
         public void Same_are_equal()
         {

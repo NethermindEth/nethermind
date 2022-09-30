@@ -38,7 +38,7 @@ namespace Nethermind.Network.Rlpx
         {
             MaxFrameSize = int.MaxValue;
         }
-        
+
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
@@ -68,11 +68,11 @@ namespace Nethermind.Network.Rlpx
 
                 // here we encode payload size as an RLP encoded long value without leading zeros
                 /*0*/
-                output.WriteByte((byte) (framePayloadSize >> 16));
+                output.WriteByte((byte)(framePayloadSize >> 16));
                 /*1*/
-                output.WriteByte((byte) (framePayloadSize >> 8));
+                output.WriteByte((byte)(framePayloadSize >> 8));
                 /*2*/
-                output.WriteByte((byte) framePayloadSize);
+                output.WriteByte((byte)framePayloadSize);
 
                 if (framesCount == 1)
                 {
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Rlpx
                     // output.WriteByte(128);
                     // /*5-16*/
                     // output.WriteZero(11);
-                    
+
                     // 194|128 is an RLP encoded array with two elements that are zero
                     /*3*/
                     output.WriteByte(194);

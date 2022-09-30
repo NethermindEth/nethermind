@@ -31,7 +31,7 @@ namespace Nethermind.Config.Test
             ArgsConfigSource configSource = new(args);
             Assert.IsFalse(configSource.GetValue(typeof(int), "a", "a").IsSet);
         }
-        
+
         [Test]
         public void Is_case_insensitive()
         {
@@ -40,7 +40,7 @@ namespace Nethermind.Config.Test
             ArgsConfigSource configSource = new(args);
             Assert.IsTrue(configSource.GetValue(typeof(int), "a", "A").IsSet);
         }
-        
+
         [TestCase(typeof(byte), "12", (byte)12)]
         [TestCase(typeof(int), "12", 12)]
         [TestCase(typeof(uint), "12", 12U)]

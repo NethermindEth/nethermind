@@ -23,14 +23,14 @@ namespace Nethermind.Consensus.Rewards
     /// This class may be used in Hive tests where 0 wei accounts are created for block authors.
     /// </summary>
     public class ZeroWeiRewards : IRewardCalculator
-    {   
+    {
         private ZeroWeiRewards() { }
 
         public static ZeroWeiRewards Instance { get; } = new();
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            return new [] {new BlockReward(block.Beneficiary, 0)};
+            return new[] { new BlockReward(block.Beneficiary, 0) };
         }
     }
 }

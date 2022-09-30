@@ -37,14 +37,14 @@ namespace Nethermind.Ssz
             offset += Ssz.ForkLength;
             return fork;
         }
-        
+
         public static void Encode(Span<byte> span, Fork? container)
         {
             if (container is null)
             {
                 return;
             }
-            
+
             if (span.Length != Ssz.ForkLength) ThrowTargetLength<Fork>(span.Length, Ssz.ForkLength);
             int offset = 0;
             Encode(span, container.Value.PreviousVersion, ref offset);

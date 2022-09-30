@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -86,7 +86,7 @@ namespace Nethermind.Core2.Configuration.Test
         }
 
         [TestMethod]
-        public void BothWithOverride() 
+        public void BothWithOverride()
         {
             // Arrange
             var services = new ServiceCollection();
@@ -116,7 +116,7 @@ namespace Nethermind.Core2.Configuration.Test
             // yaml only, no section in json
             timeParameters.SecondsPerSlot.ShouldBe(15U);
         }
-        
+
         private static void ValidateConfigShouldHaveValues(MiscellaneousParameters miscellaneousParameters,
             ForkChoiceConfiguration forkChoiceConfiguration, HonestValidatorConstants honestValidatorConstants,
             GweiValues gweiValues, InitialValues initialValues, TimeParameters timeParameters,
@@ -131,24 +131,24 @@ namespace Nethermind.Core2.Configuration.Test
             miscellaneousParameters.MinimumPerEpochChurnLimit.ShouldNotBe(0uL);
             miscellaneousParameters.ShuffleRoundCount.ShouldNotBe(0);
             miscellaneousParameters.TargetCommitteeSize.ShouldNotBe(0uL);
-            
+
             forkChoiceConfiguration.SafeSlotsToUpdateJustified.ShouldNotBe(Slot.Zero);
-            
+
             honestValidatorConstants.EpochsPerRandomSubnetSubscription.ShouldNotBe(Epoch.Zero);
             honestValidatorConstants.Eth1FollowDistance.ShouldNotBe(0uL);
             honestValidatorConstants.RandomSubnetsPerValidator.ShouldNotBe(0uL);
             honestValidatorConstants.SecondsPerEth1Block.ShouldNotBe(0uL);
             honestValidatorConstants.TargetAggregatorsPerCommittee.ShouldNotBe(0uL);
-            
+
 
             gweiValues.EffectiveBalanceIncrement.ShouldNotBe(Gwei.Zero);
             gweiValues.EjectionBalance.ShouldNotBe(Gwei.Zero);
             gweiValues.MaximumEffectiveBalance.ShouldNotBe(Gwei.Zero);
 
             // actually should be zero
-            initialValues.BlsWithdrawalPrefix.ShouldBe((byte) 0);
+            initialValues.BlsWithdrawalPrefix.ShouldBe((byte)0);
 
-            initialValues.GenesisForkVersion.ShouldBe(new ForkVersion(new byte[] {0x00, 0x00, 0x00, 0x01}));
+            initialValues.GenesisForkVersion.ShouldBe(new ForkVersion(new byte[] { 0x00, 0x00, 0x00, 0x01 }));
 
             timeParameters.MaximumSeedLookahead.ShouldNotBe(Epoch.Zero);
             timeParameters.MinimumAttestationInclusionDelay.ShouldNotBe(Slot.Zero);

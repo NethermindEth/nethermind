@@ -36,14 +36,14 @@ namespace Nethermind.Core.Collections
 
         public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity)
         {
-            
+
         }
-        
+
         public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity)
         {
             this.AddRange(enumerable);
         }
-        
+
         public ArrayPoolList(ArrayPool<T> arrayPool, int capacity)
         {
             _arrayPool = arrayPool;
@@ -179,7 +179,7 @@ namespace Nethermind.Core.Collections
 
             return true;
         }
-        
+
         private struct ArrayPoolListEnumerator : IEnumerator<T>
         {
             private readonly T[] _array;

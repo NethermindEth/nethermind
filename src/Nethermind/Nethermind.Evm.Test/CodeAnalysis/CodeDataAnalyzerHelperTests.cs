@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(224);
         }
-        
+
         [Test]
         public void Validate_CodeBitmap_With_Push30()
         {

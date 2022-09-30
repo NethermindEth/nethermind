@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
     {
         public new IAuRaBlockFinalizationManager? FinalizationManager
         {
-            get => base.FinalizationManager as IAuRaBlockFinalizationManager; 
+            get => base.FinalizationManager as IAuRaBlockFinalizationManager;
             set => base.FinalizationManager = value;
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
         public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource { get; set; }
-        
+
         /// <summary>
         /// PoS switcher for The Merge
         /// </summary>

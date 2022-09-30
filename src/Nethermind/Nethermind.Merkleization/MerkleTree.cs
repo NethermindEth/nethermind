@@ -86,12 +86,12 @@ namespace Nethermind.Merkleization
 
             private static uint CalculateIndexAtRow(in uint row, in ulong nodeIndex)
             {
-                return (uint) (nodeIndex - ((1ul << (int) row) - 1));
+                return (uint)(nodeIndex - ((1ul << (int)row) - 1));
             }
 
             private static ulong CalculateNodeIndex(in uint row, in uint indexAtRow)
             {
-                return (1ul << (int) row) - 1u + indexAtRow;
+                return (1ul << (int)row) - 1u + indexAtRow;
             }
 
             private static uint CalculateRow(in ulong nodeIndex)
@@ -99,7 +99,7 @@ namespace Nethermind.Merkleization
                 ValidateNodeIndex(nodeIndex);
                 for (uint row = 0; row < LeafRow; row++)
                 {
-                    if (2ul << (int) row >= nodeIndex + 2)
+                    if (2ul << (int)row >= nodeIndex + 2)
                     {
                         return row;
                     }
@@ -118,7 +118,7 @@ namespace Nethermind.Merkleization
 
             private static void ValidateIndexAtRow(uint row, uint indexAtRow)
             {
-                uint maxIndexAtRow = (uint) ((1ul << (int) row) - 1u);
+                uint maxIndexAtRow = (uint)((1ul << (int)row) - 1u);
                 if (indexAtRow > maxIndexAtRow)
                 {
                     throw new ArgumentOutOfRangeException($"Tree level {row} should only have indices between 0 and {maxIndexAtRow}");
@@ -203,12 +203,12 @@ namespace Nethermind.Merkleization
 
         private static ulong GetMinNodeIndex(in uint row)
         {
-            return (1ul << (int) row) - 1;
+            return (1ul << (int)row) - 1;
         }
 
         private static ulong GetMaxNodeIndex(in uint row)
         {
-            return (1ul << (int) (row + 1u)) - 2;
+            return (1ul << (int)(row + 1u)) - 2;
         }
 
         private static void ValidateNodeIndex(in uint row, in ulong nodeIndex)
@@ -237,8 +237,8 @@ namespace Nethermind.Merkleization
 
             for (int row = LeafRow; row > 0; row--)
             {
-                byte[] parentHash = new byte[32]; 
-                if(index.IsLeftSibling())
+                byte[] parentHash = new byte[32];
+                if (index.IsLeftSibling())
                 {
                     Hash(hash.AsSpan(), siblingHash.AsSpan(), parentHash);
                 }
@@ -281,7 +281,7 @@ namespace Nethermind.Merkleization
         {
             Index index = new Index(LeafRow, leafIndex);
             byte[] value = leaf.Unwrap();
-            
+
             for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
             {
                 Bytes32 branchValue = proof[testDepth];
@@ -291,24 +291,24 @@ namespace Nethermind.Merkleization
                 }
                 else
                 {
-                    Hash(branchValue.AsSpan(), value.AsSpan(), value);    
+                    Hash(branchValue.AsSpan(), value.AsSpan(), value);
                 }
 
                 index = index.Parent();
             }
-            
+
             // MixIn count
             Hash(value.AsSpan(), proof[^1].AsSpan(), value);
             return value.AsSpan().SequenceEqual(Root.AsSpan());
         }
-        
+
         public IList<Bytes32> GetProof(in uint leafIndex)
         {
             if (leafIndex >= Count)
             {
                 throw new InvalidOperationException("Unpexected query for a proof for a value beyond Count");
             }
-            
+
             Index index = new Index(LeafRow, leafIndex);
             Bytes32[] proof = new Bytes32[TreeHeight + 1];
 
@@ -324,7 +324,7 @@ namespace Nethermind.Merkleization
             BinaryPrimitives.WriteUInt32LittleEndian(indexBytes, Count);
             Bytes32 indexHash = Bytes32.Wrap(indexBytes);
             proof[TreeHeight] = indexHash;
-            
+
             return proof;
         }
 
@@ -362,7 +362,7 @@ namespace Nethermind.Merkleization
         }
 
         public Root Root { get; set; }
-        
+
         protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
     }
 }

@@ -41,7 +41,7 @@ namespace Nethermind.Network.Benchmarks
         private Block _block;
         private TestZeroMerger _zeroMerger;
         private TestZeroDecoder _zeroDecoder;
-//        private TestZeroSnappy _zeroSnappyEncoder;
+        //        private TestZeroSnappy _zeroSnappyEncoder;
         private NewBlockMessage _newBlockMessage;
         private MessageSerializationService _serializationService;
         private (EncryptionSecrets A, EncryptionSecrets B) _secrets;
@@ -53,19 +53,19 @@ namespace Nethermind.Network.Benchmarks
             {
                 throw new Exception("decoder buffer");
             }
-            
+
             SetupAll();
             IterationSetup();
             Current();
             Check();
-//            SetupAll();
-//            Improved();
-//            Check();
+            //            SetupAll();
+            //            Improved();
+            //            Check();
 
             SetupAll();
             IterationSetup();
         }
-        
+
         [IterationSetup]
         public void IterationSetup()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Benchmarks
         private void SetupAll(bool useLimboOutput = false)
         {
             _zeroMerger = new TestZeroMerger();
-//            _zeroSnappyEncoder = new TestZeroSnappy();
+            //            _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
@@ -97,7 +97,7 @@ namespace Nethermind.Network.Benchmarks
             {
                 var result = new List<object>();
                 base.Decode(null, input, result);
-                return (IByteBuffer) result[0];
+                return (IByteBuffer)result[0];
             }
 
             public TestZeroDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
@@ -117,22 +117,22 @@ namespace Nethermind.Network.Benchmarks
             {
                 var result = new List<object>();
                 base.Decode(null, input, result);
-                return (IByteBuffer) result[0];
+                return (IByteBuffer)result[0];
             }
         }
 
-//        public class TestZeroSnappy : ZeroSnappyDecoder
-//        {
-//            public TestZeroSnappy()
-//                : base(LimboLogs.Instance)
-//            {
-//            }
-//
-//            public void TestEncode(IByteBuffer input, IByteBuffer output)
-//            {
-//                Encode(null, input, output);
-//            }
-//        }
+        //        public class TestZeroSnappy : ZeroSnappyDecoder
+        //        {
+        //            public TestZeroSnappy()
+        //                : base(LimboLogs.Instance)
+        //            {
+        //            }
+        //
+        //            public void TestEncode(IByteBuffer input, IByteBuffer output)
+        //            {
+        //                Encode(null, input, output);
+        //            }
+        //        }
 
         private void Check()
         {
