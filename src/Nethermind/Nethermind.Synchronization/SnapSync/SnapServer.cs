@@ -62,30 +62,43 @@ public class SnapServer: ISnapServer
 
         for (int reqi = 0; reqi < pathLength; reqi++)
         {
-            var requestedPath = pathSet[reqi].Group;
+            byte[][]? requestedPath = pathSet[reqi].Group;
             switch (requestedPath.Length)
             {
                 case 0:
                     return null;
                 case 1:
-                    byte[]? rlp = tree.GetNode(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                    byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
                     response.Add(rlp);
                     break;
                 default:
-                    byte[]? accBytes = tree.GetNode(requestedPath[0], rootHash);
-                    if (accBytes is null)
+                    int length = requestedPath[0].Length;
+                    byte[] keyHash = new byte[32];
+                    Buffer.BlockCopy(requestedPath[0], 0, keyHash, 32-length, length);
+                    byte[]? accBytes = tree.GetNodeByKey(keyHash, rootHash);
+                    if (accBytes is null || accBytes.SequenceEqual(new byte[] {}))
                     {
-                        // TODO: how to deal with empty account when storage asked?
-                        response.Add(null);
-                        continue;
+                        break;
                     }
-                    Account? account = _decoder.Decode(accBytes.AsRlpStream());
-                    var storageRoot = account.StorageRoot;
+                    Account? account;
+                    try
+                    {
+                        account = _decoder.Decode(accBytes.AsRlpStream());
+                    }
+                    catch (Exception)
+                    {
+                        break;
+                    }
+                    Keccak? storageRoot = account.StorageRoot;
+                    if (storageRoot.Bytes.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    {
+                        break;
+                    }
                     StorageTree sTree = new StorageTree(_store, storageRoot, _logManager);
 
                     for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                     {
-                        var sRlp = sTree.GetNode(requestedPath[reqStorage]);
+                        byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                         response.Add(sRlp);
                     }
                     break;
@@ -227,7 +240,7 @@ public class SnapServer: ISnapServer
 
             itr.ToBigEndian(key);
 
-            var blob = tree.GetNode(key, rootHash);
+            byte[]? blob = tree.GetNodeByKey(key, rootHash);
 
             if (blob is not null)
             {
@@ -245,7 +258,7 @@ public class SnapServer: ISnapServer
         long byteLimit, bool isStorage=false)
 
     {
-        // TODO: incase of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
+        // TODO: in case of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
 
         long responseSize = 0;
         bool stopped = false;
@@ -279,8 +292,6 @@ public class SnapServer: ISnapServer
             }
             return (nodes.ToArray(), responseSize, stopped);
         }
-
-
 
     }
 
