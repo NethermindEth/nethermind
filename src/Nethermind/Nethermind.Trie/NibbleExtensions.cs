@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -94,6 +95,27 @@ namespace Nethermind.Trie
             }
 
             return bytes;
+        }
+        public static byte[] CompactToHexEncode(byte[] compactPath)
+        {
+            if (compactPath.Length == 0)
+            {
+                return compactPath;
+            }
+
+            byte[] nibbles = new byte[compactPath.Length * 2 + 1];
+            Span<byte> nibbleSpan = nibbles;
+            BytesToNibbleBytes(compactPath, nibbleSpan.Slice(0, 2 * compactPath.Length));
+            nibbles[^1] = 16;
+
+            if (nibbleSpan[0] < 2)
+            {
+                nibbleSpan = nibbleSpan[..(nibbles.Length - 1)];
+            }
+
+            int chop = 2 - (nibbleSpan[0] & 1);
+            return nibbleSpan[chop..].ToArray();
+
         }
 
     }
