@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Clique
         public long Number { get; set; }
         public Keccak Hash { get; set; }
         public SortedList<Address, long> Signers { get; }
-        
+
         public List<Vote> Votes;
         internal Dictionary<Address, Tally> Tally { get; }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Clique
             clone.Votes = new List<Vote>(Votes);
             return clone;
         }
-        
+
         public long SignerLimit => Signers.Count / 2 + 1;
     }
 }

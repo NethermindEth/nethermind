@@ -24,22 +24,22 @@ namespace Nethermind.Logging.Microsoft
         {
             return logger.IsEnabled(LogLevel.Error);
         }
-        
+
         public static bool IsWarn(this ILogger logger)
         {
             return logger.IsEnabled(LogLevel.Warning);
         }
-        
+
         public static bool IsInfo(this ILogger logger)
         {
             return logger.IsEnabled(LogLevel.Information);
         }
-        
+
         public static bool IsDebug(this ILogger logger)
         {
             return logger.IsEnabled(LogLevel.Debug);
         }
-        
+
         public static bool IsTrace(this ILogger logger)
         {
             return logger.IsEnabled(LogLevel.Trace);

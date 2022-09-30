@@ -75,12 +75,12 @@ namespace Nethermind.JsonRpc.WebSockets
             }
 
             JsonRpcSocketsClient? socketsClient = new JsonRpcSocketsClient(
-                clientName, 
-                new WebSocketHandler(webSocket, _logManager), 
+                clientName,
+                new WebSocketHandler(webSocket, _logManager),
                 RpcEndpoint.Ws,
-                _jsonRpcProcessor, 
-                _jsonRpcService,  
-                _jsonRpcLocalStats, 
+                _jsonRpcProcessor,
+                _jsonRpcService,
+                _jsonRpcLocalStats,
                 _jsonSerializer,
                 jsonRpcUrl);
 
@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public void RemoveClient(string id)
         {
-            if (_clients.TryRemove(id, out ISocketsClient? client) 
+            if (_clients.TryRemove(id, out ISocketsClient? client)
                 && client is IDisposable disposableClient)
             {
                 disposableClient.Dispose();

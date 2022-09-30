@@ -100,7 +100,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber) {
+        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+        {
             startNumber = lowestInserted.Number - 1;
             _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
             _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;

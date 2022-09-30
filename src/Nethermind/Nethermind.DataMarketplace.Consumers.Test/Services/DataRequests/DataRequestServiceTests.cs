@@ -129,7 +129,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequests
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
             await _kycVerifier.DidNotReceive().IsVerifiedAsync(deposit.DataAsset.Id, deposit.Consumer);
         }
-        
+
         [Test]
         public async Task send_data_request_should_fail_for_expired_deposit()
         {
@@ -145,7 +145,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequests
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
             await _kycVerifier.DidNotReceive().IsVerifiedAsync(deposit.DataAsset.Id, deposit.Consumer);
         }
-        
+
         [Test]
         public async Task send_data_request_should_fail_for_missing_provider()
         {
@@ -183,7 +183,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequests
             _sessionRepository.BrowseAsync(Arg.Any<GetConsumerSessions>()).Returns(sessionsPagedResult);
             _dataRequestFactory.Create(deposit.Deposit, deposit.DataAsset.Id, deposit.DataAsset.Provider.Address,
                 deposit.Consumer, deposit.Pepper).Returns(dataRequest);
-            var consumedUnits = (uint) sessions.Sum(s => s.ConsumedUnits);
+            var consumedUnits = (uint)sessions.Sum(s => s.ConsumedUnits);
             provider.SendDataRequestAsync(dataRequest, consumedUnits).Returns(DataRequestResult.DepositVerified);
 
             var result = await _dataRequestService.SendAsync(depositId);
@@ -209,7 +209,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequests
             bool kycRequired = false)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, expiryTime, 1),
                 GetDataAsset(kycRequired), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, confirmationTimestamp);
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, confirmationTimestamp);
 
         private static DataAsset GetDataAsset(bool kycRequired = false)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

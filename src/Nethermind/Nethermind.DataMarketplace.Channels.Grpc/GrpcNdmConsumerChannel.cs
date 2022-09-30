@@ -31,6 +31,6 @@ namespace Nethermind.DataMarketplace.Channels.Grpc
         }
 
         public Task PublishAsync(Keccak depositId, string client, string data)
-            => _grpcServer.PublishAsync(new {depositId, data}, client);
+            => _grpcServer.PublishAsync(new { depositId, data }, client);
     }
 }

@@ -97,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     }
                 }
             }
-            
+
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
@@ -105,7 +105,7 @@ namespace Nethermind.AccountAbstraction.Executor
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
                 BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
-            
+
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!simulationResult.Success)
@@ -128,8 +128,8 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private UserOperationSimulationResult SimulateValidation(
-            Transaction transaction, 
-            UserOperation userOperation, 
+            Transaction transaction,
+            UserOperation userOperation,
             BlockHeader parent,
             ITransactionProcessor transactionProcessor)
         {
@@ -159,7 +159,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
-            
+
             IDictionary<Address, Keccak> addressesToCodeHashes = new Dictionary<Address, Keccak>();
             foreach (Address accessedAddress in txTracer.AccessedAddresses)
             {
@@ -188,11 +188,11 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi);
 
-            Transaction transaction = _userOperationTxBuilder.BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas, 
+            Transaction transaction = _userOperationTxBuilder.BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas,
                 computedCallData,
-                Address.Zero, 
-                parent, 
-                spec, 
+                Address.Zero,
+                parent,
+                spec,
                 _stateProvider.GetNonce(Address.Zero),
                 true);
 
@@ -204,7 +204,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
-            
+
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 transactionProcessor,
@@ -217,14 +217,14 @@ namespace Nethermind.AccountAbstraction.Executor
             GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
-            return new BlockchainBridge.CallOutput 
+            return new BlockchainBridge.CallOutput
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 
-                GasSpent = estimate, 
+                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
+                GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
         }
-        
+
         private (bool Success, string Error) TryCallAndRestore(
             ITransactionProcessor transactionProcessor,
             BlockHeader blockHeader,
@@ -256,7 +256,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 transaction.SenderAddress = Address.SystemUser;
             }
-            
+
             if (transaction.Nonce == 0)
             {
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);

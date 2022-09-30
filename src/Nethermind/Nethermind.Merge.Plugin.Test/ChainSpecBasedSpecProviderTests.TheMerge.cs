@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
 {
     [Test]
     public void Correctly_read_merge_block_number()
-    { 
+    {
         long terminalBlockNumber = 100;
         ChainSpec chainSpec = new()
         {
@@ -49,17 +49,17 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        
+
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(101, provider.MergeBlockNumber);
         Assert.AreEqual((UInt256)10, chainSpec.TerminalTotalDifficulty);
         Assert.AreEqual(72, chainSpec.MergeForkIdBlockNumber);
-        
+
         Assert.True(provider.TransitionBlocks.ToList().Contains(72)); // MergeForkIdBlockNumber should affect transition blocks
         Assert.False(provider.TransitionBlocks.ToList().Contains(100)); // merge block number shouldn't affect transition blocks
         Assert.False(provider.TransitionBlocks.ToList().Contains(101)); // merge block number shouldn't affect transition blocks
     }
-    
+
     [Test]
     public void Merge_block_number_should_be_null_when_not_set()
     {
@@ -72,7 +72,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         Assert.AreEqual(null, provider.MergeBlockNumber);
         Assert.AreEqual(0, provider.TransitionBlocks.Length);
     }
-    
+
     [Test]
     public void Changing_spec_provider_in_dynamic_merge_transition()
     {
@@ -81,10 +81,10 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        
+
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(expectedTerminalPoWBlock + 1, provider.MergeBlockNumber);
-        
+
         provider.UpdateMergeTransitionInfo(newMergeBlock);
         Assert.AreEqual(newMergeBlock, provider.MergeBlockNumber);
     }

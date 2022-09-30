@@ -182,7 +182,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Syncing;
             }
 
-            if ((block.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader)))
+            if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
+            {
+                if (_logger.IsWarn) _logger.Warn($"Misconfigured terminal total difficulty.");
+
+                return NewPayloadV1Result.Invalid(Keccak.Zero);
+            }
+
+            if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
 

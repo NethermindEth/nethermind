@@ -23,7 +23,7 @@ namespace Nethermind.AccountAbstraction.Source
     public class CompareUserOperationsByHash : IComparer<UserOperation>
     {
         public static readonly CompareUserOperationsByHash Instance = new();
-        
+
         private CompareUserOperationsByHash() { }
 
         public int Compare(UserOperation? x, UserOperation? y)

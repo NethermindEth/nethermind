@@ -38,10 +38,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.StoragetRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
         }
-        
+
         protected override GetStorageRangeMessage Deserialize(RlpStream rlpStream)
         {
-            GetStorageRangeMessage message = new ();
+            GetStorageRangeMessage message = new();
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();

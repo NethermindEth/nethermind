@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,13 +22,13 @@ namespace Nethermind.Consensus.AuRa.Config
     public class AuRaConfig : IAuraConfig
     {
         public bool ForceSealing { get; set; } = true;
-        
+
         public bool AllowAuRaPrivateChains { get; set; }
-        
+
         public bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
-        
+
         public string TxPriorityContractAddress { get; set; }
-        
+
         public string TxPriorityConfigFilePath { get; set; }
     }
 }

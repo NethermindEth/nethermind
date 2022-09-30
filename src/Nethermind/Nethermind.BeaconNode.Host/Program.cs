@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,7 +47,8 @@ namespace Nethermind.BeaconNode.Host
                 // configure logging to console, debug, and event source,
                 // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
-                .ConfigureHostConfiguration(config => {
+                .ConfigureHostConfiguration(config =>
+                {
                     config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
                     config.AddJsonFile("hostsettings.json");
                     config.AddCommandLine(args);
@@ -60,7 +61,7 @@ namespace Nethermind.BeaconNode.Host
                     }
                     // this causes MASSIVE slowdown on BeaconNode start - please review
                     // (try with 10000 validators with and without logging)
-                    
+
                     // if (hostContext.Configuration.GetSection("Logging:Seq").Exists())
                     // {
                     //     configureLogging.AddSeq(hostContext.Configuration.GetSection("Logging:Seq"));
@@ -82,7 +83,7 @@ namespace Nethermind.BeaconNode.Host
                     // Other settings are based on data directory; can be relative, or start with a special folder token,
                     // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production"
                     DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
-                        
+
                     // Support standard YAML config files, if specified
                     string yamlConfig = hostContext.Configuration[_yamlConfigKey];
                     if (!string.IsNullOrWhiteSpace(yamlConfig))
@@ -90,7 +91,7 @@ namespace Nethermind.BeaconNode.Host
                         string yamlPath = Path.Combine(dataDirectory.ResolvedPath, $"{yamlConfig}.yaml");
                         config.AddYamlFile(yamlPath, true, true);
                     }
-                    
+
                     // Override with environment specific JSON files
                     string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
                     config.AddJsonFile(settingsPath, true, true);
@@ -110,7 +111,7 @@ namespace Nethermind.BeaconNode.Host
                     {
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
-                    
+
                     // TODO: Add non-quickstart validator check
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {

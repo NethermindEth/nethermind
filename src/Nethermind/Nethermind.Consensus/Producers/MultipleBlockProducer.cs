@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Producers
                 IBlockProducer blockProducer = _blockProducers[index].BlockProducer;
                 blockProducer.Start();
             }
-            
+
             _blockProductionTrigger.TriggerBlockProduction += OnBlockProduction;
             return Task.CompletedTask;
         }
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Producers
         public Task StopAsync()
         {
             _blockProductionTrigger.TriggerBlockProduction -= OnBlockProduction;
-            
+
             IList<Task> stopTasks = new List<Task>();
             for (int index = 0; index < _blockProducers.Length; index++)
             {
@@ -84,9 +84,9 @@ namespace Nethermind.Consensus.Producers
 
             return false;
         }
-        
+
         public event EventHandler<BlockEventArgs>? BlockProduced;
-        
+
         private void OnBlockProduction(object? sender, BlockProductionEventArgs e)
         {
             e.BlockProductionTask = TryProduceBlock(e.ParentHeader, e.CancellationToken);
@@ -100,9 +100,9 @@ namespace Nethermind.Consensus.Producers
                 T blockProducerInfo = _blockProducers[i];
                 produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer);
             }
-           
+
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
-            
+
             try
             {
                 Block?[] blocks = await Task.WhenAll(produceTasks);
@@ -129,7 +129,7 @@ namespace Nethermind.Consensus.Producers
 
             return bestBlock;
         }
-        
+
         public interface IBestBlockPicker
         {
             Block? GetBestBlock(IEnumerable<(Block? Block, T BlockProducerInfo)> blocks);

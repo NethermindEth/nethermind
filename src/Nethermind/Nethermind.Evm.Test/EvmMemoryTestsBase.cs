@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,12 +24,12 @@ namespace Nethermind.Evm.Test
     public abstract class EvmMemoryTestsBase
     {
         protected abstract IEvmMemory CreateEvmMemory();
-        
+
         [Test]
         public void Save_empty_beyond_reasonable_size_does_not_throw()
         {
             IEvmMemory memory = CreateEvmMemory();
-            UInt256 dest = (UInt256) int.MaxValue + 1;
+            UInt256 dest = (UInt256)int.MaxValue + 1;
             memory.Save(in dest, new byte[0]);
         }
 
@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Test
             long cost2 = memory.CalculateMemoryCost(in dest, UInt256.One);
             Assert.AreEqual(0L, cost2);
         }
-        
+
         [Test]
         public void Calculate_memory_cost_returns_0_for_0_length()
         {

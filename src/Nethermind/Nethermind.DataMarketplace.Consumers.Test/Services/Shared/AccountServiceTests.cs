@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             Address address = _accountService.GetAddress();
             address.Should().Be(_consumerAddress);
         }
-        
+
         [Test]
         public void When_no_change_no_notifications_happen()
         {
@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _accountService.ChangeAddressAsync(newConsumerAddress);
             _providerService.DidNotReceive().GetPeers();
         }
-        
+
         [Test]
         public void On_change_providers_get_notifications()
         {
@@ -80,14 +80,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _accountService.ChangeAddressAsync(newConsumerAddress);
             _providerService.Received().GetPeers();
         }
-        
+
         [Test]
         public void Notifies_on_account_locked()
         {
             _wallet.LockAccount(_consumerAddress);
             _ndmNotifier.ReceivedWithAnyArgs().NotifyAsync(null);
         }
-        
+
         [Test]
         public void Notifies_on_account_unlocked()
         {

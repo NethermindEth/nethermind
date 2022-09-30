@@ -129,7 +129,7 @@ public class DiscoveryManager : IDiscoveryManager
         {
             return null;
         }
-        
+
         if (_nodeTable.MasterNode.Equals(node))
         {
             return null;
@@ -274,7 +274,7 @@ public class DiscoveryManager : IDiscoveryManager
     private void CleanUpLifecycleManagers()
     {
         int toRemove = (_nodeLifecycleManagers.Count - _discoveryConfig.MaxNodeLifecycleManagersCount) + _discoveryConfig.NodeLifecycleManagersCleanupCount;
-        if(toRemove <= _discoveryConfig.NodeLifecycleManagersCleanupCount / 2)
+        if (toRemove <= _discoveryConfig.NodeLifecycleManagersCleanupCount / 2)
         {
             return;
         }
@@ -289,7 +289,7 @@ public class DiscoveryManager : IDiscoveryManager
                     remainingToRemove--;
                     if (remainingToRemove <= 0)
                     {
-                        if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
+                        if (_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                         return;
                     }
                 }
@@ -305,7 +305,7 @@ public class DiscoveryManager : IDiscoveryManager
                     remainingToRemove--;
                     if (remainingToRemove <= 0)
                     {
-                        if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
+                        if (_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                         return;
                     }
                 }
@@ -320,13 +320,13 @@ public class DiscoveryManager : IDiscoveryManager
                 remainingToRemove--;
                 if (remainingToRemove <= 0)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
+                    if (_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                     return;
                 }
             }
         }
 
-        if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
+        if (_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
     }
 
     private bool RemoveManager((Keccak Hash, PublicKey Key) item)
@@ -343,7 +343,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly struct MessageTypeKey : IEquatable<MessageTypeKey>
     {
         public Keccak SenderAddressHash { get; }
-        
+
         public int MessageType { get; }
 
         public MessageTypeKey(Keccak senderAddressHash, int messageType)

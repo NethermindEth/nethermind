@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,6 +30,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected override IDictionary<T, T> CreateDictionary() => new Dictionary<T, T>(_comparer);
         protected override bool CanReplace(T replaced, T replacing) => true;
-        
+
     }
 }

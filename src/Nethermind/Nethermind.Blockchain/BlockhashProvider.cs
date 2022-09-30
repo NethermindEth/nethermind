@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,12 +51,12 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
             }
-            
+
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
+                    if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
                     return header.Hash;
                 }
 
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
                 {
                     throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
                 }
-                
+
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try
@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
+            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
             return null;
         }
     }

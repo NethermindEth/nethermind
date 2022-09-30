@@ -23,14 +23,14 @@ namespace Nethermind.Db
     public interface IDb : IKeyValueStoreWithBatching, IDisposable
     {
         string Name { get; }
-        KeyValuePair<byte[],byte[]?>[] this[byte[][] keys] { get; }
+        KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
 
         void Flush();
-        
+
         void Clear();
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);

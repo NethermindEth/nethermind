@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Builders
     public class TrieBuilder : BuilderBase<PatriciaTree>
     {
         private readonly AccountDecoder _accountDecoder = new();
-        
+
         public TrieBuilder(IKeyValueStoreWithBatching db)
         {
             TestObjectInternal = new PatriciaTree(db, Keccak.EmptyTreeHash, false, true, LimboLogs.Instance);
@@ -55,12 +55,12 @@ namespace Nethermind.Core.Test.Builders
 
             return this;
         }
-        
+
         private Account GenerateIndexedAccount(int index)
         {
             Account account = new(
-                (UInt256) index,
-                (UInt256) index,
+                (UInt256)index,
+                (UInt256)index,
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
@@ -73,7 +73,7 @@ namespace Nethermind.Core.Test.Builders
             byte[] value = _accountDecoder.Encode(account).Bytes;
             return value;
         }
-        
-        
+
+
     }
 }

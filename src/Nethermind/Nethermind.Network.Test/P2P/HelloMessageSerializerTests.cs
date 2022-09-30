@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,9 +42,9 @@ namespace Nethermind.Network.Test.P2P
             HelloMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(helloMessage);
             byte[] expectedBytes = Bytes.FromHexString("f85e01904e65746865726d696e642f616c706861c6c58365746801821f42b840fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877");
-            
+
             Assert.True(Bytes.AreEqual(serialized, expectedBytes), "bytes");
-            
+
             HelloMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.AreEqual(helloMessage.P2PVersion, deserialized.P2PVersion);
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(helloMessage.Capabilities[0].ProtocolCode, deserialized.Capabilities[0].ProtocolCode);
             Assert.AreEqual(helloMessage.Capabilities[0].Version, deserialized.Capabilities[0].Version);
         }
-        
+
         [Test]
         public void Can_deserialize_sample_from_ethereumJ()
         {
@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P
                 new PublicKey("1fbf1e41f08078918c9f7b6734594ee56d7f538614f602c71194db0a1af5a77f9b86eb14669fe7a8a46a2dd1b7d070b94e463f4ecd5b337c8b4d31bbf8dd5646"),
                 helloMessage.NodeId, $"{nameof(HelloMessage.NodeId)}");
         }
-        
+
         [Test]
         public void Can_deserialize_sample_from_eip8_ethereumJ()
         {

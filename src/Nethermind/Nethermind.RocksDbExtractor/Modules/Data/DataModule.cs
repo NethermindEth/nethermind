@@ -51,7 +51,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
 
         public Window Init()
         {
-            var mainWindow = new Window("") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var mainWindow = new Window("") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             Application.Top.Add(mainWindow);
 
             var dataPaths = Directory.GetDirectories(_path, "*");

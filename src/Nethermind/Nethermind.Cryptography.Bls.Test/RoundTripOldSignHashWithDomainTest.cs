@@ -48,7 +48,7 @@ namespace Nethermind.Cryptography.Bls.Test
             "47b8192d77bf871b62e87859d653922725724a5c031afeabc60bcef5ff665138",
             "328388aff0d4a5b7dc9205abd374e7e98f3cd9f3418edb4eafda5fb16473d216",
         };
-        
+
         // [TestMethod]
         // public void BlsRoundtripSignAndVerify()
         // {

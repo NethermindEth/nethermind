@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Processing
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public void RecoverData(Block block)
         {
             if (block.Transactions.Length == 0 || block.Transactions[0].SenderAddress != null)
@@ -53,17 +53,17 @@ namespace Nethermind.Consensus.Processing
             }
 
             var releaseSpec = _specProvider.GetSpec(block.Number);
-            
+
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction blockTransaction = block.Transactions[i];
                 _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
-                
+
                 Address sender = transaction?.SenderAddress;
                 Address blockTransactionAddress = blockTransaction.SenderAddress;
-                
+
                 blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
-                if(_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
+                if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
             }
         }
     }

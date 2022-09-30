@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.FullPruning
         private DateTime _lastPruning = DateTime.MinValue;
 
         public FullPruner(
-            IFullPruningDb fullPruningDb, 
+            IFullPruningDb fullPruningDb,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.FullPruning
                 _blockTree.NewHeadBlock -= OnNewHead;
             }
         }
-        
+
         private void SetCurrentPruning(IPruningContext pruningContext)
         {
             IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);

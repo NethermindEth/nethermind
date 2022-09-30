@@ -30,21 +30,21 @@ namespace Nethermind.Mev
         bool Enabled { get; set; }
 
         [ConfigItem(
-            Description = "Defines how long MEV bundles will be kept in memory by clients", 
+            Description = "Defines how long MEV bundles will be kept in memory by clients",
             DefaultValue = "3600")]
         UInt256 BundleHorizon { get; set; }
-        
+
         [ConfigItem(
-            Description = "Defines the maximum number of MEV bundles that can be kept in memory by clients", 
+            Description = "Defines the maximum number of MEV bundles that can be kept in memory by clients",
             DefaultValue = "200")]
         int BundlePoolSize { get; set; }
 
         [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block", DefaultValue = "1")]
         int MaxMergedBundles { get; set; }
-        
+
         [ConfigItem(Description = "Defines the list of trusted relay addresses to receive megabundles from as a comma separated string",
             DefaultValue = "")]
-        string TrustedRelays { get; set;  }
+        string TrustedRelays { get; set; }
     }
 
     public static class MevConfigExtensions

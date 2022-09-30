@@ -42,15 +42,15 @@ namespace Nethermind.Mev.Data
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
             SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
         }
-        
+
         public IReadOnlyList<BundleTransaction> Transactions { get; }
 
         public long BlockNumber { get; }
-        
+
         public UInt256 MaxTimestamp { get; }
-        
+
         public UInt256 MinTimestamp { get; }
-        
+
         public virtual Keccak Hash { get; }
 
         public int SequenceNumber { get; }
@@ -67,7 +67,7 @@ namespace Nethermind.Mev.Data
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((MevBundle) obj);
+            return Equals((MevBundle)obj);
         }
 
         public override int GetHashCode() => Hash.GetHashCode();

@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx2 = Build.A.Transaction.TestObject;
             Transaction tx3 = Build.A.Transaction.TestObject;
 
-            block = block.WithReplacedBody(new BlockBody(new []{tx1, tx2, tx3}, new BlockHeader[0]));
+            block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, new BlockHeader[0]));
 
             GethLikeBlockTracer gethLikeBlockTracer = new(GethTraceOptions.Default);
             ParityLikeBlockTracer parityLikeBlockTracer = new(ParityTraceTypes.All);
@@ -69,15 +69,15 @@ namespace Nethermind.Evm.Test.Tracing
 
             blockTracer.StartNewTxTrace(tx2);
             blockTracer.EndTxTrace();
-            
+
             blockTracer.StartNewTxTrace(tx3);
             blockTracer.EndTxTrace();
-            
+
             blockTracer.EndBlockTrace();
 
             IReadOnlyCollection<GethLikeTxTrace> gethResult = gethLikeBlockTracer.BuildResult();
             gethResult.Count.Should().Be(3);
-            
+
             IReadOnlyCollection<ParityLikeTxTrace> parityResult = parityLikeBlockTracer.BuildResult();
             parityResult.Count.Should().Be(3);
         }

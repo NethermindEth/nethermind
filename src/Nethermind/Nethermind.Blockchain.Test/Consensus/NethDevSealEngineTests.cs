@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             nethDevSealEngine.Address.Should().Be(Address.Zero);
             nethDevSealEngine.CanSeal(1, Keccak.Zero).Should().BeTrue();
         }
-        
+
         [Test]
         public void Can_seal_returns_true()
         {
@@ -51,13 +51,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             nethDevSealEngine.ValidateSeal(null, false).Should().Be(true);
             nethDevSealEngine.ValidateSeal(null, true).Should().Be(true);
         }
-        
+
         [Test]
         public void Block_sealing_sets_the_hash()
         {
             Block block = Build.A.Block.TestObject;
             block.Header.Hash = Keccak.Zero;
-            
+
             NethDevSealEngine nethDevSealEngine = new();
             nethDevSealEngine.SealBlock(block, CancellationToken.None);
             block.Hash.Should().NotBe(Keccak.Zero);

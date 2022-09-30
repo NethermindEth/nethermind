@@ -32,7 +32,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
     [TestFixture]
     public class QuickStartTests
     {
-        private readonly TestData[] _testDataItems = 
+        private readonly TestData[] _testDataItems =
         {
             new TestData
             (
@@ -112,7 +112,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
             state.Validators[0].PublicKey.ShouldBe(expectedKey0);
         }
-        
+
         [Test]
         public async Task TestValidatorKeyGeneration10()
         {
@@ -168,35 +168,35 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             state.Validators.Count.ShouldBe(64);
         }
 
-        
-//        [TestMethod]
-//        public async Task TestValidatorKeyGeneration10000()
-//        {
-//            Stopwatch stopwatch = Stopwatch.StartNew();
-//            
-//            // Arrange
-//            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
-//            IConfigurationRoot configuration = new ConfigurationBuilder()
-//                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "10000"})
-//                .Build();
-//            testServiceCollection.AddQuickStart(configuration);
-//            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
-//
-//            // Act
-//            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-//            await quickStart.InitializeNodeAsync();
-//
-//            // Assert
-//            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-//            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-//            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
-//            {
-//                throw new InvalidDataException("Missing finalized checkpoint block state");
-//            }
-//            state!.Validators.Count.ShouldBe(10000);
-//            
-//            Console.WriteLine("Generate quickstart 10,000, took {0}", stopwatch.Elapsed);
-//        }
+
+        //        [TestMethod]
+        //        public async Task TestValidatorKeyGeneration10000()
+        //        {
+        //            Stopwatch stopwatch = Stopwatch.StartNew();
+        //            
+        //            // Arrange
+        //            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+        //            IConfigurationRoot configuration = new ConfigurationBuilder()
+        //                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "10000"})
+        //                .Build();
+        //            testServiceCollection.AddQuickStart(configuration);
+        //            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+        //
+        //            // Act
+        //            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
+        //            await quickStart.InitializeNodeAsync();
+        //
+        //            // Assert
+        //            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
+        //            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+        //            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
+        //            {
+        //                throw new InvalidDataException("Missing finalized checkpoint block state");
+        //            }
+        //            state!.Validators.Count.ShouldBe(10000);
+        //            
+        //            Console.WriteLine("Generate quickstart 10,000, took {0}", stopwatch.Elapsed);
+        //        }
 
         [Test]
         public void GeneratePrivateKey63()
@@ -214,7 +214,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             //      0x6edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
             // If written to an array/span it would pad on the right, but needs to pad on the left:
             //      0x006edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
-            
+
             // Arrange
             var overrideConfiguration = new Dictionary<string, string>
             {
@@ -225,7 +225,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider = (QuickStartMockEth1GenesisProvider) testServiceProvider.GetService<IEth1GenesisProvider>();
+            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider = (QuickStartMockEth1GenesisProvider)testServiceProvider.GetService<IEth1GenesisProvider>();
             byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(63);
 
             // Assert

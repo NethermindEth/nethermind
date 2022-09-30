@@ -34,7 +34,7 @@ namespace Nethermind.Ssz
             {
                 return 0;
             }
-            
+
             return Ssz.IndexedAttestationDynamicOffset + (value.AttestingIndices?.Count ?? 0) * Ssz.ValidatorIndexLength;
         }
 
@@ -44,7 +44,7 @@ namespace Nethermind.Ssz
             {
                 return;
             }
-            
+
             if (span.Length != Ssz.IndexedAttestationLength(container))
             {
                 ThrowTargetLength<IndexedAttestation>(span.Length, Ssz.IndexedAttestationLength(container));

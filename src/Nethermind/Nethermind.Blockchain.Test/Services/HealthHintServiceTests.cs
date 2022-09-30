@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -55,20 +55,20 @@ namespace Nethermind.Blockchain.Test.Services
             {
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.NethDev,}
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.NethDev, }
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Ethash },
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Ethash },
                     ExpectedProcessingHint = 180
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = "Interval" }
+                    ChainSpec = new ChainSpec() { SealEngineType = "Interval" }
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.None }
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.None }
                 };
             }
         }

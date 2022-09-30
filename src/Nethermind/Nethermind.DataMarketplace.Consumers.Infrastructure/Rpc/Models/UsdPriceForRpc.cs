@@ -18,8 +18,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class UsdPriceForRpc
     {
-        public decimal Price { get;  }
-        public ulong UpdatedAt { get;  }
+        public decimal Price { get; }
+        public ulong UpdatedAt { get; }
 
         public UsdPriceForRpc(decimal price, ulong updatedAt)
         {

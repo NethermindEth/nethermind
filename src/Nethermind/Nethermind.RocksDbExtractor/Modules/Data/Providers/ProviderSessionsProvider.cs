@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var providerSessions = providerSessionsBytes
                 .Select(b => providerSessionsDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Provider sessions") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Provider sessions") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
 
             if (!providerSessions.Any())
             {
@@ -56,7 +56,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var providerSessionDetailsWindow = new Window("Session details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(providerSessionDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

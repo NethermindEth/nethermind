@@ -41,7 +41,7 @@ namespace Nethermind.Core2.Json.Test
             await using MemoryStream memoryStream = new MemoryStream();
             await JsonSerializer.SerializeAsync(memoryStream, syncing, options);
             string jsonString = Encoding.UTF8.GetString(memoryStream.ToArray());
-            
+
             // Assert
             jsonString.ShouldBe("{\"is_syncing\":true,\"sync_status\":null}");
         }
@@ -58,7 +58,7 @@ namespace Nethermind.Core2.Json.Test
             await using MemoryStream memoryStream = new MemoryStream();
             await JsonSerializer.SerializeAsync(memoryStream, syncing, options);
             string jsonString = Encoding.UTF8.GetString(memoryStream.ToArray());
-            
+
             // Assert
             jsonString.ShouldBe("{\"is_syncing\":true,\"sync_status\":{\"current_slot\":2,\"highest_slot\":3,\"starting_slot\":1}}");
         }
@@ -74,11 +74,11 @@ namespace Nethermind.Core2.Json.Test
             // Act - deserialize from string
             await using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
             Syncing syncing = await JsonSerializer.DeserializeAsync<Syncing>(memoryStream, options);
-            
+
             syncing.IsSyncing.ShouldBeTrue();
             syncing.SyncStatus.ShouldBeNull();
         }
-        
+
         [Test]
         public async Task Syncing_DeserializeWithStatus()
         {
@@ -90,7 +90,7 @@ namespace Nethermind.Core2.Json.Test
             // Act - deserialize from string
             await using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
             Syncing syncing = await JsonSerializer.DeserializeAsync<Syncing>(memoryStream, options);
-            
+
             syncing.IsSyncing.ShouldBeTrue();
             syncing.SyncStatus!.CurrentSlot.ShouldBe(new Slot(2));
         }

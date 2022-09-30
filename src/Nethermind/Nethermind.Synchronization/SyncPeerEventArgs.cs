@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization
         }
 
         public PeerInfo? Previous { get; }
-        
+
         public PeerInfo? Current { get; }
     }
 }

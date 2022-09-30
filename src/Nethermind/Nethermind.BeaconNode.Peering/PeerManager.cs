@@ -107,7 +107,7 @@ namespace Nethermind.BeaconNode.Peering
             // Peer should have been created, with an incoming session, when connected.
             // If not, i.e. first knowledge is the status message, then create an incoming session
             ConcurrentBag<Session> peerSessionCollection = _sessions.GetOrAdd(peerInfo.Id,
-                key => new ConcurrentBag<Session>(new[] {new Session(ConnectionDirection.In, peerInfo)}));
+                key => new ConcurrentBag<Session>(new[] { new Session(ConnectionDirection.In, peerInfo) }));
 
             // Not sure if Bag is correct here (insert/take); maybe some kind of queue or stack?
             Session session = peerSessionCollection.First();

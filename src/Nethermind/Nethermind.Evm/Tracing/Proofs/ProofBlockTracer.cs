@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
-        
+
         protected override ProofTxTracer OnStart(Transaction? tx) => new(_treatSystemAccountDifferently);
 
         /// <summary>

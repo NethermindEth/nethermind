@@ -49,7 +49,7 @@ namespace Nethermind.Network
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
-        
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -112,7 +112,7 @@ namespace Nethermind.Network
 
         private void SessionDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
@@ -130,13 +130,13 @@ namespace Nethermind.Network
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
-            
+
             _sessions.TryRemove(session.SessionId, out session);
         }
 
         private void SessionInitialized(object sender, EventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             InitProtocol(session, Protocol.P2P, session.P2PVersion, true);
         }
 
@@ -266,14 +266,14 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        _hangingSatelliteProtocols.AddOrUpdate(session.Node, 
-                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] {new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler)}),
+                        _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] { new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler) }),
                             (node, dict) =>
                         {
                             dict[session.SessionId] = handler;
                             return dict;
                         });
-                        
+
                         if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                     }
 
@@ -290,7 +290,7 @@ namespace Nethermind.Network
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
-                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs) args;
+                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
                 if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
 
                 if (handler.ProtocolVersion >= 5)
@@ -349,7 +349,7 @@ namespace Nethermind.Network
                                 if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
-                        
+
                         _syncPool.AddPeer(handler);
                         if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
@@ -400,7 +400,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
                 session.Node.Port = eventArgs.ListenPort;
             }
-            
+
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
@@ -409,7 +409,7 @@ namespace Nethermind.Network
         {
             _capabilities.Add(capability);
         }
-        
+
         public void RemoveSupportedCapability(Capability capability)
         {
             if (_capabilities.Remove(capability))

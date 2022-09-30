@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Tracing
         public CompositeTxTracer(params ITxTracer[] txTracers) : this((IList<ITxTracer>)txTracers)
         {
         }
-        
+
         public CompositeTxTracer(IList<ITxTracer> txTracers)
         {
             _txTracers = txTracers;
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Tracing
                 }
             }
         }
-        
+
         public void ReportStorageRead(StorageCell storageCell)
         {
             for (int index = 0; index < _txTracers.Count; index++)

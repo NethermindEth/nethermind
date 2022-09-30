@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,13 +28,13 @@ namespace Nethermind.Benchmark.Runner
 {
     public class DashboardConfig : ManualConfig
     {
-        public DashboardConfig(params Job[] jobs) 
+        public DashboardConfig(params Job[] jobs)
         {
             foreach (Job job in jobs)
             {
                 AddJob(job);
             }
-            
+
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Statistics);
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Params);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
@@ -43,7 +43,7 @@ namespace Nethermind.Benchmark.Runner
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
         }
     }
-    
+
     public static class Program
     {
         public static void Main(string[] args)
@@ -59,7 +59,7 @@ namespace Nethermind.Benchmark.Runner
             List<Assembly> simpleJobAssemblies = new() {
                 typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
             };
-            
+
             if (Debugger.IsAttached)
             {
                 BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
@@ -68,13 +68,13 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));    
-                }    
-                
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
+                }
+
                 foreach (Assembly assembly in simpleJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig());    
-                }  
+                    BenchmarkRunner.Run(assembly, new DashboardConfig());
+                }
             }
         }
     }

@@ -30,6 +30,6 @@ namespace Nethermind.Mev.Data
         public bool CanRevert { get; set; } = false;
         public UInt256 SimulatedBundleFee { get; set; } = UInt256.Zero;
         public UInt256 SimulatedBundleGasUsed { get; set; } = UInt256.Zero;
-        public BundleTransaction Clone() => (BundleTransaction) MemberwiseClone();
+        public BundleTransaction Clone() => (BundleTransaction)MemberwiseClone();
     }
 }

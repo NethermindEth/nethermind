@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 return null;
             }
-            
+
             return Decode(bytes);
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 throw new ArgumentNullException(nameof(query));
             }
-            
+
             var depositsBytes = _database.GetAllValues().ToArray();
             if (depositsBytes.Length == 0)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                     uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
                     deposit.SetConsumedUnits(consumedUnits);
                 }
-                
+
                 filteredDeposits = GetEligibleToRefund(filteredDeposits, query.CurrentBlockTimestamp);
             }
 
@@ -133,16 +133,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             bool hasEarlyTicket;
             bool isExpired;
 
-            foreach(var deposit in deposits)
+            foreach (var deposit in deposits)
             {
                 refundClaimed = deposit.RefundClaimed;
                 notConsumedAllUnits = deposit.ConsumedUnits < deposit.Deposit.Units;
-                isTimeType = deposit.DataAsset.UnitType == DataAssetUnitType.Time; 
+                isTimeType = deposit.DataAsset.UnitType == DataAssetUnitType.Time;
                 hasEarlyTicket = !(deposit.EarlyRefundTicket is null);
                 isExpired = currentTimestamp >= deposit.Deposit.ExpiryTime;
 
                 // in time deposits, during the refund: units consumed will be always equal to all deposit units, hence we do not check whether all units are consumed
-                if(!refundClaimed && (notConsumedAllUnits || isTimeType) && (hasEarlyTicket || isExpired))
+                if (!refundClaimed && (notConsumedAllUnits || isTimeType) && (hasEarlyTicket || isExpired))
                 {
                     yield return deposit;
                 }

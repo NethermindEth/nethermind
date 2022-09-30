@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,6 +24,6 @@ namespace Nethermind.Network.Rlpx
         public KeccakDigest IngressMac { get; set; }
         public byte[] AesSecret { get; set; }
         public byte[] MacSecret { get; set; }
-//        public byte[] Token { get; set; }
+        //        public byte[] Token { get; set; }
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Stats
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            
+
             var manager = new NodeStatsManager(timerFactory, LimboLogs.Instance, 3);
             var nodes = TestItem.PublicKeys.Take(3).Select(k => new Node(k, new IPEndPoint(IPAddress.Loopback, 30303))).ToArray();
             manager.ReportSyncEvent(nodes[0], NodeStatsEventType.SyncStarted);

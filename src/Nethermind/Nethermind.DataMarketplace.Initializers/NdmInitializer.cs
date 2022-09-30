@@ -63,16 +63,16 @@ namespace Nethermind.DataMarketplace.Initializers
         protected async Task PreInitAsync(INdmApi ndmApi)
         {
             if (ndmApi == null) throw new ArgumentNullException(nameof(ndmApi));
-            
+
             IDbProvider? dbProvider = ndmApi.DbProvider;
             if (dbProvider == null)
             {
                 throw new ArgumentNullException(nameof(dbProvider));
             }
-            
+
             IConfigProvider configProvider = ndmApi.ConfigProvider;
             ILogManager logManager = ndmApi.LogManager;
-            
+
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
                 return;
@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Initializers
             {
                 throw new ArgumentException("NDM config stored in database requires an id.", nameof(defaultConfig.Id));
             }
-            
+
             IConfigRepository configRepository;
             IEthRequestRepository ethRequestRepository;
             switch (defaultConfig.Persistence?.ToLowerInvariant())
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Initializers
                         new EthRequestDecoder());
                     break;
             }
-            
+
             ndmApi.ConfigManager = new ConfigManager(defaultConfig, configRepository);
             ndmApi.NdmConfig = await ndmApi.ConfigManager.GetAsync(defaultConfig.Id);
             if (ndmApi.NdmConfig is null)
@@ -133,7 +133,7 @@ namespace Nethermind.DataMarketplace.Initializers
             ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
             await _ndmModule.InitAsync();
-            
+
             if (ndmApi.NdmConfig.FaucetEnabled)
             {
                 // faucet should be separate from NDM? but it uses MongoDB?
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Initializers
             ndmApi.ProviderAddress = string.IsNullOrWhiteSpace(ndmApi.NdmConfig.ProviderAddress)
                 ? Address.Zero
                 : new Address(ndmApi.NdmConfig.ProviderAddress);
-            
+
             await _ndmConsumersModule.Init();
         }
 
@@ -182,7 +182,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 // can we not even call it here? // can be step and use the subsystems
                 return NullNdmCapabilityConnector.Instance;
             }
-            
+
             await PreInitAsync(api);
 
             NdmSubprotocolFactory subprotocolFactory = new NdmSubprotocolFactory(

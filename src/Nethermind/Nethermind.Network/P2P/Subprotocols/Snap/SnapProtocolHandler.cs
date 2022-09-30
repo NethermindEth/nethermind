@@ -239,7 +239,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             PathGroup[] groups = GetPathGroups(request);
 
-            GetTrieNodesMessage reqMsg = new ()
+            GetTrieNodesMessage reqMsg = new()
             {
                 RootHash = request.RootHash,
                 Paths = groups,

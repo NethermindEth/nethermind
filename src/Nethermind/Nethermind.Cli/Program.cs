@@ -79,7 +79,7 @@ namespace Nethermind.Cli
                 return "";
             }
 
-            StringBuilder cleaned = new ();
+            StringBuilder cleaned = new();
             for (int i = 0; i < statement.Length; i++)
             {
                 switch (statement[i])

@@ -41,19 +41,19 @@ namespace Nethermind.Evm.Test
         public static IEnumerable<(List<object> orderQueue, long Cost)> AccessTestCaseSource()
         {
             yield return (new List<object> { }, 0);
-            yield return (new List<object> {Address.Zero}, 2400);
-            yield return (new List<object> {Address.Zero, (UInt256)1}, 4300);
-            yield return (new List<object> {Address.Zero, (UInt256)1, TestItem.AddressA, (UInt256)1}, 8600);
-            yield return (new List<object> {Address.Zero, (UInt256)1, Address.Zero, (UInt256)1}, 8600);
+            yield return (new List<object> { Address.Zero }, 2400);
+            yield return (new List<object> { Address.Zero, (UInt256)1 }, 4300);
+            yield return (new List<object> { Address.Zero, (UInt256)1, TestItem.AddressA, (UInt256)1 }, 8600);
+            yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600);
         }
 
         public static IEnumerable<(byte[] Data, int OldCost, int NewCost)> DataTestCaseSource()
         {
-            yield return (new byte[] {0}, 4, 4);
-            yield return (new byte[] {1}, 68, 16);
-            yield return (new byte[] {0, 0, 1}, 76, 24);
-            yield return (new byte[] {1, 1, 0}, 140, 36);
-            yield return (new byte[] {0, 0, 1, 1}, 144, 40);
+            yield return (new byte[] { 0 }, 4, 4);
+            yield return (new byte[] { 1 }, 68, 16);
+            yield return (new byte[] { 0, 0, 1 }, 76, 24);
+            yield return (new byte[] { 1, 1, 0 }, 140, 36);
+            yield return (new byte[] { 0, 0, 1, 1 }, 144, 40);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

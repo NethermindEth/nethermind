@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            
+
             rlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Data.Length; i++)
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             {
                 contentLength += Rlp.LengthOf(message.Data[i]);
             }
-            
+
             return Rlp.LengthOfSequence(contentLength);
         }
     }

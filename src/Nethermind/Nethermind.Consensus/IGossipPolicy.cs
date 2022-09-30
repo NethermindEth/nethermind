@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ namespace Nethermind.Consensus
     public interface IGossipPolicy
     {
         public bool ShouldDiscardBlocks => false;
-        
+
         public bool CanGossipBlocks { get; }
 
         public bool ShouldGossipBlock(BlockHeader header) => CanGossipBlocks;
@@ -34,26 +34,26 @@ namespace Nethermind.Consensus
     {
         private ShouldNotGossip() { }
 
-        public static ShouldNotGossip Instance { get; } = new ();
-        
+        public static ShouldNotGossip Instance { get; } = new();
+
         public bool CanGossipBlocks => false;
         public bool ShouldDisconnectGossipingNodes => true;
     }
-    
+
     public class ShouldGossip : IGossipPolicy
     {
         private ShouldGossip() { }
 
         public static IGossipPolicy Instance { get; } = new ShouldGossip();
-        
+
         public bool CanGossipBlocks => true;
         public bool ShouldDisconnectGossipingNodes => false;
     }
-    
+
     public static class Policy
     {
         public static IGossipPolicy NoBlockGossip { get; } = ShouldNotGossip.Instance;
-        
+
         public static IGossipPolicy FullGossip { get; } = ShouldGossip.Instance;
     }
 }

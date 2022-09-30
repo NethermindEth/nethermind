@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Ethash
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
 
-            Data = _arrayPool.Rent((int) cachePageCount);
+            Data = _arrayPool.Rent((int)cachePageCount);
             Data[0] = MemoryMarshal.Cast<uint, Bucket>(Keccak512.ComputeToUInts(seed))[0];
 
             for (uint i = 1; i < cachePageCount; i++)
@@ -145,7 +145,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 GC.SuppressFinalize(this);
             }
-            
+
             _arrayPool.Return(Data);
         }
 

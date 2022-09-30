@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             act.Should().Throw<ArgumentException>()
                 .WithMessage("Transaction hash cannot be null. (Parameter 'transactionHash')");
         }
-        
+
         [Test]
         public void update_gas_price_should_fail_if_price_is_0()
         {
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             act.Should().Throw<ArgumentException>()
                 .WithMessage("Gas price cannot be 0. (Parameter 'gasPrice')");
         }
-        
+
         [Test]
         public void update_gas_price_should_fail_if_transaction_was_not_found()
         {
@@ -125,7 +125,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _blockchainBridge.Received().GetNetworkIdAsync();
             await _blockchainBridge.Received().SendOwnTransactionAsync(transaction);
         }
-        
+
         [Test]
         public async Task update_value_should_succeed_if_sending_new_transaction_succeeds()
         {
@@ -156,7 +156,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
-        public void  cancel_should_fail_if_transaction_is_not_pending()
+        public void cancel_should_fail_if_transaction_is_not_pending()
         {
             var transactionHash = TestItem.KeccakA;
             var transaction = Build.A.Transaction.TestObject;

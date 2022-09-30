@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.True(hasNotified, "notied");
             Assert.False(store.FilterExists(0), "exists");
         }
-        
+
         [Test]
         public void Can_get_filters_by_type()
         {
@@ -101,24 +101,24 @@ namespace Nethermind.Blockchain.Test.Filters
 
             LogFilter[] logFilters = store.GetFilters<LogFilter>().ToArray();
             BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
-            
+
             Assert.AreEqual(1, logFilters.Length, "log filters length");
             Assert.AreEqual(1, logFilters[0].Id, "log filters ids");
             Assert.AreEqual(1, blockFilters.Length, "block Filters length");
             Assert.AreEqual(0, blockFilters[0].Id, "block filters ids");
         }
-        
+
         public static IEnumerable CorrectlyCreatesAddressFilterTestCases
         {
             get
             {
                 yield return new TestCaseData(null, AddressFilter.AnyAddress);
                 yield return new TestCaseData(TestItem.AddressA.ToString(), new AddressFilter(TestItem.AddressA));
-                yield return new TestCaseData(new[] {TestItem.AddressA.ToString(), TestItem.AddressB.ToString()},
-                    new AddressFilter(new HashSet<Address>() {TestItem.AddressA, TestItem.AddressB}));
+                yield return new TestCaseData(new[] { TestItem.AddressA.ToString(), TestItem.AddressB.ToString() },
+                    new AddressFilter(new HashSet<Address>() { TestItem.AddressA, TestItem.AddressB }));
             }
         }
-        
+
         [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
         public void Correctly_creates_address_filter(object address, AddressFilter expected)
         {
@@ -128,27 +128,27 @@ namespace Nethermind.Blockchain.Test.Filters
             LogFilter filter = store.CreateLogFilter(from, to, address);
             filter.AddressFilter.Should().BeEquivalentTo(expected);
         }
-        
+
         public static IEnumerable CorrectlyCreatesTopicsFilterTestCases
         {
             get
             {
                 yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
-                
-                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString()}, 
+
+                yield return new TestCaseData(new[] { TestItem.KeccakA.ToString() },
                     new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
-                
-                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}, 
+
+                yield return new TestCaseData(new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString() },
                     new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
-                
-                yield return new TestCaseData(new[] {null, TestItem.KeccakB.ToString()}, 
+
+                yield return new TestCaseData(new[] { null, TestItem.KeccakB.ToString() },
                     new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
-                
-                yield return new TestCaseData(new object[] {new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}, 
+
+                yield return new TestCaseData(new object[] { new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString() }, TestItem.KeccakD.ToString() },
                     new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
-        
+
         [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
         public void Correctly_creates_topics_filter(IEnumerable<object> topics, TopicsFilter expected)
         {

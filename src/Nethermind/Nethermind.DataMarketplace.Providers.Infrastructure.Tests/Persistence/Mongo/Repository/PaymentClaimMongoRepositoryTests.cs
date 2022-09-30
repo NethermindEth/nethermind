@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
                 4,
                 5,
                 6,
-                new byte[] {1, 2, 3},
+                new byte[] { 1, 2, 3 },
                 TestItem.AddressA,
                 TestItem.AddressB,
                 new Signature(new byte[65]),
@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
             await repo.AddAsync(paymentClaim);
             await repo.BrowseAsync(new GetPaymentClaims());
         }
-        
+
         [Test]
         public async Task Can_get_payment_summary()
         {

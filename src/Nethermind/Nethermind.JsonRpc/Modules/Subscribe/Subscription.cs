@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public abstract class Subscription : IDisposable
     {
         protected ILogger _logger;
-        
+
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             SendChannel.Writer.Complete();
         }
-        
+
         protected JsonRpcResult CreateSubscriptionMessage(object result)
         {
             return JsonRpcResult.Single(
@@ -61,8 +61,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             SendChannel.Writer.TryWrite(action);
         }
 
-        protected string GetErrorMsg() =>  $"{Type} subscription with ID {Id} failed.";
-        
+        protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
+
         private void ProcessMessages()
         {
             Task.Factory.StartNew(async () =>

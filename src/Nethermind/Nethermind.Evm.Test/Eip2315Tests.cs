@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 18);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Two_levels_of_subroutines()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 36);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Invalid_jump()
         {
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Shallow_return_stack()
         {
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Subroutine_at_end_of_code()
         {
@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 30);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Error_on_walk_into_the_subroutine()
         {

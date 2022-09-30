@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             _unitPrice = 100000000000000;
             _providerThresholdsService = Substitute.For<IProviderThresholdsService>();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_lower_than_receipt_request_policy_it_should_not_be_possible_to_send_receipt()
         {
@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanRequestReceipts(_sessionUnpaidUnits, _unitPrice);
             result.Should().BeFalse();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_equal_to_receipt_request_policy_it_should_be_possible_to_send_receipt()
         {
@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanRequestReceipts(_sessionUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_greater_than_receipt_request_policy_it_should_be_possible_to_send_receipt()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanRequestReceipts(_sessionUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_lower_than_merge_receipts_policy_it_should_not_be_possible_to_merge_receipts()
         {
@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanMergeReceipts(_consumerUnpaidUnits, _unitPrice);
             result.Should().BeFalse();
         }
-        
+
 
         [Test]
         public async Task given_unpaid_value_equal_to_merge_receipts_policy_it_should_be_possible_to_merge_receipts()
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanMergeReceipts(_consumerUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_greater_than_merge_receipts_policy_it_should_be_possible_to_merge_receipts()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanMergeReceipts(_consumerUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_lower_than_claim_payment_policy_it_should_not_be_possible_to_send_claim()
         {
@@ -108,7 +108,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanClaimPayment(_consumerUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task given_unpaid_value_greater_than_claim_payment_policy_it_should_be_possible_to_send_claim()
         {
@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Policies
             var result = await policies.CanClaimPayment(_consumerUnpaidUnits, _unitPrice);
             result.Should().BeTrue();
         }
-       
+
         private IReceiptsPolicies CreatePolicies()
             => new ReceiptsPolicies(_providerThresholdsService);
     }

@@ -27,13 +27,13 @@ namespace Nethermind.AccountAbstraction.Network
     public class UserOperationsMessageSerializer : IZeroInnerMessageSerializer<UserOperationsMessage>
     {
         private UserOperationDecoder _decoder = new();
-        
+
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
-            
+
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.UserOperationsWithEntryPoint.Count; i++)
             {
@@ -58,7 +58,7 @@ namespace Nethermind.AccountAbstraction.Network
 
             return Rlp.LengthOfSequence(contentLength);
         }
-        
+
         private UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
         {
             return Rlp.DecodeArray<UserOperationWithEntryPoint>(rlpStream);

@@ -23,7 +23,7 @@ namespace Nethermind.Core.Timers
     public class TimerFactory : ITimerFactory
     {
         public static readonly ITimerFactory Default = new TimerFactory();
-        
-        public ITimer CreateTimer(TimeSpan interval) => new TimerWrapper(new Timer()) {Interval = interval};
+
+        public ITimer CreateTimer(TimeSpan interval) => new TimerWrapper(new Timer()) { Interval = interval };
     }
 }

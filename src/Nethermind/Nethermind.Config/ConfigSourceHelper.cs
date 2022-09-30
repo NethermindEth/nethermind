@@ -98,7 +98,7 @@ namespace Nethermind.Config
             {
                 return UInt256.Parse(itemValue);
             }
-            
+
             if (valueType.IsEnum)
             {
                 if (Enum.TryParse(valueType, itemValue, true, out var enumValue))
@@ -110,11 +110,11 @@ namespace Nethermind.Config
             }
 
             var nullableType = Nullable.GetUnderlyingType(valueType);
-            
+
             return nullableType == null
                 ? Convert.ChangeType(itemValue, valueType)
-                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase) 
-                    ? Convert.ChangeType(itemValue, nullableType) 
+                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase)
+                    ? Convert.ChangeType(itemValue, nullableType)
                     : null;
         }
     }

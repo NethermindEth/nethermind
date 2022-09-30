@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@ namespace Nethermind.Benchmarks.Core
                     _shuffleMask = Avx2.LoadVector256(ptr_mask);
                 }
             }
-            
+
             _a = _scenarios[ScenarioIndex];
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.Benchmarks.Core
         {
             _a.AsSpan().Reverse();
         }
-        
+
         [Benchmark]
         public void SwapVersion()
         {
@@ -80,13 +80,13 @@ namespace Nethermind.Benchmarks.Core
             {
                 Span<byte> bytesPadded = stackalloc byte[32];
                 _a.CopyTo(bytesPadded);
-                
+
                 Swap(bytesPadded);
-                
+
                 bytesPadded.Slice(32 - _a.Length);
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Swap(Span<byte> bytes)
         {
@@ -94,8 +94,8 @@ namespace Nethermind.Benchmarks.Core
             (ulongs[0], ulongs[3]) = (BinaryPrimitives.ReverseEndianness(ulongs[3]), BinaryPrimitives.ReverseEndianness(ulongs[0]));
             (ulongs[1], ulongs[2]) = (BinaryPrimitives.ReverseEndianness(ulongs[2]), BinaryPrimitives.ReverseEndianness(ulongs[1]));
         }
-        
-        private static byte[] _reverseMask = {15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+
+        private static byte[] _reverseMask = { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
 
         [Benchmark]
         public void Avx2Version()

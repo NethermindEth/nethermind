@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,12 +24,12 @@ public class PingMsg : DiscoveryMsg
 {
     public IPEndPoint SourceAddress { get; }
     public IPEndPoint DestinationAddress { get; }
-    
+
     /// <summary>
     /// Modification detection code
     /// </summary>
     public byte[]? Mdc { get; set; }
-    
+
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-868
     /// </summary>
@@ -42,14 +42,14 @@ public class PingMsg : DiscoveryMsg
         DestinationAddress = destination ?? throw new ArgumentNullException(nameof(destination));
         Mdc = mdc ?? throw new ArgumentNullException(nameof(mdc));
     }
-    
+
     public PingMsg(IPEndPoint farAddress, long expirationTime, IPEndPoint sourceAddress)
         : base(farAddress, expirationTime)
     {
         SourceAddress = sourceAddress ?? throw new ArgumentNullException(nameof(sourceAddress));
         DestinationAddress = farAddress;
     }
-    
+
     public override string ToString()
     {
         return base.ToString() + $", SourceAddress: {SourceAddress}, DestinationAddress: {DestinationAddress}, Version: {Version}, Mdc: {Mdc?.ToHexString()}";

@@ -19,6 +19,6 @@ namespace Nethermind.Abi
 {
     public class AbiErrorDescription : AbiBaseDescription<AbiParameter>
     {
-        
+
     }
 }

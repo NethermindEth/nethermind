@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,27 +32,27 @@ namespace Nethermind.Consensus.Processing
         protected class BlockProductionTransactionPicker
         {
             private readonly ISpecProvider _specProvider;
-            
+
             public BlockProductionTransactionPicker(ISpecProvider specProvider)
             {
                 _specProvider = specProvider;
             }
-            
+
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
             public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
-                
+
                 long gasRemaining = block.Header.GasLimit - block.GasUsed;
-                
+
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
                 if (GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }
-                
+
                 if (currentTx.SenderAddress is null)
                 {
                     return args.Set(TxAction.Skip, "Null sender");
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
                 }
-                
+
                 if (transactionsInBlock.Contains(currentTx))
                 {
                     return args.Set(TxAction.Skip, "Transaction already in block");
@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Processing
                 return true;
             }
         }
-        
+
         public enum TxAction
         {
             Add,

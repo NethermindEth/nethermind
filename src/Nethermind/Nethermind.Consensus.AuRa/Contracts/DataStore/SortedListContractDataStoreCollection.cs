@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public override IEnumerable<T> GetSnapshot() => Items.Values.OrderBy(x => x, _valueComparer).ToList();
 
-        protected override bool CanReplace(T replaced, T replacing) => 
+        protected override bool CanReplace(T replaced, T replacing) =>
             (_valueComparer?.Compare(replacing, replaced) ?? 1) >= 0; // allow replacing only if new value is >= old value
     }
 }

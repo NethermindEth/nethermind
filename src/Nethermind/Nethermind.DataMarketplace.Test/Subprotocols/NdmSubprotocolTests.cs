@@ -117,7 +117,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
                 _messageSerializationService.Serialize(getDataAssetsMessage));
             _messageSerializationService.Deserialize<GetDataAssetsMessage>(getDataAssetsPacket.Data)
                 .Returns(getDataAssetsMessage);
-            
+
             Received.InOrder(() =>
             {
                 _session.DeliverMessage(Arg.Any<GetDataAssetsMessage>());

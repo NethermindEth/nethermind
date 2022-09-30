@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -56,7 +56,8 @@ namespace Nethermind.Network.Discovery.Test
         {
             PingMsg message =
                 new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress,
-                    new byte[32]) { FarAddress = _farAddress };
+                    new byte[32])
+                { FarAddress = _farAddress };
 
             byte[] data = _messageSerializationService.Serialize(message);
             PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
@@ -97,13 +98,13 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void Ping_with_enr_there_and_back()
         {
-            PingMsg pingMsg = new (TestItem.PublicKeyA, long.MaxValue, TestItem.IPEndPointA, TestItem.IPEndPointB, new byte[32]);
+            PingMsg pingMsg = new(TestItem.PublicKeyA, long.MaxValue, TestItem.IPEndPointA, TestItem.IPEndPointB, new byte[32]);
             pingMsg.EnrSequence = 3;
             byte[] serialized = _messageSerializationService.Serialize(pingMsg);
             pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
             Assert.AreEqual(3, pingMsg.EnrSequence);
         }
-        
+
         [Test]
         public void Enr_request_there_and_back()
         {
@@ -113,14 +114,14 @@ namespace Nethermind.Network.Discovery.Test
             Assert.AreEqual(msg.ExpirationTime, deserialized.ExpirationTime);
             Assert.AreEqual(deserialized.FarPublicKey, _privateKey.PublicKey);
         }
-        
+
         [Test]
         public void Enr_response_there_and_back()
         {
-            NodeRecord nodeRecord = new ();
+            NodeRecord nodeRecord = new();
             nodeRecord.SetEntry(new Secp256K1Entry(_privateKey.CompressedPublicKey));
             nodeRecord.EnrSequence = 5;
-            NodeRecordSigner signer = new (new Ecdsa(), _privateKey);
+            NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
             signer.Sign(nodeRecord);
             EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
 

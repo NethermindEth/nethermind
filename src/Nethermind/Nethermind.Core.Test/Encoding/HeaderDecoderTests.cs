@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test.Encoding
             rlp.Bytes[2]++;
             string bytesWithAAA = rlp.Bytes.ToHexString();
             bytesWithAAA = bytesWithAAA.Replace("820aaa", "83000aaa");
-            
+
             rlp = new Rlp(Bytes.FromHexString(bytesWithAAA));
 
             Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
@@ -98,11 +98,11 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((BlockHeader) null);
+            Rlp rlp = Rlp.Encode((BlockHeader)null);
             BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
             Assert.Null(decoded);
         }
-        
+
         [Test]
         public void Can_encode_decode_with_base_fee()
         {
@@ -119,7 +119,7 @@ namespace Nethermind.Core.Test.Encoding
                 HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
             }
         }
-        
+
         [TestCase(-1)]
         [TestCase(long.MinValue)]
         public void Can_encode_decode_with_negative_long_fields(long negativeLong)
@@ -128,15 +128,15 @@ namespace Nethermind.Core.Test.Encoding
                 WithNumber(negativeLong).
                 WithGasUsed(negativeLong).
                 WithGasLimit(negativeLong).TestObject;
-            
+
             Rlp rlp = Rlp.Encode(header);
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-            
+
             blockHeader.GasUsed.Should().Be(negativeLong);
             blockHeader.Number.Should().Be(negativeLong);
             blockHeader.GasLimit.Should().Be(negativeLong);
         }
-        
+
         [TestCase(-1)]
         [TestCase(long.MinValue)]
         public void Can_encode_decode_with_negative_long_when_using_span(long negativeLong)
@@ -145,10 +145,10 @@ namespace Nethermind.Core.Test.Encoding
                 WithNumber(negativeLong).
                 WithGasUsed(negativeLong).
                 WithGasLimit(negativeLong).TestObject;
-            
+
             Rlp rlp = Rlp.Encode(header);
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
-            
+
             blockHeader.GasUsed.Should().Be(negativeLong);
             blockHeader.Number.Should().Be(negativeLong);
             blockHeader.GasLimit.Should().Be(negativeLong);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.Evm
 
         private const string SomeError = "error";
         private const string Revert = "revert";
-        
+
         public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
         {
             Error = isTracerConnected ? exceptionType.ToString() : SomeError;
@@ -63,7 +63,7 @@ namespace Nethermind.Evm
                         try
                         {
                             BigInteger start = Output.Span.Slice(4, 32).ToUnsignedBigInteger();
-                            BigInteger length = Output.Slice((int) start + 4, 32).Span.ToUnsignedBigInteger();
+                            BigInteger length = Output.Slice((int)start + 4, 32).Span.ToUnsignedBigInteger();
                             Error = string.Concat("Reverted ",
                                 Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
                         }

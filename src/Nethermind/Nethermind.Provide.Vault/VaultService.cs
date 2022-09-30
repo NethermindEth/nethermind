@@ -34,7 +34,7 @@ namespace Nethermind.Vault
         };
 
         private static List<string> AllowedKeyTypes = new List<string>()
-        { 
+        {
             "asymmetric", "symmetric", "hdwallet"
         };
 

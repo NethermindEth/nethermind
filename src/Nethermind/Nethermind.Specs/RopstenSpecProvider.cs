@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,13 +52,13 @@ namespace Nethermind.Specs
             };
 
         public long? DaoBlockNumber => null;
-        public const long SpuriousDragonBlockNumber  = 10;
-        public const long ByzantiumBlockNumber  = 1_700_000;
-        public const long ConstantinopleBlockNumber  = 4_230_000;
-        public const long ConstantinopleFixBlockNumber  = 4_939_394;
-        public const long IstanbulBlockNumber  = 6_485_846;
-        public const long MuirGlacierBlockNumber  = 7_117_117;
-        public const long BerlinBlockNumber  = 9_812_189;
+        public const long SpuriousDragonBlockNumber = 10;
+        public const long ByzantiumBlockNumber = 1_700_000;
+        public const long ConstantinopleBlockNumber = 4_230_000;
+        public const long ConstantinopleFixBlockNumber = 4_939_394;
+        public const long IstanbulBlockNumber = 6_485_846;
+        public const long MuirGlacierBlockNumber = 7_117_117;
+        public const long BerlinBlockNumber = 9_812_189;
         public const long LondonBlockNumber = 10_499_401;
 
         public ulong ChainId => Core.ChainId.Ropsten;

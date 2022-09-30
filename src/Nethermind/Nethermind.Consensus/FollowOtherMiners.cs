@@ -23,12 +23,12 @@ namespace Nethermind.Consensus
     public class FollowOtherMiners : IGasLimitCalculator
     {
         private readonly ISpecProvider _specProvider;
-        
-        public FollowOtherMiners(ISpecProvider specProvider) 
+
+        public FollowOtherMiners(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
         }
-        
+
         public long GetGasLimit(BlockHeader parentHeader)
         {
             long gasLimit = parentHeader.GasLimit;

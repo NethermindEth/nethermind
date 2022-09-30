@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
             }
         }
-        
+
         private bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip1559Enabled || !transaction.IsEip1559)
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.Validators
 
             return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
         }
-        
+
         private bool ValidateChainId(Transaction transaction)
         {
             switch (transaction.Type)
@@ -90,17 +90,17 @@ namespace Nethermind.Consensus.Validators
                     return false;
             }
         }
-        
+
         private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
         {
             if (signature is null)
             {
                 return false;
             }
-            
+
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
             BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
-            
+
             if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
             {
                 return false;
@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Validators
             {
                 return false;
             }
-            
+
             if (spec.IsEip155Enabled)
             {
                 return (signature.ChainId ?? _chainIdValue) == _chainIdValue;

@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             {
                 return Accepts(entry.Topics);
             }
-            
+
             var iterator = new KeccaksIterator(entry.TopicsRlp);
             for (int i = 0; i < _expressions.Length; i++)
             {
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Filters.Topics
         public override bool Matches(Bloom bloom)
         {
             bool result = true;
-            
+
             for (int i = 0; i < _expressions.Length; i++)
             {
                 result = _expressions[i].Matches(bloom);
@@ -95,11 +95,11 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return result;
         }
-        
+
         public override bool Matches(ref BloomStructRef bloom)
         {
             bool result = true;
-            
+
             for (int i = 0; i < _expressions.Length; i++)
             {
                 result = _expressions[i].Matches(ref bloom);
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return result;
         }
-        
+
         public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);
 
         public override bool Equals(object? obj)

@@ -78,8 +78,8 @@ public class EnrDiscovery : INodeSource
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null 
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value) 
+        return compressedPublicKey is not null && ipAddress is not null && port is not null
+            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
             : null;
     }
 

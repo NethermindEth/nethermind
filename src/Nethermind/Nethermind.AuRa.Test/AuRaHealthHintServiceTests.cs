@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test
             BlockProcessorIntervalHint test)
         {
             ManualTimestamper manualTimestamper = new(DateTime.Now);
-            AuRaStepCalculator stepCalculator = new(new Dictionary<long, long>() {{0, test.StepDuration}}, manualTimestamper, LimboLogs.Instance);
+            AuRaStepCalculator stepCalculator = new(new Dictionary<long, long>() { { 0, test.StepDuration } }, manualTimestamper, LimboLogs.Instance);
             IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
             validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);
             IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
@@ -50,7 +50,7 @@ namespace Nethermind.AuRa.Test
         public class BlockProcessorIntervalHint
         {
             public long StepDuration { get; set; }
-            
+
             public long ValidatorsCount { get; set; }
 
             public ulong? ExpectedProcessingHint { get; set; }

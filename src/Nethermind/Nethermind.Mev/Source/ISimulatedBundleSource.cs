@@ -28,7 +28,7 @@ namespace Nethermind.Mev.Source
     {
         Task<IEnumerable<SimulatedMevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit,
             CancellationToken token = default);
-        
+
         Task<IEnumerable<SimulatedMevBundle>> GetMegabundles(BlockHeader parent, UInt256 timestamp, long gasLimit,
             CancellationToken token = default);
     }

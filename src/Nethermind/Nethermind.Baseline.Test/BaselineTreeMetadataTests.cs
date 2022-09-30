@@ -56,7 +56,7 @@ namespace Nethermind.Baseline.Test
         }
 
         [Test]
-        public void GetLeavesCountFromPreviousBlocks([ValueSource(nameof(GetLeavesCountFromPreviousBlockTestCases))]GetLeavesCountTest test)
+        public void GetLeavesCountFromPreviousBlocks([ValueSource(nameof(GetLeavesCountFromPreviousBlockTestCases))] GetLeavesCountTest test)
         {
             var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             for (int i = 0; i < test.DataToSave.Length; ++i)
@@ -69,7 +69,7 @@ namespace Nethermind.Baseline.Test
         }
 
         [Test]
-        public void GetLeavesCountByBlockNumber([ValueSource(nameof(GetLeavesCountByBlockNumberTestCases))]GetLeavesCountTest test)
+        public void GetLeavesCountByBlockNumber([ValueSource(nameof(GetLeavesCountByBlockNumberTestCases))] GetLeavesCountTest test)
         {
             var baselineMetaData = new BaselineTreeMetadata(new MemDb(), new byte[] { }, LimboNoErrorLogger.Instance);
             for (int i = 0; i < test.DataToSave.Length; ++i)

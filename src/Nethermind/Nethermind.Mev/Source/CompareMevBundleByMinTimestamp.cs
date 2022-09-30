@@ -23,7 +23,7 @@ namespace Nethermind.Mev.Source
     public class CompareMevBundleByMinTimestamp : IComparer<MevBundle>
     {
         public static readonly CompareMevBundleByMinTimestamp Default = new();
-        
+
         public int Compare(MevBundle? x, MevBundle? y)
         {
             if (ReferenceEquals(x, y)) return 0;

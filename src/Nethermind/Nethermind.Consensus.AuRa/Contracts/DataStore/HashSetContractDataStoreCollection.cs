@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public void Insert(IEnumerable<T> items, bool inFront = false)
         {
             ISet<T> set = Items;
-            
+
             foreach (T item in items)
             {
                 set.Add(item);
@@ -46,11 +46,11 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public void Remove(IEnumerable<T> items)
         {
             ISet<T> set = Items;
-            
+
             foreach (T item in items)
             {
                 set.Remove(item);
-            }            
+            }
         }
     }
 }

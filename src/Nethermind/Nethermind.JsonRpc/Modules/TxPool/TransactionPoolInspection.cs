@@ -28,10 +28,10 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => GetTransactionSummary(v.Value)));
             Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => GetTransactionSummary(v.Value)));
         }
-        
+
         public IDictionary<Address, Dictionary<ulong, string>> Pending { get; set; }
         public IDictionary<Address, Dictionary<ulong, string>> Queued { get; set; }
-        
+
         private static string GetTransactionSummary(Transaction tx)
             => $"{tx.SenderAddress}: {tx.Value} wei + {tx.GasLimit} × {tx.GasPrice} gas";
     }

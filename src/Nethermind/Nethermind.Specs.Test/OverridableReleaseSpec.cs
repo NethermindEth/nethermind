@@ -36,7 +36,7 @@ namespace Nethermind.Specs.Test
         }
 
         public string Name => "OverridableReleaseSpec";
-        
+
         public long MaximumExtraDataSize => _spec.MaximumExtraDataSize;
 
         public long MaxCodeSize => _spec.MaxCodeSize;
@@ -50,7 +50,7 @@ namespace Nethermind.Specs.Test
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
-        
+
         public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
@@ -112,19 +112,19 @@ namespace Nethermind.Specs.Test
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
         public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-        
+
         public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
-        
+
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
         public bool IsEip2929Enabled => _spec.IsEip2929Enabled;
-        
+
         public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
 
         public bool IsEip1559Enabled => _spec.IsEip1559Enabled;
         public bool IsEip3198Enabled => _spec.IsEip3198Enabled;
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
-        
+
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip3607Enabled { get; set; }
 
@@ -148,6 +148,7 @@ namespace Nethermind.Specs.Test
 
         public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
-        public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
+        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
+        public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
     }
 }

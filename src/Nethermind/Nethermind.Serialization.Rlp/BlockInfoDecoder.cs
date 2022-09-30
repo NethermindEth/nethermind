@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.ReadByte();
                 return null;
             }
-            
+
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
             Keccak? blockHash = rlpStream.DecodeKeccak();
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
@@ -75,9 +75,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 return Rlp.OfEmptySequence;
             }
-            
+
             bool hasMetadata = item.Metadata != BlockMetadata.None;
-            
+
             Rlp[] elements = new Rlp[hasMetadata ? 4 : 3];
             elements[0] = Rlp.Encode(item.BlockHash);
             elements[1] = Rlp.Encode(item.WasProcessed);
@@ -102,7 +102,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.ReadByte();
                 return null;
             }
-            
+
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
             Keccak? blockHash = decoderContext.DecodeKeccak();
@@ -125,13 +125,13 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
                 Metadata = metadata
             };
-            
+
             return blockInfo;
         }
     }

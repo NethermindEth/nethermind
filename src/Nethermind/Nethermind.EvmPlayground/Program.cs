@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.EvmPlayground
                 while (true)
                 {
                     await Execute();
-                }    
+                }
             }
         }
 
@@ -80,7 +80,7 @@ namespace Nethermind.EvmPlayground
             {
                 Console.WriteLine(receipt);
                 string trace = await _client.GetTrace(hash);
-                Console.WriteLine(trace);    
+                Console.WriteLine(trace);
             }
         }
 
@@ -171,7 +171,7 @@ namespace Nethermind.EvmPlayground
                 _instructions = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
                 foreach (var foo in Enum.GetValues(typeof(Instruction)))
                 {
-                    _instructions.Add(foo.ToString(), ((byte) foo).ToString());
+                    _instructions.Add(foo.ToString(), ((byte)foo).ToString());
                 }
             }
 
@@ -187,7 +187,7 @@ namespace Nethermind.EvmPlayground
 
             return string.Join(' ', split);
         }
-        
+
         private static string RemoveBadCharacters(string input)
         {
             List<char> result = new List<char>();
@@ -199,7 +199,7 @@ namespace Nethermind.EvmPlayground
                     skip--;
                     continue;
                 }
-                
+
                 if (c == 27)
                 {
                     skip = 2;

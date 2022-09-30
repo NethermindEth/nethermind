@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager): base(session, serializer, statsManager, syncServer, logManager)
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }
@@ -113,7 +113,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
-         {
+        {
             add { }
             remove { }
         }

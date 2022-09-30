@@ -47,12 +47,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
                 case 1:
                     return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
-                {
-                    var previousSessions = sessions.Take(2).ToArray();
+                    {
+                        var previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
-                                                             GetUniqueSession(session, previousSessions[0]));
-                }
+                        return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                                 GetUniqueSession(session, previousSessions[0]));
+                    }
             }
         }
 

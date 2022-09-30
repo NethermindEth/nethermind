@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,20 +31,20 @@ namespace Nethermind.Consensus.Processing
         /// Processing options that block processor and transaction processor will adhere to.
         /// </param>
         void Enqueue(Block block, ProcessingOptions processingOptions);
-        
+
         /// <summary>
         /// Fired when all blocks from the processing queue has been taken.
         /// This is used for example by the block producers to notify them that we are fully synchronised.
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
-        
+
         event EventHandler<BlockHashEventArgs> BlockRemoved;
 
         /// <summary>
         /// Number of blocks in the processing queue.
         /// </summary>
         int Count { get; }
-        
+
         public bool IsEmpty => Count == 0;
     }
 }

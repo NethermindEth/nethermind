@@ -21,6 +21,6 @@ namespace Nethermind.AccountAbstraction.Test.TestContracts
 {
     public class TestCounter : Contract
     {
-        
+
     }
 }

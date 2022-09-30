@@ -71,14 +71,14 @@ namespace Nethermind.Db.Test
             dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
             ((IDbProvider)readonlyDbProvider).StateDb.Should().BeOfType(typeof(ReadOnlyDb));
         }
-        
+
         [Test]
         public async Task InitializerTests_WithPruning()
         {
             IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning", true);
             dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
         }
-        
+
         private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path, bool pruning = false)
         {
             using IDbProvider dbProvider = new DbProvider(dbModeHint);
@@ -87,9 +87,9 @@ namespace Nethermind.Db.Test
             await initializer.InitStandardDbsAsync(useReceipts);
             return dbProvider;
         }
-        
+
         private static Type GetReceiptsType(bool useReceipts, Type receiptType = null) => useReceipts ? receiptType ?? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-        
+
         private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
         {
             dbProvider.BlockInfosDb.Should().BeOfType(dbType);
