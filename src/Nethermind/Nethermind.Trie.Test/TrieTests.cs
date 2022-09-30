@@ -220,8 +220,8 @@ namespace Nethermind.Trie.Test
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             byte[] emptyByte = { };
-            checkTree.GetNode(emptyByte, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
-            checkTree.GetNode(branchNodeKey1, patriciaTree.RootHash).Should().BeEquivalentTo(branchNodeValue1);
+            checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
+            checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash).Should().BeEquivalentTo(branchNodeValue1);
         }
 
         // [Test]
