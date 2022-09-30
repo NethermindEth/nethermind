@@ -68,7 +68,7 @@ public class SnapServer: ISnapServer
                 case 0:
                     return null;
                 case 1:
-                    var rlp = tree.GetNode(requestedPath[0], rootHash);
+                    byte[]? rlp = tree.GetNode(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
                     response.Add(rlp);
                     break;
                 default:
