@@ -182,14 +182,14 @@ public class SnapServer: ISnapServer
             {
                 // generate proof
                 // TODO: add error handling when proof is null
-                AccountProofCollector accountProofCollector = new(startingHash.Bytes);
+                ProofCollector accountProofCollector = new(startingHash.Bytes);
                 tree.Accept(accountProofCollector, storageRoot);
-                byte[][]? firstProof = accountProofCollector.BuildResult().Proof;
+                byte[][]? firstProof = accountProofCollector.BuildResult();
 
                 // TODO: add error handling when proof is null
-                accountProofCollector = new AccountProofCollector(nodes[^1].Path.Bytes);
+                accountProofCollector = new ProofCollector(nodes[^1].Path.Bytes);
                 tree.Accept(accountProofCollector, storageRoot);
-                byte[][]? lastProof = accountProofCollector.BuildResult().Proof;
+                byte[][]? lastProof = accountProofCollector.BuildResult();
 
                 List<byte[]> proofs = new();
                 proofs.AddRange(firstProof);
