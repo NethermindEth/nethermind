@@ -31,6 +31,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -183,7 +184,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
-            new UInt256(payloadAttributes.Timestamp).ToBigEndian(inputSpan.Slice(32, 32));
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
             payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
