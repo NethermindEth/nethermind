@@ -21,6 +21,9 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Prometheus;
 using Nethermind.Monitoring.Config;
+using System.Net.Http;
+using System.IO;
+using System.Net.Sockets;
 
 namespace Nethermind.Monitoring
 {
@@ -80,6 +83,8 @@ namespace Nethermind.Monitoring
                     },
                     OnError = ex =>
                     {
+                        if (ex.InnerException is not SocketException)
+                            return;
                         if (_logger.IsError)
                             _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
                     }
