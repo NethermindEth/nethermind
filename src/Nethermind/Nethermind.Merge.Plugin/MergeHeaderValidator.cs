@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin
         {
             return _poSSwitcher.IsPostMerge(header)
                 ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle)
-                : _preMergeHeaderValidator.Validate(header, parent, isUncle);
+                : ValidatePoWTotalDifficulty(header) && _preMergeHeaderValidator.Validate(header, parent, isUncle);
         }
 
         public override bool Validate(BlockHeader header, bool isUncle = false) =>
@@ -64,6 +64,17 @@ namespace Nethermind.Merge.Plugin
 
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) =>
             _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
+
+        private bool ValidatePoWTotalDifficulty(BlockHeader header)
+        {
+            if (header.Difficulty == 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - zero difficulty for PoW block.");
+                return false;
+            }
+
+            return true;
+        }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
