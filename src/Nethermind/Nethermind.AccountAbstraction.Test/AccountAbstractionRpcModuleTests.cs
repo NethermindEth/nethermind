@@ -254,13 +254,13 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.One).After(500, 50));
+                    Is.EqualTo(UInt256.One).After(2000, 50));
             }
             else
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.Zero).After(500, 50));
+                    Is.EqualTo(UInt256.Zero).After(2000, 50));
             }
         }
 

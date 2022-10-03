@@ -509,6 +509,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        [Retry(3)]
         public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
         {
             int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
