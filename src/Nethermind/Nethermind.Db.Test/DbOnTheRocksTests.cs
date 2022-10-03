@@ -95,6 +95,8 @@ namespace Nethermind.Db.Test
 
             cancelSource.Cancel();
             writeCompleted.Should().BeFalse();
+
+            task.IsFaulted.Should().BeTrue();
             task.Dispose();
         }
 
