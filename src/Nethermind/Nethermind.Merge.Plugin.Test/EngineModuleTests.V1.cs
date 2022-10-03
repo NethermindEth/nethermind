@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -288,11 +288,12 @@ namespace Nethermind.Merge.Plugin.Test
                     new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
                 .PayloadId!;
 
+
             await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
 
-            ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
-
-            response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+            Assert.That(
+                () => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.ErrorCode,
+                Is.EqualTo(MergeErrorCodes.UnknownPayload).After(10000, 500));
         }
 
         [Test]
@@ -959,14 +960,16 @@ namespace Nethermind.Merge.Plugin.Test
                 .WithTotalDifficulty(1900000L)
                 .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
             newBlock.CalculateHash();
-            await chain.BlockTree.SuggestBlockAsync(newBlock);
+
             SemaphoreSlim bestBlockProcessed = new(0);
             chain.BlockTree.NewHeadBlock += (s, e) =>
             {
                 if (e.Block.Hash == newBlock!.Hash)
                     bestBlockProcessed.Release(1);
             };
-            await bestBlockProcessed.WaitAsync();
+            await chain.BlockTree.SuggestBlockAsync(newBlock);
+            (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(1))).Should().BeTrue();
+
             ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -995,14 +998,16 @@ namespace Nethermind.Merge.Plugin.Test
                 .WithDifficulty(900000)
                 .WithTotalDifficulty(1900000L)
                 .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject; //incorrect state root
-            await chain.BlockTree.SuggestBlockAsync(newBlock);
+
             SemaphoreSlim bestBlockProcessed = new(0);
             chain.BlockTree.NewHeadBlock += (s, e) =>
             {
                 if (e.Block.Hash == newBlock!.Hash)
                     bestBlockProcessed.Release(1);
             };
-            await bestBlockProcessed.WaitAsync();
+            await chain.BlockTree.SuggestBlockAsync(newBlock);
+            (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+
             oneMoreTerminalBlock.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
@@ -1039,14 +1044,16 @@ namespace Nethermind.Merge.Plugin.Test
                 .WithDifficulty(900000)
                 .WithTotalDifficulty(1900000L)
                 .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
-            await chain.BlockTree.SuggestBlockAsync(newBlock);
+
             SemaphoreSlim bestBlockProcessed = new(0);
             chain.BlockTree.NewHeadBlock += (s, e) =>
             {
                 if (e.Block.Hash == newBlock!.Hash)
                     bestBlockProcessed.Release(1);
             };
-            await bestBlockProcessed.WaitAsync();
+            await chain.BlockTree.SuggestBlockAsync(newBlock);
+            (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+
             oneMoreTerminalBlock.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 

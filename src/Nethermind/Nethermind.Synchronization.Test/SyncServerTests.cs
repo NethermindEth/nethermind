@@ -542,9 +542,9 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
-            await Task.Delay(100); // notifications fire on separate task
+
+            Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
             await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
-            count.Should().Be(expectedPeers);
         }
 
         [Test]
