@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -37,6 +38,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
         private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
+
+        private static int GetReceiptsLatencyHighWatermark = 8000;
+        private static int GetReceiptsLatencyLowWatermark = 5000;
+        private static int GetReceiptsMaxBatchSize = 256;
+        private static int GetReceiptsMinBatchSize = 1;
+        private static double GetReceiptsBatchSizeAdjustmentFactor = 1.5;
+
+        private int _getReceiptsCurrentBatchSize = 4;
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -142,9 +151,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            GetReceiptsMessage msg = new(blockHashes);
-            TxReceipt[][] txReceipts = await SendRequest(msg, token);
-            return txReceipts;
+            int startingReceiptsCountLimit = _getReceiptsCurrentBatchSize;
+            GetReceiptsMessage msg = new(blockHashes.CappedTo(startingReceiptsCountLimit));
+
+            try
+            {
+                Stopwatch sw = Stopwatch.StartNew();
+                TxReceipt[][] txReceipts = await SendRequest(msg, token);
+
+                long elapsed = sw.ElapsedMilliseconds;
+                if (elapsed < GetReceiptsLatencyLowWatermark && txReceipts.Length == startingReceiptsCountLimit)
+                {
+                    _getReceiptsCurrentBatchSize = Math.Min(
+                        (int)Math.Ceiling(startingReceiptsCountLimit * GetReceiptsBatchSizeAdjustmentFactor),
+                        GetReceiptsMaxBatchSize
+                    );
+                }
+                else if (elapsed > GetReceiptsLatencyHighWatermark)
+                {
+                    _getReceiptsCurrentBatchSize = Math.Max(
+                        (int)Math.Floor(startingReceiptsCountLimit / GetReceiptsBatchSizeAdjustmentFactor),
+                        GetReceiptsMinBatchSize
+                    );
+                }
+
+                return txReceipts;
+            }
+            catch (Exception)
+            {
+                _getReceiptsCurrentBatchSize = Math.Max(
+                    (int)Math.Floor(startingReceiptsCountLimit / GetReceiptsBatchSizeAdjustmentFactor),
+                    GetReceiptsMinBatchSize
+                );
+                throw;
+            }
         }
 
         protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)

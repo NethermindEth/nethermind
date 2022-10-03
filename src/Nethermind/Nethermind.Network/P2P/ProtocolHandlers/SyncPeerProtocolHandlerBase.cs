@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,9 +29,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -65,6 +62,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
 
+        private static int GetBodiesLatencyHighWatermark = 8000;
+        private static int GetBodiesLatencyLowWatermark = 5000;
+        private static double GetBodiesBatchSizeAdjustmentFactor = 1.5;
+        private static int GetBodiesMaxBatchSize = 256;
+        private static int GetBodiesMinBatchSize = 1;
+
+        private int _getBodiesCurrentBatchSize = 4;
+
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
@@ -90,10 +95,39 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return Array.Empty<BlockBody>();
             }
 
-            GetBlockBodiesMessage bodiesMsg = new(blockHashes);
+            int startingBodiesCountLimit = _getBodiesCurrentBatchSize;
+            GetBlockBodiesMessage bodiesMsg = new(blockHashes.CappedTo(startingBodiesCountLimit));
 
-            BlockBody[] blocks = await SendRequest(bodiesMsg, token);
-            return blocks;
+            try
+            {
+                Stopwatch sw = Stopwatch.StartNew();
+                BlockBody[] blocks = await SendRequest(bodiesMsg, token);
+                long elapsed = sw.ElapsedMilliseconds;
+                if (elapsed < GetBodiesLatencyLowWatermark && blocks.Length == startingBodiesCountLimit)
+                {
+                    _getBodiesCurrentBatchSize = Math.Min(
+                        (int)Math.Ceiling(startingBodiesCountLimit * GetBodiesBatchSizeAdjustmentFactor),
+                        GetBodiesMaxBatchSize
+                    );
+                }
+                else if (elapsed > GetBodiesLatencyHighWatermark)
+                {
+                    _getBodiesCurrentBatchSize = Math.Max(
+                        (int)Math.Floor(startingBodiesCountLimit / GetBodiesBatchSizeAdjustmentFactor),
+                        GetBodiesMinBatchSize
+                    );
+                }
+
+                return blocks;
+            }
+            catch (Exception)
+            {
+                _getBodiesCurrentBatchSize = Math.Max(
+                    (int)Math.Floor(startingBodiesCountLimit / GetBodiesBatchSizeAdjustmentFactor),
+                    GetBodiesMinBatchSize
+                );
+                throw;
+            }
         }
 
         protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
