@@ -165,6 +165,7 @@ namespace Nethermind.Hive
             }
 
             byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
+            _logger.Info(chainFileContent.ToHexString());
             RlpStream rlpStream = new RlpStream(chainFileContent);
             List<Block> blocks = new List<Block>();
 
