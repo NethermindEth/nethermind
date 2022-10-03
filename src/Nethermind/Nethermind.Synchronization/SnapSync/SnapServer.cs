@@ -175,7 +175,7 @@ public class SnapServer: ISnapServer
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
             limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
-            (object []? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot, startingHash, limitHash, byteLimit - responseSize);
+            (object []? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot, startingHash, limitHash, byteLimit - responseSize, true);
             PathWithStorageSlot[] nodes = (PathWithStorageSlot[]) storageNodes;
             responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
