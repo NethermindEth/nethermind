@@ -742,7 +742,7 @@ namespace Nethermind.Evm
                 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
-            while (programCounter < code.Length)
+            while (programCounter < codeSectionLength)
             {
                 Instruction instruction = (Instruction) code[programCounter + codeSectionStart];
                 // Console.WriteLine(instruction);
@@ -2366,7 +2366,14 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-                        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                            if (spec.IsEip3540Enabled
+                            && !initCode.IsEOFCode(out _))
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
