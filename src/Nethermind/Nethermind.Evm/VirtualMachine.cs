@@ -207,7 +207,7 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
-                                // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540  is enabled.
+                                // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
                                 else if (currentState.ExecutionType.IsAnyCreate() && !callResult.Output.ValidateByteCode(spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
@@ -2168,8 +2168,8 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            int programCounterInt = programCounter;
-                            if (programCounterInt >= code.Length)
+                            int programCounterInt = programCounter + codeSectionStart;
+                            if (programCounterInt >= codeSectionEnd)
                             {
                                 stack.PushZero();
                             }
@@ -2220,8 +2220,8 @@ namespace Nethermind.Evm
                             }
 
                             int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = programCounter;
-                            int usedFromCode = Math.Min(code.Length - programCounterInt, length);
+                            int programCounterInt = programCounter + codeSectionStart;
+                            int usedFromCode = Math.Min(codeSectionLength - programCounterInt, length);
 
                             stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
 
@@ -2367,8 +2367,9 @@ namespace Nethermind.Evm
                             }
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+
                             if (spec.IsEip3540Enabled
-                                && !initCode.IsEOFCode(out _))
+                                && (initCode.HasEOFMagic() && !initCode.IsEOFCode(out _)))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

@@ -21,7 +21,6 @@ namespace Nethermind.Evm
     }
 
 
-    [Eip(3540, Phase.Draft)]
     public class EvmObjectFormat
     {
         // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
@@ -117,13 +116,13 @@ namespace Nethermind.Evm
         public bool ValidateEofCode(Span<byte> code) => ExtractHeader(code, out _);
         public bool ValidateEofCode(byte[] code) => ExtractHeader(code, out _);
 
-        public (int StartOffset, int EndOffset)? ExtractCodeOffsets(byte[] code)
+        public (int StartOffset, int EndOffset) ExtractCodeOffsets(Span<byte> code)
         {
             if(ExtractHeader(code, out var header))
             {
                 return ExtractCodeOffsets(header);
             }
-            return null;
+            return (0, code.Length);
         }
 
         public int codeStartOffset(EofHeader header) => header.DataSize == 0

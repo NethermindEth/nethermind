@@ -9,20 +9,22 @@ using Org.BouncyCastle.Crypto.Agreement.Srp;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    [Eip(3540, Phase.Draft)]
     internal static class ByteCodeValidator
     {
         private static EvmObjectFormat EofFormatChecker = new EvmObjectFormat();
 
+        public static bool HasEOFMagic(this Span<byte> code) => EofFormatChecker.HasEOFFormat(code);
+        public static bool HasEOFMagic(this byte[] code) => EofFormatChecker.HasEOFFormat(code);
+
         public static bool ValidateByteCode(this Span<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
-            if (_spec.IsEip3540Enabled)
-                return EofFormatChecker.ExtractHeader(code, out header);
-            else
+            if(_spec.IsEip3540Enabled && code.HasEOFMagic())
             {
-                header = null;
-                return !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
+                 return code.IsEOFCode(out header);
             }
+
+            header = null;
+            return  !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
         public static bool ValidateByteCode(this byte[] code, IReleaseSpec _spec, out EofHeader header)
             => code.AsSpan().ValidateByteCode(_spec, out header);
@@ -44,9 +46,9 @@ namespace Nethermind.Evm.CodeAnalysis
 
 
         public static (int, int) CodeSectionOffsets(this byte[] code)
-            => EofFormatChecker.ExtractCodeOffsets(code) ?? (0, code.Length);
+            => EofFormatChecker.ExtractCodeOffsets(code);
         public static (int, int) CodeSectionOffsets(this Span<byte> code)
-            => code.ToArray().CodeSectionOffsets();
+            => EofFormatChecker.ExtractCodeOffsets(code);
 
         public static int CodeStartIndex(this byte[] machineCode)
             => machineCode.AsSpan().CodeStartIndex();
