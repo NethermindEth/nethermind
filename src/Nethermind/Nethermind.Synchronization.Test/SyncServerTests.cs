@@ -509,6 +509,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        [Retry(3)]
         public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
         {
             int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
@@ -542,9 +543,9 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
-            await Task.Delay(100); // notifications fire on separate task
+
+            Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
             await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
-            count.Should().Be(expectedPeers);
         }
 
         [Test]

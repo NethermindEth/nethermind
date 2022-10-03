@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
         }
 
-        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null)
+        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
 
@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
 
             subscriptionId = newHeadSubscription.Id;
             return jsonRpcResult;
@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlockReplacementEventArgs blockReplacementEventArgs = new(null);
 
-            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _, shouldReceiveResult: false);
 
             jsonRpcResult.Response.Should().BeNull();
         }
