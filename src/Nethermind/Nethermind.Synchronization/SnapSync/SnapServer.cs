@@ -255,7 +255,7 @@ public class SnapServer: ISnapServer
         PatriciaTree tree = new(_store, _logManager);
 
 
-        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, byteLimit);
+        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
         Dictionary<byte[], byte[]>? requiredNodes = visitor.GetNodes();

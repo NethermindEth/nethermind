@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
 
@@ -33,8 +34,10 @@ public class RangeQueryVisitor: ITreeVisitor
     private bool _checkStartRange = true;
     private HashSet<Keccak> _nodeToVisitFilter = new();
     private long _byteLimit;
+    private bool IsAccountVisitor;
+    private readonly AccountDecoder _decoder = new(true);
 
-    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, long byteLimit=-1, int nodeLimit = 1000)
+    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, int nodeLimit = 1000)
     {
         _startHash = new byte[64];
         Nibbles.BytesToNibbleBytes(startHash, _startHash);
@@ -42,6 +45,7 @@ public class RangeQueryVisitor: ITreeVisitor
         _limitHash = new byte[64];
         Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
 
+        IsAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
     }
@@ -187,12 +191,22 @@ public class RangeQueryVisitor: ITreeVisitor
             return;
         }
 
-        _collectedNodes[Nibbles.ToBytes(path.ToArray())] = node.Value;
-        _currentBytesCount += 32 + node.Value!.Length;
+        byte[]? nodeValue = IsAccountVisitor ? ConvertFullToSlimAccount(node.Value) : node.Value;
+        _collectedNodes[Nibbles.ToBytes(path.ToArray())] = nodeValue;
+        _currentBytesCount += 32 + nodeValue!.Length;
     }
 
     public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
     {
         throw new System.NotImplementedException();
+    }
+
+    private byte[]? ConvertFullToSlimAccount(byte[]? accountRlp)
+    {
+        if (accountRlp is null)
+        {
+            return null;
+        }
+        return _decoder.Encode(_decoder.Decode(new RlpStream(accountRlp))).Bytes;
     }
 }
