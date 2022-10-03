@@ -213,7 +213,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
                                 else
-                                        {
+                                {
                                     if (currentState.ExecutionType.IsAnyCreate())
                                     {
                                         _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
@@ -632,9 +632,8 @@ namespace Nethermind.Evm
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-            int codeSectionStart  = code.CodeStartIndex();
-            int codeSectionLength = code.CodeSize();
-            int codeSectionEnd    = code.CodeEndIndex();
+            (int codeSectionStart, int codeSectionEnd) = code.CodeSectionOffsets();
+            int codeSectionLength = codeSectionEnd - codeSectionStart;
 
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
@@ -743,9 +742,9 @@ namespace Nethermind.Evm
                 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
-            while (programCounter < code.Length)
+            while (programCounter < codeSectionLength)
             {
-                Instruction instruction = (Instruction) code[programCounter];
+                Instruction instruction = (Instruction)code[programCounter + codeSectionStart];
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
@@ -2169,15 +2168,15 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                        int programCounterInt = programCounter;
-                        if (programCounterInt >= code.Length)
-                        {
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            stack.PushByte(code[programCounterInt]);
-                        }
+                            int programCounterInt = programCounter;
+                            if (programCounterInt >= code.Length)
+                            {
+                                stack.PushZero();
+                            }
+                            else
+                            {
+                                stack.PushByte(code[programCounterInt]);
+                            }
 
                             programCounter++;
                             break;
@@ -2220,11 +2219,11 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                        int length = instruction - Instruction.PUSH1 + 1;
-                        int programCounterInt = programCounter;
-                        int usedFromCode = Math.Min(code.Length - programCounterInt, length);
+                            int length = instruction - Instruction.PUSH1 + 1;
+                            int programCounterInt = programCounter;
+                            int usedFromCode = Math.Min(code.Length - programCounterInt, length);
 
-                        stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
+                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
 
                             programCounter += length;
                             break;
@@ -2367,14 +2366,14 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-                        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-                        if (spec.IsEip3540Enabled
-                            && !initCode.IsEOFCode(out _))
-                        {
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
+                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                            if (spec.IsEip3540Enabled
+                                && !initCode.IsEOFCode(out _))
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)

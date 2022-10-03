@@ -54,9 +54,8 @@ namespace Nethermind.Evm.CodeAnalysis
             _validJumpDestinations = new BitArray(MachineCode.Length);
             _validJumpSubDestinations = new BitArray(MachineCode.Length);
 
-            int codeStartOffset = MachineCode.CodeStartIndex();
-            int codeEndOffset = MachineCode.CodeEndIndex();
-            int codeSectionSize = MachineCode.CodeSize();
+            var (codeStartOffset, codeEndOffset) = MachineCode.CodeSectionOffsets();
+            int codeSectionSize = codeEndOffset - codeStartOffset;
 
             int index = 0;
             while (index < codeSectionSize)

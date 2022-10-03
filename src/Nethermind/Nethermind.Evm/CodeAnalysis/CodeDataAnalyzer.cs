@@ -82,9 +82,8 @@ namespace Nethermind.Evm.CodeAnalysis
             // ends with a PUSH32, the algorithm will push zeroes onto the
             // bitvector outside the bounds of the actual code.
 
-            int codeSize = code.CodeSize();
-            int codeStartOffset = code.CodeStartIndex();
-            int codeEndOffset = code.CodeEndIndex();
+            var (codeStartOffset, codeEndOffset) = code.CodeSectionOffsets();
+            int codeSize = codeEndOffset - codeStartOffset;
 
             byte[] bitvec = new byte[codeSize / 8 + 1 + 4];
 
