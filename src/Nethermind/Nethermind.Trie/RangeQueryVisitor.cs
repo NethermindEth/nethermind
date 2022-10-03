@@ -25,6 +25,7 @@ namespace Nethermind.Trie;
 
 public class RangeQueryVisitor: ITreeVisitor
 {
+    private const int BranchesCount = 16;
     private bool _shouldVisit = true;
     private Dictionary<byte[], byte[]> _collectedNodes = new();
     private long _currentBytesCount = 0;
@@ -68,7 +69,7 @@ public class RangeQueryVisitor: ITreeVisitor
 
     private bool ShouldVisit(IReadOnlyList<byte> path)
     {
-        if (_collectedNodes.Count >= _nodeLimit || (_byteLimit > 0 && _currentBytesCount >= _byteLimit))
+        if (_collectedNodes.Count >= _nodeLimit || (_byteLimit != -1 && _currentBytesCount >= _byteLimit))
         {
             return false;
         }
@@ -111,7 +112,10 @@ public class RangeQueryVisitor: ITreeVisitor
                 // this is a important case - here the path == _startHash[:path.Count]
                 // the index of child should be _startHash[path.Count]
                 byte index = _startHash[path.Count];
-                _nodeToVisitFilter.Add(node.GetChildHash(index));
+                for (int i = index; i < BranchesCount; i++)
+                {
+                    _nodeToVisitFilter.Add(node.GetChildHash(i));
+                }
                 return;
             }
             if (compRes == -1)
