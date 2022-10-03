@@ -358,8 +358,8 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsInfo)
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-            ulong timestamp = _timestamper.UnixTime.Seconds;
-            IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
+        ulong timestamp = _timestamper.UnixTime.Seconds;
+        IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
         BlockHeader header = new(
             parentHeader.Hash,
@@ -426,14 +426,14 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             }
         }
 
-            // Mix digest is reserved for now, set to empty
-            header.MixHash = Keccak.Zero;
-            // Ensure the timestamp has the correct delay
-            header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-            if (header.Timestamp < _timestamper.UnixTime.Seconds)
-            {
-                header.Timestamp = _timestamper.UnixTime.Seconds;
-            }
+        // Mix digest is reserved for now, set to empty
+        header.MixHash = Keccak.Zero;
+        // Ensure the timestamp has the correct delay
+        header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
+        if (header.Timestamp < _timestamper.UnixTime.Seconds)
+        {
+            header.Timestamp = _timestamper.UnixTime.Seconds;
+        }
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 

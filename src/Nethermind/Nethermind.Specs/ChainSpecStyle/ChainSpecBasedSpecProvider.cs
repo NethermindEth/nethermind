@@ -230,7 +230,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     : null;
 
         private static int CompareTransitionOnBlock((long BlockNumber, ulong timestamp) blockNumberAndTimestamp, ((long BlockNumber, ulong timestamp), ReleaseSpec Release) transition) =>
-            blockNumberAndTimestamp.timestamp < 1UL
+            blockNumberAndTimestamp.timestamp == 0
             ? blockNumberAndTimestamp.BlockNumber.CompareTo(transition.Item1.BlockNumber)
             : blockNumberAndTimestamp.timestamp.CompareTo(transition.Item1.timestamp);
 

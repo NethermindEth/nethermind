@@ -178,7 +178,7 @@ namespace Nethermind.Stats
 
         private void UpdateValue(ref decimal? currentValue, decimal newValue)
         {
-            currentValue = ((currentValue ?? newValue) * ( 1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+            currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         }
 
         public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)

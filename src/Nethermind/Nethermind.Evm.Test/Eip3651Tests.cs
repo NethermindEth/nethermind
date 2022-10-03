@@ -29,7 +29,8 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip3651Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         [Test]
         public void Access_beneficiary_address_after_eip_3651()
