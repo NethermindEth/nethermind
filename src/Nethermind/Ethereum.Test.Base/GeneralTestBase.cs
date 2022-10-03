@@ -71,8 +71,8 @@ namespace Ethereum.Test.Base
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider = new CustomSpecProvider(1,
-                (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                (1, test.Fork));
+                ((0, 0), Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                ((1, 0), test.Fork));
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
