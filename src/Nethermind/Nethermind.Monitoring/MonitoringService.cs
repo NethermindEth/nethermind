@@ -83,7 +83,7 @@ namespace Nethermind.Monitoring
                     },
                     OnError = ex =>
                     {
-                        if (ex.InnerException is  SocketException)
+                        if (ex.InnerException is SocketException)
                         {
                             if (_logger.IsError) _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
                             return;
