@@ -64,7 +64,7 @@ namespace Nethermind.Db.Test
 
             Task task = new(() =>
             {
-                while (true)
+                for (int i = 0; i < 10000; i++)
                 {
                     // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] { 1, 2, 3 });
