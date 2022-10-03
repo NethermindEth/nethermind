@@ -35,25 +35,11 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        const long ForkTestBlockNumber = 4_370_000;
-        protected override ISpecProvider SpecProvider
-        {
-            get
-            {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= ForkTestBlockNumber)).Returns(Shanghai.Instance);
-                specProvider.GetSpec(Arg.Is<long>(x => x < ForkTestBlockNumber)).Returns(GrayGlacier.Instance);
-                return specProvider;
-            }
-        }
-        private void AssertEip3855(Address address, byte[] code)
-        {
-            AssertCodeHash(address, Keccak.Compute(code));
-        }
+        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
         {
-            long blockNumberParam = isShanghai ? ForkTestBlockNumber : ForkTestBlockNumber - 1;
+            long blockNumberParam = isShanghai ? BlockNumber : BlockNumber - 1;
             Prepare codeInitializer = Prepare.EvmCode;
             for (int i = 0; i < repeat; i++)
             {
@@ -79,6 +65,7 @@ namespace Nethermind.Evm.Test
 
         [TestCase(1   , false, Description = "Shanghai fork deactivated")]
         [TestCase(123 , false, Description = "Shanghai fork deactivated")]
+        [TestCase(1234, false, Description = "Shanghai fork deactivated")]
         [TestCase(1025, true , Description = "Shanghai fork activated, stackoverflow")]
         [TestCase(1026, true , Description = "Shanghai fork activated, stackoverflow")]
         public void Test_Eip3855_should_fail(int repeat, bool isShanghai)
@@ -86,14 +73,16 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
 
             receipt.StatusCode.Should().Be(StatusCode.Failure);
-            if (isShanghai)
+
+            if (isShanghai && repeat > 1024) // should fail because of stackoverflow (exceeds stack limit of 1024)
             {
                 receipt.Error.Should().Be(EvmExceptionType.StackOverflow.ToString());
-            } else
+            }
+
+            if(!isShanghai) // should fail because of bad instruction (push zero is an EIP-3540 new instruction)
             {
                 receipt.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
             }
         }
-
     }
 }
