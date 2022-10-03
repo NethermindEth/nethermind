@@ -136,7 +136,7 @@ public class SnapServer: ISnapServer
         if (nodes.Length != 0)
         {
             // TODO: add error handling when proof is null
-            AccountProofCollector accountProofCollector = new(nodes[0].Path.Bytes);
+            AccountProofCollector accountProofCollector = new(startingHash.Bytes);
             tree.Accept(accountProofCollector, rootHash);
             byte[][] firstProof = accountProofCollector.BuildResult().Proof;
 
