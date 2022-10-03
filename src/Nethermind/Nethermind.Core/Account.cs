@@ -77,9 +77,9 @@ namespace Nethermind.Core
             IsTotallyEmpty = isTotallyEmpty;
         }
 
-        public bool HasCode => CodeHash == null ? true: !CodeHash.Equals(Keccak.OfAnEmptyString);
+        public bool HasCode => CodeHash == null ? false: !CodeHash.Equals(Keccak.OfAnEmptyString);
 
-        public bool HasStorage => StorageRoot == null ? true: !StorageRoot.Equals(Keccak.EmptyTreeHash);
+        public bool HasStorage => StorageRoot == null ? false: !StorageRoot.Equals(Keccak.EmptyTreeHash);
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
