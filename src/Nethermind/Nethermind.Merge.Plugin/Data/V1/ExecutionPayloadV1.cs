@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -32,18 +34,6 @@ namespace Nethermind.Merge.Plugin.Data.V1
     /// </summary>
     public class ExecutionPayloadV1
     {
-        public ExecutionPayloadV1()
-        {
-            BlockHash = Keccak.Zero;
-            ParentHash = Keccak.Zero;
-            FeeRecipient = Address.Zero;
-            StateRoot = Keccak.Zero;
-            ReceiptsRoot = Keccak.Zero;
-            LogsBloom = Bloom.Empty;
-            PrevRandao = Keccak.Zero;
-            ExtraData = Array.Empty<byte>();
-        }
-
         public ExecutionPayloadV1(Block block)
         {
             BlockHash = block.Hash!;
@@ -62,7 +52,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             BaseFeePerGas = block.BaseFeePerGas;
         }
 
-        public bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+        public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
         {
             try
             {
@@ -82,7 +72,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
                 header.TxRoot = new TxTrie(transactions).RootHash;
                 header.IsPostMerge = true;
                 header.TotalDifficulty = totalDifficulty;
-                block = new Block(header, transactions, Array.Empty<BlockHeader>());
+
+                var withdrawals = DecodedWithdrawals();
+
+                block = new Block(header, transactions, Array.Empty<BlockHeader>(), withdrawals);
                 return true;
             }
             catch (Exception)
@@ -92,16 +85,16 @@ namespace Nethermind.Merge.Plugin.Data.V1
             }
         }
 
-        public Keccak ParentHash { get; set; } = null!;
-        public Address FeeRecipient { get; set; }
-        public Keccak StateRoot { get; set; } = null!;
-        public Keccak ReceiptsRoot { get; set; } = null!;
+        public Keccak ParentHash { get; set; } = Keccak.Zero;
+        public Address FeeRecipient { get; set; } = Address.Zero;
+        public Keccak StateRoot { get; set; } = Keccak.Zero;
+        public Keccak ReceiptsRoot { get; set; } = Keccak.Zero;
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        //[JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak PrevRandao { get; set; } = Keccak.Zero;
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        //[JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
@@ -109,34 +102,35 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak? BlockHash { get; set; } = null!;
+        //[JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public Keccak BlockHash { get; set; } = Keccak.Zero;
 
         /// <summary>
         /// Array of transaction objects, each object is a byte list (DATA) representing TransactionType || TransactionPayload or LegacyTransaction as defined in EIP-2718
         /// </summary>
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
 
-        public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
+        /// <summary>
+        /// Gets or sets an RLP-encoded collection of <see cref="Withdrawal"/> as defined in
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
+        /// </summary>
+        public IEnumerable<byte[]> Withdrawals { get; set; } = Enumerable.Empty<byte[]>();
 
-        public void SetTransactions(params Transaction[] transactions)
-        {
-            Transactions = new byte[transactions.Length][];
-            for (int i = 0; i < Transactions.Length; i++)
-            {
-                Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
-            }
-        }
+        public override string ToString() => $"{BlockNumber} ({BlockHash})";
 
-        public Transaction[] GetTransactions()
-        {
-            Transaction[] transactions = new Transaction[Transactions.Length];
-            for (int i = 0; i < Transactions.Length; i++)
-            {
-                transactions[i] = Rlp.Decode<Transaction>(Transactions[i], RlpBehaviors.SkipTypedWrapping);
-            }
+        public void SetTransactions(params Transaction[] transactions) => Transactions = transactions
+            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
 
-            return transactions;
-        }
+        public Transaction[] GetTransactions() => Transactions
+            .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
+            .ToArray();
+
+        /// <summary>
+        /// Decodes the <see cref="Withdrawals"/> and returns a collection of <see cref="Withdrawal"/>.
+        /// </summary>
+        /// <returns>An RLP-decoded collection of <see cref="Withdrawal"/>.</returns>
+        public IEnumerable<Withdrawal> DecodedWithdrawals() => Withdrawals
+            .Select(w => Rlp.Decode<Withdrawal>(w, RlpBehaviors.None));
     }
 }

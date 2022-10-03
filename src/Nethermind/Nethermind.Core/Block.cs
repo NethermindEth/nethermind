@@ -33,16 +33,17 @@ namespace Nethermind.Core
             Body = body;
         }
 
-        public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles)
+        public Block(
+            BlockHeader blockHeader,
+            IEnumerable<Transaction> transactions,
+            IEnumerable<BlockHeader> uncles,
+            IEnumerable<Withdrawal>? withdrawals = null) // TODO Remove withdrawals default value
         {
             Header = blockHeader;
-            Body = new BlockBody(transactions.ToArray(), uncles.ToArray());
+            Body = new BlockBody(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
         }
 
-        public Block(BlockHeader blockHeader)
-            : this(blockHeader, BlockBody.Empty)
-        {
-        }
+        public Block(BlockHeader blockHeader) : this(blockHeader, BlockBody.Empty) { }
 
         public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
@@ -59,6 +60,8 @@ namespace Nethermind.Core
         public Transaction[] Transactions { get => Body.Transactions; protected set => Body.Transactions = value; } // setter needed to produce blocks with unknown transaction count on start
 
         public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
+
+        public Withdrawal[] Withdrawals => Body.Withdrawals;
 
         public Keccak? Hash => Header.Hash; // do not add setter here
 
@@ -130,18 +133,25 @@ namespace Nethermind.Core
             StringBuilder builder = new();
             builder.AppendLine($"Block {Number}");
             builder.AppendLine("  Header:");
-            builder.Append($"{Header.ToString("    ")}");
+            builder.Append(Header.ToString("    "));
 
             builder.AppendLine("  Uncles:");
             foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
             {
-                builder.Append($"{uncle.ToString("    ")}");
+                builder.Append(uncle.ToString("    "));
             }
 
             builder.AppendLine("  Transactions:");
             foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
             {
-                builder.Append($"{tx.ToString("    ")}");
+                builder.Append(tx.ToString("    "));
+            }
+
+            builder.AppendLine("  Withdrawals:");
+
+            foreach (var w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+            {
+                builder.Append(w.ToString("    "));
             }
 
             return builder.ToString();

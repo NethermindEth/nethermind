@@ -31,6 +31,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly BlockDecoder _blockDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
+        private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         protected RlpStream()
@@ -70,6 +71,8 @@ namespace Nethermind.Serialization.Rlp
         {
             _receiptDecoder.Encode(this, value);
         }
+
+        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {

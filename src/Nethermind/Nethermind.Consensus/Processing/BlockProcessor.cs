@@ -240,6 +240,7 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
+            ApplyWithdrawals(block, spec);
 
             _stateProvider.Commit(spec);
             _stateProvider.RecalculateStateRoot();
@@ -353,6 +354,27 @@ namespace Nethermind.Consensus.Processing
                     _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
                 }
             }
+        }
+
+        private void ApplyWithdrawals(Block block, IReleaseSpec spec)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Applying withdrawals");
+
+            foreach (var withdrawal in block.Withdrawals)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Recipient}");
+
+                if (_stateProvider.AccountExists(withdrawal.Recipient))
+                {
+                    _stateProvider.AddToBalance(withdrawal.Recipient, withdrawal.Amount, spec);
+                }
+                else
+                {
+                    _stateProvider.CreateAccount(withdrawal.Recipient, withdrawal.Amount);
+                }
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Withdrawals applied");
         }
     }
 }
