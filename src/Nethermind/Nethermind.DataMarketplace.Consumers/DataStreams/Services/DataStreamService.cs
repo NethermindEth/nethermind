@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 
         public DataStreamService(IDataAssetService dataAssetService, IDepositProvider depositProvider,
             IProviderService providerService, ISessionService sessionService, IWallet wallet,
-            IConsumerNotifier consumerNotifier, IConsumerSessionRepository sessionRepository,  ILogManager logManager)
+            IConsumerNotifier consumerNotifier, IConsumerSessionRepository sessionRepository, ILogManager logManager)
         {
             _dataAssetService = dataAssetService;
             _depositProvider = depositProvider;
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             _sessionRepository = sessionRepository;
             _logger = logManager.GetClassLogger();
         }
-        
+
         public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string?[] args)
             => ToggleDataStreamAsync(depositId, true, client, args);
 
@@ -75,13 +75,13 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 
             if (_logger.IsInfo) _logger.Info($"Disabling all data streams for deposit: '{depositId}'.");
             IEnumerable<Task<Keccak>> disableStreamTasks = from client in session.Clients
-                select DisableDataStreamAsync(session.DepositId, client.Id);
+                                                           select DisableDataStreamAsync(session.DepositId, client.Id);
             await Task.WhenAll(disableStreamTasks);
             if (_logger.IsInfo) _logger.Info($"Disabled all data streams for deposit: '{depositId}'.");
 
             return depositId;
         }
-        
+
         private async Task<Keccak?> ToggleDataStreamAsync(Keccak depositId, bool enable, string client, string?[]? args = null)
         {
             ConsumerSession? session = _sessionService.GetActive(depositId);
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 if (_logger.IsWarn) _logger.Warn($"Provider for address: '{session.ProviderAddress}' was not found.");
                 return null;
             }
-            
+
             DepositDetails? deposit = await _depositProvider.GetAsync(session.DepositId);
             if (deposit is null)
             {
@@ -105,14 +105,14 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 
                 return null;
             }
-            
+
             if (!_wallet.IsUnlocked(deposit.Consumer))
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot toggle data stream for deposit: '{session.DepositId}', account: '{deposit.Consumer}' is locked.");
 
                 return null;
             }
-            
+
             Keccak dataAssetId = deposit.DataAsset.Id;
             DataAsset? dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
             if (dataAsset is null)
@@ -133,33 +133,33 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             {
                 if (_logger.IsInfo) _logger.Info($"Sending disable data stream for deposit: '{depositId}', client: '{client}'.");
                 provider.SendDisableDataStream(depositId, client);
-                
+
                 return depositId;
             }
 
             switch (dataAsset.QueryType)
             {
                 case QueryType.Stream:
-                {
-                    if (session.GetClient(client)?.StreamEnabled == true)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Disabling an existing data stream for deposit: '{depositId}', client: '{client}'.");
-                        provider.SendDisableDataStream(depositId, client);
-                    }
+                        if (session.GetClient(client)?.StreamEnabled == true)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Disabling an existing data stream for deposit: '{depositId}', client: '{client}'.");
+                            provider.SendDisableDataStream(depositId, client);
+                        }
 
-                    if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
-                    break;
-                }
+                        if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                        break;
+                    }
                 case QueryType.Query:
-                {
-                    Metrics.SentQueries++;
-                    if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
-                    break;
-                }
+                    {
+                        Metrics.SentQueries++;
+                        if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
+                        break;
+                    }
                 default:
-                {
-                    throw new InvalidOperationException($"Not supported data asset type: {dataAsset.QueryType}.");
-                }
+                    {
+                        throw new InvalidOperationException($"Not supported data asset type: {dataAsset.QueryType}.");
+                    }
             }
 
             provider.SendEnableDataStream(depositId, client, args ?? Array.Empty<string>());
@@ -188,7 +188,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             {
                 return;
             }
-            
+
             session.DisableStream(client);
             await _sessionRepository.UpdateAsync(session);
             await _consumerNotifier.SendDataStreamDisabledAsync(depositId, session.Id);

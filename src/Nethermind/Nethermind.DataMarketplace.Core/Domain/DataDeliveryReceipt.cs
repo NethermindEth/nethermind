@@ -47,16 +47,16 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
-            return Equals((DataDeliveryReceipt) obj);
+            return Equals((DataDeliveryReceipt)obj);
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                var hashCode = (int) StatusCode;
-                hashCode = (hashCode * 397) ^ (int) ConsumedUnits;
-                hashCode = (hashCode * 397) ^ (int) UnpaidUnits;
+                var hashCode = (int)StatusCode;
+                hashCode = (hashCode * 397) ^ (int)ConsumedUnits;
+                hashCode = (hashCode * 397) ^ (int)UnpaidUnits;
                 hashCode = (hashCode * 397) ^ (Signature != null ? Signature.GetHashCode() : 0);
                 return hashCode;
             }

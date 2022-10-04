@@ -238,8 +238,8 @@ namespace Nethermind.Runner.Test
         {
             Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);
             Test<INetworkConfig, int>(configWildcard, c => c.P2PPort, 30303);
-            Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string) null);
-            Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
+            Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string)null);
+            Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string)null);
             Test<INetworkConfig, int>(configWildcard, c => c.MaxActivePeers, activePeers);
         }
 
@@ -262,7 +262,8 @@ namespace Nethermind.Runner.Test
         [TestCase("spaceneth", true)]
         [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten ^goerli", false)]
+        [TestCase("mainnet", true)]
+        [TestCase("^spaceneth ^baseline ^ropsten ^goerli ^mainnet", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -292,7 +293,7 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg", true)]
         [TestCase("ropsten.cfg", true)]
         [TestCase("rinkeby.cfg", false)]
-        [TestCase("sepolia.cfg", false)]
+        [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
         [TestCase("sokol.cfg", false)]
         [TestCase("kiln.cfg", false)]
@@ -301,8 +302,8 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^ropsten ^sepolia ^goerli", false)]
-        [TestCase("aura ^archive ropsten sepolia goerli", true)]
+        [TestCase("^aura ^ropsten ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("aura ^archive ropsten sepolia goerli mainnet", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
             Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
@@ -354,7 +355,7 @@ namespace Nethermind.Runner.Test
         [TestCase("clique")]
         public void Clique_pivots_divide_by_30000_epoch_length(string configWildcard)
         {
-            Test<ISyncConfig, int>(configWildcard, c => (int) (c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
+            Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
         }
 
         [TestCase("ropsten", false)]
@@ -385,16 +386,16 @@ namespace Nethermind.Runner.Test
 
         [TestCase("ropsten")]
         [TestCase("rinkeby")]
-        [TestCase("goerli", new[] {16, 16, 16, 16})]
+        [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
-        [TestCase("sokol.cfg", new[] {16, 16, 16, 16})]
-        [TestCase("sokol_archive.cfg", new[] {16, 16, 16, 16})]
+        [TestCase("sokol.cfg", new[] { 16, 16, 16, 16 })]
+        [TestCase("sokol_archive.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("sokol_validator.cfg", null, false)]
-        [TestCase("poacore.cfg", new[] {16, 16, 16, 16})]
-        [TestCase("poacore_archive.cfg", new[] {16, 16, 16, 16})]
+        [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
+        [TestCase("poacore_archive.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_validator.cfg", null, false)]
-        [TestCase("xdai.cfg", new[] {16, 16, 16})]
-        [TestCase("xdai_archive.cfg", new[] {16, 16, 16})]
+        [TestCase("xdai.cfg", new[] { 16, 16, 16 })]
+        [TestCase("xdai_archive.cfg", new[] { 16, 16, 16 })]
         [TestCase("xdai_validator.cfg", null, false)]
         [TestCase("volta")]
         public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
@@ -419,8 +420,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("^mainnet ^goerli", false)]
         [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("goerli.cfg", true)]
+        [TestCase("mainnet.cfg", false)]
+        [TestCase("goerli.cfg", false)]
         public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
@@ -535,7 +536,7 @@ namespace Nethermind.Runner.Test
                 ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
                 if (groupAttribute != null)
                 {
-                    groups.Add(groupAttribute.Name, (IEnumerable<string>) propertyInfo.GetValue(this));
+                    groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
                 }
             }
 

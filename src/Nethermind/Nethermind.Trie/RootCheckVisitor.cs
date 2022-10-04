@@ -21,7 +21,7 @@ namespace Nethermind.Trie
     public class RootCheckVisitor : ITreeVisitor
     {
         public bool HasRoot { get; set; } = true;
-        
+
         public bool ShouldVisit(Keccak nextNode)
         {
             return false;

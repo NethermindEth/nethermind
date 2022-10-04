@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _jsonRpcConfig = new JsonRpcConfig();
             _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
-            
+
             _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IWeb3RpcModule>(new SingletonFactory<IWeb3RpcModule>(typeof(IWeb3RpcModule).IsAssignableFrom(typeof(T)) ? (IWeb3RpcModule)module : Substitute.For<IWeb3RpcModule>()), true));
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
                 {
-                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] {rpcModuleAttribute.ModuleType}).ToArray();
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] { rpcModuleAttribute.ModuleType }).ToArray();
                 }
             }
         }

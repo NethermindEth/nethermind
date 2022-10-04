@@ -25,8 +25,8 @@ namespace Nethermind.Specs.Test
     [TestFixture]
     public class GoerliSpecProviderTests
     {
-        private readonly ISpecProvider _specProvider = GoerliSpecProvider.Instance;   
-        
+        private readonly ISpecProvider _specProvider = GoerliSpecProvider.Instance;
+
         [TestCase(4_460_643, false)]
         [TestCase(4_460_644, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
@@ -37,7 +37,7 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
-        
+
         [TestCase(5_062_604, false)]
         [TestCase(5_062_605, true)]
         public void London_eips(long blockNumber, bool isEnabled)
@@ -47,7 +47,7 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
-        
+
         [Test]
         public void Dao_block_number_is_null()
         {

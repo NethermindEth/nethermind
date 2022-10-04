@@ -173,6 +173,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
 
         private static void CompareSpecProviders(
@@ -320,7 +321,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 Parameters = new ChainParameters
                 {
-                    MaxCodeSizeTransition = maxCodeTransition, MaxCodeSize = maxCodeSize
+                    MaxCodeSizeTransition = maxCodeTransition,
+                    MaxCodeSize = maxCodeSize
                 }
             };
 
@@ -374,7 +376,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 Parameters = new ChainParameters
                 {
-                    Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4
+                    Eip1706Transition = 5,
+                    Eip1283Transition = 1,
+                    Eip1283DisableTransition = 4
                 }
             };
 

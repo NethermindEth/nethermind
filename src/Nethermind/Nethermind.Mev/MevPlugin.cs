@@ -39,13 +39,13 @@ namespace Nethermind.Mev
     public class MevPlugin : IConsensusWrapperPlugin
     {
         private static readonly ProcessingOptions SimulateBundleProcessingOptions = ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain;
-        
+
         private IMevConfig _mevConfig = null!;
         private ILogger? _logger;
         private INethermindApi _nethermindApi = null!;
         private BundlePool? _bundlePool;
         private ITracerFactory? _tracerFactory;
-        
+
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -70,18 +70,18 @@ namespace Nethermind.Mev
                 if (_bundlePool is null)
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
-                    
+
                     TxBundleSimulator txBundleSimulator = new(
-                        TracerFactory, 
+                        TracerFactory,
                         getFromApi.GasLimitCalculator,
                         getFromApi.Timestamper,
-                        getFromApi.TxPool!, 
-                        getFromApi.SpecProvider!, 
+                        getFromApi.TxPool!,
+                        getFromApi.SpecProvider!,
                         getFromApi.EngineSigner);
-                    
+
                     _bundlePool = new BundlePool(
-                        getFromApi.BlockTree!, 
-                        txBundleSimulator, 
+                        getFromApi.BlockTree!,
+                        txBundleSimulator,
                         getFromApi.Timestamper,
                         getFromApi.TxValidator!,
                         getFromApi.SpecProvider!,
@@ -102,7 +102,7 @@ namespace Nethermind.Mev
                 if (_tracerFactory is null)
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
-                    
+
                     _tracerFactory = new TracerFactory(
                         getFromApi.DbProvider!,
                         getFromApi.BlockTree!,
@@ -119,29 +119,29 @@ namespace Nethermind.Mev
 
         public Task InitRpcModules()
         {
-            if (_mevConfig.Enabled) 
-            {   
+            if (_mevConfig.Enabled)
+            {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.Mev);
 
                 MevModuleFactory mevModuleFactory = new(
-                    _mevConfig!, 
-                    rpcConfig, 
-                    BundlePool, 
+                    _mevConfig!,
+                    rpcConfig,
+                    BundlePool,
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
                     TracerFactory,
                     getFromApi.SpecProvider!,
                     getFromApi.EngineSigner,
                     getFromApi.ChainSpec!.ChainId);
-                
+
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 
                 if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
-            } 
-            else 
+            }
+            else
             {
                 if (_logger!.IsWarn) _logger.Info("Skipping Flashbots RPC plugin");
             }
@@ -161,11 +161,11 @@ namespace Nethermind.Mev
             int megabundleProducerCount = _mevConfig.GetTrustedRelayAddresses().Any() ? 1 : 0;
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                 new(_mevConfig.MaxMergedBundles + megabundleProducerCount + 1);
-                
+
             // Add non-mev block
             MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin);
             blockProducers.Add(standardProducer);
-            
+
             // Try blocks with all bundle numbers <= MaxMergedBundles
             for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
             {
@@ -201,14 +201,14 @@ namespace Nethermind.Mev
 
                 return false;
             }
-            
+
             IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
             IBlockProductionTrigger trigger = manualTrigger;
             if (bundleLimit != 0)
             {
                 trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
             }
-            
+
             IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
             return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
         }

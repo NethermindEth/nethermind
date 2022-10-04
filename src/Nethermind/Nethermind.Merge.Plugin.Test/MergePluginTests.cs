@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,14 +16,17 @@
 //
 
 using System;
+using System.Collections;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -48,8 +51,8 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() {Enabled = true };
-            MiningConfig? miningConfig = new() {Enabled = true};
+            _mergeConfig = new MergeConfig() { Enabled = true };
+            MiningConfig? miningConfig = new() { Enabled = true };
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
             _context = Build.ContextWithMocks();
@@ -125,7 +128,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
                 {
                     Enabled = jsonRpcEnabled,
-                    AdditionalRpcUrls = new []{"http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"}
+                    AdditionalRpcUrls = new[] { "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth" }
                 });
             }
             else
@@ -138,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             await _plugin.Invoking((plugin) => plugin.Init(_context))
                 .Should()
-                .ThrowAsync<InvalidOperationException>();
+                .ThrowAsync<InvalidConfigurationException>();
         }
 
         [Test]
@@ -148,7 +151,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 Enabled = false,
                 EnabledModules = new string[] { "eth", "subscribe" },
-                AdditionalRpcUrls = new []
+                AdditionalRpcUrls = new[]
                 {
                     "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth",
                     "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client",
@@ -185,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
             else
             {
-                await invocation.Should().ThrowAsync<InvalidOperationException>();
+                await invocation.Should().ThrowAsync<InvalidConfigurationException>();
             }
         }
     }

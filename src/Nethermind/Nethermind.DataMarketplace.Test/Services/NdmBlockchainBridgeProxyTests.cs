@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _proxy = Substitute.For<IEthJsonRpcClientProxy>();
             _ndmBridge = new NdmBlockchainBridgeProxy(_proxy);
         }
-        
+
         [Test]
         public void constructor_should_throw_exception_if_proxy_argument_is_null()
         {
@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task get_code_should_invoke_proxy_get_code()
         {
-            var code = new byte[] {0, 1, 2};
+            var code = new byte[] { 0, 1, 2 };
             var address = TestItem.AddressA;
             _proxy.eth_getCode(address, Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Latest.Type))
                 .Returns(RpcResult<byte[]>.Ok(code));
@@ -99,7 +99,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var blockModel = GetBlockModel();
             _proxy.eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Number == blockModel.Number))
                 .Returns(RpcResult<BlockModel<Keccak>>.Ok(blockModel));
-            var block = await _ndmBridge.FindBlockAsync((long) blockModel.Number);
+            var block = await _ndmBridge.FindBlockAsync((long)blockModel.Number);
             await _proxy.Received()
                 .eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Number == blockModel.Number));
             block.Should().NotBeNull();
@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             block.Should().NotBeNull();
             ValidateBlock(block, blockModel);
         }
-     
+
         [Test]
         public async Task get_nonce_should_invoke_proxy_eth_getTransactionCount_with_address_and_pending_arguments()
         {
@@ -155,17 +155,17 @@ namespace Nethermind.DataMarketplace.Test.Services
                 Hash = transaction.Hash,
                 Nonce = transaction.Nonce,
                 BlockHash = receipt.BlockHash,
-                BlockNumber = (UInt256) receipt.BlockNumber,
+                BlockNumber = (UInt256)receipt.BlockNumber,
                 From = transaction.SenderAddress,
                 To = transaction.To,
-                Gas = (UInt256) transaction.GasLimit,
+                Gas = (UInt256)transaction.GasLimit,
                 GasPrice = transaction.GasPrice,
                 Input = transaction.Data,
                 Value = transaction.Value
             };
             var receiptModel = new ReceiptModel
             {
-                GasUsed = (UInt256) receipt.GasUsed
+                GasUsed = (UInt256)receipt.GasUsed
             };
             _proxy.eth_getTransactionByHash(hash).Returns(RpcResult<TransactionModel>.Ok(transactionModel));
             _proxy.eth_getTransactionReceipt(hash).Returns(RpcResult<ReceiptModel>.Ok(receiptModel));
@@ -186,7 +186,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             result.Transaction.Data.Should().BeSameAs(transaction.Data);
             result.Transaction.Value.Should().Be(transaction.Value);
         }
-        
+
         [Test]
         public async Task get_network_id_should_invoke_proxy_eth_chainId()
         {
@@ -201,7 +201,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task call_should_invoke_proxy_eth_call_with_transaction_argument()
         {
             var transaction = Build.A.Transaction.TestObject;
-            var data = new byte[] {0, 1, 2};
+            var data = new byte[] { 0, 1, 2 };
             var callModel = CallTransactionModel.FromTransaction(transaction);
             _proxy.eth_call(Arg.Is<CallTransactionModel>(x => x.From == callModel.From &&
                                                               x.To == callModel.To &&
@@ -225,13 +225,13 @@ namespace Nethermind.DataMarketplace.Test.Services
                 Arg.Is<BlockParameterModel>(x => x.Number == blockNumber));
             result.Should().BeSameAs(Array.Empty<byte>());
         }
-   
+
         [Test]
         public async Task call_with_transaction_number_should_invoke_proxy_eth_call_and_return_data()
         {
             const int blockNumber = 1;
             var transaction = Build.A.Transaction.TestObject;
-            var data = new byte[] {0, 1, 2};
+            var data = new byte[] { 0, 1, 2 };
             var callModel = CallTransactionModel.FromTransaction(transaction);
             _proxy.eth_call(Arg.Is<CallTransactionModel>(x => x.From == callModel.From &&
                                                               x.To == callModel.To &&
@@ -284,7 +284,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             => new BlockModel<Keccak>
             {
                 Difficulty = 1,
-                ExtraData = new byte[] {0, 1, 2},
+                ExtraData = new byte[] { 0, 1, 2 },
                 Hash = TestItem.KeccakA,
                 Miner = TestItem.AddressA,
                 Nonce = 2,

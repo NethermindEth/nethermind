@@ -81,8 +81,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Timestamp,
                 Array.Empty<byte>())
             {
-                TxRoot = Keccak.EmptyTreeHash, 
-                ReceiptsRoot = Keccak.EmptyTreeHash, 
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
                 Author = Address.SystemUser
             };
 
@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            Block block = new(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
+            Block block = new(callHeader, new[] { transaction }, Enumerable.Empty<BlockHeader>());
 
             ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
@@ -170,12 +170,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReceiptWithProof receiptWithProof = new();
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
-            
+
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
-            
+
             if (includeHeader)
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
@@ -202,7 +202,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new() {tracedBlockHeader};
+            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
             foreach (Keccak blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(_blockFinder.FindHeader(blockHash));

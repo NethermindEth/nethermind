@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,13 +27,13 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
             Entries = new List<GethTxTraceEntry>();
         }
-        
+
         public long Gas { get; set; }
 
         public bool Failed { get; set; }
 
         public byte[] ReturnValue { get; set; }
-        
+
         [JsonProperty(PropertyName = "structLogs")]
         public List<GethTxTraceEntry> Entries { get; set; }
     }

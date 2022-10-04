@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -51,7 +52,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public override async Task<StateSyncBatch?> PrepareRequest()
+        public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {

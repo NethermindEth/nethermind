@@ -49,7 +49,9 @@ namespace Nethermind.KeyStore.Test
             IConsoleWrapper consoleWrapper = Substitute.For<IConsoleWrapper>();
             var chars = test.InputChars;
             var iterator = 0;
-            consoleWrapper.ReadKey(true).Returns(s => { ConsoleKeyInfo key = chars[iterator];
+            consoleWrapper.ReadKey(true).Returns(s =>
+            {
+                ConsoleKeyInfo key = chars[iterator];
                 ++iterator;
                 return key;
             });

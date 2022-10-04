@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,13 +43,13 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
 
     public ResultWrapper<TransitionConfigurationV1> Handle(TransitionConfigurationV1 beaconTransitionConfiguration)
     {
-        UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
+        UInt256 terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty ?? _ttdPlaceholderForCl;
         long configuredTerminalBlockNumber = _poSSwitcher.ConfiguredTerminalBlockNumber ?? 0;
         Keccak configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Keccak.Zero;
 
-        if (terminalTotalDifficulty == null)
+        if (terminalTotalDifficulty == _ttdPlaceholderForCl)
         {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind");
+            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
         }
         if (beaconTransitionConfiguration.TerminalTotalDifficulty != terminalTotalDifficulty)
         {
@@ -64,7 +64,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         {
             TerminalBlockHash = configuredTerminalBlockHash,
             TerminalBlockNumber = configuredTerminalBlockNumber,
-            TerminalTotalDifficulty = terminalTotalDifficulty ?? _ttdPlaceholderForCl
+            TerminalTotalDifficulty = terminalTotalDifficulty
         });
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -161,11 +161,11 @@ namespace Nethermind.HashLib
             {
                 if (a_hash is IHMAC)
                 {
-                    return (IHMAC) a_hash;
+                    return (IHMAC)a_hash;
                 }
                 else if (a_hash is IHasHMACBuildIn)
                 {
-                    IHasHMACBuildIn h = (IHasHMACBuildIn) a_hash;
+                    IHasHMACBuildIn h = (IHasHMACBuildIn)a_hash;
                     return new HMACBuildInAdapter(h.GetBuildHMAC(), h.BlockSize);
                 }
                 else

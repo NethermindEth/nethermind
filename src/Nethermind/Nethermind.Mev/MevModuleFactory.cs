@@ -45,9 +45,9 @@ namespace Nethermind.Mev
         private readonly ulong _chainId;
 
         public MevModuleFactory(
-            IMevConfig mevConfig, 
+            IMevConfig mevConfig,
             IJsonRpcConfig jsonRpcConfig,
-            IBundlePool bundlePool, 
+            IBundlePool bundlePool,
             IBlockTree blockTree,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
@@ -65,14 +65,14 @@ namespace Nethermind.Mev
             _signer = signer;
             _chainId = chainId;
         }
-        
+
         public override IMevRpcModule Create()
         {
             return new MevRpcModule(
-                _jsonRpcConfig, 
+                _jsonRpcConfig,
                 _bundlePool,
                 _blockTree,
-                _stateReader, 
+                _stateReader,
                 _tracerFactory,
                 _specProvider,
                 _signer);

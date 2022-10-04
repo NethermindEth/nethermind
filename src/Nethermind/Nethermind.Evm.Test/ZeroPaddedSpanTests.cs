@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x0001", 0, 4, PadDirection.Left, "0x00000001")]
         [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 1, PadDirection.Left, "0x01")]
         [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 17, PadDirection.Left, "0x00000102030405060708090a0b0c0d0e0f")]
-        
+
         public void Can_slice_with_zero_padding(string inputHex, int startIndex, int length, PadDirection padDirection, string expectedResultHex)
         {
             byte[] input = Bytes.FromHexString(inputHex);

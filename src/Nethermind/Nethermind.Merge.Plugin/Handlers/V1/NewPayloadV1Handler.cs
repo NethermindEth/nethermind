@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -30,6 +29,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data.V1;
@@ -58,8 +58,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ISpecProvider _specProvider;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
-        private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
-        private readonly ProcessingOptions _processingOptions;
+        private readonly LruCache<Keccak, bool>? _latestBlocks;
+        private readonly ProcessingOptions _defaultProcessingOptions;
         private readonly TimeSpan _timeout;
 
         public NewPayloadV1Handler(
@@ -76,7 +76,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IMergeSyncController mergeSyncController,
             ISpecProvider specProvider,
             ILogManager logManager,
-            TimeSpan? timeout = null)
+            TimeSpan? timeout = null,
+            int cacheSize = 50)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
@@ -90,8 +91,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _mergeSyncController = mergeSyncController;
             _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
-            _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+            _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
             _timeout = timeout ?? TimeSpan.FromSeconds(7);
+            if (cacheSize > 0)
+                _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
@@ -121,13 +124,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (block.Header.Number <= _syncConfig.PivotNumberParsed)
             {
-                if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
+                if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
                 return NewPayloadV1Result.Syncing;
             }
 
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (parentHeader is null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
@@ -150,20 +153,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Valid(block.Hash);
             }
 
-            BlockInfo parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHeader.GetOrCalculateHash()).Info;
-            bool parentProcessed = parentBlockInfo.WasProcessed;
-
-            // edge-case detected on GSF5 - during the transition we want to try process all transition blocks from CL client
-            // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
-            bool weAreCloseToHead = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
-            bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && !parentBlockInfo.IsBeaconInfo;
-            if (parentProcessed == false && forceProcessing) // add extra logging for this edge case
-            {
-                if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parentHeader}, parent TD: {parentHeader.TotalDifficulty}");
-            }
-
-            bool tryProcessBlock = parentProcessed || forceProcessing;
-            if (!tryProcessBlock)
+            if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
@@ -185,13 +175,21 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _beaconPivot.ProcessDestination = block.Header;
                 }
 
+                _beaconPivot.EnsurePivot(block.Header, true);
                 _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
                 if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
-            if ((block.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader)))
+            if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
+            {
+                if (_logger.IsWarn) _logger.Warn($"Misconfigured terminal total difficulty.");
+
+                return NewPayloadV1Result.Invalid(Keccak.Zero);
+            }
+
+            if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
 
@@ -203,24 +201,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _mergeSyncController.StopSyncing();
 
             // Try to execute block
-            (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
+            (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
             if (result == ValidationResult.Invalid)
             {
+                if (_logger.IsInfo) _logger.Info($"Invalid block found. Validation message: {message}. Result of {requestStr}.");
                 _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
                 return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
-            }
-
-            if (result == ValidationResult.AlreadyKnown) // this could happen only when we processed a parent, repeated the same block and we're processing this block via sync
-            {
-                if (_blockTree.IsMainChain(block.GetOrCalculateHash())) // if the block is on main chain it means that we've already finished processing it so we can return VALID
-                {
-                    if (_logger.IsInfo) _logger.Info($"Valid - already known processed block {requestStr}");
-                    return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
-                }
-
-                if (_logger.IsInfo) _logger.Info($"Syncing - already known not processed block {requestStr}.");
-                return NewPayloadV1Result.Syncing;
             }
 
             if (result == ValidationResult.Syncing)
@@ -233,35 +220,91 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
-        private async Task<(ValidationResult, string? Message)> ValidateBlockAndProcess(Block block, BlockHeader parent)
+        /// <summary>
+        /// Decides if we should process the block or try syncing to it. It also returns what options to process the block with.
+        /// </summary>
+        /// <param name="block">Block</param>
+        /// <param name="parent">Parent header</param>
+        /// <param name="processingOptions">Options that should be used for processing</param>
+        /// <returns>Options which should be used for block processing. Null if we shouldn't process the block.</returns>
+        /// <remarks>
+        /// We decide to process blocks in two situations:
+        /// 1. The block parent was already processed. Then we process with ProcessingOptions.EthereumMerge with potentially also StoringReceipts.
+        ///    This contains ProcessingOptions.IgnoreParentNotOnMainChain flag in order not to collect whole branch for processing, but only process this block directly on parent.
+        ///    As parent was processed the state to process on should also be available.
+        ///
+        /// 2. If the parent wasn't processed, but it was a PoW block (terminal block) and we are not syncing PoW chain and are in the deep past.
+        ///    In this case we remove ~ProcessingOptions.IgnoreParentNotOnMainChain flag in order to collect whole branch for processing.
+        ///    If we didn't support this edge case then we couldn't process this block and would have to return Syncing, which is not desired during transition.
+        ///
+        /// Scenario 2 proved to be quite common on testnets which produced multiple transition blocks.
+        /// </remarks>
+        private bool ShouldProcessBlock(Block block, BlockHeader parent, out ProcessingOptions processingOptions)
         {
-            ValidationResult ToValid(bool valid) => valid ? ValidationResult.Valid : ValidationResult.Invalid;
-            string? validationMessage = null;
+            processingOptions = _defaultProcessingOptions;
+
+            BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
+            bool parentProcessed = parentBlockInfo is { WasProcessed: true };
+
+            // During the transition we can have a case of NP built over a transition block that wasn't processed.
+            // We want to force process the whole branch then, but not longer than few blocks.
+            // But we don't want this to trigger when we are in beacon sync.
+            // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks.
+            // Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
+            bool weHaveOnlyFewBlocksToProcess = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
+            bool parentIsPoWBlock = parent.Difficulty != UInt256.Zero;
+            bool processTerminalBlock = !_poSSwitcher.TransitionFinished // we haven't finished transition
+                                        && weHaveOnlyFewBlocksToProcess // we won't try to process too much blocks (if we are behind the transition block and still processing blocks)
+                                        && parentBlockInfo is { IsBeaconInfo: false } // we are not in beacon sync
+                                        && parentIsPoWBlock; // parent was PoW block -> so it was a transition block
+
+            if (!parentProcessed && processTerminalBlock) // so if parent wasn't processed
+            {
+                if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parent}, parent TD: {parent.TotalDifficulty}");
+
+                // if parent wasn't processed and we want to force processing terminal block then we need to allow to process whole branch, not just one block
+                // in all other cases when parent is processed ProcessingOptions.IgnoreParentNotOnMainChain allows us to process just this block ignoring that its not on Head
+                // this option is part of ProcessingOptions.EthereumMerge option
+                processingOptions &= ~ProcessingOptions.IgnoreParentNotOnMainChain;
+            }
+
+            return parentProcessed || processTerminalBlock;
+        }
+
+        private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
+        {
+            ValidationResult TryCacheResult(ValidationResult result)
+            {
+                // notice that it is not correct to add information to the cache
+                // if we return SYNCING for example, and don't know yet whether
+                // the block is valid or invalid because we haven't processed it yet
+                if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
+                    _latestBlocks?.Set(block.GetOrCalculateHash(), result == ValidationResult.Valid);
+                return result;
+            }
+
+            (ValidationResult? result, string? validationMessage) = (null, null);
 
             // If duplicate, reuse results
-            bool isRecentBlock = _latestBlocks.TryGet(block.Hash!, out bool isValid);
-            if (isRecentBlock)
+            if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out bool isValid))
             {
-                if (!isValid && _logger.IsWarn)
+                if (!isValid)
                 {
-                    validationMessage = $"Invalid block found in latestBlock cache.";
+                    validationMessage = "Invalid block found in latestBlock cache.";
                     if (_logger.IsWarn) _logger.Warn(validationMessage);
                 }
 
-                return (ValidationResult.AlreadyKnown | ToValid(isValid), validationMessage);
+                return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
             }
 
             // Validate
-            bool validAndProcessed = ValidateWithBlockValidator(block, parent);
-            ValidationResult? result = ValidationResult.Syncing;
-
-            if (!validAndProcessed)
+            if (!ValidateWithBlockValidator(block, parent))
             {
-                return (ValidationResult.Invalid, string.Empty);
+                return (TryCacheResult(ValidationResult.Invalid), string.Empty);
             }
 
-            TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
-            Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
+            TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
+            Task<ValidationResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
 
             void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
             {
@@ -269,28 +312,24 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
-                    const string blockProcessingThrewException = "Block processing threw exception.";
-
                     if (e.ProcessingResult == ProcessingResult.Exception)
                     {
-                        blockProcessedTaskCompletionSource.SetException(new BlockchainException(blockProcessingThrewException, e.Exception));
+                        BlockchainException? exception = new("Block processing threw exception.", e.Exception);
+                        blockProcessedTaskCompletionSource.SetException(exception);
                         return;
                     }
 
-                    ValidationResult validationResult = e.ProcessingResult switch
+                    ValidationResult? validationResult = e.ProcessingResult switch
                     {
                         ProcessingResult.Success => ValidationResult.Valid,
-                        ProcessingResult.QueueException => ValidationResult.Syncing,
-                        ProcessingResult.MissingBlock => ValidationResult.Syncing,
                         ProcessingResult.ProcessingError => ValidationResult.Invalid,
-                        _ => ValidationResult.Syncing
+                        _ => null
                     };
 
                     validationMessage = e.ProcessingResult switch
                     {
                         ProcessingResult.QueueException => "Block cannot be added to processing queue.",
                         ProcessingResult.MissingBlock => "Block wasn't found in tree.",
-                        ProcessingResult.Exception => blockProcessingThrewException,
                         ProcessingResult.ProcessingError => "Block processing failed.",
                         _ => null
                     };
@@ -303,13 +342,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             try
             {
                 Task timeoutTask = Task.Delay(_timeout);
-                AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+
+                AddBlockResult addResult = await _blockTree
+                    .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
                     .AsTask().TimeoutOn(timeoutTask);
 
                 result = addResult switch
                 {
                     AddBlockResult.InvalidBlock => ValidationResult.Invalid,
-                    AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
+                    // if the block is marked as AlreadyKnown by the block tree then it means it has already
+                    // been suggested. there are three possibilities, either the block hasn't been processed yet,
+                    // the block was processed and returned invalid but this wasn't saved anywhere or the block was
+                    // processed and marked as valid.
+                    // if marked as processed by the blocktree then return VALID, otherwise null so that it's process a few lines below
+                    AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
                     _ => null
                 };
 
@@ -322,28 +368,27 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (!result.HasValue)
                 {
-                    _processingQueue.Enqueue(block, _processingOptions);
-
+                    // we don't know the result of processing the block, either because
+                    // it is the first time we add it to the tree or it's AlreadyKnown in
+                    // the tree but hasn't yet been processed. if it's the second case
+                    // probably the block is already in the processing queue as a result
+                    // of a previous newPayload or the block being discovered during syncing
+                    // but add it to the processing queue just in case.
+                    _processingQueue.Enqueue(block, processingOptions);
                     result = await blockProcessed.TimeoutOn(timeoutTask);
-                }
-
-                if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
                 }
             }
             catch (TimeoutException)
             {
+                // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
                 if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
-                result = ValidationResult.Syncing;
             }
             finally
             {
                 _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
-            _latestBlocks.Set(block.Hash!, validAndProcessed);
-            return (result.Value, validationMessage);
+            return (TryCacheResult(result ?? ValidationResult.Syncing), validationMessage);
         }
 
         private bool ValidateWithBlockValidator(Block block, BlockHeader parent)
@@ -408,13 +453,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return true;
         }
 
-        [Flags]
         private enum ValidationResult
         {
-            Invalid = 0,
-            Valid = 1,
-            AlreadyKnown = 2,
-            Syncing = 4
+            Invalid,
+            Valid,
+            Syncing
         }
     }
 }

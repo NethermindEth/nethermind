@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             channel.PublishAsync(Keccak.Zero, "client", "data");
             webSocketsClient.Received().SendAsync(Arg.Is<SocketsMessage>(ws => ws.Client == "client" && ws.Type == "data_received"));
         }
-        
+
         [Test]
         public void Channel_type_is_web_sockets()
         {

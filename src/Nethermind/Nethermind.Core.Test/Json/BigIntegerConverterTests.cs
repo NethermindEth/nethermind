@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test.Json
             TestConverter(BigInteger.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(BigInteger.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
-        
+
         [Test]
         public void Regression_0xa00000()
         {
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test.Json
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(BigInteger.Parse("10485760"), result);
         }
-        
+
         [TestCase((NumberConversion)99)]
         public void Unknown_not_supported(NumberConversion notSupportedConversion)
         {
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Json
             Assert.Throws<NotSupportedException>(
                 () => TestConverter(1L, (a, b) => a.Equals(b), converter));
         }
-        
+
         [Test]
         public void Can_read_0x0()
         {
@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test.Json
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(BigInteger.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_0()
         {
@@ -76,7 +76,7 @@ namespace Nethermind.Core.Test.Json
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(BigInteger.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_1()
         {

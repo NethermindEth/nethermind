@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -46,14 +46,14 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             options.ConfigureNethermindCore2();
             string debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
-            
+
             // Initialization
             IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
-           
+
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             // Act
             Root headRoot = await forkChoice.GetHeadAsync(store);
@@ -61,9 +61,9 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             // Assert
             Root stateRoot = cryptographyService.HashTreeRoot(state);
 
-            BeaconBlock genesisBlock = new BeaconBlock(Slot.Zero, Root.Zero, stateRoot, BeaconBlockBody.Zero);         
+            BeaconBlock genesisBlock = new BeaconBlock(Slot.Zero, Root.Zero, stateRoot, BeaconBlockBody.Zero);
             Root expectedRoot = cryptographyService.HashTreeRoot(genesisBlock);
-            
+
             headRoot.ShouldBe(expectedRoot);
         }
 
@@ -78,7 +78,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
             BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
@@ -109,7 +109,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
             BeaconState genesisState = BeaconState.Clone(state);
 
             // block at slot 1
@@ -150,7 +150,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
             BeaconState genesisState = BeaconState.Clone(state);
 
             // build longer tree
@@ -198,7 +198,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             Root parentRoot = cryptographyService.HashTreeRoot(parentBlock);
             BeaconState preState = await store.GetBlockStateAsync(parentRoot);
-            
+
             ulong blockTime = preState.GenesisTime + (ulong)parentBlock.Slot * timeParameters.SecondsPerSlot;
             ulong nextEpochTime = blockTime + (ulong)timeParameters.SlotsPerEpoch * timeParameters.SecondsPerSlot;
 
@@ -216,7 +216,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             BeaconState preState = await store.GetBlockStateAsync(signedBlock.Message.ParentRoot);
-            
+
             ulong blockTime = preState!.GenesisTime + (ulong)signedBlock.Message.Slot * timeParameters.SecondsPerSlot;
 
             if (store.Time < blockTime)

@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
             {
                 filteredReceipts = filteredReceipts.Where(c => c.DepositId == depositId);
             }
-            
+
             if (!(dataAssetId is null))
             {
                 filteredReceipts = filteredReceipts.Where(c => c.DataAssetId == dataAssetId);

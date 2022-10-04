@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected SyncBatchSize _syncBatchSize;
         protected int _sinceLastTimeout;
-        private readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
+        private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
 
         public BlockDownloader(
             ISyncFeed<BlocksRequest?>? feed,
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));;
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy)); ;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, logManager), _specProvider);
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (e.Block is null)
             {
-                if(_logger.IsError) _logger.Error("Received a new block head which is null.");
+                if (_logger.IsError) _logger.Error("Received a new block head which is null.");
                 return;
             }
 
@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                int headersToRequest = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
                     break;
@@ -270,13 +270,13 @@ namespace Nethermind.Synchronization.Blocks
 
             bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
-            while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
+            while (ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
                 long blocksLeft = upperDownloadBoundary - currentNumber;
-                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                int headersToRequest = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
                     break;
@@ -388,7 +388,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (shouldMoveToMain)
                     {
-                        _blockTree.UpdateMainChain(new[] {currentBlock}, false);
+                        _blockTree.UpdateMainChain(new[] { currentBlock }, false);
                     }
 
                     currentNumber += 1;
@@ -434,7 +434,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-        protected async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected virtual async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
             Task<BlockHeader[]> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
@@ -531,7 +531,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private void ValidateSeals(BlockHeader?[] headers, CancellationToken cancellation)
+        protected void ValidateSeals(BlockHeader?[] headers, CancellationToken cancellation)
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
             ConcurrentQueue<Exception> exceptions = new();
@@ -553,7 +553,14 @@ namespace Nethermind.Synchronization.Blocks
 
                 try
                 {
-                    bool forceValidation = i == headers.Length - 1 || i == randomNumberForValidation;
+                    bool lastBlock = i == headers.Length - 1;
+                    // PoSSwitcher can't determine if a block is a terminal block if TD is missing due to another
+                    // problem. In theory, this should not be a problem, but additional seal check does no harm.
+                    bool terminalBlock = !lastBlock
+                                         && headers.Length > 1
+                                         && headers[i + 1].Difficulty == 0
+                                         && headers[i].Difficulty != 0;
+                    bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
                     if (!_sealValidator.ValidateSeal(header, forceValidation))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
@@ -591,21 +598,21 @@ namespace Nethermind.Synchronization.Blocks
             {
                 // this generally should not happen as there is a consistency check before
                 case AddBlockResult.UnknownParent:
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
-                    if (isFirstInBatch)
                     {
-                        const string message = "Peer sent orphaned blocks/headers inside the batch";
-                        _logger.Error(message);
-                        throw new EthSyncException(message);
+                        if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
+                        if (isFirstInBatch)
+                        {
+                            const string message = "Peer sent orphaned blocks/headers inside the batch";
+                            _logger.Error(message);
+                            throw new EthSyncException(message);
+                        }
+                        else
+                        {
+                            const string message = "Peer sent an inconsistent batch of blocks/headers";
+                            _logger.Error(message);
+                            throw new EthSyncException(message);
+                        }
                     }
-                    else
-                    {
-                        const string message = "Peer sent an inconsistent batch of blocks/headers";
-                        _logger.Error(message);
-                        throw new EthSyncException(message);
-                    }
-                }
                 case AddBlockResult.CannotAccept:
                     throw new EthSyncException("Block tree rejected block/header");
                 case AddBlockResult.InvalidBlock:
@@ -631,7 +638,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             switch (task)
             {
-                case {IsFaulted: true} t:
+                case { IsFaulted: true } t:
                     string reason;
                     if (t.Exception != null && t.Exception.Flatten().InnerExceptions.Any(x => x is TimeoutException))
                     {
@@ -661,7 +668,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     break;
-                case {IsCanceled: true}:
+                case { IsCanceled: true }:
                     if (_cancelDueToBetterPeer)
                     {
                         _cancelDueToBetterPeer = false;
@@ -676,7 +683,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     break;
-                case {IsCompletedSuccessfully: true} t:
+                case { IsCompletedSuccessfully: true } t:
                     if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed with progress {t.Result}.");
                     if (peerInfo != null) // fix this for node data sync
                     {

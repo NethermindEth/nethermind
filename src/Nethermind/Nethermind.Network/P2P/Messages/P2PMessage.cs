@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,9 +19,9 @@ namespace Nethermind.Network.P2P.Messages
     public abstract class P2PMessage : MessageBase
     {
         public abstract int PacketType { get; }
-        
+
         public int AdaptivePacketType { get; set; }
-        
+
         public abstract string Protocol { get; }
     }
 }

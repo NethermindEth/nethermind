@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Tracing
     public class NullTxTracer : ITxTracer
     {
         public static ITxTracer Instance { get; } = new NullTxTracer();
-        
+
         private const string ErrorMessage = "Null tracer should never receive any calls.";
         private NullTxTracer() { }
 
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStack(List<string> stackTrace)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
             => throw new InvalidOperationException(ErrorMessage);
 
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportAccountRead(Address address)
             => throw new InvalidOperationException(ErrorMessage);
 

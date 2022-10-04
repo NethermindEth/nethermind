@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -76,7 +76,7 @@ namespace Nethermind.State.Test.Runner
         {
             _traceEntry.Error = GetErrorDescription(error);
         }
-        
+
         private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
             return evmExceptionType switch
@@ -105,7 +105,7 @@ namespace Nethermind.State.Test.Runner
         public void SetOperationMemorySize(ulong newSize)
         {
             _traceEntry.UpdateMemorySize(newSize);
-            int diff = (int) _traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
+            int diff = (int)_traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
             if (diff > 0)
             {
                 _traceEntry.Memory += new string('0', diff);
@@ -124,7 +124,7 @@ namespace Nethermind.State.Test.Runner
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         {
         }
-        
+
         public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         {
         }
@@ -227,7 +227,7 @@ namespace Nethermind.State.Test.Runner
                 {
                     inProgress = inProgress.Slice(2);
                 }
-                
+
                 inProgress = inProgress.TrimStart('0');
 
                 _traceEntry.Stack.Add(inProgress.Length == 0 ? "0x0" : "0x" + inProgress.ToString());

@@ -76,38 +76,43 @@ namespace Nethermind.Trie.Test
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), Persist.EveryBlock);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), Persist.EveryBlock);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(2));
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), new ConstantInterval(2));
             }
 
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), No.Persistence);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
             public static PruningContext InMemoryAlwaysPrune
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true, true), No.Persistence);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true, true), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(8));
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)
             {
-                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), 1);
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256)accountIndex), 1);
                 return this;
             }
 
             public PruningContext SetAccountBalance(int accountIndex, UInt256 balance)
             {
-                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), balance);
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256)accountIndex), balance);
                 return this;
             }
 
@@ -141,8 +146,8 @@ namespace Nethermind.Trie.Test
             public PruningContext SetStorage(int accountIndex, int storageKey, int storageValue = 1)
             {
                 _storageProvider.Set(
-                    new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey),
-                    ((UInt256) storageValue).ToBigEndian());
+                    new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
+                    ((UInt256)storageValue).ToBigEndian());
                 return this;
             }
 
@@ -157,7 +162,7 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
-                    new(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
+                    new(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey);
                 _storageProvider.Get(storageCell);
                 return this;
             }
@@ -231,7 +236,7 @@ namespace Nethermind.Trie.Test
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
                 _storageProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
-                    .Should().BeEquivalentTo(((UInt256) value).ToBigEndian());
+                    .Should().BeEquivalentTo(((UInt256)value).ToBigEndian());
                 return this;
             }
 
@@ -668,7 +673,7 @@ namespace Nethermind.Trie.Test
                 .SaveBranchingPoint("main")
 
                     .RestoreBranchingPoint("revert_main") // Go back to block 3
-                    // Block 4 - 2
+                                                          // Block 4 - 2
                     .SetStorage(3, 1, 1)
                     .Commit()
                     .RestoreBranchingPoint("main") // Go back to block 4 on main

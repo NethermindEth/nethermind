@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,17 +19,15 @@ using System;
 
 namespace Nethermind.Blockchain;
 
-/// <summary>
-/// This class has been introduced for performance reasons only (in order to minimize expensive DB lookups where not necessary).
-/// </summary>
 [Flags]
 public enum BlockTreeLookupOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
     RequireCanonical = 2,
-    DoNotCalculateTotalDifficulty = 4,
-    All = 7
+    DoNotCreateLevelIfMissing = 4,
+    AllowInvalid = 8,
+    All = 15
 }
 
 [Flags]

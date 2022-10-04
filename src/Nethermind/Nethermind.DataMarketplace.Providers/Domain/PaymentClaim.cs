@@ -76,7 +76,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             Timestamp = timestamp;
             Transactions = transactions ?? Enumerable.Empty<TransactionInfo>();
             Status = status;
-            
+
             if (Transactions.Any())
             {
                 Transaction = Transactions.SingleOrDefault(t => t.State == TransactionState.Included) ??
@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
             _transactions.Add(transaction);
         }
-        
+
         public void SetIncludedTransaction(Keccak transactionHash)
         {
             Transaction = _transactions.Single(t => t.Hash == transactionHash);
@@ -100,7 +100,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
                 {
                     continue;
                 }
-                
+
                 transaction.SetRejected();
             }
 
@@ -130,7 +130,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
                 Status = PaymentClaimStatus.ClaimedWithLoss;
             }
         }
-        
+
         public void Reject()
         {
             Status = PaymentClaimStatus.Rejected;

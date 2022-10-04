@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.AspNetCore.Connections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -191,6 +192,19 @@ namespace Nethermind.Synchronization.Test
             Assert.True(peers.Any(p => p.DisconnectRequested));
         }
 
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public async Task Will_disconnect_when_refresh_exception_is_not_cancelled(bool isExceptionOperationCanceled, bool isDisconnectRequested)
+        {
+            await using Context ctx = new();
+            var peers = await SetupPeers(ctx, 25);
+            var peer = peers[0];
+
+            var refreshException = isExceptionOperationCanceled ? new OperationCanceledException() : new Exception();
+            ctx.Pool.ReportRefreshFailed(peer, "test with cancellation", refreshException);
+            peer.DisconnectRequested.Should().Be(isDisconnectRequested);
+        }
+
         [TestCase(0)]
         [TestCase(10)]
         [TestCase(24)]
@@ -199,7 +213,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             // setting priority to all peers except one - peers[number]
@@ -221,7 +235,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             foreach (SimpleSyncPeerMock peer in peers)
@@ -239,7 +253,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
             ctx.Pool.Start();
@@ -257,7 +271,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
             ctx.Pool.Start();
@@ -374,7 +388,7 @@ namespace Nethermind.Synchronization.Test
         {
 
             Node node = new(publicKey, "127.0.0.1", 30303);
-            NodeStatsLight stats = new (node);
+            NodeStatsLight stats = new(node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 
             ctx.Stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
@@ -725,13 +739,13 @@ namespace Nethermind.Synchronization.Test
             if (allocation.HasPeer)
             {
                 int workTime = _workRandomDelay.Next(1000);
-                // Console.WriteLine($"{desc} will work for {workTime} ms");
+                Console.WriteLine($"{desc} will work for {workTime} ms");
                 await Task.Delay(workTime);
-                // Console.WriteLine($"{desc} finished work after {workTime} ms");
+                Console.WriteLine($"{desc} finished work after {workTime} ms");
             }
 
             ctx.Pool.Free(allocation);
-            // Console.WriteLine($"{desc} freed allocation");
+            Console.WriteLine($"{desc} freed allocation");
         }
 
         [Test, Retry(3)]
@@ -761,12 +775,12 @@ namespace Nethermind.Synchronization.Test
                     task.ContinueWith(t =>
 #pragma warning restore 4014
                     {
-                        // Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
+                        Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
                         Interlocked.Decrement(ref _pendingRequests);
                     });
                 }
 
-                // Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
+                Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
                 await Task.Delay(10);
             } while (iterations-- > 0 || _pendingRequests > 0);
 

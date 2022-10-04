@@ -36,7 +36,7 @@ namespace Nethermind.GitBook
             string docsDir = DocsDirFinder.FindDocsDir();
             string runnerDir = DocsDirFinder.FindRunnerDir();
             string moduleName = "sample-configuration";
-            string[] configs = {"mainnet.cfg", "goerli.cfg", "rinkeby.cfg", "ropsten.cfg"};
+            string[] configs = { "mainnet.cfg", "goerli.cfg", "rinkeby.cfg", "ropsten.cfg" };
 
             StringBuilder docBuilder = new StringBuilder();
 
@@ -53,7 +53,7 @@ namespace Nethermind.GitBook
                 _markdownGenerator.CreateTab(docBuilder, config);
                 docBuilder.AppendLine("```yaml");
                 string[] configData = File.ReadAllLines($"{runnerDir}/configs/{config}");
-                
+
                 foreach (string line in configData)
                 {
                     docBuilder.AppendLine(line);
@@ -67,16 +67,16 @@ namespace Nethermind.GitBook
             _markdownGenerator.CreateTab(docBuilder, env);
             docBuilder.AppendLine("```yaml");
             string[] envData = File.ReadAllLines($"./envs/{env}");
-                
+
             foreach (string line in envData)
             {
                 docBuilder.AppendLine(line);
             }
             docBuilder.AppendLine("```");
             _markdownGenerator.CloseTab(docBuilder);
-            
+
             _markdownGenerator.CloseTabs(docBuilder);
-            
+
             string path = string.Concat(docsDir, "/ethereum-client/configuration");
             _sharedContent.Save(moduleName, path, docBuilder);
         }

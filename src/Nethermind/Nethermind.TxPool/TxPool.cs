@@ -113,8 +113,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _accounts, _transactions, logManager));
@@ -123,6 +122,7 @@ namespace Nethermind.TxPool
             {
                 _filterPipeline.Add(incomingTxFilter);
             }
+            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts));
 
             ProcessNewHeads();
         }
@@ -133,6 +133,9 @@ namespace Nethermind.TxPool
 
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
+
+        public Transaction[] GetPendingTransactionsBySender(Address address) =>
+            _transactions.GetBucketSnapshot(address);
 
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
@@ -330,7 +333,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
-            Address address, ICollection<Transaction> transactions)
+            Address address, IReadOnlyCollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -346,7 +349,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
-            ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+            IReadOnlyCollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -403,7 +406,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, IReadOnlyCollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -517,6 +520,47 @@ namespace Nethermind.TxPool
             });
 
             return currentNonce;
+        }
+
+        public UInt256 GetLatestPendingNonce(Address address)
+        {
+            UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
+
+            // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
+            _transactions.UpdateGroup(address, (_, transactions) =>
+            {
+                // This is under the assumption that the addressTransactions are sorted by Nonce.
+                if (transactions.Count > 0)
+                {
+                    // if we don't have any gaps we can easily calculate the nonce
+                    Transaction lastTransaction = transactions.Max!;
+                    if (maxPendingNonce + (UInt256)transactions.Count - 1 == lastTransaction.Nonce)
+                    {
+                        maxPendingNonce = lastTransaction.Nonce + 1;
+                    }
+
+                    // we have a gap, need to scan the transactions
+                    else
+                    {
+                        foreach (Transaction transaction in transactions)
+                        {
+                            if (transaction.Nonce == maxPendingNonce)
+                            {
+                                maxPendingNonce++;
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // we won't do any actual changes
+                return Array.Empty<(Transaction Tx, Action<Transaction>? Change)>();
+            });
+
+            return maxPendingNonce;
         }
 
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);

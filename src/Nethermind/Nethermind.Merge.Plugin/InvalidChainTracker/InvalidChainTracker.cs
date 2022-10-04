@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 ///
 /// </summary>
-public class InvalidChainTracker: IInvalidChainTracker
+public class InvalidChainTracker : IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBlockFinder _blockFinder;
@@ -66,7 +66,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         });
     }
 
-    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlockHash, null);
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
     public void SetChildParent(Keccak child, Keccak parent)
     {
@@ -99,8 +99,7 @@ public class InvalidChainTracker: IInvalidChainTracker
     {
         Queue<Node> bfsQue = new();
         bfsQue.Enqueue(node);
-        HashSet<Node> visited = new();
-        visited.Add(node);
+        HashSet<Node> visited = new() { node };
 
         while (bfsQue.Count > 0)
         {
@@ -125,25 +124,27 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     }
 
-    private BlockHeader? TryGetBlockHeader(Keccak hash)
+    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Keccak hash)
     {
         if (_blockCacheService.BlockCache.TryGetValue(hash, out Block? block))
         {
             return block.Header;
         }
 
-        return _blockFinder.FindHeader(hash);
+        return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
     {
-        if(_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
+        if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
+
+        // TODO: This port can now be removed? We should never get null here?
         if (parent == null)
         {
-            BlockHeader? failedBlockHeader = TryGetBlockHeader(failedBlock);
+            BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
             if (failedBlockHeader == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
                 return;
             }
 
@@ -151,7 +152,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
 
         Keccak effectiveParent = parent;
-        BlockHeader? parentHeader = TryGetBlockHeader(parent);
+        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
         if (parentHeader != null)
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))
@@ -161,7 +162,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
         else
         {
-            if(_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
         }
 
         Node failedBlockNode = GetNode(failedBlock);

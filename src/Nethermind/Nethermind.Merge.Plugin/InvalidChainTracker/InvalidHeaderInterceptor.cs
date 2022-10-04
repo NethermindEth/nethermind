@@ -21,7 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderInterceptor: IHeaderValidator
+public class InvalidHeaderInterceptor : IHeaderValidator
 {
     private readonly IHeaderValidator _baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker;
@@ -39,25 +39,40 @@ public class InvalidHeaderInterceptor: IHeaderValidator
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, parent, isUncle);
         if (!result)
         {
-            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
+            if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
+            if (ShouldNotTrackInvalidation(header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
+                return false;
+            }
             _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         return result;
     }
 
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, isUncle);
         if (!result)
         {
-            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
+            if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
+            if (ShouldNotTrackInvalidation(header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
+                return false;
+            }
             _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         return result;
+    }
+
+    private static bool ShouldNotTrackInvalidation(BlockHeader header)
+    {
+        return !HeaderValidator.ValidateHash(header);
     }
 }

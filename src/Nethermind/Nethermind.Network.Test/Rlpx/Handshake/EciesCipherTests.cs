@@ -1,21 +1,20 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-//
+// 
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -92,8 +91,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, false);
             Assert.NotNull(authMessage.Signature);
 
-            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
-            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            byte[] data = _messageSerializationService.Serialize(authMessage);
+            Array.Resize(ref data, deciphered.Length);
+            Assert.AreEqual(deciphered, data, "serialization");
         }
 
         [Test]
@@ -124,9 +124,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
 
-            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+            byte[] data = _messageSerializationService.Serialize(authMessage);
+            Array.Resize(ref data, deciphered.Length);
 
-            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169).ReadAllBytesAsArray(), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
         }
 
         [Test]
@@ -146,8 +147,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
 
-            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
-            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            byte[] data = _messageSerializationService.Serialize(ackMessage);
+            Array.Resize(ref data, deciphered.Length);
+            Assert.AreEqual(deciphered, data, "serialization");
         }
 
         [Test]
@@ -179,10 +181,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.Version, 4);
 
-            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+            byte[] data = _messageSerializationService.Serialize(ackMessage);
+            Array.Resize(ref data, deciphered.Length);
 
             // TODO: check 102
-            Assert.AreEqual(deciphered.Slice(0, 102), data.ReadAllBytesAsArray().Slice(0, 102), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 102), data.Slice(0, 102), "serialization");
         }
 
         [Test]
@@ -220,7 +223,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             PrivateKey privateKey = NetTestVectors.StaticKeyA;
 
-            byte[] plainText = {1, 2, 3, 4, 5};
+            byte[] plainText = { 1, 2, 3, 4, 5 };
             _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
             _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
             byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)

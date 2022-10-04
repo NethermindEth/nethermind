@@ -23,7 +23,7 @@ namespace Nethermind.Evm
     public static class RefundHelper
     {
         public const long MaxRefundQuotient = 2L;
-        
+
         public const long MaxRefundQuotientEIP3529 = 5L;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)

@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Default gas limit of transactions generated from contract. 
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
-        
+
         private readonly ITransactionProcessor _transactionProcessor;
         protected IAbiEncoder AbiEncoder { get; }
         protected Address ContractAddress { get; }
@@ -72,7 +72,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
             };
-                
+
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
@@ -121,9 +121,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
-            
+
             CallOutputTracer tracer = new CallOutputTracer();
-            
+
             try
             {
                 if (callAndRestore)
@@ -134,14 +134,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 {
                     transactionProcessor.Execute(transaction, header, tracer);
                 }
-                
+
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
                 throw new AuRaException($"System call returned an exception '{e.Message}' at block {header.Number}.", e);
             }
-           
+
             if (failure)
             {
                 throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
@@ -155,7 +155,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new CallOutputTracer();
-            
+
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
@@ -190,7 +190,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             result = null;
             return false;
         }
-        
+
         /// <summary>
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>

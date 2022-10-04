@@ -170,41 +170,33 @@ namespace Nethermind.Merge.Plugin
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
 
-        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false)
+        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
-            if ((header.TotalDifficulty ?? 0) != 0 && dontTrustTotalDifficulty && header.IsGenesis == false)
-            {
-                BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-                if (parentHeader != null && parentHeader.TotalDifficulty != 0)
-                    header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
-                else
-                    header.TotalDifficulty = null;
-            }
-
             bool isTerminal = false, isPostMerge;
-            if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
-            {
-                isTerminal = false;
-                isPostMerge = true;
-            }
-            else if (_specProvider.TerminalTotalDifficulty == null) // TTD = null, so everything is preMerge
+            if (_specProvider.TerminalTotalDifficulty == null) // TTD = null, so everything is preMerge
             {
                 isTerminal = false;
                 isPostMerge = false;
+            }
+            else if (header.TotalDifficulty != null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            {
+                // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
+                isTerminal = false;
+                isPostMerge = false;
+            }
+            else if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
+            {
+                isTerminal = false;
+                isPostMerge = true;
             }
             else if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD
-            }
-            else if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
-            {
-                isTerminal = false;
-                isPostMerge = false;
             }
             else
             {

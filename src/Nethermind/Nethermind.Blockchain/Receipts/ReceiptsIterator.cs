@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDbWithSpan _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        
+
         private readonly TxReceipt[] _receipts;
         private int _position;
 
@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Receipts
                     return true;
                 }
             }
-            
+
             current = new TxReceiptStructRef();
             return false;
         }

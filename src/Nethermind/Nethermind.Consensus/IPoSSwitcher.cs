@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus
         // Note: In the first post-merge release, the terminal block will be known, it explains why we can override it through settings.
         bool TryUpdateTerminalBlock(BlockHeader header);
 
-        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false);
+        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header);
 
         bool IsPostMerge(BlockHeader header);
     }

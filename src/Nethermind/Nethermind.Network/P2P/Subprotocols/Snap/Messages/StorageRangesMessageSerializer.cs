@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 stream.StartSequence(allSlotsLength);
 
                 for (int i = 0; i < message.Slots.Length; i++)
-                {                
+                {
                     stream.StartSequence(accountSlotsLengths[i]);
 
                     PathWithStorageSlot[] accountSlots = message.Slots[i];
@@ -59,12 +59,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                         stream.StartSequence(itemLength);
                         stream.Encode(slot.Path);
-                        stream.Encode(slot.SlotRlpValue); 
+                        stream.Encode(slot.SlotRlpValue);
                     }
 
                 }
             }
-            
+
             if (message.Proofs == null || message.Proofs.Length == 0)
             {
                 stream.EncodeNullObject();
@@ -82,8 +82,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             StorageRangeMessage message = new();
-            NettyRlpStream stream = new (byteBuffer);
-            
+            NettyRlpStream stream = new(byteBuffer);
+
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
@@ -115,7 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 allSlotsLength = 1;
             }
-            else 
+            else
             {
                 for (var i = 0; i < message.Slots.Length; i++)
                 {
@@ -151,7 +151,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 contentLength += Rlp.LengthOfSequence(proofsLength);
             }
 
-            
+
 
             return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
         }

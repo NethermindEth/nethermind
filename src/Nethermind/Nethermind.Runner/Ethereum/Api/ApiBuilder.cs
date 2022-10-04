@@ -48,8 +48,8 @@ namespace Nethermind.Runner.Ethereum.Api
             _jsonSerializer = new EthereumJsonSerializer();
         }
 
-        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) => 
-            Create((IEnumerable<IConsensusPlugin>) consensusPlugins);
+        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
+            Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
 
         public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
         {
@@ -59,10 +59,10 @@ namespace Nethermind.Runner.Ethereum.Api
             {
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
-            
+
             string engine = chainSpec.SealEngineType;
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
-            
+
             INethermindApi nethermindApi = enginePlugin?.CreateApi() ?? new NethermindApi();
             nethermindApi.ConfigProvider = _configProvider;
             nethermindApi.EthereumJsonSerializer = _jsonSerializer;
@@ -95,7 +95,7 @@ namespace Nethermind.Runner.Ethereum.Api
             ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            return loader.LoadFromFile(chainSpecFile);
+            return loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
         }
 
         private void SetLoggerVariables(ChainSpec chainSpec)

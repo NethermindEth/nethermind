@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.EndToEnd
             {
                 Console.WriteLine(ex);
             }
-            
+
             if (!inputDisabled)
             {
                 Console.WriteLine("Press any key to quit.");

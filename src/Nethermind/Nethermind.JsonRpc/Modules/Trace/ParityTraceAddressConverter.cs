@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     result.Add(pathPart.Value);
                 }
             } while (pathPart != null);
-            
+
             return result.ToArray();
         }
     }

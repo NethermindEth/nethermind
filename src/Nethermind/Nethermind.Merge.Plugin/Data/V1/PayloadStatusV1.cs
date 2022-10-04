@@ -30,10 +30,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public static readonly PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidBlockHash };
 
         public static readonly PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
-        
+
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
-        
-        public static PayloadStatusV1 Invalid (Keccak? latestValidHash) => new()
+
+        public static PayloadStatusV1 Invalid(Keccak? latestValidHash) => new()
         {
             Status = PayloadStatus.Invalid,
             LatestValidHash = latestValidHash
@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak? LatestValidHash { get; set; }
-        
+
         /// <summary>
         /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/> or <see cref="PayloadStatus.InvalidBlockHash"/>. 
         /// </summary>

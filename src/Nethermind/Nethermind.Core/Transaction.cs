@@ -27,7 +27,7 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const int BaseTxGasCost = 21000;
-        
+
         public ulong? ChainId { get; set; }
 
         /// <summary>
@@ -38,7 +38,7 @@ namespace Nethermind.Core
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice; 
+        public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool IsEip1559 => Type == TxType.EIP1559;
@@ -63,7 +63,7 @@ namespace Nethermind.Core
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
         public bool IsServiceTransaction { get; set; }
-        
+
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
         /// </summary>
@@ -92,7 +92,7 @@ namespace Nethermind.Core
             {
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
-            
+
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -101,7 +101,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
-            
+
 
             return builder.ToString();
         }

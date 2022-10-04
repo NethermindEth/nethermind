@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class EarlyRefundClaim
     {
-        
+
         public Keccak DepositId { get; }
         public Keccak AssetId { get; }
         public uint Units { get; }

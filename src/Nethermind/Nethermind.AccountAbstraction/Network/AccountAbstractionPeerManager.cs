@@ -32,13 +32,13 @@ namespace Nethermind.AccountAbstraction.Network
         private readonly IUserOperationBroadcaster _broadcaster;
         private readonly ILogger _logger;
 
-        public AccountAbstractionPeerManager(IDictionary<Address,IUserOperationPool> userOperationPools,
+        public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
             ILogger logger)
             : this(userOperationPools, broadcaster, 0, logger)
         {
         }
-        
+
         public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
             int numberOfPriorityAaPeers,
@@ -52,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Network
         }
 
         public int NumberOfPriorityAaPeers { get; set; }
-        
+
         public void AddPeer(IUserOperationPoolPeer peer)
         {
             PeerInfo peerInfo = new(peer);
@@ -63,7 +63,8 @@ namespace Nethermind.AccountAbstraction.Network
                 UserOperation[][] userOperations = new UserOperation[_userOperationPools.Count][];
                 int counter = 0;
                 int totalLength = 0;
-                foreach (KeyValuePair<Address, IUserOperationPool> kv in _userOperationPools) {
+                foreach (KeyValuePair<Address, IUserOperationPool> kv in _userOperationPools)
+                {
                     entryPoints[counter] = kv.Key;
                     userOperations[counter] = kv.Value.GetUserOperations().ToArray();
                     totalLength = totalLength + userOperations[counter].Length;
@@ -83,7 +84,7 @@ namespace Nethermind.AccountAbstraction.Network
                     }
                 }
                 _broadcaster.BroadcastOnce(peerInfo, userOperationsWithEntryPoints);
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
             }
         }

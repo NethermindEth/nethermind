@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,12 +23,12 @@ namespace Nethermind.Core.Test.Builders
     public class TransactionValidatorBuilder : BuilderBase<ITxValidator>
     {
         private bool _alwaysTrue;
- 
+
         public TransactionValidatorBuilder()
         {
             TestObject = Substitute.For<ITxValidator>();
         }
- 
+
         public TransactionValidatorBuilder ThatAlwaysReturnsFalse
         {
             get
@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test.Builders
                 return this;
             }
         }
- 
+
         public TransactionValidatorBuilder ThatAlwaysReturnsTrue
         {
             get
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test.Builders
                 return this;
             }
         }
- 
+
         protected override void BeforeReturn()
         {
             TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_alwaysTrue);

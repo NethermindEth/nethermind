@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -67,7 +68,7 @@ public class InvalidBlockInterceptorTest
     public void TestValidateProcessedBlock(bool baseReturnValue, bool isInvalidBlockReported)
     {
         Block block = Build.A.Block.TestObject;
-        Block suggestedBlock = Build.A.Block.WithExtraData(new byte[]{ 1 }).TestObject;
+        Block suggestedBlock = Build.A.Block.WithExtraData(new byte[] { 1 }).TestObject;
         TxReceipt[] txs = { };
         _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock).Returns(baseReturnValue);
         _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock);
@@ -81,6 +82,19 @@ public class InvalidBlockInterceptorTest
         {
             _tracker.DidNotReceive().OnInvalidBlock(suggestedBlock.Hash, suggestedBlock.ParentHash);
         }
+    }
+
+    [Test]
+    public void TestInvalidBlockhashShouldNotGetTracked()
+    {
+        Block block = Build.A.Block.TestObject;
+        block.Header.StateRoot = Keccak.Zero;
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
     }
 
 }

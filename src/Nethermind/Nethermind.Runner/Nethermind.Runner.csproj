@@ -20,8 +20,8 @@
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.5" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.8" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.16.1" />
@@ -59,14 +59,6 @@
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Data Marketplace - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\..\..\Nethermind Ethereum Client - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Ethereum Client - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -79,9 +71,6 @@
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
-    <Content Include="git-hash">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -112,43 +101,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <GitHash Include="git-hash" />
-  </ItemGroup>
-  <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
-  <ItemGroup>
-    <None Update="runtimes-1.13.5\linux-arm64\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\linux-arm\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\linux-x64\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\osx-arm64\native\librocksdb.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\osx-x64\native\librocksdb.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\win-x64\native\rocksdb.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
-    <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue" />
-  </Target>
-
-  <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
-    <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue" />
-  </Target>
 
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
@@ -167,4 +121,26 @@
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
+
+  <Target Name="VersionFallback" AfterTargets="BeforeBuild" Condition="'$(Version)' == '0.0.0' and '$(Configuration)' == 'Debug'">
+    <Exec Command="git describe --tags --abbrev=0 --dirty" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Version" TaskParameter="ConsoleOutput" />
+    </Exec>
+  </Target>
+
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == '' and '$(Configuration)' == 'Debug'">
+    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>Commit</_Parameter1>
+        <_Parameter2>$(Commit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
 </Project>

@@ -21,6 +21,9 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Prometheus;
 using Nethermind.Monitoring.Config;
+using System.Net.Http;
+using System.IO;
+using System.Net.Sockets;
 
 namespace Nethermind.Monitoring
 {
@@ -29,7 +32,7 @@ namespace Nethermind.Monitoring
         private readonly IMetricsUpdater _metricsUpdater;
         private readonly ILogger _logger;
         private readonly Options _options;
-        
+
         private readonly int? _exposePort;
         private readonly string _nodeName;
         private readonly bool _pushEnabled;
@@ -57,7 +60,7 @@ namespace Nethermind.Monitoring
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
-            
+
             _logger = logManager == null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
@@ -68,11 +71,28 @@ namespace Nethermind.Monitoring
         {
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
-                MetricPusher metricPusher = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
-                    _intervalSeconds * 1000, new[]
+                MetricPusherOptions pusherOptions = new MetricPusherOptions
+                {
+                    Endpoint = _pushGatewayUrl,
+                    Job = _options.Job,
+                    Instance = _options.Instance,
+                    IntervalMilliseconds = _intervalSeconds * 1000,
+                    AdditionalLabels = new[]
                     {
                         new Tuple<string, string>("nethermind_group", _options.Group),
-                    });
+                    },
+                    OnError = ex =>
+                    {
+                        if (ex.InnerException is SocketException)
+                        {
+                            if (_logger.IsError) _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
+                            return;
+                        }
+                        if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
+                    }
+                };
+                MetricPusher metricPusher = new MetricPusher(pusherOptions);
+
                 metricPusher.Start();
             }
             if (_exposePort != null)
@@ -88,7 +108,7 @@ namespace Nethermind.Monitoring
         {
             _metricsUpdater.RegisterMetrics(type);
         }
-        
+
         public Task StopAsync()
         {
             _metricsUpdater.StopUpdating();
@@ -96,7 +116,7 @@ namespace Nethermind.Monitoring
             return Task.CompletedTask;
         }
 
-        private Options GetOptions() 
+        private Options GetOptions()
             => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
 
         private string GetInstance()

@@ -66,7 +66,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _wallet.AccountLocked += OnAccountLocked;
             _wallet.AccountUnlocked += OnAccountUnlocked;
         }
-        
+
         public event EventHandler<AddressChangedEventArgs>? AddressChanged;
 
         public Address GetAddress() => _consumerAddress;
@@ -87,28 +87,28 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 if (_logger.IsWarn) _logger.Warn($"Failed to change consumer address: '{previousAddress}' -> '{address}'...");
                 return;
             }
-            
+
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
-            
+
             foreach (INdmPeer provider in _providerService.GetPeers())
             {
                 provider.ChangeHostConsumerAddress(_consumerAddress);
                 provider.SendConsumerAddressChanged(_consumerAddress);
                 await _sessionService.FinishSessionsAsync(provider, false);
             }
-            
+
             await _consumerNotifier.SendConsumerAddressChangedAsync(address, previousAddress);
             if (_logger.IsInfo) _logger.Info($"Changed consumer address: '{previousAddress}' -> '{address}'.");
         }
-        
+
         private void OnAccountUnlocked(object? sender, AccountUnlockedEventArgs e)
         {
             if (e.Address != _consumerAddress)
             {
                 return;
             }
-            
+
             _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
 
             if (_logger.IsInfo) _logger.Info($"Unlocked a consumer account: '{e.Address}', data streams can be enabled.");
@@ -120,14 +120,14 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 return;
             }
-            
+
             _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
             if (_logger.IsInfo) _logger.Info($"Locked a consumer account: '{e.Address}', all of the existing data streams will be disabled.");
 
             var sessions = _sessionService.GetAllActive();
             var disableStreamTasks = from session in sessions
-                from client in session.Clients
-                select _dataStreamService.DisableDataStreamAsync(session.DepositId, client.Id);
+                                     from client in session.Clients
+                                     select _dataStreamService.DisableDataStreamAsync(session.DepositId, client.Id);
 
             Task.WhenAll(disableStreamTasks).ContinueWith(t =>
             {

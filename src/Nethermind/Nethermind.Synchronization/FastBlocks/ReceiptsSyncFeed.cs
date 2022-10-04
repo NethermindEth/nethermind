@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -47,7 +48,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
         private readonly long _barrier;
-        
+
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
         private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier;
 
@@ -77,9 +78,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _barrier = _syncConfig.AncientReceiptsBarrierCalc;
-            
-            if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
-            
+
+            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
+
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -124,7 +125,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
-        public override Task<ReceiptsSyncBatch?> PrepareRequest()
+        public override Task<ReceiptsSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
@@ -183,8 +184,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 else
                 {
                     IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
-                    preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot 
-                        ? null 
+                    preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
+                        ? null
                         : receipts;
                 }
             }
@@ -223,7 +224,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             }
-                            
+
                             _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                         }
                         else

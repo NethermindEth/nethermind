@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P
             int result = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
             Assert.AreEqual(66, result);
         }
-        
+
         [Test]
         public void DefaultCapabilitiesToString_ReturnExpectedResult()
         {

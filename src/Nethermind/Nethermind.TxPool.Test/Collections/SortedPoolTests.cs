@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,15 +40,15 @@ namespace Nethermind.TxPool.Test.Collections
         private SortedPool<Keccak, Transaction, Address> _sortedPool;
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
-        
+
         [SetUp]
         public void Setup()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() { IsEip1559Enabled = false });
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _sortedPool = new TxDistinctSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
             for (int i = 0; i < _transactions.Length; i++)
@@ -70,9 +70,9 @@ namespace Nethermind.TxPool.Test.Collections
                 Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
-        
+
             Assert.AreEqual(Capacity, _sortedPool.GetSnapshot().Length);
-            
+
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
@@ -81,7 +81,7 @@ namespace Nethermind.TxPool.Test.Collections
                 Assert.AreEqual(gasPrice, tx.GasPrice);
             }
         }
-        
+
         [Test]
         public void Beyond_capacity_ordered()
         {
@@ -92,7 +92,7 @@ namespace Nethermind.TxPool.Test.Collections
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
-        
+
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
@@ -108,10 +108,10 @@ namespace Nethermind.TxPool.Test.Collections
             Transaction tx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
                 .WithHash(TestItem.KeccakA).TestObject;
-                
+
             _sortedPool.TryInsert(tx.Hash, tx);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue(); 
-                
+            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();
+
             _sortedPool.TryRemove(tx.Hash);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
         }

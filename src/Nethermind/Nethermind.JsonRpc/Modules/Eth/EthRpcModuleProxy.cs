@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             throw new NotSupportedException();
         }
-        
+
         public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
         {
             throw new NotSupportedException();
@@ -112,8 +112,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
-            => ResultWrapper<UInt256?>.From(await _proxy.eth_getTransactionCount(address, MapBlockParameter(blockParameter)));
+        public async Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+            => ResultWrapper<UInt256>.From(await _proxy.eth_getTransactionCount(address, MapBlockParameter(blockParameter)));
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
         {
@@ -152,9 +152,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 RpcResult<UInt256> chainIdResult = await _proxy.eth_chainId();
                 ulong chainId = chainIdResult?.IsValid == true ? (ulong)chainIdResult.Result : 0;
-                RpcResult<UInt256?> nonceResult =
+                RpcResult<UInt256> nonceResult =
                     await _proxy.eth_getTransactionCount(transaction.SenderAddress, BlockParameterModel.Pending);
-                transaction.Nonce = nonceResult?.IsValid == true ? nonceResult.Result ?? UInt256.Zero : UInt256.Zero;
+                transaction.Nonce = nonceResult?.IsValid == true ? nonceResult.Result : UInt256.Zero;
                 _wallet.Sign(transaction, chainId);
             }
 
@@ -290,7 +290,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate,
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] hashRate,
             BlockParameter blockParameter)
         {
             throw new NotSupportedException();
@@ -317,7 +317,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Value = transaction.Value
             };
         }
-        
+
         private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)

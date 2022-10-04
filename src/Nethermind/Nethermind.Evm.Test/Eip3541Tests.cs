@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
                 return specProvider;
             }
         }
-        
+
         [Test]
         public void Wrong_contract_creation_should_return_invalid_code_after_3541(
             [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
         {
             DeployCodeAndAssertTx(test.Code, true, contractDeployment, test.WithoutAnyInvalidCodeErrors);
         }
-        
+
         [Test]
         public void All_tx_should_pass_before_3541(
             [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
             CREATE,
             InitCode
         }
-        
+
         public static IEnumerable<ContractDeployment> ContractDeployments
         {
             get
@@ -78,17 +78,17 @@ namespace Nethermind.Evm.Test
                 yield return ContractDeployment.InitCode;
             }
         }
-        
+
         public class Eip3541TestCase
         {
             public string Code { get; set; }
 
             public bool WithoutAnyInvalidCodeErrors { get; set; }
-            
+
             public override string ToString() =>
                 $"Code: {Code}";
         }
-        
+
         public static IEnumerable<Eip3541TestCase> Eip3541TestCases
         {
             get
@@ -100,13 +100,13 @@ namespace Nethermind.Evm.Test
                 yield return new Eip3541TestCase() { Code = "0x60fe60005360016000f3", WithoutAnyInvalidCodeErrors = true };
             }
         }
-        
-        
+
+
         void DeployCodeAndAssertTx(string code, bool eip3541Enabled, ContractDeployment context, bool withoutAnyInvalidCodeErrors)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether());
-            
-            byte[] salt = {4, 5, 6};
+
+            byte[] salt = { 4, 5, 6 };
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
@@ -120,21 +120,21 @@ namespace Nethermind.Evm.Test
                     createContract = Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done;
                     break;
                 default:
-                   createContract = byteCode;
-                   break;
+                    createContract = byteCode;
+                    break;
             }
-            
+
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
-        
+
             transaction.GasPrice = 20.GWei();
             transaction.To = null;
             transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(withoutAnyInvalidCodeErrors, tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode),$"Code {code}, Context {context}");
+            Assert.AreEqual(withoutAnyInvalidCodeErrors, tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode), $"Code {code}, Context {context}");
         }
     }
 }

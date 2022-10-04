@@ -88,16 +88,16 @@ namespace Nethermind.Store.Test
             }
         }
 
-        private static readonly byte[] Key1 = {1};
+        private static readonly byte[] Key1 = { 1 };
 
-        private static readonly byte[] Key2 = {2};
+        private static readonly byte[] Key2 = { 2 };
 
-        private static readonly byte[] Key3 = {3};
+        private static readonly byte[] Key3 = { 3 };
 
-        private static readonly byte[] Value1 = {1};
+        private static readonly byte[] Value1 = { 1 };
 
-        private static readonly byte[] Value2 = {2};
+        private static readonly byte[] Value2 = { 2 };
 
-        private static readonly byte[] Value3 = {3};
+        private static readonly byte[] Value3 = { 3 };
     }
 }

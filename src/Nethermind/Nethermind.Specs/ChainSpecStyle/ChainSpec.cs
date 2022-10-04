@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,32 +30,32 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpec
     {
         public string Name { get; set; }
-        
+
         /// <summary>
         /// Not used in Nethermind
         /// </summary>
         public string DataDir { get; set; }
-        
+
         public ulong ChainId { get; set; }
 
         public NetworkNode[] Bootnodes { get; set; }
-        
+
         public Block Genesis { get; set; }
-        
+
         public string SealEngineType { get; set; }
-        
+
         public AuRaParameters AuRa { get; set; }
-        
+
         public CliqueParameters Clique { get; set; }
-        
+
         public EthashParameters Ethash { get; set; }
-        
+
         public ChainParameters Parameters { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
-        
+
         public long? FixedDifficulty { get; set; }
-        
+
         public long? DaoForkBlockNumber { get; set; }
 
         public long? HomesteadBlockNumber { get; set; }
@@ -67,25 +67,25 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? ByzantiumBlockNumber { get; set; }
 
         public long? ConstantinopleBlockNumber { get; set; }
-        
+
         public long? ConstantinopleFixBlockNumber { get; set; }
 
         public long? IstanbulBlockNumber { get; set; }
-        
+
         public long? MuirGlacierNumber { get; set; }
-        
+
         public long? BerlinBlockNumber { get; set; }
-        
+
         public long? LondonBlockNumber { get; set; }
-        
+
         public long? ArrowGlacierBlockNumber { get; set; }
-        
+
         public long? GrayGlacierBlockNumber { get; set; }
-        
+
         public long? MergeForkIdBlockNumber { get; set; }
-        
+
         public long? TerminalPoWBlockNumber { get; set; }
-        
+
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public long? ShanghaiBlockNumber { get; set; }

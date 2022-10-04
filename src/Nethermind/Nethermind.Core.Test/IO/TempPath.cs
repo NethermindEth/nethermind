@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.IO
             ? GetTempFile()
             : new TempPath(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath));
 
-        public static TempPath GetTempDirectory(string? subPath = null) => 
+        public static TempPath GetTempDirectory(string? subPath = null) =>
             new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath ?? Guid.NewGuid().ToString()));
 
         public void Dispose()

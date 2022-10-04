@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy
         {
             _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         }
-        
+
         public Task<RpcResult<PeerInfoModel[]>> admin_peers(bool includeDetails)
             => _proxy.SendAsync<PeerInfoModel[]>(nameof(admin_peers), includeDetails);
     }

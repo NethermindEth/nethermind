@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Address consumer = rlpStream.DecodeAddress();
             Address provider = rlpStream.DecodeAddress();
             ulong timestamp = rlpStream.DecodeUlong();
-            DepositApprovalState state = (DepositApprovalState) rlpStream.DecodeInt();
+            DepositApprovalState state = (DepositApprovalState)rlpStream.DecodeInt();
 
             return new DepositApproval(assetId, assetName, kyc, consumer, provider, timestamp, state);
         }
@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Consumer),
                 Serialization.Rlp.Rlp.Encode(item.Provider),
                 Serialization.Rlp.Rlp.Encode(item.Timestamp),
-                Serialization.Rlp.Rlp.Encode((int) item.State));
+                Serialization.Rlp.Rlp.Encode((int)item.State));
         }
 
         public int GetLength(DepositApproval item, RlpBehaviors rlpBehaviors)

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -66,76 +67,77 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     }
 
     class MergeAuRaTestBlockchain : MergeTestBlockchain
-{
-    public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
-        : base(mergeConfig, mockedPayloadPreparationService)
     {
-        SealEngineType = Nethermind.Core.SealEngineType.AuRa;
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
+            : base(mergeConfig, mockedPayloadPreparationService)
+        {
+            SealEngineType = Nethermind.Core.SealEngineType.AuRa;
+        }
+
+        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        {
+            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
+            MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
+            ISyncConfig syncConfig = new SyncConfig();
+            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
+            PostMergeBlockProducerFactory blockProducerFactory = new(
+                SpecProvider,
+                SealEngine,
+                Timestamper,
+                miningConfig,
+                LogManager,
+                targetAdjustedGasLimitCalculator);
+
+            BlockProducerEnvFactory blockProducerEnvFactory = new(
+                DbProvider,
+                BlockTree,
+                ReadOnlyTrieStore,
+                SpecProvider,
+                BlockValidator,
+                NoBlockRewards.Instance,
+                ReceiptStorage,
+                BlockPreprocessorStep,
+                TxPool,
+                transactionComparerProvider,
+                miningConfig,
+                LogManager);
+
+
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
+            PostMergeBlockProducer = postMergeBlockProducer;
+            PayloadPreparationService ??= new PayloadPreparationService(
+                postMergeBlockProducer,
+                new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+                ),
+                TimerFactory.Default,
+                LogManager,
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+            );
+
+            IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
+            auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
+            FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
+            AuRaBlockProducer preMergeBlockProducer = new(
+                txPoolTxSource,
+                blockProducerEnvFactory.Create().ChainProcessor,
+                ((TestBlockchain)this).BlockProductionTrigger,
+                State,
+                sealer,
+                BlockTree,
+                Timestamper,
+                auraStepCalculator,
+                NullReportingValidator.Instance,
+                new AuRaConfig(),
+                gasLimitCalculator,
+                SpecProvider,
+                LogManager
+            );
+
+            return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
+        }
+
     }
-
-    protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
-    {
-        SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
-        MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
-        TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-        EthSyncingInfo = new EthSyncingInfo(BlockTree);
-        PostMergeBlockProducerFactory blockProducerFactory = new(
-            SpecProvider,
-            SealEngine,
-            Timestamper,
-            miningConfig,
-            LogManager,
-            targetAdjustedGasLimitCalculator);
-
-        BlockProducerEnvFactory blockProducerEnvFactory = new(
-            DbProvider,
-            BlockTree,
-            ReadOnlyTrieStore,
-            SpecProvider,
-            BlockValidator,
-            NoBlockRewards.Instance,
-            ReceiptStorage,
-            BlockPreprocessorStep,
-            TxPool,
-            transactionComparerProvider,
-            miningConfig,
-            LogManager);
-
-
-        BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-        PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
-        PostMergeBlockProducer = postMergeBlockProducer;
-        PayloadPreparationService ??= new PayloadPreparationService(
-            postMergeBlockProducer,
-            new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
-            ),
-            TimerFactory.Default,
-            LogManager,
-            TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
-        );
-
-        IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
-        auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
-        FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
-        AuRaBlockProducer preMergeBlockProducer = new(
-            txPoolTxSource,
-            blockProducerEnvFactory.Create().ChainProcessor,
-            ((TestBlockchain)this).BlockProductionTrigger,
-            State,
-            sealer,
-            BlockTree,
-            Timestamper,
-            auraStepCalculator,
-            NullReportingValidator.Instance,
-            new AuRaConfig(),
-            gasLimitCalculator,
-            SpecProvider,
-            LogManager
-        );
-
-        return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
-    }
-
-}
 }
 

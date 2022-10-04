@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -97,7 +97,7 @@ public partial class EthRpcModule : IEthRpcModule
         _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
         _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
         _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder)); ;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -106,13 +106,13 @@ public partial class EthRpcModule : IEthRpcModule
 
     public ResultWrapper<string> eth_protocolVersion()
     {
-        int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+        int highestVersion = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
         return ResultWrapper<string>.Success(highestVersion.ToHexString());
     }
 
     public ResultWrapper<SyncingResult> eth_syncing()
     {
-       return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
+        return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
     }
 
     public ResultWrapper<byte[]> eth_snapshot()
@@ -139,7 +139,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
-    
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
@@ -210,25 +210,33 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
     }
 
-    public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
     {
+
+        if (blockParameter == BlockParameter.Pending)
+        {
+            UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
+            return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
+
+        }
+
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
+            return Task.FromResult(ResultWrapper<UInt256>.Fail(searchResult));
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header))
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+            return Task.FromResult(ResultWrapper<UInt256>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable));
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
         UInt256 nonce = account?.Nonce ?? 0;
 
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
+        return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
@@ -399,7 +407,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (block != null)
+        if (returnFullTransactionObjects && block != null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }
@@ -503,7 +511,7 @@ public partial class EthRpcModule : IEthRpcModule
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
-        
+
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
         return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
     }
@@ -570,32 +578,32 @@ public partial class EthRpcModule : IEthRpcModule
         switch (filterType)
         {
             case FilterType.BlockFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             case FilterType.PendingTransactionFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                        .GetPendingTransactionFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                            .GetPendingTransactionFilterChanges(id))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             case FilterType.LogFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(
-                        _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(
+                            _blockchainBridge.GetLogFilterChanges(id).ToArray())
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             default:
-            {
-                throw new NotSupportedException($"Filter type {filterType} is not supported");
-            }
+                {
+                    throw new NotSupportedException($"Filter type {filterType} is not supported");
+                }
         }
     }
 
@@ -644,7 +652,7 @@ public partial class EthRpcModule : IEthRpcModule
             cancellationToken.ThrowIfCancellationRequested();
 
             fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
-        }    
+        }
 
         if (fromBlockResult.IsError)
         {
@@ -693,8 +701,8 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
     }
 
-    // https://github.com/ethereum/EIPs/issues/1186	
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
+    // https://github.com/ethereum/EIPs/issues/1186
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] storageKeys,
         BlockParameter blockParameter)
     {
         BlockHeader header;
@@ -739,9 +747,6 @@ public partial class EthRpcModule : IEthRpcModule
 
     private void RecoverTxSenderIfNeeded(Transaction transaction)
     {
-        if (transaction.SenderAddress == null)
-        {
-            _blockchainBridge.RecoverTxSender(transaction);
-        }
+        transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 }

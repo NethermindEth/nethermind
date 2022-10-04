@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Contracts
     public class LogEntryAddressAndTopicsMatchTemplateEqualityComparer : IEqualityComparer<LogEntry>
     {
         public static readonly LogEntryAddressAndTopicsMatchTemplateEqualityComparer Instance = new();
-        
+
         /// <summary>
         /// Checks equality of LogEntry against SearchEntryTemplate.
         /// SearchEntryTemplate doesn't have to contain all the topics that are in LogEntry.
@@ -38,9 +38,9 @@ namespace Nethermind.Blockchain.Contracts
         {
             Keccak[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Keccak>();
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
-                logEntry != null 
-                && logEntry.LoggersAddress == searchedEntryTemplate?.LoggersAddress 
-                && logEntry.Topics.Length >= matchEntryTopics.Length 
+                logEntry != null
+                && logEntry.LoggersAddress == searchedEntryTemplate?.LoggersAddress
+                && logEntry.Topics.Length >= matchEntryTopics.Length
                 && logEntry.Topics.Take(matchEntryTopics.Length).SequenceEqual(matchEntryTopics)
                 );
         }

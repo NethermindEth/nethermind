@@ -16,9 +16,11 @@
 //
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -41,6 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     private bool _chainMerged;
+
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
@@ -98,7 +101,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber) {
+        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+        {
             startNumber = lowestInserted.Number - 1;
             _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
             _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
@@ -129,6 +133,31 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _syncReport.HeadersInQueue.MarkEnd();
     }
 
+    protected override int InsertHeaders(HeadersSyncBatch batch)
+    {
+        if (batch.Response != null)
+        {
+            ConnectHeaderChainInInvalidChainTracker(batch.Response);
+        }
+
+        return base.InsertHeaders(batch);
+    }
+
+    private void ConnectHeaderChainInInvalidChainTracker(IReadOnlyList<BlockHeader?> batchResponse)
+    {
+        // Sometimes multiple consecutive block failed validation, but engine api need to know the earliest valid hash.
+        // Currently, HeadersSyncFeed insert header in reverse and break early on invalid header meaning header
+        // chain is not connected, so earlier invalid block in chain is not checked and reported even if later request
+        // get to it. So we are trying to connect them first. Note: This does not completely fix the issue.
+        for (int i = 0; i < batchResponse.Count; i++)
+        {
+            BlockHeader? header = batchResponse[i];
+            if (header != null && HeaderValidator.ValidateHash(header))
+            {
+                _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
+            }
+        }
+    }
 
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
@@ -150,7 +179,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         // Found existing block in the block tree
-        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+        if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
             if (_logger.IsTrace)
@@ -158,8 +187,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                     $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
             return AddBlockResult.AlreadyKnown;
         }
-
-        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
 
         AddBlockResult insertOutcome = _blockTree.Insert(header, headerOptions);
 

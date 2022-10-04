@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private static Random _rand = new();
-        
+
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _analyzer;
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile != null;
-        
+
         public CodeInfo(IPrecompile precompile)
         {
             Precompile = precompile;
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             return _analyzer.ValidateJump(destination, isSubroutine);
         }
-        
+
         /// <summary>
         /// Do sampling to choose an algo when the code is big enough.
         /// When the code size is small we can use the default analyzer.

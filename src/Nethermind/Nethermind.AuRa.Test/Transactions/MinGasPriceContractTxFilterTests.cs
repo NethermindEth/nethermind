@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -44,7 +44,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 yield return new TestCaseData(TestItem.AddressB, 1ul).Returns(true).SetName("Allowed by base limit.");
             }
         }
-        
+
         [TestCaseSource(nameof(IsAllowedTestCases))]
         public bool is_allowed_returns_correct(Address address, ulong gasLimit)
         {
@@ -59,7 +59,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     x[2] = new TxPriorityContract.Destination(TestItem.AddressA, Array.Empty<byte>(), 5);
                     return true;
                 });
-            
+
             MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 

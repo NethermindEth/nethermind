@@ -50,7 +50,7 @@ namespace Nethermind.Config
             if (enodeParts.Length <= 2 || !int.TryParse(enodeParts[2], out int port))
             {
                 throw GetPortException(host);
-                
+
             }
             Port = port;
 

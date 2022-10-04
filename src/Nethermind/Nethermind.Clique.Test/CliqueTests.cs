@@ -72,13 +72,13 @@ namespace Nethermind.Clique.Test
             // Init snapshot db
             MemDb db = new();
             CliqueConfig config = new();
-            
-            _ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance); 
+
+            _ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
             _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
-        
+
         [TestCase(Block1Rlp)]
         [TestCase(Block2Rlp)]
         [TestCase(Block3Rlp)]
@@ -92,11 +92,11 @@ namespace Nethermind.Clique.Test
             Assert.True(validHeader);
             Assert.True(validSeal);
         }
-        
+
         [TestCase(Block4Rlp)]
         public void Test_no_signer_data_at_epoch_fails(string blockRlp)
         {
-            CliqueConfig config = new() {Epoch = 4};
+            CliqueConfig config = new() { Epoch = 4 };
             _clique = new CliqueSealer(NullSigner.Instance, config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
             Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
@@ -122,7 +122,7 @@ namespace Nethermind.Clique.Test
             genesis.Header.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
             // this would need to be loaded from rinkeby chainspec to include allocations
             // Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
-            
+
             return genesis;
         }
 

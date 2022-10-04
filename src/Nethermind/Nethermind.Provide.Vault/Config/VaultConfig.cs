@@ -18,12 +18,12 @@ namespace Nethermind.Vault.Config
 {
     public class VaultConfig : IVaultConfig
     {
-        public bool Enabled { get; set;}
+        public bool Enabled { get; set; }
         public string Host { get; set; } = "vault.provide.services";
-        public string Token { get; set;}
+        public string Token { get; set; }
         public string Scheme { get; set; } = "https";
         public string Path { get; set; } = "api/v1";
-        public string VaultId { get; set;}
+        public string VaultId { get; set; }
         public string VaultKeyFile { get; set; }
         public string VaultSealUnsealKey { get; set; }
         public string NChainHost { get; set; }

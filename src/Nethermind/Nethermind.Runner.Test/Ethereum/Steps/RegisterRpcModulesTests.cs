@@ -37,21 +37,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task Proof_module_is_registered_if_configured()
         {
-            JsonRpcConfig jsonRpcConfig = new() {Enabled = true};
+            JsonRpcConfig jsonRpcConfig = new() { Enabled = true };
 
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
-            
+
             RegisterRpcModules registerRpcModules = new(context);
             await registerRpcModules.Execute(CancellationToken.None);
 
             context.RpcModuleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)).Should().Be(ModuleResolution.Enabled);
         }
-        
+
         [Test]
         public async Task Proof_module_is_not_registered_when_json_rpc_not_enabled()
         {
-            JsonRpcConfig jsonRpcConfig = new() {Enabled = false};
+            JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
 
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             RegisterRpcModules registerRpcModules = new(context);
             await registerRpcModules.Execute(CancellationToken.None);
-            
+
             context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofRpcModule>(null);
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 
 using System.Buffers.Text;
 using System.Net;
+using DnsClient;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -62,6 +63,10 @@ public class EnrDiscovery : INodeSource
                 }
             }
         }
+        catch (DnsResponseException dnsException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{domain}\" had an error: {dnsException.DnsError}");
+        }
         finally
         {
             buffer.Release();
@@ -73,8 +78,8 @@ public class EnrDiscovery : INodeSource
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null 
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value) 
+        return compressedPublicKey is not null && ipAddress is not null && port is not null
+            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
             : null;
     }
 

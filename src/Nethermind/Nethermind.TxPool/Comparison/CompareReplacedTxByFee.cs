@@ -27,13 +27,13 @@ namespace Nethermind.TxPool.Comparison
     public class CompareReplacedTxByFee : IComparer<Transaction?>
     {
         public static readonly CompareReplacedTxByFee Instance = new();
-        
+
         private CompareReplacedTxByFee() { }
-        
+
         // To replace old transaction, new transaction needs to have fee higher by at least 10% (1/10) of current fee.
         // It is required to avoid acceptance and propagation of transaction with almost the same fee as replaced one.
         private const int PartOfFeeRequiredToIncrease = 10;
-        
+
         public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
@@ -48,7 +48,7 @@ namespace Nethermind.TxPool.Comparison
                 y.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
                 return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
             }
-            
+
             /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
             so we can compare legacy txs without any problems */
             y.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);

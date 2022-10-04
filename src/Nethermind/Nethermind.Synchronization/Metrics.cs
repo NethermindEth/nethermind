@@ -28,22 +28,22 @@ namespace Nethermind.Synchronization
 
         [Description("Receipts downloaded in fast blocks stage")]
         public static long FastReceipts;
-        
+
         [Description("State synced in bytes")]
         public static long StateSynced;
 
         [Description("Requests sent for state nodes sync")]
         public static long StateSyncRequests;
-        
+
         [Description("State trie nodes synced")]
         public static long SyncedStateTrieNodes;
-        
+
         [Description("Storage trie nodes synced")]
         public static long SyncedStorageTrieNodes;
-        
+
         [Description("Synced bytecodes")]
         public static long SyncedCodes;
-        
+
         [Description("State synced via SNAP Sync in bytes")]
         public static long SnapStateSynced;
 
@@ -58,16 +58,16 @@ namespace Nethermind.Synchronization
 
         [Description("Number of sync peers.")]
         public static long SyncPeers;
-        
+
         [Description("Number of priority peers.")]
         public static long PriorityPeers;
 
         [Description("State branch progress (percentage of completed branches at second level).")]
         public static long StateBranchProgress;
-        
+
         [Description("Requests sent for processing by the witness state sync")]
         public static long WitnessStateRequests;
-        
+
         [Description("Requests sent for processing by the witness block sync")]
         public static long WitnessBlockRequests;
     }

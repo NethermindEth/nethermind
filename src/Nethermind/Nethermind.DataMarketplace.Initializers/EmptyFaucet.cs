@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Initializers
         }
 
         public static EmptyFaucet Instance { get; } = new EmptyFaucet();
-        
+
         private static readonly FaucetResponse Response = new FaucetResponse(FaucetRequestStatus.FaucetDisabled);
 
         public bool IsInitialized => true;

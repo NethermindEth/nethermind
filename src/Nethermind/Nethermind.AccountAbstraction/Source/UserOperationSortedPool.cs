@@ -34,7 +34,7 @@ namespace Nethermind.AccountAbstraction.Source
             _maximumUserOperationPerSender = maximumUserOperationPerSender;
         }
 
-        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => 
+        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) =>
             comparer.ThenBy(CompareUserOperationsByHash.Instance);
 
         protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer) =>
@@ -44,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Source
             CompareReplacedUserOperationByFee.Instance.ThenBy(comparer);
 
         protected override Address MapToGroup(UserOperation value) => value.Sender;
-        
+
         protected override Keccak GetKey(UserOperation value) => value.RequestId!;
 
         protected override bool AllowSameKeyReplacement => true;

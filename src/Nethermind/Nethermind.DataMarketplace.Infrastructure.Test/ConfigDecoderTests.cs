@@ -31,9 +31,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Test
         {
             NdmConfigDecoder.Init();
             NdmConfig ndmConfig = new NdmConfig();
-            
+
             NdmConfigDecoder decoder = new NdmConfigDecoder();
-            decoder.Decode(decoder.Encode(ndmConfig).Bytes.AsRlpStream()).Should().BeEquivalentTo(ndmConfig); 
+            decoder.Decode(decoder.Encode(ndmConfig).Bytes.AsRlpStream()).Should().BeEquivalentTo(ndmConfig);
         }
     }
 }

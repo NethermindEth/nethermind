@@ -103,7 +103,7 @@ namespace Nethermind.Grpc.Clients
 
                 var result = await _client.QueryAsync(new QueryRequest
                 {
-                    Args = {args ?? Enumerable.Empty<string>()}
+                    Args = { args ?? Enumerable.Empty<string>() }
                 });
 
                 return result.Data;
@@ -129,7 +129,7 @@ namespace Nethermind.Grpc.Clients
 
                 using (var stream = _client.Subscribe(new SubscriptionRequest
                 {
-                    Args = {args ?? Enumerable.Empty<string>()}
+                    Args = { args ?? Enumerable.Empty<string>() }
                 }))
                 {
                     while (enabled() && _connected && !cancellationToken.IsCancellationRequested &&
@@ -145,7 +145,7 @@ namespace Nethermind.Grpc.Clients
                 {
                     return;
                 }
-                
+
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
                 await TryReconnectAsync();
             }

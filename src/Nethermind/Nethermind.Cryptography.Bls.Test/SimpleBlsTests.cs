@@ -40,7 +40,7 @@ namespace Nethermind.Cryptography.Bls.Test
             using var bls = new BLSHerumi(parameters);
             var result = new byte[48];
             var success = bls.TryExportBlsPublicKey(result.AsSpan(), out var bytesWritten);
-            
+
             //var publicKeyBytes = publicKeySpan.ToArray();
             var publicKeyBytes = result;
 

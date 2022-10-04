@@ -10,7 +10,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Nethermind.DataMarketplace.Providers.Plugins.WebApi
 {
-public class NdmWebApiPlugin : INdmWebApiPlugin
+    public class NdmWebApiPlugin : INdmWebApiPlugin
     {
         private static readonly IDictionary<string, string> EmptyQueryString = new Dictionary<string, string>();
         private static readonly string JsonContentType = "application/json";

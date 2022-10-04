@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             _transactionProcessor = transactionProcessor;
         }
-        
+
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.BuildUp(transaction, block, txTracer);
     }

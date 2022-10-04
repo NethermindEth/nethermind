@@ -44,7 +44,7 @@ extension=${LIN_FILE##*.}
 
 mv $LIN_FILE $filename_lin.$extension
 mv $LIN_FILE.asc $filename_lin.$extension.asc
-curl -# -F "files=@${PWD}/${filename_lin}.${extension}" -F "files=@${PWD}/${filename_lin}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_lin}.${extension}" -F "files=@${PWD}/${filename_lin}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 cd $WIN_RELEASE
@@ -53,7 +53,7 @@ filename_win=${WIN_FILE::-13}
 mv $WIN_FILE $filename_win.$extension
 mv $WIN_FILE.asc $filename_win.$extension.asc
 
-curl -# -F "files=@${PWD}/${filename_win}.${extension}" -F "files=@${PWD}/${filename_win}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_win}.${extension}" -F "files=@${PWD}/${filename_win}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 cd $OSX_RELEASE
@@ -62,7 +62,7 @@ filename_osx=${OSX_FILE::-13}
 mv $OSX_FILE $filename_osx.$extension
 mv $OSX_FILE.asc $filename_osx.$extension.asc
 
-curl -# -F "files=@${PWD}/${filename_osx}.${extension}" -F "files=@${PWD}/${filename_osx}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_osx}.${extension}" -F "files=@${PWD}/${filename_osx}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 cd $LIN_ARM64_RELEASE
@@ -70,7 +70,7 @@ filename_lin_arm64=${LIN_ARM64_FILE::-13}
 
 mv $LIN_ARM64_FILE $filename_lin_arm64.$extension
 mv $LIN_ARM64_FILE.asc $filename_lin_arm64.$extension.asc
-curl -# -F "files=@${PWD}/${filename_lin_arm64}.${extension}" -F "files=@${PWD}/${filename_lin_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_lin_arm64}.${extension}" -F "files=@${PWD}/${filename_lin_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 cd $OSX_ARM64_RELEASE
@@ -78,7 +78,7 @@ filename_osx_arm64=${OSX_ARM64_FILE::-13}
 
 mv $OSX_ARM64_FILE $filename_osx_arm64.$extension
 mv $OSX_ARM64_FILE.asc $filename_osx_arm64.$extension.asc
-curl -# -F "files=@${PWD}/${filename_osx_arm64}.${extension}" -F "files=@${PWD}/${filename_osx_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_osx_arm64}.${extension}" -F "files=@${PWD}/${filename_osx_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 echo =======================================================

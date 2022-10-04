@@ -38,7 +38,7 @@ namespace Nethermind.Cryptography.Bls.Test
             "47b8192d77bf871b62e87859d653922725724a5c031afeabc60bcef5ff665138",
             "328388aff0d4a5b7dc9205abd374e7e98f3cd9f3418edb4eafda5fb16473d216",
         };
-        
+
         [TestMethod]
         public void DataSignAndVerify()
         {
@@ -90,13 +90,13 @@ namespace Nethermind.Cryptography.Bls.Test
             var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
             var messageData1 = MessageData[1];
             var messageData2 = MessageData[2];
-        
+
             Console.WriteLine("Input:");
             Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
             Console.WriteLine("MessageData 1: [{0}] {1}", messageData1.Length, HexMate.Convert.ToHexString(messageData1));
             Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
             Console.WriteLine("MessageData 2: [{0}] {1}", messageData2.Length, HexMate.Convert.ToHexString(messageData2));
-        
+
             // Sign 1
             using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
             var signature1 = new byte[96];
@@ -105,7 +105,7 @@ namespace Nethermind.Cryptography.Bls.Test
             var publicKey1 = new byte[48];
             _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
             Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
-        
+
             // Sign 2
             using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
             var signature2 = new byte[96];
@@ -138,10 +138,10 @@ namespace Nethermind.Cryptography.Bls.Test
             using var blsVerify = new BLSHerumi(new BLSParameters());
             var verifySuccess = blsVerify.AggregateVerifyData(publicKeys, data, aggregateSignature);
             Console.WriteLine("Verify: {0}", verifySuccess);
-        
+
             verifySuccess.ShouldBeTrue();
         }
-        
+
         [TestMethod]
         public void SignSharedDataAndFastAggregateVerify()
         {
@@ -149,12 +149,12 @@ namespace Nethermind.Cryptography.Bls.Test
             var privateKey1 = HexMate.Convert.FromHexString(PrivateKeys[1]);
             var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
             var sharedMessageData = MessageData[2];
-        
+
             Console.WriteLine("Input:");
             Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
             Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
             Console.WriteLine("MessageData 2: [{0}] {1}", sharedMessageData.Length, HexMate.Convert.ToHexString(sharedMessageData));
-        
+
             // Sign 1
             using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
             var signature1 = new byte[96];
@@ -163,7 +163,7 @@ namespace Nethermind.Cryptography.Bls.Test
             var publicKey1 = new byte[48];
             _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
             Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
-        
+
             // Sign 2
             using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
             var signature2 = new byte[96];
@@ -172,12 +172,12 @@ namespace Nethermind.Cryptography.Bls.Test
             var publicKey2 = new byte[48];
             _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
             Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
-        
+
             // Concatenate public keys
             var publicKeys = new Span<byte>(new byte[48 * 2]);
             publicKey1.CopyTo(publicKeys);
             publicKey2.CopyTo(publicKeys.Slice(48));
-        
+
             // Aggregate signatures
             var signatures = new Span<byte>(new byte[96 * 2]);
             signature1.CopyTo(signatures);
@@ -186,12 +186,12 @@ namespace Nethermind.Cryptography.Bls.Test
             var aggregateSignature = new byte[96];
             blsAggregate.TryAggregateSignatures(signatures, aggregateSignature, out var _);
             Console.WriteLine("Aggregate Signature: [{0}] {1}", aggregateSignature.Length, HexMate.Convert.ToHexString(aggregateSignature));
-        
+
             // Fast aggregate verify
             using var blsVerify = new BLSHerumi(new BLSParameters());
             var verifySuccess = blsVerify.FastAggregateVerifyData(publicKeys, sharedMessageData, aggregateSignature);
             Console.WriteLine("Verify: {0}", verifySuccess);
-        
+
             verifySuccess.ShouldBeTrue();
         }
     }

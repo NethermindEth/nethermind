@@ -48,9 +48,9 @@ namespace Nethermind.Consensus.Processing
         public ProcessingStats(ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            
+
             // the line below just to avoid compilation errors
-            if(_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
+            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
 #if DEBUG	
             _isDebugMode = true;	
 #endif
@@ -62,9 +62,9 @@ namespace Nethermind.Consensus.Processing
             {
                 return;
             }
-            
+
             _processingStopwatch.Stop();
-            
+
             if (_lastBlockNumber == 0)
             {
                 _lastBlockNumber = block.Number;
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Processing
             long currentTicks = _processingStopwatch.ElapsedTicks;
             decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);
             decimal chunkMicroseconds = (currentTicks - _lastElapsedProcessingTicks) * (1_000_000m / Stopwatch.Frequency);
-            
+
             long runningTicks = _runStopwatch.ElapsedTicks;
             decimal runMicroseconds = (runningTicks - _lastElapsedRunningTicks) * (1_000_000m / Stopwatch.Frequency);
 

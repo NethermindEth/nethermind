@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode.Test
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
 
             testServiceCollection.AddHostedService<BeaconNodeWorker>();
-            
+
             DateTimeOffset[] testTimes = new[]
             {
                 // start time
@@ -67,7 +67,7 @@ namespace Nethermind.BeaconNode.Test
             };
             FastTestClock fastTestClock = new FastTestClock(testTimes);
             testServiceCollection.AddSingleton<IClock>(fastTestClock);
-            
+
             IStore mockStore = Substitute.For<IStore>();
             testServiceCollection.AddSingleton<IStore>(mockStore);
 
@@ -98,7 +98,7 @@ namespace Nethermind.BeaconNode.Test
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
 
             testServiceCollection.AddHostedService<BeaconNodeWorker>();
-            
+
             DateTimeOffset[] testTimes = new[]
             {
                 // start time
@@ -118,7 +118,7 @@ namespace Nethermind.BeaconNode.Test
             };
             FastTestClock fastTestClock = new FastTestClock(testTimes);
             testServiceCollection.AddSingleton<IClock>(fastTestClock);
-            
+
             IStore mockStore = Substitute.For<IStore>();
             testServiceCollection.AddSingleton<IStore>(mockStore);
 
@@ -135,7 +135,7 @@ namespace Nethermind.BeaconNode.Test
             await worker.StartAsync(new CancellationToken());
             bool signal = fastTestClock.CompleteWaitHandle.WaitOne(TimeSpan.FromSeconds(10));
             await worker.StopAsync(new CancellationToken());
-            
+
             stopwatch.Stop();
 
             // Assert

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -149,7 +149,7 @@ namespace Nethermind.Network.Test.Rlpx
                 ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
-                Assert.AreEqual((byte) 2, output.PacketType);
+                Assert.AreEqual((byte)2, output.PacketType);
             }
             finally
             {
@@ -174,7 +174,7 @@ namespace Nethermind.Network.Test.Rlpx
 
                 Assert.AreEqual(0, output.PacketType);
 
-                byte[] outputBytes = output.Content.ReadAllBytesAsArray();
+                byte[] outputBytes = output.Content.ReadAllBytes();
                 HelloMessageSerializer serializer = new();
                 HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
@@ -187,7 +187,7 @@ namespace Nethermind.Network.Test.Rlpx
                 input.Release();
             }
         }
-        
+
         [Test]
         public void Can_merge_big_frame()
         {
@@ -204,7 +204,7 @@ namespace Nethermind.Network.Test.Rlpx
                 Assert.NotNull(output);
 
                 Assert.AreEqual(32, output.PacketType);
-                output.Content.ReadAllBytesAsArray();
+                output.Content.ReadAllBytes();
             }
             finally
             {

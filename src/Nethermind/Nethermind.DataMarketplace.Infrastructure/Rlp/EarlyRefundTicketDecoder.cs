@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 return null;
             }
-            
+
             Keccak depositId = rlpStream.DecodeKeccak();
             uint claimableAfter = rlpStream.DecodeUInt();
             Signature signature = SignatureDecoder.DecodeSignature(rlpStream);

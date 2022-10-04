@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Mongo.
             Keccak? assetId = null, Address? consumer = null)
         {
             var values = await Query(depositId, assetId, consumer)
-                .Select(c => new {c.ClaimedValue, c.Income, c.Status})
+                .Select(c => new { c.ClaimedValue, c.Income, c.Status })
                 .ToListAsync();
 
             if (values.Count == 0)
