@@ -81,12 +81,13 @@ namespace Nethermind.Consensus.AuRa.Validators
             bool isInitBlock = InitBlockNumber == block.Number;
             bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             bool isMainChainProcessing = !ForSealing && !isProducingBlock;
-            bool isConsecutiveBlock = block.Number - 1 == _lastProcessedBlockNumber && _lastProcessedBlockNumber != 0;
+            // TODO: check this and everywhere it is used
+            bool isConsecutiveBlock = block.Number - 1 <= _lastProcessedBlockNumber && _lastProcessedBlockNumber != 0;
 
             if (Validators == null || !isConsecutiveBlock || isProducingBlock)
             {
                 var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                Validators = isInitBlock || !isConsecutiveBlock ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators();
+                Validators = isInitBlock || !isConsecutiveBlock ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
 
                 if (isMainChainProcessing)
                 {
@@ -194,7 +195,10 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProducingBlock)
         {
             var validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
-            if (block.Number == InitBlockNumber || validatorsInfo.FinalizingBlockNumber == block.Number - 1)
+            var isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
+                                        && validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber;
+
+            if (InitBlockNumber == block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == block.Number - 1))
             {
                 if (_logger.IsInfo && !isProducingBlock)
                     _logger.Info($"Applying validator set change before block {block.ToString(BlockHeader.Format.Short)}.");

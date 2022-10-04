@@ -473,6 +473,8 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCaseSource(nameof(ConsecutiveInitiateChangeData))]
         public void consecutive_initiate_change_gets_finalized_and_switch_validators(ConsecutiveInitiateChangeTestParameters test)
         {
+            Dictionary<int, int> hashSeeds = new();
+
             Address[] currentValidators = GenerateValidators(1);
             SetupInitialValidators(currentValidators);
 
@@ -490,10 +492,15 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
 
+                if (hashSeeds.ContainsKey(blockNumber))
+                    hashSeeds[blockNumber]++;
+                else
+                    hashSeeds[blockNumber] = 0;
+
                 _block.Header.Number = blockNumber;
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
-                _block.Header.Hash = Keccak.Compute(blockNumber.ToString());
+                _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
 
@@ -503,7 +510,7 @@ namespace Nethermind.AuRa.Test.Validators
                 int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
-                            .WithHash(Keccak.Compute(finalizedNumber.ToString())).TestObject));
+                            .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");
