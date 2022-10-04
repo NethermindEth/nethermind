@@ -47,7 +47,7 @@ public class RangeQueryVisitorTests
         var startHash = (new Keccak("0000000000000000000000000000000000000000000000000000000001113456")).Bytes;
         var limitHash = (new Keccak("0000000000000000000000000000000000000000000000000000000001123458")).Bytes;
 
-        RangeQueryVisitor visitor = new(startHash, limitHash);
+        RangeQueryVisitor visitor = new(startHash, limitHash, false);
         VisitingOptions opt = new()
         {
             ExpectAccounts = false,
@@ -72,7 +72,7 @@ public class RangeQueryVisitorTests
         TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
         (StateTree inputStateTree, StorageTree inputStorageTree) = TestItem.Tree.GetTrees(store);
 
-        RangeQueryVisitor visitor = new(Keccak.Zero.Bytes, Keccak.MaxValue.Bytes);
+        RangeQueryVisitor visitor = new(Keccak.Zero.Bytes, Keccak.MaxValue.Bytes, false);
         VisitingOptions opt = new()
         {
             ExpectAccounts = false,
