@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -132,22 +133,28 @@ public class SnapServer: ISnapServer
         StateTree tree = new(_store, _logManager);
         PathWithAccount[] nodes = (PathWithAccount[]) accountNodes;
 
-        // TODO: add error handling when proof is null
-        AccountProofCollector accountProofCollector = new(nodes[0].Path.Bytes);
-        tree.Accept(accountProofCollector, rootHash);
-        byte[][] firstProof = accountProofCollector.BuildResult().Proof;
+        HashSet<byte[]> proofs = new();
+        if (nodes.Length != 0)
+        {
+            // TODO: add error handling when proof is null
+            // first is proof for starting hash because the client needs the proof for non existance also
+            // a malicious server can skip values on the start
+            AccountProofCollector accountProofCollector = new(startingHash.Bytes);
+            tree.Accept(accountProofCollector, rootHash);
+            byte[][] firstProof = accountProofCollector.BuildResult().Proof;
 
-        // TODO: add error handling when proof is null
-        accountProofCollector = new AccountProofCollector(nodes[^1].Path.Bytes);
-        tree.Accept(accountProofCollector, rootHash);
-        byte[][] lastProof = accountProofCollector.BuildResult().Proof;
+            // TODO: add error handling when proof is null
+            accountProofCollector = new AccountProofCollector(nodes[^1].Path.Bytes);
+            tree.Accept(accountProofCollector, rootHash);
+            byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-        List<byte[]> proofs = new();
-        proofs.AddRange(firstProof);
-        proofs.AddRange(lastProof);
-        // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
-        // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
-        // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
+            proofs.AddRange(firstProof);
+            proofs.AddRange(lastProof);
+            // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
+            // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
+            // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
+        }
+
         return (nodes, proofs.ToArray());
     }
 
@@ -179,16 +186,16 @@ public class SnapServer: ISnapServer
             {
                 // generate proof
                 // TODO: add error handling when proof is null
-                AccountProofCollector accountProofCollector = new(nodes[0].Path.Bytes);
+                ProofCollector accountProofCollector = new(startingHash.Bytes);
                 tree.Accept(accountProofCollector, storageRoot);
-                byte[][]? firstProof = accountProofCollector.BuildResult().Proof;
+                byte[][]? firstProof = accountProofCollector.BuildResult();
 
                 // TODO: add error handling when proof is null
-                accountProofCollector = new AccountProofCollector(nodes[^1].Path.Bytes);
+                accountProofCollector = new ProofCollector(nodes[^1].Path.Bytes);
                 tree.Accept(accountProofCollector, storageRoot);
-                byte[][]? lastProof = accountProofCollector.BuildResult().Proof;
+                byte[][]? lastProof = accountProofCollector.BuildResult();
 
-                List<byte[]> proofs = new();
+                HashSet<byte[]> proofs = new();
                 proofs.AddRange(firstProof);
                 proofs.AddRange(lastProof);
                 // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
