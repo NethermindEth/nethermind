@@ -127,7 +127,8 @@ public class SnapServer: ISnapServer
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
     {
 
-        (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash, limitHash == null ? Keccak.MaxValue : limitHash, byteLimit);
+        (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
+            limitHash == null ? Keccak.MaxValue : limitHash, byteLimit, isStorage: false);
         StateTree tree = new(_store, _logManager);
         PathWithAccount[] nodes = (PathWithAccount[]) accountNodes;
 
@@ -170,7 +171,8 @@ public class SnapServer: ISnapServer
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
             limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
-            (object []? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot, startingHash, limitHash, byteLimit - responseSize);
+            (object[]? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
+                startingHash, limitHash, byteLimit - responseSize, isStorage: true);
             PathWithStorageSlot[] nodes = (PathWithStorageSlot[]) storageNodes;
             responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
@@ -255,7 +257,7 @@ public class SnapServer: ISnapServer
         PatriciaTree tree = new(_store, _logManager);
 
 
-        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, byteLimit);
+        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
         Dictionary<byte[], byte[]>? requiredNodes = visitor.GetNodes();
