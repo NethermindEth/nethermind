@@ -311,14 +311,14 @@ public class SnapServer: ISnapServer
             accBytes  = tree.GetNodeByKey(keyHash, rootHash);
         }
 
-        TrieNode node = new(NodeType.Unknown, accBytes);
-        node.ResolveNode(tree.TrieStore);
-        accBytes = node.Value;
-
         if (accBytes is null || accBytes.SequenceEqual(new byte[] {}))
         {
             return null;
         }
+
+        TrieNode node = new(NodeType.Unknown, accBytes);
+        node.ResolveNode(tree.TrieStore);
+        accBytes = node.Value;
 
         Account? account;
         try
