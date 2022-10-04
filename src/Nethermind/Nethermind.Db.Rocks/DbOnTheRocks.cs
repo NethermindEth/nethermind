@@ -313,10 +313,16 @@ public class DbOnTheRocks : IDbWithSpan
 
         UpdateReadMetrics();
 
-        return _db.GetSpan(key);
+        Span<byte> span = _db.GetSpan(key);
+        GC.AddMemoryPressure(span.Length);
+        return span;
     }
 
-    public void DangerousReleaseMemory(in Span<byte> span) => _db.DangerousReleaseMemory(span);
+    public void DangerousReleaseMemory(in Span<byte> span)
+    {
+        GC.RemoveMemoryPressure(span.Length);
+        _db.DangerousReleaseMemory(span);
+    }
 
     public void Remove(byte[] key)
     {
