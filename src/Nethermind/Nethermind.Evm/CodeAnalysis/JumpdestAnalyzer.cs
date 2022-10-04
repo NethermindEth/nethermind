@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections;
 using System.Threading;
 using Nethermind.Evm.Precompiles;
@@ -54,23 +55,20 @@ namespace Nethermind.Evm.CodeAnalysis
             _validJumpDestinations = new BitArray(MachineCode.Length);
             _validJumpSubDestinations = new BitArray(MachineCode.Length);
 
-            var (codeStartOffset, codeEndOffset) = MachineCode.CodeSectionOffsets();
-            int codeSectionSize = codeEndOffset - codeStartOffset;
-
             int index = 0;
-            while (index < codeSectionSize)
+            while (index < MachineCode.Length)
             {
-                byte instruction = MachineCode[index + codeStartOffset];
-                int adjustedIndex = index + codeStartOffset;
+                byte instruction = MachineCode[index];
+
                 // JUMPDEST
                 if (instruction == 0x5b)
                 {
-                    _validJumpDestinations.Set(adjustedIndex, true);
+                    _validJumpDestinations.Set(index, true);
                 }
                 // BEGINSUB
                 else if (instruction == 0x5c)
                 {
-                    _validJumpSubDestinations.Set(adjustedIndex, true);
+                    _validJumpSubDestinations.Set(index, true);
                 }
 
                 // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
