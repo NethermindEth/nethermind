@@ -125,11 +125,11 @@ namespace Nethermind.JsonRpc
 
             const string reportHeader = "method                                  | " +
                                         "successes | " +
-                                        " avg time | " +
-                                        " max time | " +
+                                        " avg time (µs) | " +
+                                        " max time (µs) | " +
                                         "   errors | " +
-                                        " avg time | " +
-                                        " max time |" +
+                                        " avg time (µs) | " +
+                                        " max time (µs) |" +
                                         " avg size |" +
                                         " total size |";
 
@@ -178,11 +178,11 @@ namespace Nethermind.JsonRpc
         {
             string reportLine = $"{key.PadRight(40)}| " +
                                 $"{methodStats.Successes.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
+                                $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture).PadLeft(14)} | " +
+                                $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture).PadLeft(14)} | " +
                                 $"{methodStats.Errors.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
+                                $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(14)} | " +
+                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(14)} | " +
                                 $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(8)} | " +
                                 $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(10)} | ";
 
