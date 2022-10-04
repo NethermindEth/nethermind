@@ -56,7 +56,7 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
         bool anyPostMergePeers = postTTDPeers.Any();
         if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peerInfos)}");
         PeerInfo? peerInfo = isPostMerge || anyPostMergePeers
-            ? _postMergeAllocationStrategy.Allocate(currentPeer, postTTDPeers, nodeStatsManager, blockTree)
+            ? _postMergeAllocationStrategy.Allocate(currentPeer, peerInfos, nodeStatsManager, blockTree) // A hive test requires syncing to peer with TD < TTD, so we still need all peers.
             : _preMergeAllocationStrategy.Allocate(currentPeer, peerInfos, nodeStatsManager, blockTree);
 
         if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: Result of peer allocation {peerInfo}");

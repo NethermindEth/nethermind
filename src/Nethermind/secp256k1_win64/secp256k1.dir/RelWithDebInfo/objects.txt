@@ -1,1 +1,0 @@
-C:/src/nevermind/src/Nethermind/secp256k1_win64/secp256k1.dir/RelWithDebInfo/secp256k1.obj

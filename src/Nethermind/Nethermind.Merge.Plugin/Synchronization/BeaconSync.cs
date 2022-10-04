@@ -94,15 +94,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 lowestInsertedBeaconHeader != null &&
                 _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
             bool finished = lowestInsertedBeaconHeader == null
-                            || lowestInsertedBeaconHeader.Number <= _syncConfig.PivotNumberParsed + 1
-                            || chainMerged;
+                            || lowestInsertedBeaconHeader.Number <= _beaconPivot.PivotDestinationNumber
+                            || (!_syncConfig.StrictMode && chainMerged);
 
             if (_logger.IsTrace) _logger.Trace(
                 $"IsBeaconSyncHeadersFinished: {finished}," +
                 $" BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}," +
+                $" LowestInsertedBeaconHeaderHash: {_blockTree.LowestInsertedBeaconHeader?.Hash}," +
                 $" LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}," +
                 $" BestSuggestedHeader: {_blockTree.BestSuggestedHeader?.Number}," +
                 $" ChainMerged: {chainMerged}," +
+                $" StrictMode: {_syncConfig.StrictMode}," +
                 $" BeaconPivot: {_beaconPivot.PivotNumber}," +
                 $" BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
@@ -117,6 +119,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <param name="blockHeader"></param>
         /// <returns></returns>
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
+
+        public long? GetTargetBlockHeight()
+        {
+            if (_beaconPivot.BeaconPivotExists())
+            {
+                return _beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
+            }
+            return null;
+        }
     }
 
     public interface IMergeSyncController

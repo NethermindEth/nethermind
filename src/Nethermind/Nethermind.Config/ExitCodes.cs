@@ -19,6 +19,9 @@ namespace Nethermind.Config;
 
 public static class ExitCodes
 {
+    public const int Ok = 0;
+    public const int GeneralError = 1;
+
     // config errors 100...199
     public const int NoEngineModule = 100;
 
