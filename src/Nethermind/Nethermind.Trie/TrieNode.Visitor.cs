@@ -33,7 +33,7 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int BranchesCount = 16;
+        public const int BranchesCount = 16;
 
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
