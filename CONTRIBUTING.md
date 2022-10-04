@@ -44,7 +44,10 @@ Please do not:
 
 ## Branch Naming
 
-Branch names must follow `snake_case` pattern. Follow the pattern `feature/<name>` or `fix/<name>` `(folder/<name>)` when it is possible and add issue reference if applicable.
+Branch names must follow `snake_case` pattern. Follow the pattern `feature/<name>` or `fix/<name>` `(folder/<name>)` when it is possible and add issue reference if applicable. For example:
+feature/1234_issue_title
+fix/2345_bug_title
+shanghai/feature/4567_title
 
 ## File Headers
 
