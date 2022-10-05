@@ -534,6 +534,11 @@ public class InitializeNetwork : IStep
             _api.GossipPolicy,
             _api.LogManager);
 
+        if (_syncConfig.SnapSync)
+        {
+            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+
         if (_syncConfig.WitnessProtocolEnabled)
         {
             _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));

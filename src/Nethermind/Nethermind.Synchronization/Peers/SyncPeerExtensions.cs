@@ -43,12 +43,12 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            // check if peer supports snap sync
-            if ((contexts & AllocationContexts.Snap) != 0)
-            {
-                // TODO: Remove when Nethermind implements snap server
-                return peerInfo.SyncPeer.ClientType != NodeClientType.Nethermind;
-            }
+            // // check if peer supports snap sync
+            // if ((contexts & AllocationContexts.Snap) != 0)
+            // {
+            //     // TODO: Remove when Nethermind implements snap server
+            //     return peerInfo.SyncPeer.ClientType != NodeClientType.Nethermind;
+            // }
 
             return true;
         }
