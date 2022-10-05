@@ -148,8 +148,15 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        /// <summary>
+        /// It takes items only from state node queues.
+        /// Codes are taken from the queue separately to support SNAP methods (2 different methods)
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
         private bool TryTake(out StateSyncItem? node)
         {
+            // index 0 is Codes so we skip it
             for (int i = 1; i < _allStacks.Length; i++)
             {
                 if (_allStacks[i].TryPop(out node))
@@ -170,6 +177,7 @@ namespace Nethermind.Synchronization.FastSync
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
             List<StateSyncItem> requestItems = new(length);
 
+            // Codes have priority over State Nodes
             if (CodeItems.Count > 0)
             {
                 int codeMaxCount = Math.Min(length, CodeItems.Count);
@@ -188,6 +196,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
+            // Take Stae Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
