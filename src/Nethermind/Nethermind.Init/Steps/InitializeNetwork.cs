@@ -212,12 +212,6 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
-        {
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-        }
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -520,6 +514,11 @@ public class InitializeNetwork : IStep
             _api.SpecProvider!,
             _api.GossipPolicy,
             _api.LogManager);
+
+        if (_syncConfig.SnapSync)
+        {
+            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
 
         if (_syncConfig.WitnessProtocolEnabled)
         {
