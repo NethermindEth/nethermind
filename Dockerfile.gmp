@@ -1,0 +1,17 @@
+FROM debian@sha256:acf7795dc91df17e10effee064bd229580a9c34213b4dba578d64768af5d8c51 AS gmp
+WORKDIR /source
+
+RUN apt-get update && apt-get install -y mercurial autoconf automake libtool texinfo build-essential bison
+
+RUN hg clone https://gmplib.org/repo/gmp-6.2/ gmp && \
+    cd gmp && \
+    ./.bootstrap && \
+    ./configure --disable-static --enable-shared && \
+    make -j16
+    
+RUN strip gmp/.libs/libgmp.so
+
+
+FROM debian@sha256:acf7795dc91df17e10effee064bd229580a9c34213b4dba578d64768af5d8c51 AS libgmp
+WORKDIR /nethermind
+COPY --from=gmp /source/gmp/.libs/libgmp.so .
