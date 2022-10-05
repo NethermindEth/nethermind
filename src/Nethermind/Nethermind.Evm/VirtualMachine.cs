@@ -2123,7 +2123,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            int adjustedProgramCounter = programCounter - 1 + codeSectionStart;
+                            int adjustedProgramCounter = programCounter - 1 + codeSectionStart; 
                             stack.PushUInt32(adjustedProgramCounter);
                             break;
                         }
@@ -2221,10 +2221,10 @@ namespace Nethermind.Evm
                             }
 
                             int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = programCounter + codeSectionStart;
+                            int programCounterInt = programCounter;
                             int usedFromCode = Math.Min(codeSectionLength - programCounterInt, length);
 
-                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
+                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt + codeSectionStart, usedFromCode), length);
 
                             programCounter += length;
                             break;

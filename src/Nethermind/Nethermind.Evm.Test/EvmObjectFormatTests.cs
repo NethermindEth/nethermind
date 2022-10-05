@@ -150,6 +150,7 @@ namespace Nethermind.Evm.Test
         {
             get
             {
+                /*
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -503,6 +504,17 @@ namespace Nethermind.Evm.Test
                     ExpectedResult = (StatusCode.Success, null),
                     Description = "EOF1 execution : copies Data out of bound (result is 0 padded)"
                 };
+                */
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .PushData(new byte[] { 23, 69})
+                            .Return(2, 0)
+                            .Done,
+                    ExpectedResult = (StatusCode.Success, null),
+                    Description = "EOF1 execution : includes PUSHx Intructions"
+                };
             }
         }
 
@@ -518,8 +530,9 @@ namespace Nethermind.Evm.Test
             if (IsEOFCode(bytecode, out _))
             {
                 TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
-                receipts.StatusCode.Should().Be(testcase.ExpectedResult.Status);
-                receipts.Error.Should().Be(testcase.ExpectedResult.error);
+                var message = receipts.StatusCode == StatusCode.Success ? $"returns : {receipts.ReturnValue}" : $"failed : {receipts.Error}";
+                receipts.StatusCode.Should().Be(testcase.ExpectedResult.Status, message);
+                receipts.Error.Should().Be(testcase.ExpectedResult.error, message);
             }
         }
     }
