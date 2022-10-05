@@ -29,15 +29,16 @@ public class BlockImprovementContext : IBlockImprovementContext
 {
     private CancellationTokenSource? _cancellationTokenSource;
 
-    public BlockImprovementContext(
-        Block currentBestBlock,
+    public BlockImprovementContext(Block currentBestBlock,
         IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes)
+        PayloadAttributes payloadAttributes,
+        DateTimeOffset startDateTime)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
+        StartDateTime = startDateTime;
         ImprovementTask = blockProductionTrigger
             .BuildBlock(parentHeader, _cancellationTokenSource.Token, NullBlockTracer.Instance, payloadAttributes)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
@@ -60,8 +61,12 @@ public class BlockImprovementContext : IBlockImprovementContext
         return task.Result;
     }
 
+    public bool Disposed { get; private set; }
+    public DateTimeOffset StartDateTime { get; }
+
     public void Dispose()
     {
+        Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
     }
 }
