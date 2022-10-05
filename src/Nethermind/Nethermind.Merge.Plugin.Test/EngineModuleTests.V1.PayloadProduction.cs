@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -78,7 +78,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -179,7 +179,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak? random = TestItem.KeccakF;
-        UInt256 timestamp = chain.BlockTree.Head!.Timestamp + 5;
+        ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
         ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
@@ -203,7 +203,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         string _ = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -264,7 +264,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
