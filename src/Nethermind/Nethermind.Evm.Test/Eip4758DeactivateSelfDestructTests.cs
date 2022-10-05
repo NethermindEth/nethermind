@@ -27,14 +27,15 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
+using FluentAssertions;
 
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
     public class Eip4758DeactivateSelfDestructTests : VirtualMachineTestsBase
     {
-        [TestCase(MainnetSpecProvider.ShanghaiBlockNumber, 0ul, true)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, false)]
+        [TestCase(MainnetSpecProvider.ShanghaiBlockNumber, 0ul, true)]
         public void Load_self_destruct(long blockNumber, ulong timestamp, bool deactivated)
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
@@ -53,10 +54,10 @@ namespace Nethermind.Evm.Test
                         .PushData(1)
                         .PushData(1)
                         .Op(Instruction.SSTORE)
-                        .PushData(21)
+                        .PushData(40)
                         .Op(Instruction.JUMP)
                         .Op(Instruction.JUMPDEST)
-                        .PushData(0)
+                        .PushData(TestItem.PrivateKeyB.Address)
                         .Op(Instruction.SELFDESTRUCT_OR_SENDALL)
                         .Op(Instruction.JUMPDEST)
                         .Done)
@@ -75,7 +76,7 @@ namespace Nethermind.Evm.Test
             long gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
-            Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithValue(99.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
@@ -83,6 +84,7 @@ namespace Nethermind.Evm.Test
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(initTx, block.Header, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
+            TestState.GetBalance(contractAddress).Should().Be(99.Ether());
 
             ParityLikeTxTracer tracer1 = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block.Header, tracer1);
@@ -93,6 +95,9 @@ namespace Nethermind.Evm.Test
 
             uint expected = deactivated ? 1u : 0u;
             AssertStorage(new StorageCell(contractAddress, 1), expected);
+
+            TestState.GetBalance(contractAddress).Should().Be(0);
+            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
         }
     }
 }
