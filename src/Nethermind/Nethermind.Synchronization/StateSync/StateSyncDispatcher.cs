@@ -32,61 +32,44 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
     {
-        //private string _trace;
-
-        private readonly bool _snapSyncEnabled;
-
-        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ISyncConfig syncConfig, ILogManager logManager)
+        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
-            _snapSyncEnabled = syncConfig.SnapSync;
         }
 
         protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
-            if (batch == null || batch.RequestedNodes == null || batch.RequestedNodes.Length == 0)
+            if (batch?.RequestedNodes == null || batch.RequestedNodes.Length == 0)
             {
                 return;
             }
 
-            //string printByteArray(byte[] bytes)
-            //{
-            //    return string.Join(null, bytes.Select(b => b.ToString("X")));
-            //}
-            //_trace += String.Join(Environment.NewLine, batch.RequestedNodes.Select(n => n.Level + "|" + n.NodeDataType + "|" + printByteArray(n.AccountPathNibbles) + "|" + printByteArray(n.PathNibbles)))
-            //    + Environment.NewLine;
-
             ISyncPeer peer = peerInfo.SyncPeer;
-
+            var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
             Task<byte[][]> task = null;
 
-            if (_snapSyncEnabled)
+            // Use GETNODEDATA if possible
+            // TODO: Currently all SyncPeer support ETH66 but it's going to change
+            // so we need to introduce some IF here to check ETH66 support
+            task = peer.GetNodeData(a, cancellationToken);
+
+            // GETNODEDATA is not supported so we try with SNAP protocol
+            if (task is null && peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {
-                if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
+                if (batch.NodeDataType == NodeDataType.Code)
                 {
-                    if (batch.NodeDataType == NodeDataType.Code)
-                    {
-                        var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
-                        Logger.Trace($"GETBYTECODES count:{a.Length}");
-                        task = handler.GetByteCodes(a, cancellationToken);
-                    }
-                    else
-                    {
-                        GetTrieNodesRequest request = GetRequest(batch);
-
-                        Logger.Trace($"GETTRIENODES count:{request.AccountAndStoragePaths.Length}");
-
-                        task = handler.GetTrieNodes(request, cancellationToken);
-                    }
+                    task = handler.GetByteCodes(a, cancellationToken);
+                }
+                else
+                {
+                    GetTrieNodesRequest request = GetGroupedRequest(batch);
+                    task = handler.GetTrieNodes(request, cancellationToken);
                 }
             }
 
-            if (task is null)
+            if(task is null)
             {
-                var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
-                Logger.Warn($"GETNODEDATA count:{a.Length}");
-
-                task = peer.GetNodeData(a, cancellationToken);
+                return;
             }
 
             await task.ContinueWith(
@@ -105,38 +88,48 @@ namespace Nethermind.Synchronization.StateSync
                 }, batch);
         }
 
-        private GetTrieNodesRequest GetRequest(StateSyncBatch batch)
+        /// <summary>
+        /// SNAP protocol allows grouping of storage requests by account path.
+        /// The grouping decrease requests size.
+        private GetTrieNodesRequest GetGroupedRequest(StateSyncBatch batch)
         {
             GetTrieNodesRequest request = new();
             request.RootHash = batch.StateRoot;
 
-            Dictionary<byte[], List<byte[]>> dict = new(Bytes.EqualityComparer);
-            List<byte[]> accountTreePaths = new();
+            Dictionary<byte[], List<(byte[] path, StateSyncItem syncItem)>> dict = new(Bytes.EqualityComparer);
+            List<(byte[] path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (var item in batch.RequestedNodes)
             {
-                if (item.AccountPathNibbles == null || item.AccountPathNibbles.Length == 0)
-                {
-                    accountTreePaths.Add(item.PathNibbles);
-                }
-                else
+                if(item.AccountPathNibbles?.Length > 0)
                 {
                     if (!dict.TryGetValue(item.AccountPathNibbles, out var storagePaths))
                     {
-                        storagePaths = new List<byte[]>();
+                        storagePaths = new List<(byte[], StateSyncItem)>();
                         dict[item.AccountPathNibbles] = storagePaths;
                     }
 
-                    storagePaths.Add(item.PathNibbles);
+                    storagePaths.Add((item.PathNibbles, item));
+                }
+                else
+                {
+                    accountTreePaths.Add((item.PathNibbles, item));
                 }
             }
 
             request.AccountAndStoragePaths = new PathGroup[accountTreePaths.Count + dict.Count];
 
-            int i = 0;
-            for (; i < accountTreePaths.Count; i++)
+            int requestedNodeIndex = 0;
+            int accountPathIndex = 0;
+            for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
-                request.AccountAndStoragePaths[i] = new PathGroup() { Group = new[] { EncodePath(accountTreePaths[i]) } };
+                (byte[] path, StateSyncItem syncItem) accountPath = accountTreePaths[accountPathIndex];
+                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = new[] { EncodePath(accountPath.path) } };
+
+                // We validate the order of the response later and it has to be the same as RequestedNodes
+                batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;    
+
+                requestedNodeIndex++;
             }
 
             foreach (var kvp in dict)
@@ -146,11 +139,23 @@ namespace Nethermind.Synchronization.StateSync
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {
-                    group[groupIndex] = EncodePath(kvp.Value[groupIndex - 1]);
+                    (byte[] path, StateSyncItem syncItem) storagePath = kvp.Value[groupIndex - 1];
+                    group[groupIndex] = EncodePath(storagePath.path);
+
+                    // We validate the order of the response later and it has to be the same as RequestedNodes
+                    batch.RequestedNodes[requestedNodeIndex] = storagePath.syncItem;    
+
+                    requestedNodeIndex++;
                 }
 
-                request.AccountAndStoragePaths[i] = new PathGroup() { Group = group };
-                i++;
+                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = group };
+
+                accountPathIndex++;
+            }
+
+            if (batch.RequestedNodes.Length != requestedNodeIndex)
+            {
+                Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Length} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
             return request;

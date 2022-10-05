@@ -172,9 +172,9 @@ namespace Nethermind.Synchronization.FastSync
 
             if (CodeItems.Count > 0)
             {
-                length = Math.Min(length, CodeItems.Count);
+                int codeMaxCount = Math.Min(length, CodeItems.Count);
 
-                for (int i = 0; i < length; i++)
+                for (int i = 0; i < codeMaxCount; i++)
                 {
                     if(CodeItems.TryPop(out var codeItem))
                     {
