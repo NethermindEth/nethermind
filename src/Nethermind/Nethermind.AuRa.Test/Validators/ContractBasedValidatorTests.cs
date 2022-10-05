@@ -501,13 +501,22 @@ namespace Nethermind.AuRa.Test.Validators
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
                 _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
+                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
+
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
+
+                Keccak? blockHashForClosure = _block.Hash;
+                _receiptsStorage.Get(Arg.Is<Block>(b => b.Hash == blockHashForClosure)).Returns(txReceipts);
+
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
+
+                _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone(), BlockBody.Empty));
 
                 Action preProcess = () => validator.OnBlockProcessingStart(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
                 validator.OnBlockProcessingEnd(_block, txReceipts);
                 int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
+                _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
                             .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));

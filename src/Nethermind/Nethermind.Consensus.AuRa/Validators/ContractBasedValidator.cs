@@ -21,7 +21,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ILogger _logger;
 
         private PendingValidators _currentPendingValidators;
-        private long _lastProcessedBlockNumber = 0;
+        private long? _lastProcessedBlockNumber = null;
+        private Keccak? _lastProcessedBlockHash = null;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
@@ -81,13 +82,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             bool isInitBlock = InitBlockNumber == block.Number;
             bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             bool isMainChainProcessing = !ForSealing && !isProducingBlock;
-            // TODO: check this and everywhere it is used
-            bool isConsecutiveBlock = block.Number - 1 <= _lastProcessedBlockNumber && _lastProcessedBlockNumber != 0;
+            bool isInProcessedRange = _lastProcessedBlockNumber is not null && block.Number - 1 <= _lastProcessedBlockNumber;
 
-            if (Validators == null || !isConsecutiveBlock || isProducingBlock)
+            if (Validators == null || !isInProcessedRange || isProducingBlock)
             {
                 var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                Validators = isInitBlock || !isConsecutiveBlock ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
+                Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
 
                 if (isMainChainProcessing)
                 {
@@ -105,20 +105,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
             else
             {
-                if (!isConsecutiveBlock)// either reorg or blocks skipped (like fast sync)
+                if (isMainChainProcessing && !isInProcessedRange)
                 {
-                    if (isMainChainProcessing)
+                    bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
+                    if (!loadedValidatorsAreSameInStore)
                     {
-                        bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
-                        if (!loadedValidatorsAreSameInStore)
-                        {
-                            ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash), Validators);
-                        }
-                    }
-
-                    if (!isProducingBlock)
-                    {
-                        _currentPendingValidators = ValidatorStore.PendingValidators = TryGetInitChangeFromPastBlocks(block.ParentHash);
+                        ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash), Validators);
                     }
                 }
 
@@ -128,6 +120,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                     // We need to initialize pending validators from db on each block being produced.
                     _currentPendingValidators = ValidatorStore.PendingValidators;
                 }
+                else if (_lastProcessedBlockHash is null || block.ParentHash != _lastProcessedBlockHash) // either reorg or blocks skipped (like fast sync)
+                    _currentPendingValidators = ValidatorStore.PendingValidators = TryGetInitChangeFromPastBlocks(block.ParentHash);
             }
 
 
@@ -135,10 +129,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             FinalizePendingValidatorsIfNeeded(block.Header, isProducingBlock);
 
-            _lastProcessedBlockNumber = block.Number;
+            (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
         }
 
-        // FIXME
         private PendingValidators TryGetInitChangeFromPastBlocks(Keccak blockHash)
         {
             PendingValidators pendingValidators = null;
@@ -152,7 +145,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (Validators.SequenceEqual(potentialValidators))
                     {
-                        break;
+                        break; // TODO: why this?
                     }
 
                     pendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
