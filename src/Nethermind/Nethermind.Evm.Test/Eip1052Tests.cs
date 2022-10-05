@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] selfDestructCode = Prepare.EvmCode
                 .PushData(Recipient)
-                .Op(Instruction.SELFDESTRUCT_OR_SENDALL).Done;
+                .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak selfDestructCodeHash = TestState.UpdateCode(selfDestructCode);
@@ -175,7 +175,7 @@ namespace Nethermind.Evm.Test
 
             byte[] selfDestructCode = Prepare.EvmCode
                 .PushData(Recipient)
-                .Op(Instruction.SELFDESTRUCT_OR_SENDALL).Done;
+                .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
             Keccak selfDestructCodeHash = TestState.UpdateCode(selfDestructCode);

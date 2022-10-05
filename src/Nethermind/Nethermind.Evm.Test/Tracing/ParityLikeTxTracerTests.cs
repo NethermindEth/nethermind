@@ -526,7 +526,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
-                .Op(Instruction.SELFDESTRUCT_OR_SENDALL)
+                .Op(Instruction.SELFDESTRUCT)
                 .Done;
 
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);

@@ -2668,7 +2668,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
                         }
-                    case Instruction.SELFDESTRUCT_OR_SENDALL:
+                    case Instruction.SELFDESTRUCT | Instruction.SENDALL: // SELFDESTRUCT is depricated and now this OP code is called SENDALL.
                         {
                             if (vmState.IsStatic)
                             {

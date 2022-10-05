@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.JUMP)
                         .Op(Instruction.JUMPDEST)
                         .PushData(TestItem.PrivateKeyB.Address)
-                        .Op(Instruction.SELFDESTRUCT_OR_SENDALL)
+                        .Op(Instruction.SENDALL)
                         .Op(Instruction.JUMPDEST)
                         .Done)
                 .Done;

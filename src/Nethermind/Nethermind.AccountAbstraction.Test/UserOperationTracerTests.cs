@@ -147,7 +147,7 @@ namespace Nethermind.AccountAbstraction.Test
             // simple storage access contract
             byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
                 .PushData(Address.Zero)
-                .Op(selfdestruct ? Instruction.SELFDESTRUCT_OR_SENDALL : Instruction.DUP1)
+                .Op(selfdestruct ? Instruction.SELFDESTRUCT : Instruction.DUP1)
                 .Done;
 
             TestState.CreateAccount(externalContractAddress, 1.Ether());
