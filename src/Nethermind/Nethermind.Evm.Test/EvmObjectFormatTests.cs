@@ -85,9 +85,6 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF00010100040200020060006001AABB", true, 4, 2, true)]
         [TestCase("0xEF000101000602000400600060016002AABBCCDD", true, 6, 4, true)]
         // code with invalid magic
-        [TestCase("", false, 0, 0, true, Description = "Empty code")]
-        [TestCase("0xFE", false, 0, 0, true, Description = "Codes starting with invalid magic first byte")]
-        [TestCase("0xFE0001010002020004006000AABBCCDD", false, 0, 0, true, Description = "Valid code with wrong magic first byte")]
         [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete Magic")]
         [TestCase("0xEF01", false, 0, 0, true, Description = "Incorrect Magic second byte")]
         [TestCase("0xEF0101010002020004006000AABBCCDD", false, 0, 0, true, Description = "Valid code with wrong magic second byte")]
