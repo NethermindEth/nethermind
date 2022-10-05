@@ -150,7 +150,6 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-                /*
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -504,7 +503,6 @@ namespace Nethermind.Evm.Test
                     ExpectedResult = (StatusCode.Success, null),
                     Description = "EOF1 execution : copies Data out of bound (result is 0 padded)"
                 };
-                */
 
                 yield return new TestCase
                 {
