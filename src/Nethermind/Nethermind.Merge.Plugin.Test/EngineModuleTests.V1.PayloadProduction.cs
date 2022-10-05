@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -274,7 +274,7 @@ public partial class EngineModuleTests
         await Task.Delay(timePerSlot / 2);
 
         improvementContextFactory.CreatedContexts.Count.Should().BeInRange(3, 5);
-        improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count -  1).Should().OnlyContain(i => i.Disposed);
+        improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(i => i.Disposed);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
