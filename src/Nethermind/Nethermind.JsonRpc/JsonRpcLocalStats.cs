@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            const string reportHeader = "method                                  | " +
+            const string reportHeader = "method                     (time in μs) | " +
                                         "successes | " +
                                         " avg time | " +
                                         " max time | " +
@@ -168,23 +168,21 @@ namespace Nethermind.JsonRpc
 
         private void Swap()
         {
-            var temp = _currentStats;
-            _currentStats = _previousStats;
-            _previousStats = temp;
+            (_currentStats, _previousStats) = (_previousStats, _currentStats);
         }
 
         [Pure]
         private string PrepareReportLine(in string key, MethodStats methodStats)
         {
-            string reportLine = $"{key.PadRight(40)}| " +
-                                $"{methodStats.Successes.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.Errors.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(8)} | " +
-                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(10)} | ";
+            string reportLine = $"{key,-40}| " +
+                                $"{methodStats.Successes.ToString(),9} | " +
+                                $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture),9} | " +
+                                $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture),9} | " +
+                                $"{methodStats.Errors.ToString(),9} | " +
+                                $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture),9} | " +
+                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture),9} | " +
+                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),8} | " +
+                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture),10} | ";
 
             return reportLine;
         }
