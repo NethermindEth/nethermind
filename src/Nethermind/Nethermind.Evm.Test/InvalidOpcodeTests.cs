@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
             Instruction.SWAP11, Instruction.SWAP12, Instruction.SWAP13, Instruction.SWAP14, Instruction.SWAP15,
             Instruction.SWAP16, Instruction.LOG0, Instruction.LOG1, Instruction.LOG2, Instruction.LOG3,
             Instruction.LOG4, Instruction.CREATE, Instruction.CALL, Instruction.CALLCODE, Instruction.RETURN,
-            Instruction.SELFDESTRUCT
+            Instruction.SELFDESTRUCT_OR_SENDALL
         };
 
         private static readonly Instruction[] HomesteadInstructions =

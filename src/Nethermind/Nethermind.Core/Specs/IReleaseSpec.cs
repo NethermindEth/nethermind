@@ -266,6 +266,11 @@ namespace Nethermind.Core.Specs
         bool IsEip1153Enabled { get; }
 
         /// <summary>
+        /// Deactivate SELFDESTRUCT
+        /// </summary>
+        bool IsEip4758Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -346,5 +351,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue => null;
 
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool SelfDestructDeactivated => IsEip4758Enabled;
     }
 }

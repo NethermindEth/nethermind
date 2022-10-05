@@ -380,7 +380,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Since the second call is a CREATE operation it has intrinsic gas of 21000 + 32000 + data")]
         public void Can_estimate_with_destroy_refund_and_below_intrinsic_pre_berlin()
         {
-            byte[] initByteCode = Prepare.EvmCode.ForInitOf(Prepare.EvmCode.PushData(Address.Zero).Op(Instruction.SELFDESTRUCT).Done).Done;
+            byte[] initByteCode = Prepare.EvmCode.ForInitOf(Prepare.EvmCode.PushData(Address.Zero).Op(Instruction.SELFDESTRUCT_OR_SENDALL).Done).Done;
             Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
 
             byte[] byteCode = Prepare.EvmCode

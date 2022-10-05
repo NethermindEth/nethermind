@@ -2668,7 +2668,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
                         }
-                    case Instruction.SELFDESTRUCT:
+                    case Instruction.SELFDESTRUCT_OR_SENDALL:
                         {
                             if (vmState.IsStatic)
                             {
@@ -2691,7 +2691,8 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            vmState.DestroyList.Add(env.ExecutingAccount);
+                            if (!spec.SelfDestructDeactivated)
+                                vmState.DestroyList.Add(env.ExecutingAccount);
 
                             UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
                             if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);

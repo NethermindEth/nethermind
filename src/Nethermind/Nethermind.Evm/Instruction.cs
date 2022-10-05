@@ -183,7 +183,7 @@ namespace Nethermind.Evm
         STATICCALL = 0xfa,
         REVERT = 0xfd,
         INVALID = 0xfe,
-        SELFDESTRUCT = 0xff,
+        SELFDESTRUCT_OR_SENDALL = 0xff,
     }
 
     public static class InstructionExtensions

@@ -150,5 +150,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
+        public bool IsEip4758Enabled => _spec.IsEip4758Enabled;
     }
 }
