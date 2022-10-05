@@ -117,9 +117,9 @@ namespace Nethermind.Synchronization.ParallelSync
                                     SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                                     ReactToHandlingResult(request, result, allocatedPeer);
                                 }
-                                catch (ObjectDisposedException)
+                                catch (ObjectDisposedException ex)
                                 {
-                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
+                                    if (Logger.IsInfo) Logger.Info($"Ignoring sync response as the DB has already closed.{Environment.NewLine}{ex}");
                                 }
                                 catch (Exception e)
                                 {
