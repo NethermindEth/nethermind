@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -52,7 +52,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
@@ -64,10 +64,11 @@ public class ChainLevelHelper : IChainLevelHelper
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is {startingPoint}");
 
-        List<BlockHeader> headers = new(maxCount);
+        int effectiveMax = maxCount + skipLastBlockCount;
+        List<BlockHeader> headers = new(effectiveMax);
         int i = 0;
 
-        while (i < maxCount)
+        while (i < effectiveMax)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
@@ -123,10 +124,20 @@ public class ChainLevelHelper : IChainLevelHelper
                     $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
             headers.Add(newHeader);
             ++i;
-            if (i >= maxCount)
+            if (i >= effectiveMax)
                 break;
 
             ++startingPoint;
+        }
+
+        int toTake = headers.Count - skipLastBlockCount;
+        if (toTake <= 0)
+        {
+            headers.Clear();
+        }
+        else
+        {
+            headers.RemoveRange(toTake, headers.Count - toTake);
         }
 
         return headers.ToArray();
@@ -166,7 +177,7 @@ public class ChainLevelHelper : IChainLevelHelper
         long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool shouldContinue;
 
-        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
         if (beaconMainChainBlock == null) return null;
@@ -202,7 +213,7 @@ public class ChainLevelHelper : IChainLevelHelper
             // MergeBlockDownloader does not download the first header so this is deliberate
             --startingPoint;
             currentHash = header.ParentHash!;
-            if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
+            if (_syncConfig.FastSync && startingPoint < _beaconPivot.PivotDestinationNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;
