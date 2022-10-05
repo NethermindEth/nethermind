@@ -32,6 +32,7 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using System.ComponentModel.DataAnnotations;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -207,13 +208,13 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
-                                // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540  is enabled.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !callResult.Output.ValidateByteCode(spec))
+                                // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
+                                else if (currentState.ExecutionType.IsAnyCreate() && !ByteCodeValidator.ValidateByteCode(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
                                 else
-                                        {
+                                {
                                     if (currentState.ExecutionType.IsAnyCreate())
                                     {
                                         _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
@@ -253,7 +254,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !callResult.Output.ValidateByteCode(spec);
+                            bool invalidCode = !ByteCodeValidator.ValidateByteCode(callResult.Output, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -632,8 +633,7 @@ namespace Nethermind.Evm
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-            (int codeSectionStart, int codeSectionEnd) = code.CodeSectionOffsets();
-            int codeSectionLength = codeSectionEnd - codeSectionStart;
+            var (codeSectionStart, codeSectionEnd, codeSectionLength) = ByteCodeValidator.CodeSectionOffsets(code);
 
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
@@ -744,7 +744,7 @@ namespace Nethermind.Evm
 
             while (programCounter < codeSectionLength)
             {
-                Instruction instruction = (Instruction) code[programCounter + codeSectionStart];
+                Instruction instruction = (Instruction)code[programCounter + codeSectionStart];
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
@@ -1446,6 +1446,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CODECOPY:
                         {
+                            UInt256 code_length = (UInt256)code.Length;
                             stack.PopUInt256(out UInt256 dest);
                             stack.PopUInt256(out UInt256 src);
                             stack.PopUInt256(out UInt256 length);
@@ -2122,8 +2123,8 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-
-                            stack.PushUInt32(programCounter - 1);
+                            int adjustedProgramCounter = programCounter - 1 + codeSectionStart;
+                            stack.PushUInt32(adjustedProgramCounter);
                             break;
                         }
                     case Instruction.MSIZE:
@@ -2168,15 +2169,15 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                        int programCounterInt = programCounter;
-                        if (programCounterInt >= code.Length)
-                        {
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            stack.PushByte(code[programCounterInt]);
-                        }
+                            int programCounterInt = programCounter + codeSectionStart;
+                            if (programCounterInt >= codeSectionEnd)
+                            {
+                                stack.PushZero();
+                            }
+                            else
+                            {
+                                stack.PushByte(code[programCounterInt]);
+                            }
 
                             programCounter++;
                             break;
@@ -2219,11 +2220,11 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                        int length = instruction - Instruction.PUSH1 + 1;
-                        int programCounterInt = programCounter;
-                        int usedFromCode = Math.Min(code.Length - programCounterInt, length);
+                            int length = instruction - Instruction.PUSH1 + 1;
+                            int programCounterInt = programCounter;
+                            int usedFromCode = Math.Min(codeSectionLength - programCounterInt, length);
 
-                        stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
+                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt + codeSectionStart, usedFromCode), length);
 
                             programCounter += length;
                             break;
@@ -2367,8 +2368,9 @@ namespace Nethermind.Evm
                             }
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-                            if (spec.IsEip3540Enabled
-                            && !initCode.IsEOFCode(out _))
+
+                            if (spec.IsEip3670Enabled
+                                && (initCode.HasEOFMagic() && !ByteCodeValidator.ValidateByteCode(initCode, spec)))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

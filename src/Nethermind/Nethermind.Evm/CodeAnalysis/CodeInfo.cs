@@ -62,14 +62,23 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            if (MachineCode.Length >= SampledCodeLength)
+            byte[] codeToBeAnalyzed;
+            if (ByteCodeValidator.IsEOFCode(MachineCode, out var header))
+            {
+                codeToBeAnalyzed = MachineCode.AsSpan()
+                                    .Slice(header.ExtractCodeOffsets.StartOffset, header.CodeSize)
+                                    .ToArray();
+            }
+            else codeToBeAnalyzed = MachineCode;
+
+            if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;
 
                 // we check (by sampling randomly) how many PUSH1 instructions are in the code
                 for (int i = 0; i < NumberOfSamples; i++)
                 {
-                    byte instruction = MachineCode[_rand.Next(0, MachineCode.Length)];
+                    byte instruction = MachineCode[_rand.Next(0, codeToBeAnalyzed.Length)];
 
                     // PUSH1
                     if (instruction == 0x60)
@@ -81,11 +90,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 // If there are many PUSH1 ops then use the JUMPDEST analyzer.
                 // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
                 // in a scenario when the code consists only of PUSH1 instructions.
-                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
+                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(codeToBeAnalyzed) : new CodeDataAnalyzer(codeToBeAnalyzed);
             }
             else
             {
-                _analyzer = new CodeDataAnalyzer(MachineCode);
+                _analyzer = new CodeDataAnalyzer(codeToBeAnalyzed);
             }
         }
     }
