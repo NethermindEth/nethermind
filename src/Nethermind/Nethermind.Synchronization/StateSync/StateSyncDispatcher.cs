@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -45,7 +46,7 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
+            Keccak[]? a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
             Task<byte[][]> task = null;
 
             // Use GETNODEDATA if possible
@@ -54,7 +55,7 @@ namespace Nethermind.Synchronization.StateSync
             task = peer.GetNodeData(a, cancellationToken);
 
             // GETNODEDATA is not supported so we try with SNAP protocol
-            if (task is null && peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
+            if (task is null && peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out ISnapSyncPeer handler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
@@ -91,15 +92,15 @@ namespace Nethermind.Synchronization.StateSync
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
         /// The grouping decrease requests size.
+        /// </summary>
         private GetTrieNodesRequest GetGroupedRequest(StateSyncBatch batch)
         {
-            GetTrieNodesRequest request = new();
-            request.RootHash = batch.StateRoot;
+            GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
             Dictionary<byte[], List<(byte[] path, StateSyncItem syncItem)>> dict = new(Bytes.EqualityComparer);
             List<(byte[] path, StateSyncItem syncItem)> accountTreePaths = new();
 
-            foreach (var item in batch.RequestedNodes)
+            foreach (StateSyncItem? item in batch.RequestedNodes)
             {
                 if(item.AccountPathNibbles?.Length > 0)
                 {
@@ -127,7 +128,7 @@ namespace Nethermind.Synchronization.StateSync
                 request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = new[] { EncodePath(accountPath.path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
-                batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;    
+                batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;
 
                 requestedNodeIndex++;
             }
@@ -143,7 +144,7 @@ namespace Nethermind.Synchronization.StateSync
                     group[groupIndex] = EncodePath(storagePath.path);
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
-                    batch.RequestedNodes[requestedNodeIndex] = storagePath.syncItem;    
+                    batch.RequestedNodes[requestedNodeIndex] = storagePath.syncItem;
 
                     requestedNodeIndex++;
                 }
@@ -161,6 +162,6 @@ namespace Nethermind.Synchronization.StateSync
             return request;
         }
 
-        private byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
+        private static byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
     }
 }
