@@ -52,14 +52,27 @@ namespace Nethermind.Evm.Test
 
         public static MethodInfo GetFluentOpcodeFunction(Instruction opcode)
         {
-            static bool HasDigit(Instruction opcode, Instruction[] opcodeExlusionList, out int prefixLen, out string opcodeAsString)
+            // Source generating those functions in the BytecodeBuilderExtensions.cs might remove all this redundancy
+            static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffexedOpcode, Instruction[] treatLikeNonSuffexedOpcode, out int prefixLen, out string opcodeAsString)
             {
+                // opcode with multiple indexes at the end like PUSH or DUP or SWAP are represented as one function
+                // with the char 'x' instead of the number with one byte argument to diff i.g : PUSH32 => PUSHx(32, ...)
                 opcodeAsString = opcode.ToString();
                 prefixLen = opcodeAsString.Length;
-                if(opcodeExlusionList.Contains(opcode))
+
+                // STORE8 is excluded from filter cause it is one of it own and has a function mapped directly to it
+                if (treatLikeSuffexedOpcode.Contains(opcode))
                 {
                     return false;
                 }
+
+                // STORE2 is excluded from filter cause it is one of it own and has a function mapped directly to it
+                if (treatLikeNonSuffexedOpcode.Contains(opcode))
+                {
+                    return true;
+                }
+
+                // we check if opcode has a digit at its end 
                 bool hasDigits = false;
                 int i = opcodeAsString.Length - 1;
                 while (i > 0)
@@ -72,10 +85,11 @@ namespace Nethermind.Evm.Test
                     i--;
                 }
 
+                // length of prefix (excluding suffix number if it exists)
                 prefixLen = i + 1;
                 return hasDigits;
             }
-            bool hasDigit = HasDigit(opcode, new[] { Instruction.MSTORE8 }, out int prefixLen, out string opcodeStr);
+            bool hasDigit = HasDigit(opcode, new[] { Instruction.MSTORE8 }, new[] { Instruction.CREATE }, out int prefixLen, out string opcodeStr);
             return typeof(BytecodeBuilder).GetMethods(BindingFlags.Static | BindingFlags.Public)
                 .Where(method =>
                 {
@@ -130,7 +144,11 @@ namespace Nethermind.Evm.Test
             foreach (var opcode in opcodes)
             {
                 var initBytecode = Prepare.EvmCode;
+
+                //we get MethodInfo of the function representing the opcode
                 var method = GetFluentOpcodeFunction(opcode);
+
+                //we handle the cases requiring a byte differentiator 
                 initBytecode = opcode switch
                 {
                     >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
@@ -151,6 +169,7 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<TestCase> opcodes_with_1_arg()
         {
+            // opcode having 1 argument of type Address
             var address_opcodes = new Instruction[] {
                     Instruction.BALANCE,
                     Instruction.EXTCODESIZE,
@@ -158,6 +177,8 @@ namespace Nethermind.Evm.Test
                     Instruction.SELFDESTRUCT,
 
             };
+
+            // opcode having 1 argument of type UInt256
             var number_opcodes = new Instruction[] {
                     Instruction.ISZERO,
                     Instruction.NOT,
@@ -214,6 +235,7 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<TestCase> opcodes_with_2_arg()
         {
+            // opcode having 2 argument of diff type (UInt256, byte[])
             var heterogeneous_opcodes = new[] {
                         Instruction.SIGNEXTEND,
                         Instruction.MSTORE,
@@ -223,6 +245,8 @@ namespace Nethermind.Evm.Test
                         Instruction.SSTORE,
                         Instruction.JUMPI
             };
+
+            // opcode having 2 argument of same type UInt256
             var homogeneous_opcodes = new[] {
                         Instruction.ADD,
                         Instruction.MUL,
@@ -297,24 +321,23 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<TestCase> opcodes_with_3_arg()
         {
-            var number_opcodes = new Instruction[] {
+            var opcodes = new Instruction[] {
                     Instruction.ADDMOD,
                     Instruction.MULMOD,
                     Instruction.CODECOPY,
                     Instruction.CALLDATACOPY,
                     Instruction.RETURNDATACOPY,
+
+                    Instruction.CREATE, Instruction.CREATE2
             };
-            var create_opcodes = new Instruction[] {
-                Instruction.CREATE, Instruction.CREATE2
-            };
-            foreach (var opcode in number_opcodes)
+            foreach (var opcode in opcodes)
             {
                 (UInt256 arg1, UInt256 arg2, UInt256 arg3) = (UInt256.Zero, UInt256.One, 23);
                 var initBytecode = Prepare.EvmCode;
                 var method = GetFluentOpcodeFunction(opcode);
                 initBytecode = opcode switch
                 {
-                    Instruction.CREATE or Instruction.CREATE2 => (Prepare)method.Invoke(null, new object[] { initBytecode, opcode == Instruction.CREATE2 ? 2 : 0, arg1, arg2, arg3 }),
+                    Instruction.CREATE or Instruction.CREATE2 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode == Instruction.CREATE2 ? 2 : 0), arg1, arg2, arg3 }),
                     _ => (Prepare)method.Invoke(null, new object[] { initBytecode, arg1, arg2, arg3 })
                 };
 
@@ -345,8 +368,13 @@ namespace Nethermind.Evm.Test
                 {
                     yield return testCase;
                 }
-                 
+
                 foreach (var testCase in opcodes_with_2_arg())
+                {
+                    yield return testCase;
+                }
+
+                foreach (var testCase in opcodes_with_3_arg())
                 {
                     yield return testCase;
                 }
