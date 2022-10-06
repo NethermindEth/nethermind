@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -32,7 +32,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
-    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 
+    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
     /// </summary>
     public class ChainSpecLoader : IChainSpecLoader
     {
@@ -43,6 +43,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             _serializer = serializer;
             _serializer.RegisterConverter(new StepDurationJsonConverter());
             _serializer.RegisterConverter(new BlockRewardJsonConverter());
+            _serializer.RegisterConverter(new AllocationJson.BalanceJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
@@ -406,7 +407,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
 
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
-                    account.Value.Balance ?? UInt256.Zero,
+                    account.Value.Balance,
                     account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,

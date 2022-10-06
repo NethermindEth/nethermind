@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -82,11 +82,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
             Assert.AreEqual(1, chainSpec.Allocations.Count, $"allocations count");
-            Assert.AreEqual(
-                new UInt256(0xf4240),
-                chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance,
-                "account 0x71562b71999873db5b286df957af199ec94617f7 - balance");
-
+            chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance
+                .Should().BeEquivalentTo(new Dictionary<long, UInt256>() { {0, new UInt256(0xf4240)} }, "account 0x71562b71999873db5b286df957af199ec94617f7 - balance");
             Assert.AreEqual(
                 Bytes.FromHexString("0xabcd"),
                 chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Code,
@@ -161,19 +158,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
             Assert.AreEqual(257, chainSpec.Allocations.Count, $"allocations count");
-            Assert.AreEqual(
-                UInt256.Zero,
-                chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")].Balance,
-                "account 0000000000000000000000000000000000000018");
-            Assert.AreEqual(
-                UInt256.One,
-                chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")].Balance,
-                "account 0000000000000000000000000000000000000001");
-
-            Assert.AreEqual(
-                UInt256.Parse("1000000000000000000000000000000"),
-                chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")].Balance,
-                "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
+            chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")].Balance
+                .Should().BeEquivalentTo(new Dictionary<long, UInt256>() { {0, UInt256.Zero} }, "account 0000000000000000000000000000000000000018");
+            chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")].Balance
+                .Should().BeEquivalentTo(new Dictionary<long, UInt256>() { {0, UInt256.One} }, "account 0000000000000000000000000000000000000001");
+            chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")].Balance
+                .Should().BeEquivalentTo(new Dictionary<long, UInt256>() { {0, UInt256.Parse("1000000000000000000000000000000")} }, "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
 
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
 
@@ -413,6 +403,31 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 }
             };
             chainSpec.AuRa.RewriteBytecode.Should().BeEquivalentTo(expected);
+        }
+
+        [Test]
+        public void Can_load_balance_per_block()
+        {
+            var expected = new Dictionary<Address, ChainSpecAllocation>
+            {
+                {
+                    new Address("0x0000000000000000000000000000000000000000"), new ChainSpecAllocation(new Dictionary<long, UInt256>()
+                    {
+                            {0, UInt256.One},
+                            {2, 2*UInt256.One},
+                    })
+                },
+                {
+
+                    new Address("0x0000000000000000000000000000000000000001"), new ChainSpecAllocation(new Dictionary<long, UInt256>()
+                    {
+                        {0, UInt256.One},
+                    })
+                }
+            };
+
+            string chainSpecPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/balances.json");
+            LoadChainSpec(chainSpecPath).Allocations.Should().BeEquivalentTo(expected);
         }
     }
 }

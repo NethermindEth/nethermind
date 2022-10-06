@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -60,7 +60,9 @@ namespace Nethermind.Blockchain
             Preallocate(genesis);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
-            _chainSpec.Allocations = null;
+            // NOTE: this was moved to Preallocate, we now need to keep balance allocation
+            //       for blocks after genesis
+            // _chainSpec.Allocations = null;
 
             _storageProvider.Commit();
             _stateProvider.Commit(_specProvider.GenesisSpec, true);
@@ -78,12 +80,18 @@ namespace Nethermind.Blockchain
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
-                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
+                UInt256 balance = UInt256.Zero;
+                if (allocation.Balance != null)
+                    balance = allocation.Balance.Remove(0, out var value) ? value : UInt256.Zero; // we no longer need this, gc it
+
+                _stateProvider.CreateAccount(address, balance, allocation.Nonce);
 
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
                     _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec, true);
+
+                    allocation.Code = null; // we no longer need this, gc it
                 }
 
                 if (allocation.Storage != null)
@@ -93,6 +101,8 @@ namespace Nethermind.Blockchain
                         _storageProvider.Set(new StorageCell(address, storage.Key),
                             storage.Value.WithoutLeadingZeros().ToArray());
                     }
+
+                    allocation.Storage = null; // we no longer need this, gc it
                 }
 
                 if (allocation.Constructor != null)
@@ -112,6 +122,8 @@ namespace Nethermind.Blockchain
                         throw new InvalidOperationException(
                             $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
                     }
+
+                    allocation.Constructor = null; // we no longer need this, gc it
                 }
             }
         }
