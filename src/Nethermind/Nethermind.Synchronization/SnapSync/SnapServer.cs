@@ -268,7 +268,9 @@ public class SnapServer: ISnapServer
         RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
-        Dictionary<byte[], byte[]>? requiredNodes = visitor.GetNodes();
+        (Dictionary<byte[], byte[]>? requiredNodes, responseSize) = visitor.GetNodesAndSize();
+
+        // return (requiredNodes, responseSize, stopped);
 
         if (isStorage)
         {
