@@ -11,10 +11,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.HashLib\Nethermind.HashLib.csproj">
-      <Project>{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}</Project>
-      <Name>Nethermind.HashLib</Name>
-    </ProjectReference>
     <PackageReference Include="FastEnum" Version="1.7.0" />
     <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.18.0" />
