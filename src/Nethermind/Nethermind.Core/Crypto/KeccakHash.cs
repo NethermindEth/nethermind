@@ -18,7 +18,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 // ReSharper disable InconsistentNaming
 namespace Nethermind.Core.Crypto
@@ -402,14 +401,14 @@ namespace Nethermind.Core.Crypto
 
         public static uint[] ComputeUIntsToUint(Span<uint> input, int size)
         {
-            var output = new uint[size/4];
+            var output = new uint[size / 4];
             ComputeUIntsToUint(input, output);
             return output;
         }
 
         public static uint[] ComputeBytesToUint(byte[] input, int size)
         {
-            var output = new uint[size/4];
+            var output = new uint[size / 4];
             ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
             return output;
         }

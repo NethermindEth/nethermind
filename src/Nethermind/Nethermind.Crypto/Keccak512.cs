@@ -16,8 +16,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Threading;
-using Org.BouncyCastle.Crypto.Digests;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 
