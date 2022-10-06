@@ -25,6 +25,8 @@ namespace Nethermind.Benchmarks.Core
 {
     public class Keccak256Benchmarks
     {
+        private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+
         private byte[] _a;
 
         private byte[][] _scenarios =
@@ -66,6 +68,13 @@ namespace Nethermind.Benchmarks.Core
         public Span<byte> ValueKeccak()
         {
             return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
+        }
+
+
+        [Benchmark]
+        public byte[] HashLib()
+        {
+            return _hash.ComputeBytes(_a).GetBytes();
         }
     }
 }
