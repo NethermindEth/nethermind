@@ -54,7 +54,7 @@ public class RangeQueryVisitorTests
             KeepTrackOfAbsolutePath = true
         };
         _inputTree.Accept(visitor, _inputTree.RootHash, opt);
-        var nodes = visitor.GetNodes();
+        (var nodes, long _) = visitor.GetNodesAndSize();
 
         Assert.AreEqual(nodes.Count, 4);
 
@@ -79,7 +79,7 @@ public class RangeQueryVisitorTests
             KeepTrackOfAbsolutePath = true
         };
         inputStorageTree.Accept(visitor, inputStorageTree.RootHash, opt);
-        var nodes = visitor.GetNodes();
+        (var nodes, long _) = visitor.GetNodesAndSize();
         Assert.AreEqual(nodes.Count, 6);
 
         int k = 0;
