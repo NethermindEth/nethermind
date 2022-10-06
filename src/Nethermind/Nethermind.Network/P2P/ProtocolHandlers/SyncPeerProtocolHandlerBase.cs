@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return await SendRequestGeneric(
                 _bodiesRequests,
                 message,
-                TransferSpeedType.Receipts,
+                TransferSpeedType.Bodies,
                 () => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
                 token);
         }
@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return await SendRequestGeneric(
                 _headersRequests,
                 message,
-                TransferSpeedType.Receipts,
+                TransferSpeedType.Headers,
                 () => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
                 token);
         }

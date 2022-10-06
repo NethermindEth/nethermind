@@ -274,7 +274,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await SendRequestGeneric(
                 requestQueue,
                 msg,
-                TransferSpeedType.NodeData,
+                TransferSpeedType.SnapRanges,
                 () => $"{nameof(TIn)}",
                 token);
         }
