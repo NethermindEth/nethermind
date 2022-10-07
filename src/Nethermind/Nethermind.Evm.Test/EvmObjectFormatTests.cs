@@ -44,15 +44,17 @@ namespace Nethermind.Evm.Test
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
-        protected override ISpecProvider SpecProvider
+        byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
-            get
+            var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
+
+            Array.Copy(bytecode, 0, bytes, 0, bytecode.Length);
+            if (data is not null && data.Length > 0)
             {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= BlockNumber)).Returns(Shanghai.Instance);
-                specProvider.GetSpec(Arg.Is<long>(x => x < BlockNumber)).Returns(GrayGlacier.Instance);
-                return specProvider;
+                Array.Copy(data, 0, bytes, bytecode.Length, data.Length);
             }
+
+            return bytes;
         }
         byte[] EofBytecode(byte[] bytecode, byte[] data = null)
         {
@@ -142,7 +144,8 @@ namespace Nethermind.Evm.Test
         {
             public byte[] Code;
             public byte[] Data;
-            public (byte Status, string error) ExpectedResult;
+            public (byte Status, string error) ResultIfEOF;
+            public (byte Status, string error) ResultIfNotEOF;
             public string Description;
         }
 
@@ -160,7 +163,8 @@ namespace Nethermind.Evm.Test
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                 };
 
                 yield return new TestCase
@@ -168,7 +172,8 @@ namespace Nethermind.Evm.Test
                     Code = Prepare.EvmCode
                             .Op(Instruction.STOP)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution"
                 };
 
@@ -183,7 +188,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Return(0, 1)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section"
                 };
 
@@ -195,7 +201,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Include PC instruction"
                 };
 
@@ -211,7 +218,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Include PC instruction"
                 };
 
@@ -227,7 +235,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Include JUMP instruction"
                 };
 
@@ -246,7 +255,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Include JUMP instruction"
                 };
 
@@ -263,7 +273,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Include JUMPI instruction"
                 };
 
@@ -283,7 +294,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Include JUMPI instruction"
                 };
 
@@ -301,7 +313,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Try to jump into data section"
                 };
 
@@ -320,7 +333,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Try to conditinally jump into data section"
                 };
 
@@ -339,7 +353,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data(new byte[(int)Instruction.PUSH3])
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section: Push in header (Data count is 0x62 which is PUSH3))"
                 };
 
@@ -351,7 +366,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Include CODESIZE"
                 };
 
@@ -366,7 +382,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section: Includes CODESIZE"
                 };
 
@@ -379,7 +396,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.CODECOPY)
                             .Return(19, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Includes CODECOPY, copies full code"
                 };
 
@@ -395,7 +413,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section : Includes CODECOPY, copies full code"
                 };
 
@@ -411,7 +430,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section : Includes CODECOPY, copies header"
                 };
 
@@ -424,7 +444,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.CODECOPY)
                             .Return(7, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Includes CODECOPY, copies header"
                 };
 
@@ -437,7 +458,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.CODECOPY)
                             .Return(12, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Includes CODECOPY, copies code section"
                 };
 
@@ -453,7 +475,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section: Includes CODECOPY copies code section"
                 };
 
@@ -469,7 +492,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section: Includes CODECOPY copies Data section"
                 };
 
@@ -487,7 +511,8 @@ namespace Nethermind.Evm.Test
                     Data = Prepare.EvmCode
                             .Data("0xdeadbeef")
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with Data section: copies Data out of bound (result is 0 padded)"
                 };
 
@@ -500,7 +525,8 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.CODECOPY)
                             .Return(23, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : copies Data out of bound (result is 0 padded)"
                 };
 
@@ -510,27 +536,45 @@ namespace Nethermind.Evm.Test
                             .PushData(new byte[] { 23, 69})
                             .Return(2, 0)
                             .Done,
-                    ExpectedResult = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : includes PUSHx Intructions"
                 };
             }
         }
 
-        [Test]
-        public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase)
+        public static IEnumerable<IReleaseSpec> Specs
         {
-            var bytecode =
-                EofBytecode(
-                    testcase.Code,
-                    testcase.Data
-                );
-
-            if (IsEOFCode(bytecode, out _))
+            get
             {
-                TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
-                var message = receipts.StatusCode == StatusCode.Success ? $"returns : {receipts.ReturnValue}" : $"failed : {receipts.Error}";
-                receipts.StatusCode.Should().Be(testcase.ExpectedResult.Status, message);
-                receipts.Error.Should().Be(testcase.ExpectedResult.error, message);
+                yield return GrayGlacier.Instance;
+                yield return Shanghai.Instance;
+            }
+        }
+
+        [Test]
+        public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        {
+            bool isShanghaiBlock = spec is Shanghai;
+            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+
+            var bytecode =
+                isShanghaiBlock
+                ? EofBytecode(testcase.Code, testcase.Data)
+                : Classicalcode(testcase.Code, testcase.Data);
+
+            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
+
+            if (isShanghaiBlock)
+            {
+                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
+                receipts.Error.Should().Be(testcase.ResultIfEOF.error, testcase.Description);
+            }
+
+            if (!isShanghaiBlock)
+            {
+                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
+                receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
             }
         }
     }

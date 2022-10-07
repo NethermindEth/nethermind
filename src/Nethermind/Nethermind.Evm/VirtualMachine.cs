@@ -633,9 +633,7 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-            var (codeSectionStart, codeSectionEnd, codeSectionLength) = ByteCodeValidator.CodeSectionOffsets(code);
-
+            CodeInfo CodeContainer = env.CodeInfo;
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -743,9 +741,9 @@ namespace Nethermind.Evm
                 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
-            while (programCounter < codeSectionLength)
+            while (programCounter < CodeContainer.CodeSection.Length)
             {
-                Instruction instruction = (Instruction)code[programCounter + codeSectionStart];
+                Instruction instruction = (Instruction)CodeContainer.CodeSection[programCounter];
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
@@ -1441,13 +1439,13 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            UInt256 codeLength = (UInt256)code.Length;
+                            UInt256 codeLength = (UInt256)CodeContainer.FullCode.Length;
                             stack.PushUInt256(in codeLength);
                             break;
                         }
                     case Instruction.CODECOPY:
                         {
-                            UInt256 code_length = (UInt256)code.Length;
+                            UInt256 code_length = (UInt256)CodeContainer.FullCode.Length;
                             stack.PopUInt256(out UInt256 dest);
                             stack.PopUInt256(out UInt256 src);
                             stack.PopUInt256(out UInt256 length);
@@ -1461,7 +1459,7 @@ namespace Nethermind.Evm
                             {
                                 UpdateMemoryCost(in dest, length);
 
-                                ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
+                                ZeroPaddedSpan codeSlice = CodeContainer.FullCode.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, codeSlice);
                                 if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
                             }
@@ -2124,7 +2122,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            int adjustedProgramCounter = programCounter - 1 + codeSectionStart; 
+                            int adjustedProgramCounter = programCounter - 1; 
                             stack.PushUInt32(adjustedProgramCounter);
                             break;
                         }
@@ -2170,14 +2168,14 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            int programCounterInt = programCounter + codeSectionStart;
-                            if (programCounterInt >= codeSectionEnd)
+                            int programCounterInt = programCounter;
+                            if (programCounterInt >= CodeContainer.CodeSection.Length)
                             {
                                 stack.PushZero();
                             }
                             else
                             {
-                                stack.PushByte(code[programCounterInt]);
+                                stack.PushByte(CodeContainer.CodeSection[programCounterInt]);
                             }
 
                             programCounter++;
@@ -2223,9 +2221,9 @@ namespace Nethermind.Evm
 
                             int length = instruction - Instruction.PUSH1 + 1;
                             int programCounterInt = programCounter;
-                            int usedFromCode = Math.Min(codeSectionLength - programCounterInt, length);
+                            int usedFromCode = Math.Min(CodeContainer.CodeSection.Length - programCounterInt, length);
 
-                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt + codeSectionStart, usedFromCode), length);
+                            stack.PushLeftPaddedBytes(CodeContainer.CodeSection.Slice(programCounterInt, usedFromCode), length);
 
                             programCounter += length;
                             break;
