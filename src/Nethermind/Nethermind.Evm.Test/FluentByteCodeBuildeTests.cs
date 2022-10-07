@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-#pragma warning disable CS0219 // Variable is assigned but its value is never used
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -60,13 +59,13 @@ namespace Nethermind.Evm.Test
                 opcodeAsString = opcode.ToString();
                 prefixLen = opcodeAsString.Length;
 
-                // STORE8 is excluded from filter cause it is one of it own and has a function mapped directly to it
+                // STORE8 is excluded from filter and always returns false cause it is one of it own and has a function mapped directly to it
                 if (treatLikeSuffexedOpcode.Contains(opcode))
                 {
                     return false;
                 }
 
-                // STORE2 is excluded from filter cause it is one of it own and has a function mapped directly to it
+                // CREATE is included from filter and always return true it is mapped to CREATE(byte)
                 if (treatLikeNonSuffexedOpcode.Contains(opcode))
                 {
                     return true;
@@ -412,6 +411,39 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.SUB)
                         .Done
                 };
+
+                yield return new TestCase()
+                {
+                    Description = "Test : Complex test case",
+                    FluentCodes = Prepare.EvmCode
+                        .SLOAD(1)
+                        .EQ(1)
+                        .JUMPI(17)
+                        .SSTORE(1, new byte[] { 1 })
+                        .JUMP(40)
+                        .JUMPDEST()
+                        .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                        .JUMPDEST()
+                        .Done,
+
+                    ResultCodes = Prepare.EvmCode
+                        .PushData(1)
+                        .Op(Instruction.SLOAD)
+                        .PushData(1)
+                        .Op(Instruction.EQ)
+                        .PushData(17)
+                        .Op(Instruction.JUMPI)
+                        .PushData(1)
+                        .PushData(1)
+                        .Op(Instruction.SSTORE)
+                        .PushData(40)
+                        .Op(Instruction.JUMP)
+                        .Op(Instruction.JUMPDEST)
+                        .PushData(TestItem.PrivateKeyB.Address)
+                        .Op(Instruction.SELFDESTRUCT)
+                        .Op(Instruction.JUMPDEST)
+                        .Done
+                };
             }
         }
 
@@ -422,4 +454,3 @@ namespace Nethermind.Evm.Test
         }
     }
 }
-#pragma warning restore CS0219 // Variable is assigned but its value is never used
