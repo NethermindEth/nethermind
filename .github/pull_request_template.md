@@ -1,37 +1,47 @@
-Fixes | Closes | Resolves #
+# Description
 
-> Anything marked as optional that you didn't need to fill in, please remove it from the PR description. Choose one of the keywords above to refer to the issue this PR solves, followed by the issue number (e.g Fixes # 666). If there is no issue, remove the line. Remove this note after reading.
+>Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change. 
+**THIS WILL BE USED IN RELEASE NOTES**
 
-## Changes:
--
+Description here
+Fixes # (issue)
 
-## Types of changes
+## Type of change
 
-What types of changes does your code introduce?
-_Put an `x` in the boxes that apply_
+Please delete options that are not relevant.
 
-- [ ] Bugfix (non-breaking change which fixes an issue)
+- [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation Update
-- [ ] Code style update (formatting, renaming)
-- [ ] Refactoring (no functional changes, no api changes)
-- [ ] Build related changes
-- [ ] Other (please describe): 
+- [ ] Refactoring (includes code styling changes etc)
+- [ ] This change requires a documentation update
+	- If marked - put a docs PR link here
 
-## Testing
-**Requires testing**
+# How Has This Been Tested?
 
-- [ ] Yes
-- [ ] No
+>Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration
 
-**In case you checked yes, did you write tests??**
+*Short Testing Description*
 
-- [ ] Yes
-- [ ] No
+**Scenarios executed by me:**
+- [ ] Test A
+- [ ] Test B
 
-**Comments about testing , should you have some** (optional)
+**Test Configuration used during dev testing**:
+* OS version: *to be filled*
+* CL client used: *to be filled*
+* etc
 
-## Further comments (optional)
+**Scenarios or areas worth to be checked by QA**
+*Fill any additional details which may help QA team to test this feature better*
 
-If this is a relatively large or complex change, kick off the discussion by explaining why you chose the solution you did and what alternatives you considered, etc...
+# Checklist:
+
+- [ ] My code follows the style guidelines of this project
+- [ ] I have performed a self-review of my own code
+- [ ] I have commented my code, particularly in hard-to-understand areas
+- [ ] I have made corresponding changes to the documentation
+- [ ] My changes generate no new warnings
+- [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] New and existing unit tests pass locally with my changes
+- [ ] Any dependent changes have been merged and published in downstream modules
