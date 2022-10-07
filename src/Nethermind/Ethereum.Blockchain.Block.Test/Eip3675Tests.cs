@@ -15,17 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-using Nethermind.Consensus.Producers;
-using Nethermind.Core;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Nethermind.Merge.Plugin.BlockProduction;
+namespace Ethereum.Blockchain.Block.Test;
 
-public interface IBlockImprovementContextFactory
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class Eip3675Tests : BlockchainTestBase
 {
-    IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
-        BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime);
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test)
+    {
+        await RunTest(test);
+    }
+
+    public static IEnumerable<BlockchainTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3675");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+    }
 }

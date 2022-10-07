@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -21,6 +21,9 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Prometheus;
 using Nethermind.Monitoring.Config;
+using System.Net.Http;
+using System.IO;
+using System.Net.Sockets;
 
 namespace Nethermind.Monitoring
 {
@@ -50,9 +53,7 @@ namespace Nethermind.Monitoring
             _nodeName = string.IsNullOrWhiteSpace(nodeName)
                 ? throw new ArgumentNullException(nameof(nodeName))
                 : nodeName;
-            _pushGatewayUrl = string.IsNullOrWhiteSpace(pushGatewayUrl)
-                ? throw new ArgumentNullException(nameof(pushGatewayUrl))
-                : pushGatewayUrl;
+            _pushGatewayUrl = pushGatewayUrl;
             _pushEnabled = pushEnabled;
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
@@ -80,8 +81,12 @@ namespace Nethermind.Monitoring
                     },
                     OnError = ex =>
                     {
-                        if (_logger.IsError)
-                            _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
+                        if (ex.InnerException is SocketException)
+                        {
+                            if (_logger.IsError) _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
+                            return;
+                        }
+                        if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
                     }
                 };
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);

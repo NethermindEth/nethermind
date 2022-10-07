@@ -195,20 +195,6 @@ namespace Nethermind.Stats
             });
         }
 
-        public string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType)
-        {
-            return (transferSpeedType switch
-            {
-                TransferSpeedType.Latency => $"{_averageLatency ?? -1,5:0}",
-                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? -1,5:0}",
-                _ => throw new ArgumentOutOfRangeException()
-            });
-        }
-
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
         {
             if (IsDelayedDueToDisconnect())
