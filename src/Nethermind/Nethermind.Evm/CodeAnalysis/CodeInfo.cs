@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Reflection.PortableExecutable;
 using System.Threading;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -27,9 +28,48 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
+        private EofHeader _header;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
+        public EofHeader Header
+        {
+            get
+            {
+                if(_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
+                {
+                    return _header;
+                }
+                return _header;
+            }
+        }
+
+        #region EofSection Extractors
+        public Span<byte> FullCode => MachineCode.AsSpan();
+        public Span<byte> CodeSection
+        {
+            get
+            {
+                if(Header is not null)
+                {
+                    return MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
+                }
+                return MachineCode.AsSpan();
+            }
+        }
+        public Span<byte> DataSection
+        {
+            get
+            {
+                if (Header is not null)
+                {
+                    return MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
+                }
+                return Span<byte>.Empty;
+            }
+        }
+        #endregion
+
         public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _analyzer;
 
@@ -62,15 +102,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            byte[] codeToBeAnalyzed;
-            if (ByteCodeValidator.IsEOFCode(MachineCode, out var header))
-            {
-                codeToBeAnalyzed = MachineCode.AsSpan()
-                                    .Slice(header.ExtractCodeOffsets.StartOffset, header.CodeSize)
-                                    .ToArray();
-            }
-            else codeToBeAnalyzed = MachineCode;
-
+            byte[] codeToBeAnalyzed = CodeSection.ToArray();
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

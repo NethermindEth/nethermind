@@ -4,12 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Org.BouncyCastle.Crypto.Paddings;
 
 namespace Nethermind.Evm
 {
-    enum SectionDividor
+    enum SectionDividor : byte
     {
         Terminator  = 0,
         CodeSection = 1,
@@ -17,29 +18,41 @@ namespace Nethermind.Evm
     }
     public class EofHeader
     {
+        #region public construction properties
+        public byte[] MachineCode { get; set; }
         public UInt16 CodeSize { get; set; }
         public UInt16 DataSize { get; set; }
+        #endregion
+
+        #region Equality methods
         public override bool Equals(object? obj)
             => this.GetHashCode() == obj.GetHashCode();
-
         public override int GetHashCode()
             => CodeSize.GetHashCode() ^ DataSize.GetHashCode();
+        #endregion
 
+        #region Sections Offsets
         private int? _codeStartOffset = default;
-        private int? _codeEndOffset = default;
-        public (int StartOffset, int EndOffset) ExtractCodeOffsets 
+        public int CodeStartOffset
         {
-            // just to avoid calling callStartOffset twice
             get
             {
-                if(_codeStartOffset is null || _codeEndOffset is null)
-                {
+                if(_codeStartOffset is null)
                     _codeStartOffset = DataSize == 0 ? 7 : 10;
-                    _codeEndOffset   = _codeStartOffset + CodeSize;
-                }
-                return (_codeStartOffset.Value, _codeEndOffset.Value);
+                return _codeStartOffset.Value;
             }
         }
+        private int? _codeEndOffset = default;
+        public int CodeEndOffset
+        {
+            get
+            {
+                if (_codeEndOffset is null)
+                    _codeEndOffset = CodeStartOffset + CodeSize;
+                return _codeEndOffset.Value;
+            }
+        }
+        #endregion
     }
 
 
@@ -73,7 +86,10 @@ namespace Nethermind.Evm
             i++;
 
             bool continueParsing = true;
-            header = new EofHeader { };
+            header = new EofHeader {
+                MachineCode = code.ToArray(),
+            };
+
             while (i < codeLen && continueParsing)
             {
                 var sectionKind = (SectionDividor)code[i];
