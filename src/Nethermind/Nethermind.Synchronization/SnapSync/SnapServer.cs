@@ -256,11 +256,9 @@ public class SnapServer: ISnapServer
 
     private (object[], long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
         long byteLimit, bool isStorage=false)
-
     {
         // TODO: in case of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
 
-        long responseSize = 0;
         bool stopped = false;
         PatriciaTree tree = new(_store, _logManager);
 
@@ -268,7 +266,8 @@ public class SnapServer: ISnapServer
         RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
-        (Dictionary<byte[], byte[]>? requiredNodes, responseSize) = visitor.GetNodesAndSize();
+        (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
+        stopped = visitor._isStoppedDueToHardLimit;
 
         // return (requiredNodes, responseSize, stopped);
 

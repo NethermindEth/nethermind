@@ -41,9 +41,12 @@ public class RangeQueryVisitor: ITreeVisitor
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
 
+    private readonly long _hardByteLimit;
+    public bool _isStoppedDueToHardLimit = false;
+
     private readonly AccountDecoder _decoder = new(true);
 
-    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, int nodeLimit = 1000)
+    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, int nodeLimit = 10000, long hardByteLimit = 200000)
     {
         _startHash = new byte[64];
         Nibbles.BytesToNibbleBytes(startHash, _startHash);
@@ -54,6 +57,7 @@ public class RangeQueryVisitor: ITreeVisitor
         _isAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
+        _hardByteLimit = hardByteLimit;
     }
 
     private static int ComparePath(IReadOnlyList<byte> path, byte[] hash)
@@ -76,8 +80,20 @@ public class RangeQueryVisitor: ITreeVisitor
     // to check if the node should be visited on the based of its path and limitHash
     private bool ShouldVisit(IReadOnlyList<byte> path)
     {
-        if (_collectedNodes.Count >= _nodeLimit || (_byteLimit != -1 && _currentBytesCount >= _byteLimit))
+        if (_collectedNodes.Count >= _nodeLimit)
         {
+            _isStoppedDueToHardLimit = true;
+            return false;
+        }
+
+        if (_isAccountVisitor && (_byteLimit != -1 && _currentBytesCount >= _byteLimit))
+        {
+            return false;
+        }
+
+        if (!_isAccountVisitor && (_currentBytesCount >= _hardByteLimit))
+        {
+            _isStoppedDueToHardLimit = true;
             return false;
         }
 
