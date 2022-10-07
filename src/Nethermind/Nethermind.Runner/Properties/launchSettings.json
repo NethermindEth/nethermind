@@ -237,9 +237,9 @@
     },
     "xDai": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdai -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c xdai --JsonRpc.Enabled true --Pruning.Mode None --Sync.SnapSync true",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Release"
       }
     },
     "xDai (archive)": {
