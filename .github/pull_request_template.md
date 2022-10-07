@@ -33,6 +33,7 @@ Please delete options that are not relevant.
 * etc
 
 **Scenarios or areas worth to be checked by QA**
+
 *Fill any additional details which may help QA team to test this feature better*
 
 # Checklist:
