@@ -159,7 +159,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 _nodeDataRequests,
                 message,
                 TransferSpeedType.NodeData,
-                () => $"{nameof(GetNodeDataMessage)}",
+                static (_) => $"{nameof(GetNodeDataMessage)}",
                 token);
         }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 _receiptsRequests,
                 message,
                 TransferSpeedType.Receipts,
-                () => $"{nameof(GetReceiptsMessage)}",
+                static (_) => $"{nameof(GetReceiptsMessage)}",
                 token);
         }
     }

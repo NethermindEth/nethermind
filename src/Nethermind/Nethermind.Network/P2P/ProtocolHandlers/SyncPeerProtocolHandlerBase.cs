@@ -108,7 +108,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 _bodiesRequests,
                 message,
                 TransferSpeedType.Bodies,
-                () => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
+                static (message) => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
                 token);
         }
 
@@ -145,7 +145,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 _headersRequests,
                 message,
                 TransferSpeedType.Headers,
-                () => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
+                static (message) => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
                 token);
         }
 

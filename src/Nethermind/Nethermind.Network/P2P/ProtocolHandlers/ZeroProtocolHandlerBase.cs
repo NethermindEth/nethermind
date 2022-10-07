@@ -47,11 +47,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void HandleMessage(ZeroPacket message);
 
-        protected async Task<TResponse> SendRequestGeneric <TResponse, TRequest>(
+        protected async Task<TResponse> SendRequestGeneric <TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,
-            Func<string> describeRequestFunc,
+            Func<TRequest, string> describeRequestFunc,
             CancellationToken token
         ) where TRequest : MessageBase
         {
@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {describeRequestFunc()}");
+            throw new TimeoutException($"{Session} Request timeout in {describeRequestFunc(message)}");
         }
 
     }

@@ -229,7 +229,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 _headersRequests66,
                 msg66,
                 TransferSpeedType.Headers,
-                () => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
+                static (message) => $"{nameof(GetBlockHeadersMessage)} with {message.EthMessage.MaxHeaders} max headers",
                 token);
         }
 
@@ -246,7 +246,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 _bodiesRequests66,
                 msg66,
                 TransferSpeedType.Bodies,
-                () => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
+                static (message) => $"{nameof(GetBlockBodiesMessage)} with {message.EthMessage.BlockHashes.Count} block hashes",
                 token);
         }
 
@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 _nodeDataRequests66,
                 msg66,
                 TransferSpeedType.NodeData,
-                () => $"{nameof(GetNodeDataMessage)}",
+                static (_) => $"{nameof(GetNodeDataMessage)}",
                 token);
         }
 
@@ -280,7 +280,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 _receiptsRequests66,
                 msg66,
                 TransferSpeedType.Receipts,
-                () => $"{nameof(GetReceiptsMessage)}",
+                static (_) => $"{nameof(GetReceiptsMessage)}",
                 token);
         }
     }
