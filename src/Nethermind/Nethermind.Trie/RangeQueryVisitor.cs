@@ -46,7 +46,7 @@ public class RangeQueryVisitor: ITreeVisitor
 
     private readonly AccountDecoder _decoder = new(true);
 
-    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, int nodeLimit = 10000, long hardByteLimit = 200000)
+    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, long hardByteLimit = 200000, int nodeLimit = 10000)
     {
         _startHash = new byte[64];
         Nibbles.BytesToNibbleBytes(startHash, _startHash);
@@ -216,11 +216,7 @@ public class RangeQueryVisitor: ITreeVisitor
             return;
         }
 
-        // if it is a account - convert to slim format for accurate byte count
-        byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(node.Value) : node.Value;
-
-        _collectedNodes[Nibbles.ToBytes(path.ToArray())] = nodeValue;
-        _currentBytesCount += 32 + nodeValue!.Length;
+        CollectNode(path.ToArray(), node.Value);
     }
 
     public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
@@ -231,5 +227,12 @@ public class RangeQueryVisitor: ITreeVisitor
     private byte[]? ConvertFullToSlimAccount(byte[]? accountRlp)
     {
         return accountRlp is null ? null : _decoder.Encode(_decoder.Decode(new RlpStream(accountRlp))).Bytes;
+    }
+
+    private void CollectNode(byte[] path, byte[]? value)
+    {
+        byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(value) : value;
+        _collectedNodes[Nibbles.ToBytes(path)] = nodeValue;
+        _currentBytesCount += 32 + nodeValue!.Length;
     }
 }

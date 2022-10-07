@@ -129,7 +129,7 @@ public class SnapServer: ISnapServer
     {
 
         (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash == null ? Keccak.MaxValue : limitHash, byteLimit, isStorage: false);
+            limitHash == null ? Keccak.MaxValue : limitHash, byteLimit, byteLimit, isStorage: false);
         StateTree tree = new(_store, _logManager);
         PathWithAccount[] nodes = (PathWithAccount[]) accountNodes;
 
@@ -161,6 +161,7 @@ public class SnapServer: ISnapServer
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
     {
         long responseSize = 0;
+        long hardByteLimit = 2000000;
         StateTree tree = new(_store, _logManager);
         List <PathWithStorageSlot[]> responseNodes = new();
         for (int i = 0; i < accounts.Length; i++)
@@ -179,7 +180,7 @@ public class SnapServer: ISnapServer
             limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
             (object[]? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
-                startingHash, limitHash, byteLimit - responseSize, isStorage: true);
+                startingHash, limitHash, byteLimit - responseSize, hardByteLimit - responseSize, true);
             PathWithStorageSlot[] nodes = (PathWithStorageSlot[]) storageNodes;
             responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
@@ -255,7 +256,7 @@ public class SnapServer: ISnapServer
     }
 
     private (object[], long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
-        long byteLimit, bool isStorage=false)
+        long byteLimit, long hardByteLimit, bool isStorage=false)
     {
         // TODO: in case of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
 
@@ -263,7 +264,7 @@ public class SnapServer: ISnapServer
         PatriciaTree tree = new(_store, _logManager);
 
 
-        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit);
+        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
         (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
