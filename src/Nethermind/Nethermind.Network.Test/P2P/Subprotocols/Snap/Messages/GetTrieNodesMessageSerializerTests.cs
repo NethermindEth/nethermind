@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = Array.Empty<PathGroup>(), //new MeasuredArray<MeasuredArray<byte[]>>(<MeasuredArray<byte[]>>()) ,
+                Paths = Array.Empty<PathGroup>(),
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
@@ -86,9 +86,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             byte[] data =
             {
-                241, 136, 39, 223, 247, 171, 36, 79, 205, 54, 160, 107, 55, 36, 164, 27, 140, 56, 180, 109, 77, 2,
-                251, 162, 187, 32, 116, 196, 122, 80, 126, 177, 106, 154, 75, 151, 143, 145, 211, 46, 64, 111, 175,
-                195, 192, 193, 0, 130, 19, 136
+                241, 136, 39, 223, 247, 171, 36, 79, 205, 54, 160, 107, 55, 36, 164, 27, 140, 56, 180, 109, 77, 2, 251, 162,
+                187, 32, 116, 196, 122, 80, 126, 177, 106, 154, 75, 151, 143, 145, 211, 46, 64, 111, 175, 195, 192, 193, 0,
+                130, 19, 136
             };
 
             GetTrieNodesMessageSerializer serializer = new();
@@ -97,6 +97,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             byte[] recode = serializer.Serialize(msg);
 
             recode.Should().BeEquivalentTo(data);
+        }
+        public void Roundtrip_MultiplePaths02()
+        {
+            GetTrieNodesMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                RootHash = TestItem.KeccakA,
+                Paths = new PathGroup[]
+                    {
+                        new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}},
+                        new PathGroup(){Group = new []{TestItem.RandomDataC}},
+                        new PathGroup(){Group = new []{TestItem.RandomDataC, TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}}
+                    },
+                Bytes = 10
+            };
+            GetTrieNodesMessageSerializer serializer = new();
+
+            SerializerTester.TestZero(serializer, msg);
         }
     }
 }
