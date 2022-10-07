@@ -132,7 +132,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new AuRaConfig(),
                 gasLimitCalculator,
                 SpecProvider,
-                LogManager
+                LogManager,
+                miningConfig
             );
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
