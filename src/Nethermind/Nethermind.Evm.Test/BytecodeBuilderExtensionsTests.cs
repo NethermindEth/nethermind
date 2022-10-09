@@ -40,7 +40,7 @@ using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 
 namespace Nethermind.Evm.Test
 {
-    public class FluentBytecodeBuilderTests : VirtualMachineTestsBase
+    public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     {
         public class TestCase
         {
@@ -51,7 +51,6 @@ namespace Nethermind.Evm.Test
 
         public static MethodInfo GetFluentOpcodeFunction(Instruction opcode)
         {
-            // Source generating those functions in the BytecodeBuilderExtensions.cs might remove all this redundancy
             static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffexedOpcode, Instruction[] treatLikeNonSuffexedOpcode, out int prefixLen, out string opcodeAsString)
             {
                 // opcode with multiple indexes at the end like PUSH or DUP or SWAP are represented as one function
@@ -354,6 +353,86 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        public static IEnumerable<TestCase> opcodes_with_3_plus_arg()
+        {
+            var opcodeswith_7_args = new Instruction[] {
+                    Instruction.CALL,
+                    Instruction.CALLCODE,
+             
+            };
+            var opcodeswith_6_args = new Instruction[] {
+                    Instruction.STATICCALL,
+                    Instruction.DELEGATECALL,
+            };
+
+            (UInt256 gasLim, Address codeSrc, UInt256 callValue, UInt256 dataOffset, UInt256 dataLength, UInt256 outputOffset, UInt256 outputLength) = (UInt256.One, Address.Zero, UInt256.One, UInt256.Zero, UInt256.One, UInt256.Zero, UInt256.One);
+            foreach (var opcode in opcodeswith_7_args)
+            {
+
+                var initBytecode = Prepare.EvmCode;
+                var method = GetFluentOpcodeFunction(opcode);
+                var args = new object[] { initBytecode, gasLim, codeSrc, callValue, dataOffset, dataLength, outputOffset, outputLength };
+
+                initBytecode = (Prepare)method.Invoke(null, args);
+
+                yield return new TestCase()
+                {
+                    Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate((acc, v) => $"{acc},{v}")})",
+                    FluentCodes = initBytecode.Done,
+                    ResultCodes = Prepare.EvmCode
+                        .PushData(outputLength)
+                        .PushData(outputOffset)
+                        .PushData(dataLength)
+                        .PushData(dataOffset)
+                        .PushData(callValue)
+                        .PushData(codeSrc)
+                        .PushData(gasLim)
+                        .Op(opcode)
+                        .Done
+                };
+            }
+
+            foreach (var opcode in opcodeswith_6_args)
+            {
+
+                var initBytecode = Prepare.EvmCode;
+                var method = GetFluentOpcodeFunction(opcode);
+                var args = new object[] { initBytecode, gasLim, codeSrc, dataOffset, dataLength, outputOffset, outputLength };
+
+                initBytecode = (Prepare)method.Invoke(null, args);
+
+                yield return new TestCase()
+                {
+                    Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate((acc, v) => $"{acc},{v}")})",
+                    FluentCodes = initBytecode.Done,
+                    ResultCodes = Prepare.EvmCode
+                        .PushData(outputLength)
+                        .PushData(outputOffset)
+                        .PushData(dataLength)
+                        .PushData(dataOffset)
+                        .PushData(codeSrc)
+                        .PushData(gasLim)
+                        .Op(opcode)
+                        .Done
+                };
+            }
+
+            yield return new TestCase()
+            {
+                Description = $"Testing opcode {Instruction.EXTCODECOPY} : with 4 args ({Address.Zero}, {UInt256.One}, {UInt256.Zero}, {UInt256.One})",
+                FluentCodes = Prepare.EvmCode
+                    .EXTCODECOPY(Address.Zero, UInt256.One, UInt256.Zero, UInt256.One)
+                    .Done,
+                ResultCodes = Prepare.EvmCode
+                    .PushData(UInt256.One)
+                    .PushData(UInt256.Zero)
+                    .PushData(UInt256.One)
+                    .PushData(Address.Zero)
+                    .Op(Instruction.EXTCODECOPY)
+                    .Done
+            };
+        }
+
         public static IEnumerable<TestCase> FluentBuilderTestCases
         {
             get
@@ -442,6 +521,114 @@ namespace Nethermind.Evm.Test
                         .PushData(TestItem.PrivateKeyB.Address)
                         .Op(Instruction.SELFDESTRUCT)
                         .Op(Instruction.JUMPDEST)
+                        .Done
+                };
+                
+                yield return new TestCase()
+                {
+                    Description = @"Test :
+                                    var n = 23;
+                                    var i = 2;
+                                    var r = 0
+                                    while(i * i < n) {
+                                        r = n % i == 0;
+                                        i+=1
+                                    }
+                                    return r",
+                    FluentCodes = Prepare.EvmCode
+                        .COMMENT("Store variable(n) in Memory")
+                        .MSTORE(0, new byte[] { 23 })
+                        .COMMENT("Store Indexer(i) in Memory")
+                        .MSTORE(32, new byte[] { 2 })
+                        .COMMENT("Store Result(r) in Memory")
+                        .MSTORE(64, new byte[] { 0 })
+                        .COMMENT("We mark this place as a GOTO section")
+                        .JUMPDEST()
+                        .COMMENT("We check if i * i < n")
+                        .MLOAD(32)
+                        .MLOAD(32)
+                        .MUL()
+                        .MLOAD(0)
+                        .LT()
+                        .JUMPI(53)
+                        .COMMENT("We check if n % i == 0")
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .MOD()
+                        .ISZERO()
+                        .COMMENT("store n % i == 0 in Result(r)")
+                        .MSTORE(64)
+                        .COMMENT("increment Indexer(i)")
+                        .MLOAD(32)
+                        .ADD(1)
+                        .MSTORE(32)
+                        .COMMENT("Loop back to top of conditional loop")
+                        .JUMP(15)
+                        .COMMENT("return Result(r)")
+                        .JUMPDEST()
+                        .RETURN(64, 32)
+                        .Done,
+
+                    ResultCodes = Prepare.EvmCode
+                        .Op(Instruction.PUSH1)
+                        .Data(23)
+                        .Op(Instruction.PUSH1)
+                        .Data(0)
+                        .Op(Instruction.MSTORE)
+                        .Op(Instruction.PUSH1)
+                        .Data(2)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MSTORE)
+                        .Op(Instruction.PUSH1)
+                        .Data(0)
+                        .Op(Instruction.PUSH1)
+                        .Data(64)
+                        .Op(Instruction.MSTORE)
+                        .Op(Instruction.JUMPDEST)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.MUL)
+                        .Op(Instruction.PUSH1)
+                        .Data(0)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.LT)
+                        .Op(Instruction.PUSH1)
+                        .Data(53)
+                        .Op(Instruction.JUMPI)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.PUSH1)
+                        .Data(0)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.MOD)
+                        .Op(Instruction.ISZERO)
+                        .Op(Instruction.PUSH1)
+                        .Data(64)
+                        .Op(Instruction.MSTORE)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MLOAD)
+                        .Op(Instruction.PUSH1)
+                        .Data(1)
+                        .Op(Instruction.ADD)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.MSTORE)
+                        .Op(Instruction.PUSH1)
+                        .Data(15)
+                        .Op(Instruction.JUMP)
+                        .Op(Instruction.JUMPDEST)
+                        .Op(Instruction.PUSH1)
+                        .Data(32)
+                        .Op(Instruction.PUSH1)
+                        .Data(64)
+                        .Op(Instruction.RETURN)
                         .Done
                 };
             }

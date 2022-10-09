@@ -30,8 +30,6 @@ namespace Nethermind.Evm
     /// A utility class that extends Prepare class to abstract stack-like behaviour
     /// </summary>
     ///
-
-    //Note(Ayman) : redesign arg order to add flexibility and ability to use args already in stack, and add tests
     public static class BytecodeBuilder
     {
         #region helper_functions
@@ -68,6 +66,8 @@ namespace Nethermind.Evm
             return @this;
         }
         #endregion
+
+        public static Prepare COMMENT(this Prepare @this, string comment) => @this;
 
         #region opcodes_with_0_arg
         public static Prepare STOP(this Prepare @this)
