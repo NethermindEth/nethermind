@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Peers
                 {
                     return;
                 }
-
+                
                 _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 bool headerAdded = false;
                 foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))

@@ -46,7 +46,6 @@ public class AdminModuleTests
     private IBlockTree _blockTree;
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
-
     [SetUp]
     public void Setup()
     {
@@ -94,7 +93,6 @@ public class AdminModuleTests
         nodeInfo.Protocols["eth"].GenesisHash.Should().Be(_blockTree.GenesisHash);
         nodeInfo.Protocols["eth"].ChainId.Should().Be(_blockTree.ChainId);
     }
-
     [Test]
     public void Test_data_dir()
     {
@@ -102,13 +100,11 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         response.Result.Should().Be(_exampleDataDir);
     }
-
     [Test]
     public void Smoke_solc()
     {
         string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
     }
-
     [Test]
     public void Smoke_test_peers()
     {
