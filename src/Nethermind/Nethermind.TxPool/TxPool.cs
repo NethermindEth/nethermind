@@ -137,9 +137,6 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
-        public Transaction[] GetPendingTransactionsBySender(Address address) =>
-            _transactions.GetBucketSnapshot(address);
-
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
