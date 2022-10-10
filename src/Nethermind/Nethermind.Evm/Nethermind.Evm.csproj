@@ -16,6 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FastEnum" Version="1.7.0" />
-    <PackageReference Include="Nethermind.Gmp" Version="1.0.0" />
+    <PackageReference Include="Nethermind.Gmp" Version="1.0.1" />
   </ItemGroup>
 </Project>
