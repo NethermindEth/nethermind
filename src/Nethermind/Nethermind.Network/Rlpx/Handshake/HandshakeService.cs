@@ -81,6 +81,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
                 byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), Array.Empty<byte>());
                 handshake.AuthPacket = new Packet(packetData);
+                authData.Release();
                 return handshake.AuthPacket;
             }
             else
@@ -97,6 +98,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
                 byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), sizeBytes);
                 handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                authData.Release();
                 return handshake.AuthPacket;
             }
         }
@@ -155,6 +157,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
                 IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
                 data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), Array.Empty<byte>());
+                ackData.Release();
             }
             else
             {
@@ -169,6 +172,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 int size = ackData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
                 byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
                 data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), sizeBytes));
+                ackData.Release();
             }
 
             handshake.AckPacket = new Packet(data);

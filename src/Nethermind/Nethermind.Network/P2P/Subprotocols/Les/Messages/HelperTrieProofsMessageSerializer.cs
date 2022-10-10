@@ -23,7 +23,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
     public class HelperTrieProofsMessageSerializer : IZeroMessageSerializer<HelperTrieProofsMessage>
     {
-        [Todo(Improve.Refactor, "Rlp.Encode<T>(T[]...) could recurse to handle arbitrary array nesting. Would clean this up a lot.")]
         public void Serialize(IByteBuffer byteBuffer, HelperTrieProofsMessage message)
         {
             Keccak[] proofNodesKeccak = new Keccak[message.ProofNodes.Length];
