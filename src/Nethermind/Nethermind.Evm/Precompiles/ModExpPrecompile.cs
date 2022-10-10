@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -124,16 +124,16 @@ namespace Nethermind.Evm.Precompiles
             byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
 
-            if (gmp_lib.mpz_sgn(modulusInt) == 0)
-            {
-                return (new byte[modulusLength], true);
-            }
-
             byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
             using mpz_t baseInt = ImportDataToGmp(baseData);
 
             byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
             using mpz_t expInt = ImportDataToGmp(expData);
+
+            if (gmp_lib.mpz_sgn(modulusInt) == 0)
+            {
+                return (new byte[modulusLength], true);
+            }
 
             using mpz_t powmResult = new();
             gmp_lib.mpz_init(powmResult);
@@ -194,7 +194,7 @@ namespace Nethermind.Evm.Precompiles
         /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
         /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
         /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
-        /// return max(iteration_count, 1) 
+        /// return max(iteration_count, 1)
         /// </summary>
         /// <param name="exponentLength"></param>
         /// <param name="exponent"></param>
