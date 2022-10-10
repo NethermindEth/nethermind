@@ -33,54 +33,8 @@ namespace Nethermind.Specs.GethSpecStyle.Json
                 Accounts = accounts
             };
         }
-
-        private static Dictionary<string, long>? ExtractDifficultyBombParams(GethGenesisJson gethGenesis)
-        {
-            bool proceed = gethGenesis.Config?.Ethash is not null;
-            if (proceed == false) return null;
-
-            var difficultyBombDelays = new Dictionary<string, long>();
-            if (proceed && gethGenesis.Config?.ByzantiumBlock?.ToHexString(true) is String Eip100bkey)
-            {
-                difficultyBombDelays[Eip100bkey] = 3000000;
-            }
-            else proceed = false;
-
-            if (proceed && gethGenesis.Config?.ConstantinopleBlock?.ToHexString(true) is String Eip145key)
-            {
-                difficultyBombDelays[Eip145key] = 2000000;
-            }
-            else proceed = false;
-
-            if (proceed && gethGenesis.Config?.MuirGlacierBlock?.ToHexString(true) is String MuirGlacierkey)
-            {
-                difficultyBombDelays[MuirGlacierkey] = 4000000;
-            }
-            else proceed = false;
-
-            if (proceed && gethGenesis.Config?.LondonBlock?.ToHexString(true) is String Eip1559Key)
-            {
-                difficultyBombDelays[Eip1559Key] = 700000;
-            }
-            else proceed = false;
-
-            if (proceed && gethGenesis.Config?.ArrowGlacierBlock?.ToHexString(true) is String ArrowGlacierkey)
-            {
-                difficultyBombDelays[ArrowGlacierkey] = 1000000;
-            }
-            else proceed = false;
-
-            if (proceed && gethGenesis.Config?.GrayGlacierBlock?.ToHexString(true) is String GrayGlacierkey)
-            {
-                difficultyBombDelays[GrayGlacierkey] = 700000;
-            }
-            else proceed = false;
-            return difficultyBombDelays;
-        }
-
         private static EngineJson ExtractEngine(GethGenesisJson gethGenesis)
         {
-            Dictionary<string, long>? difficultyBombDelays = ExtractDifficultyBombParams(gethGenesis);
             return new EngineJson
             {
                 Ethash = gethGenesis.Config?.Ethash is null
@@ -93,13 +47,6 @@ namespace Nethermind.Specs.GethSpecStyle.Json
                             HomesteadTransition = gethGenesis.Config?.HomesteadBlock ?? 0,
                             Eip100bTransition = gethGenesis.Config?.ByzantiumBlock ?? 0,
                             MinimumDifficulty = 131072,
-                            BlockReward = new BlockRewardJson
-                            {
-                                [gethGenesis.Config?.ConstantinopleBlock ?? 0x0] = 0x1bc16d674ec80000,
-                                [gethGenesis.Config?.ByzantiumBlock ?? 0x0]      = 0x29a2241af62c0000,
-                                [0x000000] = 5000000000000000000,
-                            },
-                            DifficultyBombDelays = difficultyBombDelays
                         }
                     },
                 Clique = gethGenesis.Config?.Clique is null
