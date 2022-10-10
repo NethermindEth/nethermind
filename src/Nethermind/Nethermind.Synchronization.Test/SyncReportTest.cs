@@ -14,10 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
@@ -39,6 +40,9 @@ namespace Nethermind.Synchronization.Test
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
 
             Queue<SyncMode> _syncModes = new();
             _syncModes.Enqueue(SyncMode.WaitingForBlock);
@@ -52,13 +56,13 @@ namespace Nethermind.Synchronization.Test
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
-            await Task.Delay(200);
+            timer.Elapsed += Raise.Event();
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();
             syncReport.FastBlocksReceipts.MarkEnd();
-            await Task.Delay(20);
+            timer.Elapsed += Raise.Event();
         }
 
         [Test]
@@ -67,6 +71,9 @@ namespace Nethermind.Synchronization.Test
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
 
             Queue<SyncMode> _syncModes = new();
             _syncModes.Enqueue(SyncMode.FastHeaders);
@@ -78,7 +85,8 @@ namespace Nethermind.Synchronization.Test
             syncConfig.FastSync = true;
             syncConfig.PivotNumber = "100";
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance);
+            timer.Elapsed += Raise.Event();
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
             await Task.Delay(200);
             syncReport.FastBlocksHeaders.MarkEnd();
