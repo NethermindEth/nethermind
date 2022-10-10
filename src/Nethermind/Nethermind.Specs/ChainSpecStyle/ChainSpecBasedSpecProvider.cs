@@ -197,9 +197,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
-                ReleaseSpec releaseSpec = new();
-                releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-
+                ReleaseSpec releaseSpec = new()
+                {
+                    IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
+                    IsEip3651Enabled = (_chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                };
                 _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;
             }

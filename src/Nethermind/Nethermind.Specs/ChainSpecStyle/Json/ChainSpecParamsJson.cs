@@ -146,5 +146,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? TerminalPoWBlockNumber { get; set; }
 
         public ulong? Eip1153TransitionTimestamp { get; set; }
+
+        public ulong? Eip3651TransitionTimestamp { get; set; }
     }
 }
