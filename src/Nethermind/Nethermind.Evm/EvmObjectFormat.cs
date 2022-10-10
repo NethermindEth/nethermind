@@ -158,40 +158,19 @@ namespace Nethermind.Evm
 
         public bool ValidateEofCode(Span<byte> code) => ExtractHeader(code, out _);
         public bool ValidateEofCode(byte[] code) => ExtractHeader(code, out _);
-
-        public (int StartOffset, int EndOffset)? ExtractCodeOffsets(byte[] code)
-        {
-            if(ExtractHeader(code, out var header))
-            {
-                return ExtractCodeOffsets(header);
-            }
-            return null;
-        }
-
-        public int codeStartOffset(EofHeader header) => header.DataSize == 0
-                                                            ? 5 + EofMagicLength  // magic (2b) + version(1b) +  1 * (sectionId(1b) + sectionSize(2b)) + separator(1b) = magic (2b) + 5b
-                                                            : 8 + EofMagicLength; // magic (2b) + version(1b) +  2 * (sectionId(1b) + sectionSize(2b)) + separator(1b) = magic (2b) + 8b
-        public int codeEndOffset(EofHeader header)  => codeStartOffset(header) + header.CodeSize;
-
-        public (int StartOffset, int EndOffset) ExtractCodeOffsets(EofHeader header)
-        {
-            var endIndex = codeEndOffset(header);
-            var strIndex = endIndex - header.CodeSize;
-            return (strIndex, endIndex);
-        }
         public bool ValidateInstructions(Span<byte> code, out EofHeader header)
         {
             // check if code is EOF compliant
             if (ExtractHeader(code, out header))
             {
-                var (startOffset, endOffset) = ExtractCodeOffsets(header);
+                var (startOffset, endOffset) = (header.CodeStartOffset, header.CodeEndOffset);
                 Instruction? opcode = null;
                 for (int i = startOffset; i < endOffset;)
                 {
                     opcode = (Instruction)code[i];
 
                     // validate opcode
-                    if (!Enum.IsDefined(typeof(Instruction), code[i]))
+                    if (!Enum.IsDefined(opcode.Value))
                     {
                         return false;
                     }
@@ -199,6 +178,8 @@ namespace Nethermind.Evm
                     if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                     {
                         i += code[i] - (int)Instruction.PUSH1 + 1;
+                        if (i >= endOffset)
+                            return false;
                     }
                     i++;
                 }
