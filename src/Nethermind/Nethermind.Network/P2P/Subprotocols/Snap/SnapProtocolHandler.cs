@@ -313,7 +313,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             for (int i = 0; i < request.Paths.Length; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                // we want the storage root for the account and {0} is the path to the root node
+                // we want the storage root for the account and {0} is the path to the root node in compact encoding
                 groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes, _rootNodePath } };
             }
 

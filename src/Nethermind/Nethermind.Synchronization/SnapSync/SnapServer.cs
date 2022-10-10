@@ -150,9 +150,6 @@ public class SnapServer: ISnapServer
 
             proofs.AddRange(firstProof);
             proofs.AddRange(lastProof);
-            // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
-            // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
-            // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
         }
 
         return (nodes, proofs.ToArray());
@@ -170,8 +167,6 @@ public class SnapServer: ISnapServer
             {
                 break;
             }
-            // TODO: is it a good idea to get storage root from here? - No - it is not there at times
-            // var storageRoot = accounts[i].Account.StorageRoot;
             Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
             Keccak? storageRoot = accountNeth.StorageRoot;
 
@@ -185,7 +180,6 @@ public class SnapServer: ISnapServer
             responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
             {
-                // generate proof
                 // TODO: add error handling when proof is null
                 VisitingOptions opt = new() {ExpectAccounts = false};
                 ProofCollector accountProofCollector = new(startingHash.Bytes);
@@ -200,59 +194,11 @@ public class SnapServer: ISnapServer
                 HashSet<byte[]> proofs = new();
                 proofs.AddRange(firstProof);
                 proofs.AddRange(lastProof);
-                // byte[][] proofs = new byte[firstProof.Length + lastProof.Length][];
-                // Buffer.BlockCopy(firstProof, 0, proofs, 0, firstProof.Length);
-                // Buffer.BlockCopy(lastProof, 0, proofs, firstProof.Length, lastProof.Length);
                 return (responseNodes.ToArray(), proofs.ToArray());
             }
             responseSize += innerResponseSize;
         }
         return (responseNodes.ToArray(), null);
-    }
-
-
-    // this is a very bad idea
-    private (PathWithNode[], long, bool) GetNodesFromTrieBruteForce(Keccak rootHash, Keccak startingHash, Keccak limitHash, long byteLimit)
-    {
-        // TODO: incase of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
-
-        long responseSize = 0;
-        bool stopped = false;
-        PatriciaTree tree = new(_store, _logManager);
-        List<PathWithNode> nodes = new ();
-
-        UInt256 startHashNum = new(startingHash.Bytes, true);
-        UInt256 endHashNum = new(limitHash.Bytes, true);
-        UInt256 itr = startHashNum;
-        Span<byte> key = itr.ToBigEndian();
-
-        while (true)
-        {
-            if (itr > endHashNum)
-            {
-                break;
-            }
-
-            if (responseSize > byteLimit)
-            {
-                stopped = true;
-                break;
-            }
-
-            itr.ToBigEndian(key);
-
-            byte[]? blob = tree.GetNodeByKey(key, rootHash);
-
-            if (blob is not null)
-            {
-                PathWithNode result = new(key.ToArray(), blob);
-                nodes.Add(result);
-                responseSize += 32 + blob.Length;
-            }
-            itr++;
-        }
-
-        return (nodes.ToArray(), responseSize, stopped);
     }
 
     private (object[], long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
@@ -299,40 +245,7 @@ public class SnapServer: ISnapServer
 
     private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)
     {
-        int length = accountPath.Length;
-        byte[]? accBytes;
-        if (length == 32)
-        {
-            accBytes = tree.GetNodeByKey(accountPath, rootHash);
-        }
-        else
-        {
-            byte[] keyHash = new byte[32];
-            Buffer.BlockCopy(accountPath, 0, keyHash, 32-length, length);
-
-            accBytes  = tree.GetNodeByKey(keyHash, rootHash);
-        }
-
-        if (accBytes is null || accBytes.SequenceEqual(new byte[] {}))
-        {
-            return null;
-        }
-
-        TrieNode node = new(NodeType.Unknown, accBytes);
-        node.ResolveNode(tree.TrieStore);
-        accBytes = node.Value;
-
-        Account? account;
-        try
-        {
-            account = _decoder.Decode(accBytes.AsRlpStream());
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-
-        return account;
+        byte[]? bytes = tree.Get(accountPath, rootHash);
+        return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
     }
-
 }
