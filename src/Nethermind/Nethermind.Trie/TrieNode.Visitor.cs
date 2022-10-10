@@ -78,9 +78,15 @@ namespace Nethermind.Trie
                             // single threaded route
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                visitContext.AbsolutePathNibbles.Add((byte)i);
+                                if (trieVisitContext.KeepTrackOfAbsolutePath)
+                                {
+                                    visitContext.AbsolutePathNibbles.Add((byte)i);
+                                }
                                 VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
-                                visitContext.AbsolutePathNibbles.RemoveAt(visitContext.AbsolutePathNibbles.Count - 1);
+                                if (trieVisitContext.KeepTrackOfAbsolutePath)
+                                {
+                                    visitContext.AbsolutePathNibbles.RemoveAt(visitContext.AbsolutePathNibbles.Count - 1);
+                                }
                             }
                         }
 
@@ -95,7 +101,10 @@ namespace Nethermind.Trie
                                 {
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();
-                                    childContext.AbsolutePathNibbles.Add((byte)i);
+                                    if (trieVisitContext.KeepTrackOfAbsolutePath)
+                                    {
+                                        childContext.AbsolutePathNibbles.Add((byte)i);
+                                    }
                                     VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
                                     // no need to remove the element from AbsolutePathNibbles as the childContext is cleaned
                                 }
