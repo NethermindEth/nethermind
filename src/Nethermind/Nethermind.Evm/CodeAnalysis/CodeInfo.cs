@@ -45,28 +45,18 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         #region EofSection Extractors
-        public Span<byte> FullCode => MachineCode.AsSpan();
-        public Span<byte> CodeSection
+        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
-            get
+            Container = MachineCode.AsSpan();
+            if (Header is not null)
             {
-                if(Header is not null)
-                {
-                    return MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
-                }
-                return MachineCode.AsSpan();
+                CodeSection = MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
+                DataSection = MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
+                return this;
             }
-        }
-        public Span<byte> DataSection
-        {
-            get
-            {
-                if (Header is not null)
-                {
-                    return MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
-                }
-                return Span<byte>.Empty;
-            }
+            CodeSection = MachineCode.AsSpan();
+            DataSection = Span<byte>.Empty;
+            return this;
         }
         #endregion
 
@@ -102,6 +92,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
+            SeparateEOFSections(out _, out var CodeSection, out _);
             byte[] codeToBeAnalyzed = CodeSection.ToArray();
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
