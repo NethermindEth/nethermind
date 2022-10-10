@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -62,6 +62,8 @@ namespace Nethermind.Synchronization.Reporting
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
             _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
             _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
+            _paddedAmountOfOldBodiesToDownload = $"{Pad(_fastBlocksPivotNumber - syncConfig.AncientBodiesBarrier, _blockPaddingLength)}";
+            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier, _blockPaddingLength)}";
 
             StartTime = DateTime.UtcNow;
 
@@ -152,6 +154,8 @@ namespace Nethermind.Synchronization.Reporting
         private bool _reportedFastBlocksSummary;
         private readonly int _blockPaddingLength;
         private readonly string _paddedPivot;
+        private readonly string _paddedAmountOfOldBodiesToDownload;
+        private readonly string _paddedAmountOfOldReceiptsToDownload;
 
         private void WriteSyncReport()
         {

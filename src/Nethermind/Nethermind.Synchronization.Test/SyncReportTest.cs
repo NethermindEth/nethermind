@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -51,6 +51,32 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
+            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
+            await Task.Delay(200);
+            syncReport.FastBlocksHeaders.MarkEnd();
+            syncReport.FastBlocksBodies.MarkEnd();
+            syncReport.FastBlocksReceipts.MarkEnd();
+            await Task.Delay(20);
+        }
+
+        [Test]
+        public async Task Smoke()
+        {
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+
+            Queue<SyncMode> _syncModes = new();
+            _syncModes.Enqueue(SyncMode.FastHeaders);
+            _syncModes.Enqueue(SyncMode.FastBodies);
+            _syncModes.Enqueue(SyncMode.FastReceipts);
+
+            SyncConfig syncConfig = new();
+            syncConfig.FastBlocks = true;
+            syncConfig.FastSync = true;
+            syncConfig.PivotNumber = "100";
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
