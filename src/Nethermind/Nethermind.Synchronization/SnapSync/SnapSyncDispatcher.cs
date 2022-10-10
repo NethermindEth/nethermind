@@ -37,26 +37,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         protected override async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
-            Logger.Info("SNAP SYNC DISPATCHED");
             ISyncPeer peer = peerInfo.SyncPeer;
             //TODO: replace with a constant "snap"
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {
                 if (batch.AccountRangeRequest is not null)
                 {
-                    Logger.Info("AccountRangeRequest");
-                    if (batch.AccountRangeRequest.RootHash != null)
-                    {
-                        Logger.Info("AccountRangeRequest RootHash: " + batch.AccountRangeRequest.RootHash.Bytes.ToHexString());
-                    }
-                    if (batch.AccountRangeRequest.StartingHash != null)
-                    {
-                        Logger.Info("AccountRangeRequest RootHash: " + batch.AccountRangeRequest.StartingHash.Bytes.ToHexString());
-                    }
-                    if (batch.AccountRangeRequest.LimitHash != null)
-                    {
-                        Logger.Info("AccountRangeRequest RootHash: " + batch.AccountRangeRequest.LimitHash.Bytes.ToHexString());
-                    }
                     Task<AccountsAndProofs> task = handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
 
                     await task.ContinueWith(
@@ -64,7 +50,6 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             if (t.IsFaulted)
                             {
-                                Logger.Info("AccountRangeResponse FAILED");
                                 if (Logger.IsTrace)
                                     Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
                             }
@@ -72,28 +57,12 @@ namespace Nethermind.Synchronization.SnapSync
                             SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
                             if (t.IsCompletedSuccessfully)
                             {
-                                Logger.Info("AccountRangeResponse SUCCESS");
-                                Logger.Info("AccountRangeResponse: " + t.Result.PathAndAccounts.Length);
-                                Logger.Info("AccountRangeResponse: " + t.Result.Proofs.Length);
                                 batchLocal.AccountRangeResponse = t.Result;
                             }
                         }, batch);
                 }
                 else if (batch.StorageRangeRequest is not null)
                 {
-                    Logger.Info("StorageRangeRequest");
-                    if (batch.StorageRangeRequest.RootHash != null)
-                    {
-                        Logger.Info("StorageRangeRequest RootHash: " + batch.StorageRangeRequest.RootHash.Bytes.ToHexString());
-                    }
-                    if (batch.StorageRangeRequest.StartingHash != null)
-                    {
-                        Logger.Info("StorageRangeRequest RootHash: " + batch.StorageRangeRequest.StartingHash.Bytes.ToHexString());
-                    }
-                    if (batch.StorageRangeRequest.LimitHash != null)
-                    {
-                        Logger.Info("StorageRangeRequest RootHash: " + batch.StorageRangeRequest.LimitHash.Bytes.ToHexString());
-                    }
                     Task<SlotsAndProofs> task = handler.GetStorageRange(batch.StorageRangeRequest, cancellationToken);
 
                     await task.ContinueWith(
@@ -109,16 +78,12 @@ namespace Nethermind.Synchronization.SnapSync
                             SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
                             if (t.IsCompletedSuccessfully)
                             {
-                                Logger.Info("StorageRangeResponse SUCCESS");
-                                Logger.Info("StorageRangeResponse: " + t.Result.PathsAndSlots.Length);
-                                Logger.Info("StorageRangeResponse: " + t.Result.Proofs.Length);
                                 batchLocal.StorageRangeResponse = t.Result;
                             }
                         }, batch);
                 }
                 else if (batch.CodesRequest is not null)
                 {
-                    Logger.Info("CodesRequest");
                     Task<byte[][]> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
 
                     await task.ContinueWith(
@@ -126,7 +91,6 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             if (t.IsFaulted)
                             {
-                                Logger.Info("CodesResponse FAILED");
                                 if (Logger.IsTrace)
                                     Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
                             }
@@ -134,16 +98,12 @@ namespace Nethermind.Synchronization.SnapSync
                             SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
                             if (t.IsCompletedSuccessfully)
                             {
-                                Logger.Info("CodesResponse SUCCESS");
                                 batchLocal.CodesResponse = t.Result;
                             }
                         }, batch);
                 }
                 else if (batch.AccountsToRefreshRequest is not null)
                 {
-                    Logger.Info("AccountsToRefreshRequest");
-                    Logger.Info("AccountsToRefreshRequest DataLength: " + batch.AccountsToRefreshRequest.Paths.Length);
-                    Logger.Info("AccountsToRefreshRequest RootHash: " + batch.AccountsToRefreshRequest.RootHash.Bytes.ToHexString());
                     Task<byte[][]> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
 
                     await task.ContinueWith(
@@ -151,7 +111,6 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             if (t.IsFaulted)
                             {
-                                Logger.Info("AccountsToRefreshRequest FAILED");
                                 if (Logger.IsTrace)
                                     Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
                             }
@@ -159,8 +118,6 @@ namespace Nethermind.Synchronization.SnapSync
                             SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
                             if (t.IsCompletedSuccessfully)
                             {
-                                Logger.Info("AccountsToRefreshRequest SUCCESS");
-                                Logger.Info("AccountsToRefreshRequest: " + t.Result.Length);
                                 batchLocal.AccountsToRefreshResponse = t.Result;
                             }
                         }, batch);
