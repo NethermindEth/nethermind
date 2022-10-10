@@ -31,6 +31,7 @@ namespace Nethermind.Specs.Forks
             IsEip2Enabled = true;
             IsEip7Enabled = true;
         }
+
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Homestead());
     }
 }

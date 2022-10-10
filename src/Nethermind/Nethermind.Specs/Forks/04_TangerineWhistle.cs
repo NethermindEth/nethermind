@@ -30,6 +30,7 @@ namespace Nethermind.Specs.Forks
             Name = "Tangerine Whistle";
             IsEip150Enabled = true;
         }
+
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new TangerineWhistle());
     }
 }

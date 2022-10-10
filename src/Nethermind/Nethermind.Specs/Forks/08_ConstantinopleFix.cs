@@ -30,6 +30,7 @@ namespace Nethermind.Specs.Forks
             Name = "Constantinople Fix";
             IsEip1283Enabled = false;
         }
+
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new ConstantinopleFix());
     }
 }
