@@ -398,9 +398,9 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
-                        while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                        lock (_dirtyNodes)
                         {
-                            lock (_dirtyNodes)
+                            while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                             {
                                 PruneCache();
 
