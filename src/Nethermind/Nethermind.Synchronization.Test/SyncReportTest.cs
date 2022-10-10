@@ -96,16 +96,14 @@ namespace Nethermind.Synchronization.Test
             }
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
-            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
-            timer.Elapsed += Raise.Event();
-            timer.Elapsed += Raise.Event();
+            selector.Current.Returns((ci) => SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts);
             timer.Elapsed += Raise.Event();
 
             if (setBarriers)
             {
                 logger.Received(1).Info("Old Headers    0 / 100 | queue     0 | current     0.00bps | total     0.00bps");
-                logger.Received(1).Info("Old Bodies      0 / 70 | queue     0 | current     0.00bps | total     0.00bps");
-                logger.Received(1).Info("Old Receipts    0 / 65 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Bodies     0 / 70 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Receipts   0 / 65 | queue     0 | current     0.00bps | total     0.00bps");
             }
             else
             {
