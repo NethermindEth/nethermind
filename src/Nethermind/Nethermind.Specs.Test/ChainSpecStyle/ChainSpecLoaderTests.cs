@@ -417,7 +417,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [TestCase("Specs/dummy_genesis.json", "Specs/dummy_genesis.json")]
-        [TestCase("../../../../Chains/spaceneth.json", "Specs/spaceneth_genesis.json")]
         public void Can_load_chainspec_from_geth_genesis(string chainSpecFilePath, string gethGenesisFilePath)
         {
 
@@ -447,7 +446,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             gethChainSpec.Clique.Should().BeEquivalentTo(parityChainSpec.Clique);
             gethChainSpec.Ethash.Should().BeEquivalentTo(parityChainSpec.Ethash, (options) => options.Excluding(exp => exp.DaoHardforkAccounts)
-                                                                                                     .Excluding(exp => exp.DaoHardforkBeneficiary));
+                                                                                                     .Excluding(exp => exp.DaoHardforkBeneficiary)
+                                                                                                     .Excluding(exp => exp.BlockRewards)
+                                                                                                     .Excluding(exp => exp.DifficultyBombDelays));
 
         }
     }
