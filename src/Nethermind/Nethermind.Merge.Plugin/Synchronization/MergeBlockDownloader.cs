@@ -212,7 +212,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _syncProgressResolver.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState!=0;
+                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
                             if (!shouldProcess)
                             {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
