@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Org.BouncyCastle.Crypto.Agreement.Srp;
@@ -11,7 +12,12 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     internal static class ByteCodeValidator
     {
-        private static EvmObjectFormat EofFormatChecker = new EvmObjectFormat();
+        private static EvmObjectFormat? EofFormatChecker = new EvmObjectFormat();
+        public static void Initialize(ILogger logger = null)
+        {
+            if (EofFormatChecker is null)
+                EofFormatChecker = new EvmObjectFormat(logger);
+        }
 
         public static bool HasEOFMagic(this Span<byte> code) => EofFormatChecker.HasEOFFormat(code);
         public static bool ValidateByteCode(Span<byte> code, IReleaseSpec _spec, out EofHeader header)
