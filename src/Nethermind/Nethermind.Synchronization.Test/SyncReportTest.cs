@@ -65,8 +65,9 @@ namespace Nethermind.Synchronization.Test
             timer.Elapsed += Raise.Event();
         }
 
-        [Test]
-        public async Task Smoke()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Ancient_bodies_and_receipts_are_reported_correctly(bool setBarriers)
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -74,6 +75,10 @@ namespace Nethermind.Synchronization.Test
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            ILogger logger = Substitute.For<ILogger>();
+            logger.IsInfo.Returns(true);
+            logManager.GetClassLogger().Returns(logger);
 
             Queue<SyncMode> _syncModes = new();
             _syncModes.Enqueue(SyncMode.FastHeaders);
@@ -84,15 +89,30 @@ namespace Nethermind.Synchronization.Test
             syncConfig.FastBlocks = true;
             syncConfig.FastSync = true;
             syncConfig.PivotNumber = "100";
+            if (setBarriers)
+            {
+                syncConfig.AncientBodiesBarrier = 30;
+                syncConfig.AncientReceiptsBarrier = 35;
+            }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance);
-            timer.Elapsed += Raise.Event();
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
-            await Task.Delay(200);
-            syncReport.FastBlocksHeaders.MarkEnd();
-            syncReport.FastBlocksBodies.MarkEnd();
-            syncReport.FastBlocksReceipts.MarkEnd();
-            await Task.Delay(20);
+            timer.Elapsed += Raise.Event();
+            timer.Elapsed += Raise.Event();
+            timer.Elapsed += Raise.Event();
+
+            if (setBarriers)
+            {
+                logger.Received(1).Info("Old Headers    0 / 100 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Bodies      0 / 70 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Receipts    0 / 65 | queue     0 | current     0.00bps | total     0.00bps");
+            }
+            else
+            {
+                logger.Received(1).Info("Old Headers    0 / 100 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Bodies     0 / 100 | queue     0 | current     0.00bps | total     0.00bps");
+                logger.Received(1).Info("Old Receipts   0 / 100 | queue     0 | current     0.00bps | total     0.00bps");
+            }
         }
     }
 }
