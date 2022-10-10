@@ -192,6 +192,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
+            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            {
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                return;
+            }
+
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
