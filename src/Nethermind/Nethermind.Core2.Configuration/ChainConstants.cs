@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,6 +32,6 @@ namespace Nethermind.Core2.Configuration
 
         public int JustificationBitsLength { get; } = 4;
 
-        public ulong MaximumDepositContracts { get; } = (ulong) 1 << (1 << 5);
+        public ulong MaximumDepositContracts { get; } = (ulong)1 << (1 << 5);
     }
 }

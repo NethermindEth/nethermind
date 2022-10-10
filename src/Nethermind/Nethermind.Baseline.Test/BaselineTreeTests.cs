@@ -41,7 +41,7 @@ namespace Nethermind.Baseline.Test
         private Keccak[] _testLeaves = new Keccak[32];
         private const ulong _nodeIndexOfTheFirstLeaf = (1ul << BaselineTree.TreeHeight) - 1ul;
         private const ulong _lastNodeIndex = (1ul << (BaselineTree.TreeHeight + 1)) - 2ul;
-        private const uint _lastLeafIndex = (uint) ((1ul << BaselineTree.TreeHeight) - 1u);
+        private const uint _lastLeafIndex = (uint)((1ul << BaselineTree.TreeHeight) - 1u);
         private const uint _lastRow = BaselineTree.TreeHeight;
 
         public BaselineTreeTests(int truncationLength)
@@ -55,7 +55,7 @@ namespace Nethermind.Baseline.Test
             for (int i = 0; i < _testLeaves.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i % (32 - _truncationLength) + _truncationLength] = (byte) (i + 1);
+                bytes[i % (32 - _truncationLength) + _truncationLength] = (byte)(i + 1);
                 _testLeaves[i] = new Keccak(bytes);
             }
         }
@@ -348,7 +348,7 @@ namespace Nethermind.Baseline.Test
 
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.GetLeaf((uint) i).Hash.Should().NotBe(Keccak.Zero);
+                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
             }
         }
 
@@ -364,7 +364,7 @@ namespace Nethermind.Baseline.Test
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            var leafIndexes = Enumerable.Range(0, (int) nodesCount).Select(l => (uint) l).ToArray();
+            var leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(l => (uint)l).ToArray();
             var result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {
@@ -557,16 +557,16 @@ namespace Nethermind.Baseline.Test
 
                 if (i == 18)
                 {
-                    
+
                 }
                 currentBlockNumber++;
-                uint numberOfLeaves = (uint) random.Next(leavesPerBlock) + 1; // not zero
+                uint numberOfLeaves = (uint)random.Next(leavesPerBlock) + 1; // not zero
                 bool hasLeaves = random.Next(100) < emptyBlocksRatio;
 
                 if (hasLeaves)
                 {
                     totalCountCheck += numberOfLeaves;
-                    
+
                     TestContext.WriteLine($"Adding {numberOfLeaves} at block {currentBlockNumber}");
                     for (int j = 0; j < numberOfLeaves; j++)
                     {
@@ -588,7 +588,7 @@ namespace Nethermind.Baseline.Test
                 {
                     TestContext.WriteLine($"Block {currentBlockNumber} has no leaves");
                 }
-                
+
                 historicalCountChecks[currentBlockNumber] = totalCountCheck;
 
                 WriteHistory(historicalCountChecks, baselineTree);
@@ -608,20 +608,20 @@ namespace Nethermind.Baseline.Test
                     {
                         int reorgDepth = random.Next(currentBlockNumber) + 1;
                         TestContext.WriteLine($"Reorganizing {reorgDepth} from {currentBlockNumber}");
-                        uint expectedDeleteCount = historicalCountChecks[currentBlockNumber] - historicalCountChecks[currentBlockNumber - reorgDepth]; 
+                        uint expectedDeleteCount = historicalCountChecks[currentBlockNumber] - historicalCountChecks[currentBlockNumber - reorgDepth];
                         baselineTree.GoBackTo(currentBlockNumber - reorgDepth).Should().Be(expectedDeleteCount);
                         for (int j = 0; j < reorgDepth; j++)
                         {
                             historicalCountChecks.Remove(currentBlockNumber - j);
                         }
-                        
+
                         currentBlockNumber -= reorgDepth;
                         totalCountCheck = historicalCountChecks[currentBlockNumber];
                         baselineTree.MemorizeCurrentCount(TestItem.Keccaks[currentBlockNumber], currentBlockNumber, totalCountCheck);
-                        
+
                         TestContext.WriteLine($"Total count after reorg is {totalCountCheck} at block {currentBlockNumber}");
 
-                        
+
                         while (lastBlockWithLeavesCheck.Any() && lastBlockWithLeavesCheck.Peek() > currentBlockNumber)
                         {
                             lastBlockWithLeavesCheck.Pop();
@@ -635,7 +635,7 @@ namespace Nethermind.Baseline.Test
                             lastBlockWithLeavesCheck.Push(currentBlockNumber);
                         }
                     }
-                    
+
                     WriteHistory(historicalCountChecks, baselineTree);
                 }
             }

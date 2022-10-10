@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,10 +22,10 @@ namespace Nethermind.JsonRpc
     {
         [JsonProperty(PropertyName = "code", Order = 0)]
         public int Code { get; set; }
-        
+
         [JsonProperty(PropertyName = "message", Order = 1)]
         public string? Message { get; set; }
-        
+
         [JsonProperty(PropertyName = "data", Order = 2)]
         public object? Data { get; set; }
     }

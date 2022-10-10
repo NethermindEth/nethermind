@@ -36,19 +36,19 @@ namespace Nethermind.Db.FullPruning
         /// <param name="context">Out, context of pruning.</param>
         /// <returns>true if pruning was started, false otherwise.</returns>
         bool TryStartPruning(bool duplicateReads, out IPruningContext context);
-        
+
         /// <summary>
         /// Gets the path to current DB using base path.
         /// </summary>
         /// <param name="basePath"></param>
         /// <returns></returns>
         string GetPath(string basePath);
-        
+
         /// <summary>
         /// Gets the name of inner DB.
         /// </summary>
         string InnerDbName { get; }
-        
+
         event EventHandler<PruningEventArgs> PruningStarted;
         event EventHandler<PruningEventArgs> PruningFinished;
     }

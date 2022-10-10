@@ -34,30 +34,30 @@ namespace Nethermind.Ssz.Test
         {
             // Arrange
             Eth1Data eth1Data = new Eth1Data(
-                new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x12, 32).ToArray()),
                 64,
-                new Bytes32(Enumerable.Repeat((byte) 0x34, 32).ToArray()));
+                new Bytes32(Enumerable.Repeat((byte)0x34, 32).ToArray()));
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
-                new BlsSignature(Enumerable.Repeat((byte) 0x56, 96).ToArray()),
+                new BlsSignature(Enumerable.Repeat((byte)0x56, 96).ToArray()),
                 eth1Data,
-                new Bytes32(Enumerable.Repeat((byte) 0x78, 32).ToArray()),
+                new Bytes32(Enumerable.Repeat((byte)0x78, 32).ToArray()),
                 new ProposerSlashing[0],
-                new AttesterSlashing [0], 
+                new AttesterSlashing[0],
                 new Attestation[0],
                 new Deposit[0],
                 new SignedVoluntaryExit[0]
             );
             BeaconBlock beaconBlock = new BeaconBlock(
                 Slot.One,
-                new Root(Enumerable.Repeat((byte) 0x9a, 32).ToArray()),
-                new Root(Enumerable.Repeat((byte) 0xbc, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x9a, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0xbc, 32).ToArray()),
                 beaconBlockBody
                 );
-            
+
             // Act
             Span<byte> encoded = new byte[Ssz.BeaconBlockLength(beaconBlock)];
             Ssz.Encode(encoded, beaconBlock);
-            
+
             // Assert
             string expectedHex =
                 // static
@@ -65,8 +65,8 @@ namespace Nethermind.Ssz.Test
                 "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a" +
                 "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc" +
                 "4c000000" + // body dynamic offset 8+32+32+4 = 76 = 0x4c
-                // dynamic
-                // - body - static
+                             // dynamic
+                             // - body - static
                 "565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656" +
                 "1212121212121212121212121212121212121212121212121212121212121212" +
                 "4000000000000000" +
@@ -77,10 +77,10 @@ namespace Nethermind.Ssz.Test
                 "dc000000" +
                 "dc000000" +
                 "dc000000"; // body - dynamic part is empty
-                
+
             encoded.ToHexString().ShouldBe(expectedHex);
         }
-        
+
         [Test]
         public void EmptyBeaconBlockDecode()
         {
@@ -91,8 +91,8 @@ namespace Nethermind.Ssz.Test
                 "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a" +
                 "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc" +
                 "4c000000" + // body dynamic offset 8+32+32+4 = 76 = 0x4c
-                // dynamic
-                // - body - static
+                             // dynamic
+                             // - body - static
                 "565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656" +
                 "1212121212121212121212121212121212121212121212121212121212121212" +
                 "4000000000000000" +
@@ -103,21 +103,21 @@ namespace Nethermind.Ssz.Test
                 "dc000000" +
                 "dc000000" +
                 "dc000000"; // body - dynamic part is empty
-            
+
             byte[] bytes = Bytes.FromHexString(hex);
-            
+
             // Act
             BeaconBlock beaconBlock = Ssz.DecodeBeaconBlock(bytes);
-            
+
             // Assert
             beaconBlock.Slot.ShouldBe(Slot.One);
-            beaconBlock.ParentRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x9a, 32).ToArray());
-            beaconBlock.StateRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0xbc, 32).ToArray());
-            beaconBlock.Body.RandaoReveal.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x56, 96).ToArray());
-            beaconBlock.Body.Eth1Data.DepositRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x12, 32).ToArray());
+            beaconBlock.ParentRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x9a, 32).ToArray());
+            beaconBlock.StateRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0xbc, 32).ToArray());
+            beaconBlock.Body.RandaoReveal.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x56, 96).ToArray());
+            beaconBlock.Body.Eth1Data.DepositRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x12, 32).ToArray());
             beaconBlock.Body.Eth1Data.DepositCount.ShouldBe(64uL);
-            beaconBlock.Body.Eth1Data.BlockHash.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x34, 32).ToArray());
-            beaconBlock.Body.Graffiti.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x78, 32).ToArray());
+            beaconBlock.Body.Eth1Data.BlockHash.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x34, 32).ToArray());
+            beaconBlock.Body.Graffiti.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x78, 32).ToArray());
             beaconBlock.Body.ProposerSlashings.Count.ShouldBe(0);
             beaconBlock.Body.AttesterSlashings.Count.ShouldBe(0);
             beaconBlock.Body.Attestations.Count.ShouldBe(0);

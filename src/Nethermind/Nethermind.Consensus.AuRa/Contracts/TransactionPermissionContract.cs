@@ -103,11 +103,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (result.Item1, result.Item2, callInfo.ToIsContract);
         }
 
-        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) => 
+        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>
             Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(callInfo);
 
         protected abstract object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader);
-        
+
         protected IConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
@@ -118,7 +118,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
         }
-        
+
         protected class PermissionConstantContract : ConstantContract
         {
             public PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : base(contract, readOnlyTxProcessorSource)
@@ -144,8 +144,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     BlockHeader parentHeader,
                     string functionName,
                     Address sender,
-                    object[] arguments, 
-                    Address to) 
+                    object[] arguments,
+                    Address to)
                     : base(parentHeader, functionName, sender, arguments)
                 {
                     To = to;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Filters
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
         private readonly ILogger _logger;
         private readonly long _configuredGasLimit;
-        
+
         public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
             ILogger logger)
         {
@@ -37,7 +37,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
             _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
         }
-            
+
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);

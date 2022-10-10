@@ -25,9 +25,9 @@ namespace Nethermind.State
         private NullStorageTracer() { }
 
         public static IStorageTracer Instance { get; } = new NullStorageTracer();
-        
+
         private const string ErrorMessage = "Null tracer should never receive any calls.";
-        
+
         public bool IsTracingStorage => false;
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
             => throw new InvalidOperationException(ErrorMessage);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,15 +20,15 @@ using Nethermind.Crypto;
 namespace Nethermind.Core.Test.Builders
 {
     public class AddressBuilder : BuilderBase<Address>
-    {   
+    {
         private static readonly ICryptoRandom CryptoRandom = new CryptoRandom();
-        
+
         public AddressBuilder()
         {
             byte[] bytes = CryptoRandom.GenerateRandomBytes(20);
             TestObjectInternal = new Address(bytes);
         }
-        
+
         public AddressBuilder FromNumber(int number)
         {
             TestObjectInternal = new Address(number.ToBigEndianByteArray().PadLeft(20));

@@ -22,19 +22,19 @@ namespace Nethermind.Evm.Tracing.GethStyle
     {
         [JsonProperty("disableStorage")]
         public bool DisableStorage { get; set; }
-        
+
         [JsonProperty("disableMemory")]
         public bool DisableMemory { get; set; }
-        
+
         [JsonProperty("disableStack")]
         public bool DisableStack { get; set; }
-        
+
         [JsonProperty("tracer")]
         public string Tracer { get; set; }
-        
+
         [JsonProperty("timeout")]
         public string Timeout { get; set; }
-        
+
         public static GethTraceOptions Default = new();
     }
 }

@@ -135,7 +135,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.SameAddressAsFaucet);
         }
-        
+
         private async Task WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
         {
             const int waitInterval = 10;

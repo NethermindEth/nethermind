@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -69,7 +69,7 @@ namespace Ethereum.Difficulty.Test
             hex = hex.Replace("0x", "0");
             return BigInteger.Parse(hex, NumberStyles.HexNumber);
         }
-        
+
         private static UInt256 ToUInt256(string hex)
         {
             hex = hex.Replace("0x", "0");

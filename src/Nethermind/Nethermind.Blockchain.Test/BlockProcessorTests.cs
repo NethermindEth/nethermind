@@ -70,20 +70,20 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithHeader(header).TestObject;
             Block[] processedBlocks = processor.Process(
                 Keccak.EmptyTreeHash,
-                new List<Block> {block},
+                new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }
-        
+
         [Test]
         public void Can_store_a_witness()
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            
+
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
@@ -102,10 +102,10 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithHeader(header).TestObject;
             _ = processor.Process(
                 Keccak.EmptyTreeHash,
-                new List<Block> {block},
+                new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            
+
             witnessCollector.Received(1).Persist(block.Hash);
         }
 
@@ -132,13 +132,13 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
             Assert.Throws<OperationCanceledException>(() => processor.Process(
                 Keccak.EmptyTreeHash,
-                new List<Block> {block},
+                new List<Block> { block },
                 ProcessingOptions.None,
                 AlwaysCancelBlockTracer.Instance));
 
             Assert.Throws<OperationCanceledException>(() => processor.Process(
                 Keccak.EmptyTreeHash,
-                new List<Block> {block},
+                new List<Block> { block },
                 ProcessingOptions.None,
                 AlwaysCancelBlockTracer.Instance));
         }

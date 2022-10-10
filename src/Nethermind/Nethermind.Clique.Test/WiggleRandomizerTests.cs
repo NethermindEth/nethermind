@@ -32,7 +32,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Wiggle_is_fine()
         {
-            Queue<int> randoms = new(new List<int> {100, 600, 1000, 2000, 50});
+            Queue<int> randoms = new(new List<int> { 100, 600, 1000, 2000, 50 });
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
@@ -57,7 +57,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Wiggle_has_no_min_value()
         {
-            Queue<int> randoms = new(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
+            Queue<int> randoms = new(new List<int> { Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3 });
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
@@ -68,7 +68,7 @@ namespace Nethermind.Clique.Test
                 {TestItem.AddressC, 3},
                 {TestItem.AddressD, 4}
             });
-            
+
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
             WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
@@ -78,18 +78,18 @@ namespace Nethermind.Clique.Test
             BlockHeader header3 = Build.A.BlockHeader.WithNumber(3).TestObject;
             int wiggle = randomizer.WiggleFor(header1);
             Assert.AreEqual(Consensus.Clique.Clique.WiggleTime / 2, wiggle);
-            
+
             wiggle = randomizer.WiggleFor(header2);
             Assert.AreEqual(Consensus.Clique.Clique.WiggleTime, wiggle);
-            
+
             wiggle = randomizer.WiggleFor(header3);
             Assert.AreEqual(Consensus.Clique.Clique.WiggleTime * 2, wiggle);
         }
-        
+
         [Test]
         public void Returns_zero_for_in_turn_blocks()
         {
-            Queue<int> randoms = new(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
+            Queue<int> randoms = new(new List<int> { Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3 });
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
@@ -100,7 +100,7 @@ namespace Nethermind.Clique.Test
                 {TestItem.AddressC, 3},
                 {TestItem.AddressD, 4}
             });
-            
+
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
             WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);

@@ -26,7 +26,7 @@ namespace Nethermind.Core
         {
             _timestamper = timestamper ?? Timestamper.Default;
         }
-        
+
         public void Update(long value)
         {
             if (!UtcStartTime.HasValue)
@@ -48,7 +48,7 @@ namespace Nethermind.Core
         }
 
         public bool HasEnded => UtcEndTime.HasValue;
-        
+
         public void MarkEnd()
         {
             if (!UtcEndTime.HasValue)
@@ -56,7 +56,7 @@ namespace Nethermind.Core
                 UtcEndTime = _timestamper.UtcNow;
             }
         }
-        
+
         public void Reset(long startValue)
         {
             LastMeasurement = UtcEndTime = null;
@@ -67,9 +67,9 @@ namespace Nethermind.Core
         private long StartValue { get; set; }
 
         private DateTime? UtcStartTime { get; set; }
-        
+
         private DateTime? UtcEndTime { get; set; }
-        
+
         private DateTime? LastMeasurement { get; set; }
 
         private long LastValue { get; set; }
@@ -87,11 +87,11 @@ namespace Nethermind.Core
                 {
                     return 0M;
                 }
-                
-                return (CurrentValue - StartValue) / timePassed;        
+
+                return (CurrentValue - StartValue) / timePassed;
             }
         }
-            
+
         public decimal CurrentPerSecond
         {
             get
@@ -100,14 +100,14 @@ namespace Nethermind.Core
                 {
                     return 0;
                 }
-                
+
                 decimal timePassed = (decimal)(_timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue)).TotalSeconds;
                 if (timePassed == 0M)
                 {
                     return 0M;
                 }
-                
-                return (CurrentValue - LastValue) / timePassed;        
+
+                return (CurrentValue - LastValue) / timePassed;
             }
         }
     }

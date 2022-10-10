@@ -22,10 +22,10 @@ namespace Nethermind.Trie.Pruning
     public class NullTrieNodeResolver : ITrieNodeResolver
     {
         private NullTrieNodeResolver() { }
-        
-        public static readonly NullTrieNodeResolver Instance = new ();
 
-        public TrieNode FindCachedOrUnknown(Keccak hash) => new (NodeType.Unknown, hash);
+        public static readonly NullTrieNodeResolver Instance = new();
+
+        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
 
         public byte[]? LoadRlp(Keccak hash) => null;
     }

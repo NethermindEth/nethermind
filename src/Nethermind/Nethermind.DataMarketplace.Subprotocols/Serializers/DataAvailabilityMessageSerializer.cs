@@ -26,14 +26,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(DataAvailabilityMessage message)
             => Rlp.Encode(Rlp.Encode(message.DepositId),
-                Rlp.Encode((int) message.DataAvailability)).Bytes;
+                Rlp.Encode((int)message.DataAvailability)).Bytes;
 
         public DataAvailabilityMessage Deserialize(byte[] bytes)
         {
             RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             Keccak? depositId = context.DecodeKeccak();
-            DataAvailability reason = (DataAvailability) context.DecodeInt();
+            DataAvailability reason = (DataAvailability)context.DecodeInt();
 
             return new DataAvailabilityMessage(depositId, reason);
         }

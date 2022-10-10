@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Abi
     {
         private const int MaxSize = 256;
         private const int MinSize = 0;
-        
+
         public static new readonly AbiUInt UInt8 = new(8);
         public static new readonly AbiUInt UInt16 = new(16);
         public static new readonly AbiUInt UInt32 = new(32);
@@ -77,17 +77,17 @@ namespace Nethermind.Abi
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             var (value, length) = DecodeUInt(data, position, packed);
-            
+
             switch (Length)
             {
                 case { } n when n <= 8:
-                    return ((byte) value, length);
+                    return ((byte)value, length);
                 case { } n when n <= 16:
-                    return ((ushort) value, length);
+                    return ((ushort)value, length);
                 case { } n when n <= 32:
-                    return ((uint) value, length);
+                    return ((uint)value, length);
                 case { } n when n <= 64:
-                    return ((ulong) value, length);
+                    return ((ulong)value, length);
                 default:
                     return (value, length);
             }
@@ -105,7 +105,7 @@ namespace Nethermind.Abi
             Span<byte> bytes = null;
             if (arg is UInt256 uint256)
             {
-                bytes = ((BigInteger) uint256).ToBigEndianByteArray();
+                bytes = ((BigInteger)uint256).ToBigEndianByteArray();
             }
             else if (arg is BigInteger bigInteger)
             {
@@ -150,7 +150,7 @@ namespace Nethermind.Abi
         }
 
         public override Type CSharpType { get; }
-        
+
         private Type GetCSharpType()
         {
             switch (Length)

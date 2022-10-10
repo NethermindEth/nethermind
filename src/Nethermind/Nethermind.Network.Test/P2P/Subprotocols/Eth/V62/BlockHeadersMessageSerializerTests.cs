@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Roundtrip()
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = new[] {Build.A.BlockHeader.TestObject};
+            message.BlockHeaders = new[] { Build.A.BlockHeader.TestObject };
 
             BlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
@@ -43,12 +43,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void Roundtrip_nulls()
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = new[] {Build.A.BlockHeader.TestObject, null};
+            message.BlockHeaders = new[] { Build.A.BlockHeader.TestObject, null };
 
             BlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
@@ -83,7 +83,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.Throws<RlpException>(() => serializer.Deserialize(rlp1.Bytes));
             Assert.Throws<RlpException>(() => serializer.Deserialize(rlp2.Bytes));
         }
-        
+
         [Test]
         public void To_string()
         {

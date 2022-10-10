@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteProperty("code", value.Code ?? Array.Empty<byte>(), serializer);
             writer.WriteProperty("ops", value.Operations, serializer);
-            
+
             writer.WriteEndObject();
         }
 

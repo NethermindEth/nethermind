@@ -26,7 +26,7 @@ namespace Nethermind.Db
         protected IRocksDbFactory RocksDbFactory { get; }
         protected IMemDbFactory MemDbFactory { get; }
         protected bool PersistedDb => _dbProvider.DbMode == DbModeHint.Persisted;
-        
+
         private readonly List<Action> _registrations = new();
 
         protected RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
@@ -47,16 +47,16 @@ namespace Nethermind.Db
             _registrations.Add(Action);
         }
 
-        protected void RegisterDb(RocksDbSettings settings) => 
+        protected void RegisterDb(RocksDbSettings settings) =>
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
-        
+
         protected void RegisterColumnsDb<T>(RocksDbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
-        
+
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
 
-        private IDb CreateDb(RocksDbSettings settings) => 
+        private IDb CreateDb(RocksDbSettings settings) =>
             PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
 
         private IDb CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>

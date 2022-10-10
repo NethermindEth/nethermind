@@ -258,6 +258,22 @@ namespace Nethermind.Network.Test
             }
         }
 
+        [Test]
+        public async Task IfPeerAdded_with_invalid_chain_then_do_not_connect()
+        {
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            var networkNode = new NetworkNode(ctx.GenerateEnode());
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.ChainId);
+
+            ctx.PeerPool.GetOrAdd(networkNode);
+
+            await Task.Delay(_travisDelay);
+            ctx.PeerPool.ActivePeers.Count.Should().Be(0);
+        }
+
         private int _travisDelay = 100;
 
         private int _travisDelayLong = 1000;

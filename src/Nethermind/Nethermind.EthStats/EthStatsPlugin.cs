@@ -62,7 +62,7 @@ public class EthStatsPlugin : INethermindPlugin
 
         if (!_isOn)
         {
-           
+
             if (!initConfig.WebSocketsEnabled)
             {
                 _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");

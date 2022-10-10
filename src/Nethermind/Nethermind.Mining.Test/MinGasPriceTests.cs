@@ -47,15 +47,15 @@ namespace Nethermind.Mining.Test
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
         }
-        
+
         [TestCase(0L, 0L, 0L, true)]
-        [TestCase(1L, 0L, 0L,false)]
+        [TestCase(1L, 0L, 0L, false)]
         [TestCase(1L, 0L, 1L, false)]
         [TestCase(1L, 100L, 1000L, false)]
         [TestCase(1L, 875L, 1000L, false)]
         [TestCase(1L, 876L, 1000L, true)]
         [TestCase(1L, 876L, 0L, false)]
-        [TestCase(2L, 1000L, 1L,false)]
+        [TestCase(2L, 1000L, 1L, false)]
         [TestCase(2L, 1000L, 1000L, true)]
         public void Test1559(long minimum, long maxFeePerGas, long maxPriorityFeePerGas, bool expectedResult)
         {

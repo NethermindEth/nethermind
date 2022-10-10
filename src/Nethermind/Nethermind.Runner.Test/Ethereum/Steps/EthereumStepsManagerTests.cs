@@ -87,7 +87,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             try
             {
@@ -221,6 +221,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    class TestException: Exception {
+    class TestException : Exception
+    {
     }
 }

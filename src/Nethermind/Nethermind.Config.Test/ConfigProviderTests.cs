@@ -37,7 +37,7 @@ namespace Nethermind.Config.Test
         }
 
         public int DefaultTestProperty { get; set; } = 5;
-        
+
         // [Test]
         // public void Can_read_defaults_from_registered_categories()
         // {

@@ -35,7 +35,7 @@ namespace Nethermind.Core.Eip2930
         /// Only used for access lists generated outside of Nethermind
         /// </summary>
         public IReadOnlyCollection<object>? OrderQueue { get; }
-        
+
         /// <summary>
         /// Has no duplicate entries (allows for more efficient serialization / deserialization)
         /// </summary>

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void Asggins_values_from_constructor()
         {
-            byte[] data = {3, 4, 5};
+            byte[] data = { 3, 4, 5 };
             Packet packet = new("eth", 2, data);
             Assert.AreEqual("eth", packet.Protocol);
             Assert.AreEqual(2, packet.PacketType);

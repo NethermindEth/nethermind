@@ -29,7 +29,7 @@ namespace Nethermind.Ssz
             {
                 return 0;
             }
-            
+
             return 2 * sizeof(uint) +
                    Ssz.IndexedAttestationLength(container.Attestation1) +
                    Ssz.IndexedAttestationLength(container.Attestation2);
@@ -60,8 +60,8 @@ namespace Nethermind.Ssz
 
         public static AttesterSlashing DecodeAttesterSlashing(ReadOnlySpan<byte> span)
         {
-            int offset1 = (int) DecodeUInt(span.Slice(0, VarOffsetSize));
-            int offset2 = (int) DecodeUInt(span.Slice(VarOffsetSize, VarOffsetSize));
+            int offset1 = (int)DecodeUInt(span.Slice(0, VarOffsetSize));
+            int offset2 = (int)DecodeUInt(span.Slice(VarOffsetSize, VarOffsetSize));
 
             int length1 = offset2 - offset1;
             int length2 = span.Length - offset2;
@@ -113,10 +113,10 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-        
+
         private static void Encode(Span<byte> span, AttesterSlashing[] containers, ref int offset, ref int dynamicOffset)
         {
-            int length = containers.Length  * VarOffsetSize;
+            int length = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
             {
                 length += Ssz.AttesterSlashingLength(containers[i]);

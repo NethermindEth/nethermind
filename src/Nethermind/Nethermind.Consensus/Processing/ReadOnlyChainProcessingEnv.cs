@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Processing
     public class ReadOnlyChainProcessingEnv : IDisposable
     {
         private readonly ReadOnlyTxProcessingEnv _txEnv;
-        
+
         private readonly BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
@@ -52,9 +52,9 @@ namespace Nethermind.Consensus.Processing
         {
             _txEnv = txEnv;
 
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = 
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
                 blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
-            
+
             BlockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Processing
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
-            
+
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);

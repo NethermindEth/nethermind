@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.HonestValidator
     internal static class Log
     {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -36,7 +36,7 @@ namespace Nethermind.HonestValidator
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -46,7 +46,7 @@ namespace Nethermind.HonestValidator
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
+
         // 1bxx preliminary
 
         public static readonly Action<ILogger, string, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
@@ -60,7 +60,7 @@ namespace Nethermind.HonestValidator
                 "Validator connected to '{NodeVersion}' with genesis time {GenesisTime}.");
 
         // 2bxx 
-        
+
         public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Exception?> ValidatorDutyProposalChanged =
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot>(LogLevel.Information,
                 new EventId(2451, nameof(ValidatorDutyProposalChanged)),
@@ -72,7 +72,7 @@ namespace Nethermind.HonestValidator
                 "Running block proposal duty for slot {Slot} at time {Time} for validator {PublicKey}.");
 
         // 4bxx warning
-        
+
         public static readonly Action<ILogger, Exception?> WaitingForNodeVersion =
             LoggerMessage.Define(LogLevel.Warning,
                 new EventId(4450, nameof(WaitingForNodeVersion)),
@@ -86,9 +86,9 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<long>(LogLevel.Warning,
                 new EventId(4901, nameof(QuickStartClockCreated)),
                 "Quick start clock created with offset {ClockOffset:n0}.");
-        
+
         // 5bxx error
-        
+
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerLoopError =
             LoggerMessage.Define(LogLevel.Error,
                 new EventId(5450, nameof(HonestValidatorWorkerLoopError)),

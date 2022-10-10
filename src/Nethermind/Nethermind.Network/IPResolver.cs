@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,17 +48,17 @@ namespace Nethermind.Network
             {
                 LocalIp = IPAddress.Loopback;
             }
-            
+
             try
             {
                 ExternalIp = await InitializeExternalIp();
             }
             catch (Exception)
             {
-                ExternalIp = IPAddress.None; 
+                ExternalIp = IPAddress.None;
             }
         }
-        
+
         public IPAddress LocalIp { get; private set; }
 
         public IPAddress ExternalIp { get; private set; }
@@ -75,7 +75,7 @@ namespace Nethermind.Network
                 yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
                 yield return new WebIPSource("http://api.ipify.org", _logManager);
             }
-            
+
             try
             {
                 foreach (IIPSource s in GetIPSources())
@@ -90,9 +90,9 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error("Error while getting external ip", e);
+                if (_logger.IsError) _logger.Error("Error while getting external ip", e);
             }
-            
+
             return IPAddress.Loopback;
         }
 
@@ -101,9 +101,9 @@ namespace Nethermind.Network
             IEnumerable<IIPSource> GetIPSources()
             {
                 yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
-                yield return new SocketIPSource( _logManager);
+                yield return new SocketIPSource(_logManager);
             }
-            
+
             try
             {
                 foreach (var s in GetIPSources())
@@ -117,9 +117,9 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error("Error while getting local ip", e);
+                if (_logger.IsError) _logger.Error("Error while getting local ip", e);
             }
-            
+
             return IPAddress.Loopback;
         }
     }

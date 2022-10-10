@@ -12,35 +12,35 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.WebSockets
     public class NdmWebSocketsPlugin : INdmWebSocketsPlugin
     {
         public string? Scheme { get; private set; }
-        public string? Host { get; private set;}
+        public string? Host { get; private set; }
         public int? Port { get; private set; }
         public string? Name { get; private set; }
         public string? Type { get; private set; }
         public string? Resource { get; private set; }
-        public IWebSocketsAdapter? WebSocketsAdapter { get; set; } 
-        private bool _initialized = false; 
+        public IWebSocketsAdapter? WebSocketsAdapter { get; set; }
+        private bool _initialized = false;
         private ILogger? _logger;
 
         public Task InitAsync(ILogManager logManager)
         {
-            if(string.IsNullOrEmpty(Host))
+            if (string.IsNullOrEmpty(Host))
             {
                 throw new Exception($"Host was not specified for NDM websockets plugin: {Name}");
             }
 
-            if(Port == null)
+            if (Port == null)
             {
                 throw new Exception($"Port was not specified for NDM websockets plugin: {Name}, Host: {Host}");
             }
 
             _logger = logManager.GetClassLogger();
 
-            if(WebSocketsAdapter == null)
+            if (WebSocketsAdapter == null)
             {
                 WebSocketsAdapter = new WebSocketsAdapter();
             }
 
-            if(_logger.IsInfo) _logger.Info($"Initialized NDM websockets plugin: {Name}");
+            if (_logger.IsInfo) _logger.Info($"Initialized NDM websockets plugin: {Name}");
 
             _initialized = true;
             return Task.CompletedTask;
@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.WebSockets
 
         public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args, CancellationToken? token = null)
         {
-            if(!_initialized)
+            if (!_initialized)
             {
                 throw new Exception($"Plugin: {Name} has not been initialized yet.");
             }
@@ -62,17 +62,17 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.WebSockets
             var uri = BuildUri();
             await WebSocketsAdapter.ConnectAsync(uri, cancellationToken);
 
-            if(_logger.IsInfo) _logger.Info($"Connected to websockets host: {Host}");
+            if (_logger.IsInfo) _logger.Info($"Connected to websockets host: {Host}");
 
             ArraySegment<byte> bytesToReceive = new ArraySegment<byte>();
 
-            while(WebSocketsAdapter.State == WebSocketState.Open && enabled() && !cancellationToken.IsCancellationRequested)
+            while (WebSocketsAdapter.State == WebSocketState.Open && enabled() && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
                     await WaitForWebsocketsResponseAsync(bytesToReceive, cancellationToken, callback);
                 }
-                catch(ArgumentNullException)
+                catch (ArgumentNullException)
                 {
                     continue;
                 }

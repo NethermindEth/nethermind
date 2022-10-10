@@ -43,13 +43,13 @@ namespace Nethermind.DataMarketplace.Initializers
             _ethRequestService = ethRequestService ?? throw new ArgumentNullException(nameof(ethRequestService));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public IProtocolHandler Create(ISession session)
         {
             IProtocolHandler handler = _subprotocolFactory.Create(session);
             handler.ProtocolInitialized += (sender, args) =>
             {
-                var ndmEventArgs = (NdmProtocolInitializedEventArgs) args;
+                var ndmEventArgs = (NdmProtocolInitializedEventArgs)args;
                 _protocolValidator.DisconnectOnInvalid(Protocol.Ndm, session, ndmEventArgs);
                 if (_logger.IsTrace) _logger.Trace($"NDM version {handler.ProtocolVersion}: {session.RemoteNodeId}, host: {session.Node.Host}");
                 if (string.IsNullOrWhiteSpace(_ethRequestService.FaucetHost) ||

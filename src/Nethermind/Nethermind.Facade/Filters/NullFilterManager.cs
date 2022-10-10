@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Filters
         private NullFilterManager()
         {
         }
-        
+
         public FilterLog[] GetLogs(int filterId)
         {
             return Array.Empty<FilterLog>();

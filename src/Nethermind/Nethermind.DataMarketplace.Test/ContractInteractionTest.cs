@@ -129,10 +129,10 @@ namespace Nethermind.DataMarketplace.Test
             _bridge = new BlockchainBridge(processor);
 
             TxReceipt receipt = await DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
-            ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
+            ((NdmConfig)_ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             TransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _txPool = new TxPool.TxPool(
@@ -225,7 +225,7 @@ namespace Nethermind.DataMarketplace.Test
             public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
-            
+
             public BlockHeader FindBestSuggestedHeader()
             {
                 throw new NotImplementedException();
@@ -234,177 +234,177 @@ namespace Nethermind.DataMarketplace.Test
             public long? BestState { get; set; }
             {
                 throw new NotImplementedException();
-            }
+        }
 
-            public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        {
+            return (new TxReceipt(), new Transaction
             {
-                return (new TxReceipt(), new Transaction
-                {
-                    Hash = txHash
-                }, null);
-            }
-            
-            private BlockReceiptsTracer _receiptsTracer;
+                Hash = txHash
+            }, null);
+        }
 
-            private int _txIndex;
+        private BlockReceiptsTracer _receiptsTracer;
 
-            public ValueTask<(Keccak Hash, AddTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        private int _txIndex;
+
+        public ValueTask<(Keccak Hash, AddTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            tx.Nonce = GetNonce(tx.SenderAddress);
+            tx.Hash = tx.CalculateHash();
+            _headBlock.Transactions[_txIndex++] = tx;
+            _receiptsTracer.StartNewTxTrace(tx);
+            _processor.Execute(tx, Head?.Header, _receiptsTracer);
+            _receiptsTracer.EndTxTrace();
+            return new ValueTask<(Keccak, AddTxResult?)>((tx.CalculateHash(), null));
+        }
+
+        public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
+
+        public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
+        {
+            CallOutputTracer tracer = new CallOutputTracer();
+            _processor.Execute(transaction, Head?.Header, tracer);
+            return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
+        }
+
+        public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Facade.BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ulong GetChainId()
+        {
+            return 1;
+        }
+
+        public byte[] GetCode(Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Account GetAccount(Keccak stateRoot, Address address)
+        {
+            return Account.TotallyEmpty.WithChangedNonce(GetNonce(stateRoot, address));
+        }
+
+        public UInt256 GetNonce(Keccak stateRoot, Address address)
+        {
+            return GetNonce(address);
+        }
+
+        public UInt256 GetBalance(Keccak stateRoot, Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Keccak GetStorageRoot(Keccak stateRoot, Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
+        {
+            throw new NotImplementedException();
+        }
+
+        public byte[] GetCode(Keccak stateRoot, Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        public byte[] GetCode(Keccak codeHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        Dictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>();
+
+        public UInt256 GetNonce(Address address)
+        {
+            if (!_nonces.ContainsKey(address))
             {
-                tx.Nonce = GetNonce(tx.SenderAddress);
-                tx.Hash = tx.CalculateHash();
-                _headBlock.Transactions[_txIndex++] = tx;
-                _receiptsTracer.StartNewTxTrace(tx);
-                _processor.Execute(tx, Head?.Header, _receiptsTracer);
-                _receiptsTracer.EndTxTrace();
-                return new ValueTask<(Keccak, AddTxResult?)>((tx.CalculateHash(), null));
+                _nonces[address] = 0;
             }
 
-            public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
+            return _nonces[address];
+        }
 
-            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
-            {
-                CallOutputTracer tracer = new CallOutputTracer();
-                _processor.Execute(transaction, Head?.Header, tracer);
-                return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
-            }
+        public void IncrementNonce(Address address)
+        {
+            var nonce = GetNonce(address);
+            _nonces[address] = nonce + 1;
+        }
 
-            public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
-            {
-                throw new NotImplementedException();
-            }
+        public int NewBlockFilter()
+        {
+            throw new NotImplementedException();
+        }
 
-            public Facade.BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
-            {
-                throw new NotImplementedException();
-            }
+        public int NewPendingTransactionFilter()
+        {
+            throw new NotImplementedException();
+        }
 
-            public ulong GetChainId()
-            {
-                return 1;
-            }
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+        {
+            throw new NotImplementedException();
+        }
 
-            public byte[] GetCode(Address address)
-            {
-                throw new NotImplementedException();
-            }
+        public void UninstallFilter(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public Account GetAccount(Keccak stateRoot, Address address)
-            {
-                return Account.TotallyEmpty.WithChangedNonce(GetNonce(stateRoot, address));
-            }
+        public bool FilterExists(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public UInt256 GetNonce(Keccak stateRoot, Address address)
-            {
-                return GetNonce(address);
-            }
+        public FilterLog[] GetLogFilterChanges(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public UInt256 GetBalance(Keccak stateRoot, Address address)
-            {
-                throw new NotImplementedException();
-            }
+        public Keccak[] GetBlockFilterChanges(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public Keccak GetStorageRoot(Keccak stateRoot, Address address)
-            {
-                throw new NotImplementedException();
-            }
+        public Keccak[] GetPendingTransactionFilterChanges(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
-            {
-                throw new NotImplementedException();
-            }
+        public FilterType GetFilterType(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public byte[] GetCode(Keccak stateRoot, Address address)
-            {
-                throw new NotImplementedException();
-            }
+        public FilterLog[] GetFilterLogs(int filterId)
+        {
+            throw new NotImplementedException();
+        }
 
-            public byte[] GetCode(Keccak codeHash)
-            {
-                throw new NotImplementedException();
-            }
+        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics = null, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
 
-            Dictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>();
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+        {
+            throw new NotImplementedException();
+        }
 
-            public UInt256 GetNonce(Address address)
-            {
-                if (!_nonces.ContainsKey(address))
-                {
-                    _nonces[address] = 0;
-                }
-
-                return _nonces[address];
-            }
-
-            public void IncrementNonce(Address address)
-            {
-                var nonce = GetNonce(address);
-                _nonces[address] = nonce + 1;
-            }
-
-            public int NewBlockFilter()
-            {
-                throw new NotImplementedException();
-            }
-
-            public int NewPendingTransactionFilter()
-            {
-                throw new NotImplementedException();
-            }
-
-            public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void UninstallFilter(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool FilterExists(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public FilterLog[] GetLogFilterChanges(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Keccak[] GetBlockFilterChanges(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Keccak[] GetPendingTransactionFilterChanges(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public FilterType GetFilterType(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public FilterLog[] GetFilterLogs(int filterId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics = null, CancellationToken cancellationToken = default)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
-            {
-                throw new NotImplementedException();
-            }
-
-            public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
-            {
-                throw new NotImplementedException();
-            }
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
+}
 }

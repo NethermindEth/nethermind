@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Pending = info.Pending.Sum(t => t.Value.Count);
             Queued = info.Queued.Sum(t => t.Value.Count);
         }
-        
+
         public int Pending { get; set; }
         public int Queued { get; set; }
     }

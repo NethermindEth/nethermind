@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,19 @@ using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc
 {
+    public class MethodStats
+    {
+        public int Successes { get; set; }
+        public int Errors { get; set; }
+        public decimal AvgTimeOfErrors { get; set; }
+        public decimal AvgTimeOfSuccesses { get; set; }
+        public long MaxTimeOfError { get; set; }
+        public long MaxTimeOfSuccess { get; set; }
+        public decimal TotalSize { get; set; }
+        public decimal AvgSize => Calls == 0 ? 0 : TotalSize / Calls;
+        public int Calls => Successes + Errors;
+    }
+
     public interface IJsonRpcLocalStats
     {
         void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null);
@@ -30,5 +43,7 @@ namespace Nethermind.JsonRpc
                 ReportCall(reports[i]);
             }
         }
+
+        MethodStats GetMethodStats(string methodName);
     }
 }

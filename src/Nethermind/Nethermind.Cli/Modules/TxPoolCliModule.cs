@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,19 +24,19 @@ namespace Nethermind.Cli.Modules
         public TxPoolCliModule(ICliEngine engine, INodeManager nodeManager) : base(engine, nodeManager)
         {
         }
-        
+
         [CliProperty("txpool", "status")]
         public JsValue Status()
         {
             return NodeManager.PostJint("txpool_status").Result;
         }
-        
+
         [CliProperty("txpool", "content")]
         public JsValue Content()
         {
             return NodeManager.PostJint("txpool_content").Result;
         }
-        
+
         [CliProperty("txpool", "inspect")]
         public JsValue Inspect()
         {

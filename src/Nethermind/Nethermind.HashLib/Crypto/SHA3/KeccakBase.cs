@@ -76,7 +76,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
             // TODO: review discussions on whether it is always safe (should be)
             ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data.Slice(a_index, _blockSize));
             //ulong[] data= Converters.ConvertBytesToULongs(a_data, a_index, BlockSize);
-            
+
             for (int j = 0; j < _blockSize / 8; j++)
                 m_state[j] ^= data[j];
 
@@ -149,11 +149,11 @@ namespace Nethermind.HashLib.Crypto.SHA3
             Aso = m_state[23];
             Asu = m_state[24];
 
-            Ca = Aba^Aga^Aka^Ama^Asa;
-            Ce = Abe^Age^Ake^Ame^Ase;
-            Ci = Abi^Agi^Aki^Ami^Asi;
-            Co = Abo^Ago^Ako^Amo^Aso;
-            Cu = Abu^Agu^Aku^Amu^Asu;
+            Ca = Aba ^ Aga ^ Aka ^ Ama ^ Asa;
+            Ce = Abe ^ Age ^ Ake ^ Ame ^ Ase;
+            Ci = Abi ^ Agi ^ Aki ^ Ami ^ Asi;
+            Co = Abo ^ Ago ^ Ako ^ Amo ^ Aso;
+            Cu = Abu ^ Agu ^ Aku ^ Amu ^ Asu;
             Da = Cu ^ (Ce << 1) ^ (Ce >> (64 - 1));
             De = Ca ^ (Ci << 1) ^ (Ci >> (64 - 1));
             Di = Ce ^ (Co << 1) ^ (Co >> (64 - 1));
@@ -2736,7 +2736,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
             return result;
         }
-        
+
         protected override void GetResultUInts(Span<uint> output)
         {
             for (int i = 0; i < output.Length / 2; i = i + 1)

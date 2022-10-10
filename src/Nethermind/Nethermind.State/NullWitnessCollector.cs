@@ -26,7 +26,7 @@ namespace Nethermind.State
         private NullWitnessCollector() { }
 
         public static NullWitnessCollector Instance { get; } = new();
-        
+
         public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
 
         public void Add(Keccak hash)
@@ -36,16 +36,16 @@ namespace Nethermind.State
         }
 
         public void Reset() { }
-        
+
         public void Persist(Keccak blockHash) { }
 
-        class EmptyDisposable: IDisposable
+        class EmptyDisposable : IDisposable
         {
             public void Dispose()
             {
             }
         }
-        
+
         public IDisposable TrackOnThisThread() { return new EmptyDisposable(); }
 
         public Keccak[]? Load(Keccak blockHash)

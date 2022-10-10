@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test
             _staticNodesManager.Nodes.Count().Should().Be(1);
             eventRaised.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task is_static_should_report_correctly()
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test
             _staticNodesManager.Nodes.Count().Should().Be(0);
             eventRaised.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task init_should_load_static_nodes_from_empty_file()
         {

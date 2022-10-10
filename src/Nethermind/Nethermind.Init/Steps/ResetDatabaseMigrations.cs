@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,13 +38,13 @@ namespace Nethermind.Init.Steps
         {
             _api = api;
         }
-        
+
         public Task Execute(CancellationToken cancellationToken)
         {
             _receiptStorage = _api.ReceiptStorage ?? throw new StepDependencyException(nameof(_api.ReceiptStorage));
             _blockTree = _api.BlockTree ?? throw new StepDependencyException(nameof(_api.BlockTree));
             _chainLevelInfoRepository = _api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
-            
+
             IInitConfig initConfig = _api.Config<IInitConfig>();
 
             if (initConfig.StoreReceipts)
@@ -54,11 +54,11 @@ namespace Nethermind.Init.Steps
 
             return Task.CompletedTask;
         }
-        
+
         private void ResetMigrationIndexIfNeeded()
         {
             ReceiptsRecovery recovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
-            
+
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {
                 long blockNumber = _blockTree.Head?.Number ?? 0;

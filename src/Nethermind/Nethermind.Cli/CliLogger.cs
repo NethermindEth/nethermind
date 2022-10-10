@@ -28,7 +28,7 @@ namespace Nethermind.Cli
         {
             _cliConsole = cliConsole;
         }
-        
+
         public void Info(string text)
         {
             throw new NotImplementedException();

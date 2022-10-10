@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -138,7 +138,7 @@ namespace Nethermind.Evm.Test
         {
             HeaderDecoder decoder = new();
             BlockHeader blockHeader = Build.A.BlockHeader
-                .WithBloom(new Bloom(Enumerable.Repeat((byte) 1, 256).ToArray())).TestObject;
+                .WithBloom(new Bloom(Enumerable.Repeat((byte)1, 256).ToArray())).TestObject;
             Rlp rlp = decoder.Encode(blockHeader);
             return rlp;
         }

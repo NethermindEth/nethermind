@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,12 +33,12 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private T[] _localData = Array.Empty<T>();
 
         public ContractDataStoreWithLocalData(
-            IContractDataStoreCollection<T> collection, 
-            IDataContract<T> dataContract, 
-            IBlockTree blockTree, 
+            IContractDataStoreCollection<T> collection,
+            IDataContract<T> dataContract,
+            IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager,
-            ILocalDataSource<IEnumerable<T>> localDataSource) 
+            ILocalDataSource<IEnumerable<T>> localDataSource)
             : base(collection, dataContract ?? new EmptyDataContract<T>(), blockTree, receiptFinder, logManager)
         {
             _localDataSource = localDataSource ?? throw new ArgumentNullException(nameof(localDataSource));
@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         }
 
         public event EventHandler Loaded;
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void OnChanged(object sender, EventArgs e)
         {

@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Proxy.Models
 
         public static BlockParameterModel FromNumber(long number) => new()
         {
-            Number = (UInt256?) number
+            Number = (UInt256?)number
         };
 
         public static BlockParameterModel FromNumber(in UInt256 number) => new()
@@ -48,12 +48,12 @@ namespace Nethermind.Facade.Proxy.Models
         {
             Type = "pending"
         };
-        
+
         public static BlockParameterModel Finalized => new()
         {
             Type = "finalized"
         };
-        
+
         public static BlockParameterModel Safe => new()
         {
             Type = "safe"

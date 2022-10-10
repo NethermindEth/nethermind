@@ -30,8 +30,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void sum_of_previous_log_indexes_test()
         {
-            LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
-            
+            LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
+
             TxReceipt receipt1 = new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasUsedTotal = 2000,
                 Logs = logEntries
             };
-        
+
             TxReceipt receipt2 = new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasUsedTotal = 2000,
                 Logs = logEntries
             };
-            
+
             TxReceipt receipt3 = new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
@@ -79,12 +79,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasUsedTotal = 2000,
                 Logs = logEntries
             };
-            
-            TxReceipt[] receipts = {receipt1, receipt2, receipt3};
+
+            TxReceipt[] receipts = { receipt1, receipt2, receipt3 };
             int index = 2;
-            
+
             int sum = receipts.GetBlockLogFirstIndex(index);
-            
+
             Assert.AreEqual(sum, 4);
         }
     }

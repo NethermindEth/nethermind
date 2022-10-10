@@ -86,7 +86,7 @@ namespace Nethermind.Grpc.Servers
             {
                 return Task.CompletedTask;
             }
-            
+
             var payload = _jsonSerializer.Serialize(data);
             if (string.IsNullOrWhiteSpace(client))
             {

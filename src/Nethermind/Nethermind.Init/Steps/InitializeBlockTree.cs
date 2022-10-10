@@ -87,14 +87,14 @@ namespace Nethermind.Init.Steps
                 : NullReceiptStorage.Instance;
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
-            
+
             LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
                 receiptStorage,
                 bloomStorage,
                 _get.LogManager,
-                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider), 
+                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
                 1024);
 
             _set.LogFinder = logFinder;

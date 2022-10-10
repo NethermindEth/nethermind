@@ -511,7 +511,7 @@ namespace Nethermind.Synchronization.Peers
                     && ourNumber != 0
                     && peerInfo.PeerClientType != NodeClientType.Nethermind
                     && peerInfo.PeerClientType != NodeClientType.Trinity)
-                    // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
+                // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
@@ -549,22 +549,62 @@ namespace Nethermind.Synchronization.Peers
 
             if (PeerCount == PeerMaxCount)
             {
-                long lowestBlockNumber = long.MaxValue;
-                PeerInfo? worstPeer = null;
-                foreach (PeerInfo peerInfo in NonStaticPeers)
-                {
-                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || PriorityPeerCount >= PriorityPeerMaxCount))
-                    {
-                        lowestBlockNumber = peerInfo.HeadNumber;
-                        worstPeer = peerInfo;
-                    }
-                }
-
-                peersDropped++;
-                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LOWEST NUMBER");
+                peersDropped += DropWorstPeer();
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+        }
+
+        private int DropWorstPeer()
+        {
+            string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
+            {
+                if (toCompare.HeadNumber < currentPeer.HeadNumber)
+                {
+                    return "LOWEST NUMBER";
+                }
+
+                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                {
+                    return "LOWEST DIFFICULTY";
+                }
+
+                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
+                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
+                {
+                    return "HIGHEST PING";
+                }
+
+                return null;
+            }
+
+            bool canDropPriorityPeer = PriorityPeerCount >= PriorityPeerMaxCount;
+
+            PeerInfo? worstPeer = null;
+            string? worstReason = "DEFAULT";
+
+            foreach (PeerInfo peerInfo in NonStaticPeers)
+            {
+                if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
+                {
+                    continue;
+                }
+
+                if (worstPeer == null)
+                {
+                    worstPeer = peerInfo;
+                }
+
+                string? peerWorstReason = IsPeerWorstWithReason(worstPeer, peerInfo);
+                if (peerWorstReason != null)
+                {
+                    worstPeer = peerInfo;
+                    worstReason = peerWorstReason;
+                }
+            }
+
+            worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, $"PEER REVIEW / {worstReason}");
+            return 1;
         }
 
         public void SignalPeersChanged()
@@ -592,7 +632,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         if (firstToComplete == delayTask)
                         {
-                            ReportRefreshFailed(syncPeer, "timeout");
+                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
                         }
                         else if (firstToComplete.IsFaulted)
                         {
@@ -698,7 +738,17 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+
+            if (exception is OperationCanceledException || exception is TimeoutException)
+            {
+                // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
+                // or we have some connection issue
+                ReportWeakPeer(new PeerInfo(syncPeer), AllocationContexts.All);
+            }
+            else
+            {
+                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+            }
         }
 
         public void Dispose()

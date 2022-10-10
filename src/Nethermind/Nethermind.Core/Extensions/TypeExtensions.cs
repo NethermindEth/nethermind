@@ -33,21 +33,21 @@ namespace Nethermind.Core.Extensions
         }
 
         private static readonly ISet<Type> _valueTupleTypes = new HashSet<Type>(
-            new Type[] { 
-                typeof(ValueTuple<>), 
+            new Type[] {
+                typeof(ValueTuple<>),
                 typeof(ValueTuple<,>),
                 typeof(ValueTuple<,,>),
                 typeof(ValueTuple<,,,>),
-                typeof(ValueTuple<,,,,>), 
+                typeof(ValueTuple<,,,,>),
                 typeof(ValueTuple<,,,,,>),
-                typeof(ValueTuple<,,,,,,>), 
+                typeof(ValueTuple<,,,,,,>),
                 typeof(ValueTuple<,,,,,,,>)
             }
         );
 
         public static bool IsValueTuple(this Type type) =>
             type.IsGenericType && _valueTupleTypes.Contains(type.GetGenericTypeDefinition());
-        
+
         public static bool CanBeAssignedNull(this Type type) =>
             !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 

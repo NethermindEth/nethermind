@@ -55,8 +55,8 @@ namespace Nethermind.Serialization.Json
 
         public override ulong ReadJson(JsonReader reader, Type objectType, ulong existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            return reader.Value is ulong || reader.Value is int 
-                ? (ulong)reader.Value 
+            return reader.Value is ulong || reader.Value is int
+                ? (ulong)reader.Value
                 : FromString(reader.Value?.ToString());
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException("null cannot be assigned to long");
             }
-            
+
             if (s == "0x0")
             {
                 return 0UL;

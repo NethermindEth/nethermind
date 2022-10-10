@@ -6,7 +6,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
     internal static class MongoForTest
     {
         public static Mongo2GoProvider Provider;
-        
+
         static MongoForTest()
         {
             NdmMongoConfig mongoConfig = new NdmMongoConfig();

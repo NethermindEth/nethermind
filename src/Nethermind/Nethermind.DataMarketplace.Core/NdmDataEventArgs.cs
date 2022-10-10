@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Core
     public class NdmDataEventArgs : EventArgs
     {
         public DataAssetData DataAssetData { get; }
-        
+
         public NdmDataEventArgs(DataAssetData dataAssetData)
         {
             DataAssetData = dataAssetData;

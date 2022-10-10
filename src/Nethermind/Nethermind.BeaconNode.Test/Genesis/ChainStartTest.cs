@@ -72,7 +72,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IDepositStore depositStore = new DepositStore(cryptographyService, chainConstants);
-            
+
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(
                 loggerFactory.CreateLogger<BeaconChainUtility>(),
                 chainConstants, miscellaneousParameterOptions, initialValueOptions, gweiValueOptions,

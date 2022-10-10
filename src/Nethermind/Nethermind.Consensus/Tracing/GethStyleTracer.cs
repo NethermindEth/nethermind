@@ -39,9 +39,9 @@ namespace Nethermind.Consensus.Tracing
         private readonly IReceiptStorage _receiptStorage;
 
         public GethStyleTracer(
-            IBlockchainProcessor processor, 
-            IReceiptStorage receiptStorage, 
-            IBlockTree blockTree, 
+            IBlockchainProcessor processor,
+            IReceiptStorage receiptStorage,
+            IBlockTree blockTree,
             ChangeableTransactionProcessorAdapter transactionProcessorAdapter)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.Tracing
             block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
             ITransactionProcessorAdapter currentAdapter = _transactionProcessorAdapter.CurrentAdapter;
             _transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(_transactionProcessorAdapter.TransactionProcessor);
-            
+
             try
             {
                 return Trace(block, tx.Hash, cancellationToken, options);
@@ -116,7 +116,7 @@ namespace Nethermind.Consensus.Tracing
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             if (tx.Hash == null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
-            
+
             block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
             GethLikeBlockTracer blockTracer = new(tx.Hash, options);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Tracing
         private GethLikeTxTrace? Trace(Block block, Keccak? txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
             if (txHash == null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
-            
+
             GethLikeBlockTracer listener = new(txHash, options);
             _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().SingleOrDefault();
@@ -154,7 +154,7 @@ namespace Nethermind.Consensus.Tracing
                 {
                     throw new InvalidOperationException("Cannot trace blocks with invalid parents");
                 }
-                
+
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 

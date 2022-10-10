@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             Action action = () => factory.CreateOrFail();
             action.Should().Throw<MissingMethodException>();
         }
-        
+
         [Test]
         public void should_throw_an_exception_when_type_does_not_implement_ndm_initializer_interface()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             Action action = () => factory.CreateOrFail();
             action.Should().Throw<MissingMethodException>();
         }
-        
+
         [Test]
         public void should_create_initializer_for_valid_type()
         {

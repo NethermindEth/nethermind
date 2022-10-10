@@ -36,7 +36,7 @@ namespace Nethermind.Analytics
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public ResultWrapper<UInt256> analytics_verifySupply()
         {
             SupplyVerifier supplyVerifier = new SupplyVerifier(_logManager.GetClassLogger());

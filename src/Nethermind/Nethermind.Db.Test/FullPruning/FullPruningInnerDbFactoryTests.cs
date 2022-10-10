@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,19 +38,19 @@ namespace Nethermind.Db.Test.FullPruning
             test.TestedDbFactory.CreateDb(test.RocksDbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 1)));
         }
-        
+
         [Test]
         public void if_old_db_present_creates_no_index_db()
         {
             TestContext test = new();
             test.Directory.Exists.Returns(true);
-            test.Directory.EnumerateFiles().Returns(new[] {Substitute.For<IFileInfo>()});
+            test.Directory.EnumerateFiles().Returns(new[] { Substitute.For<IFileInfo>() });
             test.TestedDbFactory.CreateDb(test.RocksDbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test)));
             test.TestedDbFactory.CreateDb(test.RocksDbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 0)));
         }
-        
+
         [Test]
         public void if_new_db_present_creates_next_index_db()
         {
@@ -61,7 +61,7 @@ namespace Nethermind.Db.Test.FullPruning
             IDirectoryInfo dir11 = Substitute.For<IDirectoryInfo>();
             dir11.Name.Returns(11.ToString());
             IDirectoryInfo ignoredDir = Substitute.For<IDirectoryInfo>();
-            test.Directory.EnumerateDirectories().Returns(new[] {dir10, ignoredDir, dir11});
+            test.Directory.EnumerateDirectories().Returns(new[] { dir10, ignoredDir, dir11 });
             test.TestedDbFactory.CreateDb(test.RocksDbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 10)));
             test.TestedDbFactory.CreateDb(test.RocksDbSettings);
@@ -80,7 +80,7 @@ namespace Nethermind.Db.Test.FullPruning
         private class TestContext
         {
             private FullPruningInnerDbFactory _testedDbFactory;
-            
+
             public RocksDbSettings RocksDbSettings = new("name", "path");
             public string Path => "path";
             public IRocksDbFactory RocksDbFactory { get; } = Substitute.For<IRocksDbFactory>();

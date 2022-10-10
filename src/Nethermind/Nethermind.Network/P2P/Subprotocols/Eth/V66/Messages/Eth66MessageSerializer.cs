@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         {
             _ethMessageSerializer = ethMessageSerializer;
         }
-        
+
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
         {
             int length = GetLength(message, out int contentLength);

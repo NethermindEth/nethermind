@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Db.Blooms
         private NullBloomStorage()
         {
         }
-        
+
         public static NullBloomStorage Instance { get; } = new();
         public long MinBlockNumber { get; } = long.MaxValue;
         public long MaxBlockNumber { get; } = 0;
@@ -41,12 +41,12 @@ namespace Nethermind.Db.Blooms
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => false;
 
         public IEnumerable<Average> Averages { get; } = Array.Empty<Average>();
-        
+
 
         private class NullBloomEnumerator : IBloomEnumeration
         {
             public IEnumerator<Core.Bloom> GetEnumerator() => Enumerable.Empty<Core.Bloom>().GetEnumerator();
-            
+
             public bool TryGetBlockNumber(out long blockNumber)
             {
                 blockNumber = default;

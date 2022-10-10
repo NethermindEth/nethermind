@@ -37,8 +37,8 @@ namespace Nethermind.Evm.Test
         public void Sgt(int a, int b, int res)
         {
             byte[] code = Prepare.EvmCode
-                .PushData((UInt256) new Int256.Int256(b))
-                .PushData((UInt256) new Int256.Int256(a))
+                .PushData((UInt256)new Int256.Int256(b))
+                .PushData((UInt256)new Int256.Int256(a))
                 .Op(Instruction.SMOD)
                 .PushData(0)
                 .Op(Instruction.SSTORE)

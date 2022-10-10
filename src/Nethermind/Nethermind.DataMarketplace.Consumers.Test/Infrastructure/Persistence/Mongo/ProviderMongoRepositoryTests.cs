@@ -21,7 +21,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.M
             var repo = new ProviderMongoRepository(database);
             await repo.GetDataAssetsAsync();
         }
-       
+
         [Test]
         public async Task Can_get_providers_from_deposits()
         {

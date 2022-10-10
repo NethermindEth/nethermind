@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,16 +57,16 @@ namespace Nethermind.AuRa.Test
             blockGasLimitContract3.Activation.Returns(10);
             blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
 
-            MiningConfig config = new() {TargetBlockGasLimit = 4000000};
+            MiningConfig config = new() { TargetBlockGasLimit = 4000000 };
             AuRaContractGasLimitOverride gasLimitOverride = new(
-                new List<IBlockGasLimitContract> {blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3}, 
-                new AuRaContractGasLimitOverride.Cache(), 
+                new List<IBlockGasLimitContract> { blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3 },
+                new AuRaContractGasLimitOverride.Cache(),
                 minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
-                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config), 
+                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(3999999).WithNumber(blockNumber - 1).TestObject;
-            
+
             gasLimitOverride.GetGasLimit(header).Should().Be(expected);
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,17 +24,17 @@ namespace Nethermind.BeaconNode.OApi
     internal static class LogDebug
     {
         // 64xx debug - validator
-        
+
         public static readonly Action<ILogger, Exception?> NodeGenesisTimeRequested =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6480, nameof(NodeGenesisTimeRequested)),
                 "Node genesis time requested.");
-        
+
         public static readonly Action<ILogger, Exception?> NodeForkRequested =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6481, nameof(NodeForkRequested)),
                 "Node fork requested.");
-        
+
         public static readonly Action<ILogger, Exception?> NodeSyncingRequested =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6482, nameof(NodeSyncingRequested)),
@@ -44,7 +44,7 @@ namespace Nethermind.BeaconNode.OApi
             LoggerMessage.Define<ulong, ulong, string>(LogLevel.Debug,
                 new EventId(6483, nameof(NewAttestationRequested)),
                 "New attestation requested for slot {AttestationSlot}, index {AttestationIndex}, for validator {ValidatorPublicKey}.");
-        
+
         public static readonly Action<ILogger, Slot?, CommitteeIndex?, string?, BlsSignature?, Exception?>
             AttestationPublished =
                 LoggerMessage.Define<Slot?, CommitteeIndex?, string?, BlsSignature?>(LogLevel.Debug,

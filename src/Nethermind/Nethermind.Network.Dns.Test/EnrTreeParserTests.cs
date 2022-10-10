@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ public class EnrTreeParserTests
         string actual = root.ToString();
         Assert.AreEqual(enrTreeRootText, actual);
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_branch(string enrBranchText, int hashCount)
@@ -39,7 +39,7 @@ public class EnrTreeParserTests
         Assert.AreEqual(hashCount, branch.Hashes.Length);
         Assert.AreEqual(enrBranchText, actual);
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_leaf(string enrBranchText, int hashCount)
@@ -49,7 +49,7 @@ public class EnrTreeParserTests
         Assert.AreEqual(hashCount, branch.Hashes.Length);
         Assert.AreEqual(enrBranchText, actual);
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_linked_tree(string enrBranchText, int hashCount)

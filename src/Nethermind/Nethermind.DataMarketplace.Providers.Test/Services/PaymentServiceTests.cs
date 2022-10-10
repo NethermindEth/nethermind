@@ -40,7 +40,7 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Providers.Test.Services
 {
     internal class PaymentServiceTests : ContractInteractionTest
-    {       
+    {
         [SetUp]
         public void Setup()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = 1547051589;
-            BigInteger value = (BigInteger) 336.Ether() / 100;
+            BigInteger value = (BigInteger)336.Ether() / 100;
             uint units = 336U;
             byte[] salt = new byte[16];
 
@@ -72,16 +72,16 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, assetId.Bytes, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             Keccak depositId = Keccak.Compute(depositData);
 
-            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256) value);
+            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256)value);
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
 
             // calls revert and cannot reuse the same state - use only for manual debugging
-//            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
+            //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256) value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
+            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256)value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
             Assert.AreEqual(deposit.Id, depositId, "depositID");
 
             await ClaimPaymentFor(dataRequest, depositId, 0, 27, _providerAccount);
@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = 1547051589;
-            BigInteger value = (BigInteger) 336.Ether() / 100;
+            BigInteger value = (BigInteger)336.Ether() / 100;
             uint units = 336U;
             byte[] salt = new byte[16];
 
@@ -113,16 +113,16 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, assetId.Bytes, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             Keccak depositId = Keccak.Compute(depositData);
 
-            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256) value);
+            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256)value);
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
 
             // calls revert and cannot reuse the same state - use only for manual debugging
-//            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
+            //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256) value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
+            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256)value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
             Assert.AreEqual(deposit.Id, depositId, "depositID");
 
             await ClaimPaymentFor(dataRequest, depositId, 0, 27, TestItem.AddressA);
@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = 1547051589;
-            BigInteger value = (BigInteger) 336.Ether() / 100;
+            BigInteger value = (BigInteger)336.Ether() / 100;
             uint units = 336U;
             byte[] salt = new byte[16];
 
@@ -154,16 +154,16 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, assetId.Bytes, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             Keccak depositId = Keccak.Compute(depositData);
 
-            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256) value);
+            Deposit deposit = new Deposit(depositId, units, expiryTime, (UInt256)value);
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
 
             // calls revert and cannot reuse the same state - use only for manual debugging
-//            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
+            //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256) value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
+            DataRequest dataRequest = new DataRequest(assetId, units, (UInt256)value, expiryTime, salt, _providerAccount, _consumerAccount, new Signature(new byte[65]));
             Assert.AreEqual(deposit.Id, depositId, "depositID");
 
             await ClaimPaymentFor(dataRequest, depositId, 0, 27, _providerAccount);
@@ -187,13 +187,13 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             UInt256 feeBalanceBefore = _state.GetBalance(_feeAccount);
 
             UnitsRange unitRange = new UnitsRange(start, end);
-            UInt256 value = dataRequest.Units * (UInt256) dataRequest.Value / dataRequest.Units;
+            UInt256 value = dataRequest.Units * (UInt256)dataRequest.Value / dataRequest.Units;
             uint claimedUnits = unitRange.Units;
-            UInt256 claimedValue = claimedUnits * (UInt256) dataRequest.Value / dataRequest.Units;
+            UInt256 claimedValue = claimedUnits * (UInt256)dataRequest.Value / dataRequest.Units;
             byte[] receiptData = _abiEncoder.Encode(AbiEncodingStyle.Packed, _receiptAbiDef, depositId.Bytes, unitRange.From, unitRange.To);
             Signature receiptSig = _wallet.Sign(Keccak.Compute(receiptData), _consumerAccount);
             PaymentClaim paymentClaim = new PaymentClaim(Keccak.Zero, depositId, dataRequest.DataAssetId,
-                "data asset", dataRequest.Units, claimedUnits, unitRange, value, (UInt256) claimedValue,
+                "data asset", dataRequest.Units, claimedUnits, unitRange, value, (UInt256)claimedValue,
                 dataRequest.ExpiryTime, dataRequest.Pepper, _providerAccount, _consumerAccount, receiptSig, 0, Array.Empty<TransactionInfo>(), PaymentClaimStatus.Unknown);
 
             UInt256 gasPrice = 20.GWei();
@@ -203,7 +203,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             UInt256 feeBalanceAfter = _state.GetBalance(_feeAccount);
             UInt256 providerBalanceAfter = _state.GetBalance(_providerAccount);
             UInt256 payToBalanceAfter = _state.GetBalance(payToAccount);
-            
+
             TxReceipt txReceipt = _bridge.GetReceipt(paymentTxHash);
             TestContext.WriteLine("GAS USED FOR PAYMENT CLAIM: {0}", txReceipt.GasUsed);
             TestContext.WriteLine($"(FEE) BALANCE BEFORE: {feeBalanceBefore}");
@@ -211,14 +211,14 @@ namespace Nethermind.DataMarketplace.Providers.Test.Services
             TestContext.WriteLine($"(PAY TO) BALANCE BEFORE: {payToBalanceBefore}");
             TestContext.WriteLine($"(PAY TO) DIFFERENCE: {payToBalanceAfter - payToBalanceBefore}");
             TestContext.WriteLine($"(PROVIDER) BALANCE BEFORE: {providerBalanceBefore}");
-            TestContext.WriteLine($"(PROVIDER) DIFFERENCE: {(BigInteger) providerBalanceAfter - (BigInteger) providerBalanceBefore}");
-            
+            TestContext.WriteLine($"(PROVIDER) DIFFERENCE: {(BigInteger)providerBalanceAfter - (BigInteger)providerBalanceBefore}");
+
             bool isProviderSameAsPayTo = _providerAccount.Equals(payToAccount);
             UInt256 expectedPayment = (8 * dataRequest.Value * (unitRange.To - unitRange.From + 1)) / (dataRequest.Units * 10);
-            UInt256 expectedGasFee = (UInt256) txReceipt.GasUsed * 20.GWei();
+            UInt256 expectedGasFee = (UInt256)txReceipt.GasUsed * 20.GWei();
             UInt256 expectedFee = 2 * dataRequest.Value * unitRange.Units / (dataRequest.Units * 10);
 
-            Assert.AreEqual((UInt256) 20, 100 * expectedFee / (expectedPayment + expectedFee), "fee %");
+            Assert.AreEqual((UInt256)20, 100 * expectedFee / (expectedPayment + expectedFee), "fee %");
             Assert.AreEqual(expectedFee, feeBalanceAfter - feeBalanceBefore, "fee");
             Assert.AreEqual(providerBalanceBefore - expectedGasFee + (isProviderSameAsPayTo ? UInt256.One : UInt256.Zero) * expectedPayment, providerBalanceAfter, $"before: {providerBalanceBefore}, after: {providerBalanceAfter}");
             Assert.AreEqual(payToBalanceBefore - (isProviderSameAsPayTo ? UInt256.One : UInt256.Zero) * expectedGasFee + expectedPayment, payToBalanceAfter, $"before: {payToBalanceBefore}, after: {payToBalanceAfter}");

@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 return null;
             }
 
-            return (ZeroPacket) result[0];
+            return (ZeroPacket)result[0];
         }
     }
 }

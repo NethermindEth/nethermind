@@ -92,7 +92,7 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
-        
+
         public void PushBytes(in ZeroPaddedMemory value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
@@ -101,7 +101,7 @@ namespace Nethermind.Evm
             if (value.Memory.Length != 32)
             {
                 word.Clear();
-                value.Memory.Span.CopyTo( word.Slice(0, value.Memory.Length));
+                value.Memory.Span.CopyTo(word.Slice(0, value.Memory.Length));
             }
             else
             {
@@ -375,7 +375,7 @@ namespace Nethermind.Evm
 
             ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * 32);
             ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * 32);
-            
+
             Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
             Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
             Unsafe.WriteUnaligned(ref top, buffer);
@@ -391,7 +391,7 @@ namespace Nethermind.Evm
 
         [StructLayout(LayoutKind.Explicit, Size = 32)]
         struct Word { }
-        
+
         public List<string> GetStackTrace()
         {
             List<string> stackTrace = new();

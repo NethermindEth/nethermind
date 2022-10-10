@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
         {
             var poolInfo = _txPoolInfoProvider.GetInfo();
             var poolStatus = new TxPoolStatus(poolInfo);
-         
+
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
         }
 

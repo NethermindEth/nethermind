@@ -43,20 +43,20 @@ namespace Nethermind.JsonRpc.Test.Data
             }
             else
             {
-                Assert.True(equalityComparer(item, deserialized), description);    
+                Assert.True(equalityComparer(item, deserialized), description);
             }
         }
-        
+
         protected void TestRoundtrip<T>(T item, JsonConverter<T> converter = null, string description = null)
         {
-            TestRoundtrip(item, (a,b) => a.Equals(b), converter, description);
+            TestRoundtrip(item, (a, b) => a.Equals(b), converter, description);
         }
-        
+
         protected void TestRoundtrip<T>(T item, string description)
         {
             TestRoundtrip(item, null, null, description);
         }
-        
+
         protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, string description = null)
         {
             TestRoundtrip(item, equalityComparer, null, description);

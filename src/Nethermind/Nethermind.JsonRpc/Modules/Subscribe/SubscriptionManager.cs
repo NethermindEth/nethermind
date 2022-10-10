@@ -27,12 +27,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly ISubscriptionFactory _subscriptionFactory;
         private readonly ILogger _logger;
-        
+
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
-        
+
         public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
             _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
             AddToDictionary(subscription);
             AddOrUpdateClientsBag(subscription);
-            
+
             return subscription.Id;
         }
 
@@ -65,13 +65,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 RemoveClientSubscriptions(jsonRpcDuplexClient!);
                 jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
             }
-            
+
             _subscriptionsByJsonRpcClient.AddOrUpdate(subscription.JsonRpcDuplexClient.Id,
                 k =>
                 {
                     if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
                     subscription.JsonRpcDuplexClient.Closed += OnJsonRpcDuplexClientClosed;
-                    return new HashSet<Subscription>() {subscription};
+                    return new HashSet<Subscription>() { subscription };
                 },
                 (k, b) =>
                 {
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsDebug) _logger.Debug($"Failed trying to unsubscribe {subscriptionId}.");
             return false;
         }
-        
+
         private void RemoveFromClientsBag(Subscription subscription)
         {
             if (!_subscriptionsByJsonRpcClient.TryGetValue(subscription.JsonRpcDuplexClient.Id, out var clientsSubscriptionsBag))
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             foreach (var subscriptionInBag in subscriptionsBag)
             {
-                if(_subscriptions.TryRemove(subscriptionInBag.Id, out var subscription)
+                if (_subscriptions.TryRemove(subscriptionInBag.Id, out var subscription)
                    && subscription != null)
                 {
                     subscription.Dispose();

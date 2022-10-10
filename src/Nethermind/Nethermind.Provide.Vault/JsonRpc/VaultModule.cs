@@ -26,7 +26,7 @@ namespace Nethermind.Vault.JsonRpc
     public class VaultModule : IVaultModule
     {
         private readonly ILogger _logger;
-        
+
         private readonly IVaultService _vaultService;
 
         public VaultModule(IVaultService vaultService, ILogManager logManager)
@@ -106,7 +106,7 @@ namespace Nethermind.Vault.JsonRpc
                 return ResultWrapper<bool>.Fail(e);
             }
         }
-        
+
         public async Task<ResultWrapper<string[]>> vault_listVaults()
         {
             try
@@ -188,7 +188,7 @@ namespace Nethermind.Vault.JsonRpc
                 return ResultWrapper<bool>.Fail(e);
             }
         }
-        
+
         public async Task<ResultWrapper<bool>> vault_configure(string scheme, string host, string path, string token)
         {
             try

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -118,8 +118,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!);
                 if (blockParent == null)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Parent of block not available. Starting new beacon header. sync.");
+                    if (_logger.IsInfo)
+                        _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
 
                     StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
 
@@ -340,7 +340,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     blocks = Array.Empty<Block>();
                     return false;
                 }
-                if(_blockTree.IsMainChain(predecessor.Header)) break;
+                if (_blockTree.IsMainChain(predecessor.Header)) break;
                 blocksList.Add(predecessor);
             }
 

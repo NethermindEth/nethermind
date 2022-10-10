@@ -58,12 +58,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 case 1:
                     return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
-                {
-                    ConsumerSession[] previousSessions = sessions.Take(2).ToArray();
+                    {
+                        ConsumerSession[] previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
-                                                             GetUniqueSession(session, previousSessions[0]));
-                }
+                        return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                                 GetUniqueSession(session, previousSessions[0]));
+                    }
             }
         }
 
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 throw new ArgumentNullException(nameof(query));
             }
-            
+
             return Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
         }

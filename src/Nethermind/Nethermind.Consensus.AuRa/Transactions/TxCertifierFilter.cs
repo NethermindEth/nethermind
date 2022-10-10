@@ -47,8 +47,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) =>
             IsCertified(tx, parentHeader) ? AcceptTxResult.Accepted : _notCertifiedFilter.IsAllowed(tx, parentHeader);
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 _certifiedCache.Reset();
                 _cachedBlock = blockHash;
             }
-            
+
             return _certifiedCache;
         }
     }
