@@ -83,8 +83,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             bool isMainChainProcessing = !ForSealing && !isProducingBlock;
             bool isInProcessedRange = _lastProcessedBlockNumber is not null && block.Number - 1 <= _lastProcessedBlockNumber;
+            bool isConsecutiveBlock = _lastProcessedBlockHash is not null && block.ParentHash == _lastProcessedBlockHash;
 
-            if (Validators == null || !isInProcessedRange || isProducingBlock)
+            // this condition is probably redundant because whenever Validators is null, isConsecutiveBlock will be false
+            // but let's leave it here just in case, it does not harm
+            if (Validators is null || !isConsecutiveBlock)
             {
                 var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
@@ -120,7 +123,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     // We need to initialize pending validators from db on each block being produced.
                     _currentPendingValidators = ValidatorStore.PendingValidators;
                 }
-                else if (_lastProcessedBlockHash is null || block.ParentHash != _lastProcessedBlockHash) // either reorg or blocks skipped (like fast sync)
+                else if (!isConsecutiveBlock) // either reorg or blocks skipped (like fast sync)
                     _currentPendingValidators = ValidatorStore.PendingValidators = TryGetInitChangeFromPastBlocks(block.ParentHash);
             }
 
