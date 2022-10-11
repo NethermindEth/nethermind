@@ -96,7 +96,7 @@ namespace Nethermind.Trie
 
             return bytes;
         }
-        public static byte[] CompactToHexEncode(byte[] compactPath)
+        public static byte[] DecodeFromCompactHex(byte[] compactPath)
         {
             if (compactPath.Length == 0)
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Trie
 
         }
 
-        public static byte[] ToCompactHexEncoding(byte[] nibbles)
+        public static byte[] EncodeToCompactHex(byte[] nibbles)
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];

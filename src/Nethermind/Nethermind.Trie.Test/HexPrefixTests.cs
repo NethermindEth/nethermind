@@ -1,20 +1,22 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using FluentAssertions;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -93,9 +95,20 @@ namespace Nethermind.Trie.Test
         [TestCase(new byte[] { 1, 2, 3 }, new byte[] { 16 + 1, 2 * 16 + 3 })]
         public void Compact_hex_encoding_correct_output(byte[] nibbles, byte[] bytes)
         {
-            byte[] result = Nibbles.ToCompactHexEncoding(nibbles);
-            CollectionAssert.AreEqual(bytes, result);
+            Nibbles.EncodeToCompactHex(nibbles).Should().BeEquivalentTo(bytes);
         }
+
+        [TestCase(new byte[] {}, new byte[] {0x00})]
+        [TestCase(new byte[] {16}, new byte[] {0x20})]
+        [TestCase(new byte[] {1, 2, 3, 4, 5}, new byte[] {0x11, 0x23, 0x45})]
+        [TestCase(new byte[] {0, 1, 2, 3, 4, 5}, new byte[] {0x00, 0x01, 0x23, 0x45})]
+        [TestCase(new byte[] {15, 1, 12, 11, 8, 16}, new byte[] {0x3f, 0x1c, 0xb8})]
+        [TestCase(new byte[] {0, 15, 1, 12, 11, 8, 16}, new byte[] {0x20, 0x0f, 0x1c, 0xb8})]
+        public void Compact_hex_encoding_decoding_with_terminator_in_hex(byte[] hex, byte[] compact)
+        {
+            Nibbles.DecodeFromCompactHex(compact).Should().BeEquivalentTo(hex);
+        }
+
 
         // Just pack nibbles to bytes
         [Test]

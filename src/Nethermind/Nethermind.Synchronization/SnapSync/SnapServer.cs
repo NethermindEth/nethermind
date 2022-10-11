@@ -73,7 +73,7 @@ public class SnapServer: ISnapServer
                 case 0:
                     return null;
                 case 1:
-                    byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                    byte[]? rlp = tree.GetNodeByPath(Nibbles.DecodeFromCompactHex(requestedPath[0]), rootHash);
                     response.Add(rlp);
                     break;
                 default:
@@ -91,7 +91,7 @@ public class SnapServer: ISnapServer
 
                     for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                     {
-                        byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                        byte[]? sRlp = sTree.GetNodeByPath(Nibbles.DecodeFromCompactHex(requestedPath[reqStorage]));
                         response.Add(sRlp);
                     }
                     break;
