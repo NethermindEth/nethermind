@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,18 +33,18 @@ namespace Nethermind.AuRa.Test.Contract
             DataContract<int> dataContract = new(GetAll, GetFromReceipts);
             dataContract.IncrementalChanges.Should().BeTrue();
             dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
-            items.Should().BeEquivalentTo(new[] {1, 5});
+            items.Should().BeEquivalentTo(new[] { 1, 5 });
         }
-        
+
         [Test]
         public void NonIncrementalChanges_check_found()
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
             dataContract.IncrementalChanges.Should().BeFalse();
             dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
-            items.Should().BeEquivalentTo(new[] {1, 5});
+            items.Should().BeEquivalentTo(new[] { 1, 5 });
         }
-        
+
         [Test]
         public void NonIncrementalChanges_check_non_found()
         {
@@ -54,14 +54,14 @@ namespace Nethermind.AuRa.Test.Contract
             items.Should().BeEmpty();
         }
 
-        private static IEnumerable<int> GetAll(BlockHeader header) => new[] {1, 5};
-        private static IEnumerable<int> GetFromReceipts(BlockHeader header, TxReceipt[] receipts) => new[] {1, 5};
+        private static IEnumerable<int> GetAll(BlockHeader header) => new[] { 1, 5 };
+        private static IEnumerable<int> GetFromReceipts(BlockHeader header, TxReceipt[] receipts) => new[] { 1, 5 };
         private static bool TryGetFromReceiptsTrue(BlockHeader header, TxReceipt[] receipts, out IEnumerable<int> items)
         {
-            items = new[] {1, 5};
+            items = new[] { 1, 5 };
             return true;
         }
-        
+
         private static bool TryGetFromReceiptsFalse(BlockHeader header, TxReceipt[] receipts, out IEnumerable<int> items)
         {
             items = Array.Empty<int>();

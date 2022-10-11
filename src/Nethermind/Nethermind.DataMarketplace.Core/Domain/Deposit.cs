@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public uint Units { get; }
         public UInt256 Value { get; }
         public uint ExpiryTime { get; }
-        
+
         public Deposit(Keccak id, uint units, uint expiryTime, UInt256 value)
         {
             Id = id;

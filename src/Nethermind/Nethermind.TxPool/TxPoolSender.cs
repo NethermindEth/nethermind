@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,14 +37,14 @@ namespace Nethermind.TxPool
         public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             AcceptTxResult? result = null;
-            
+
             // TODO: this is very not intuitive - can we fix it...?
             // maybe move nonce reservation to sender itself before sealing
             // sealers should behave like composite and not like chain of commands
             foreach (ITxSealer sealer in _sealers)
             {
                 sealer.Seal(tx, txHandlingOptions);
-                
+
                 result = _txPool.SubmitTx(tx, txHandlingOptions);
 
                 if (result != AcceptTxResult.OwnNonceAlreadyUsed && result != AcceptTxResult.AlreadyKnown

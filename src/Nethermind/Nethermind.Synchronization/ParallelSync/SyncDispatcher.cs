@@ -213,7 +213,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (_currentFeedState != state)
                 {
-                    if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+                    if (Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
 
                     _currentFeedState = state;
                     TaskCompletionSource<object?>? newDormantStateTask = null;

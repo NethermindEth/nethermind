@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Peers
         void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         void ReportBreachOfProtocol(PeerInfo peerInfo, string details);
-        
+
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         /// <summary>
@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="syncPeer"></param>
         void AddPeer(ISyncPeer syncPeer);
-        
+
         /// <summary>
         /// Invoked after a session / connection is closed.
         /// </summary>
@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="id"></param>
         void SetPeerPriority(PublicKey id);
-        
+
         /// <summary>
         /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
         /// Specifically when nodes send HintBlock message they do not attach total difficulty information.
@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
         void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
-        
+
         /// <summary>
         /// Starts the pool loops.
         /// </summary>
@@ -102,11 +102,11 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <returns></returns>
         Task StopAsync();
-        
+
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-        
+
         event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
     }
 }

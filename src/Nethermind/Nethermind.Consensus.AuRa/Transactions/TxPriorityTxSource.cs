@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,11 +38,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
         private CompareTxByPriorityOnSpecifiedBlock _comparer;
-        
+
         public TxPriorityTxSource(
-            ITxPool transactionPool, 
-            IStateReader stateReader, 
-            ILogManager logManager, 
+            ITxPool transactionPool,
+            IStateReader stateReader,
+            ILogManager logManager,
             ITxFilterPipeline txFilterPipeline,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,

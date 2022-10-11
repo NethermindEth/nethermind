@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Abi
         public static AbiAddress Address => AbiAddress.Instance;
         public static AbiFunction Function => AbiFunction.Instance;
         public static AbiBool Bool => AbiBool.Instance;
-        public static AbiInt Int8  => AbiInt.Int8;
+        public static AbiInt Int8 => AbiInt.Int8;
         public static AbiInt Int16 => AbiInt.Int16;
         public static AbiInt Int32 => AbiInt.Int32;
         public static AbiInt Int64 => AbiInt.Int64;

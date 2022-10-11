@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(StatusMessage message, out int contentLength)
         {
-            
+
             int forkIdSequenceLength = 0;
             if (message.ForkId.HasValue)
             {
@@ -59,7 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 int forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
                 forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
-            
+
             contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.ChainId) +
@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(message.BestHash) +
                 Rlp.LengthOf(message.GenesisHash) +
                 forkIdSequenceLength;
-            
+
             return Rlp.LengthOfSequence(contentLength);
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
         private static StatusMessage Deserialize(RlpStream rlpStream)
         {
             StatusMessage statusMessage = new();
@@ -94,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;
             }
-            
+
             return statusMessage;
         }
     }

@@ -25,17 +25,17 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int SlotLength = sizeof(ulong);
-        
+
         public static void Encode(Span<byte> span, Slot value)
         {
             Encode(span, value.Number);
         }
-        
+
         public static Slot DecodeSlot(Span<byte> span)
         {
             return new Slot(DecodeULong(span));
-        }    
-        
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Slot DecodeSlot(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -43,7 +43,7 @@ namespace Nethermind.Ssz
             offset += Ssz.SlotLength;
             return slot;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Slot value, ref int offset)
         {

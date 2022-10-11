@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain
     public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
     {
         private readonly IBlockFinder _blockFinder;
-        
+
         public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));

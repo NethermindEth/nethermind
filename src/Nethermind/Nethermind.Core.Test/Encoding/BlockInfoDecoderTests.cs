@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Encoding
             BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
             Assert.Null(decoded);
         }
-        
+
         private static void Roundtrip(bool valueDecode)
         {
             BlockInfo blockInfo = new(TestItem.KeccakA, 1);
@@ -61,8 +61,8 @@ namespace Nethermind.Core.Test.Encoding
             blockInfo.Metadata |= BlockMetadata.Invalid;
 
             Rlp rlp = Rlp.Encode(blockInfo);
-            BlockInfo decoded = valueDecode ?  Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
-            
+            BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
+
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.True((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, "metadata finalized");
             Assert.True((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, "metadata invalid");

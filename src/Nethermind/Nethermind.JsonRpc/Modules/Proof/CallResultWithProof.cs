@@ -21,9 +21,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
     public class CallResultWithProof
     {
         public byte[] Result { get; set; }
-        
+
         public AccountProof[] Accounts { get; set; }
-        
+
         public byte[][] BlockHeaders { get; set; }
     }
 }

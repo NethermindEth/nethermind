@@ -59,7 +59,7 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     if (_logger.IsDebug())
                         LogDebug.ProcessBeaconBlocksByRange(_logger, rpcMessage.Content, null);
-                    
+
                     // TODO: Add some sanity checks on request to prevent DoS
                     // TODO: Maybe add limit on number of blocks (as allowed by spec)
 

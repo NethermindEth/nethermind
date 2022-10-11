@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,23 +29,23 @@ namespace Nethermind.Db
         /// No pruning - full archive.
         /// </summary>
         None = 0,
-        
+
         /// <summary>
         /// In memory pruning.
         /// </summary>
         Memory = 1,
-        
+
         /// <summary>
         /// Full pruning.
         /// </summary>
         Full = 2,
-        
+
         /// <summary>
         /// Both in memory and full pruning.
         /// </summary>
         Hybrid = Memory | Full
     }
-    
+
     public static class PruningModeExtensions
     {
         public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;

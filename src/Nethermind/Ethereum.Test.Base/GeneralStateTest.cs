@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -34,7 +34,7 @@ namespace Ethereum.Test.Base
         public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
         public UInt256 CurrentDifficulty { get; set; }
-        
+
         public UInt256? CurrentBaseFee { get; set; }
         public long CurrentGasLimit { get; set; }
         public long CurrentNumber { get; set; }

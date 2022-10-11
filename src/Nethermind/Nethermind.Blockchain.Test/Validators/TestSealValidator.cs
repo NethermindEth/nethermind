@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Validators
     {
         public static ISealValidator AlwaysValid = Always.Valid;
         public static ISealValidator NeverValid = Always.Invalid;
-        
+
         private readonly Queue<bool> _processedValidationResults;
         private readonly Queue<bool> _suggestedValidationResults;
         private bool? _alwaysSameResultForSeal;
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _suggestedValidationResults = suggestedValidationResults ?? throw new ArgumentNullException(nameof(suggestedValidationResults));
             _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
         }
-        
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return _alwaysSameResultForParams ?? _suggestedValidationResults.Dequeue();

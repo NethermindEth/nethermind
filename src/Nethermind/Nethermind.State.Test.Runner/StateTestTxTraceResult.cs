@@ -24,13 +24,13 @@ namespace Nethermind.State.Test.Runner
     {
         [JsonProperty("output")]
         public byte[] Output { get; set; }
-        
+
         [JsonProperty("gasUsed")]
         public long GasUsed { get; set; }
-        
+
         [JsonProperty("time")]
         public int Time { get; set; }
-        
+
         [JsonProperty("error")]
         public string Error { get; set; }
     }

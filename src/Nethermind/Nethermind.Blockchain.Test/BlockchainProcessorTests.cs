@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
         {
             private ILogManager _logManager = LimboLogs.Instance;
 
-//            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
 
             private class BlockProcessorMock : IBlockProcessor
             {
@@ -651,7 +651,7 @@ namespace Nethermind.Blockchain.Test
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
             When.ProcessingBlocks
-                .IsProcessingBlocks(true,1)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .IsProcessingBlocks(true, 1)
@@ -671,7 +671,7 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .Sleep(2000)
-                .IsProcessingBlocks(false,1)
+                .IsProcessingBlocks(false, 1)
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
         }

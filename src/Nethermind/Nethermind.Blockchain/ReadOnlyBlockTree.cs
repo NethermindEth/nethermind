@@ -46,8 +46,8 @@ namespace Nethermind.Blockchain
 
         public long? LowestInsertedBodyNumber
         {
-          get => _wrapped.LowestInsertedBodyNumber;
-          set => _wrapped.LowestInsertedBodyNumber = value;
+            get => _wrapped.LowestInsertedBodyNumber;
+            set => _wrapped.LowestInsertedBodyNumber = value;
         }
 
         public long? BestPersistedState
@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
-        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
+        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => _wrapped.GetInfo(number, blockHash);
         public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain
 
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
 
-        public void LoadLowestInsertedBeaconHeader() =>_wrapped.LoadLowestInsertedBeaconHeader();
+        public void LoadLowestInsertedBeaconHeader() => _wrapped.LoadLowestInsertedBeaconHeader();
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
         {
@@ -204,6 +204,6 @@ namespace Nethermind.Blockchain
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
-        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
     }
 }

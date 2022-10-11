@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test.Find
                 {
                     yield return Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakE).TestObject;
                     yield return Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakD, TestItem.KeccakA).TestObject;
-                }                
+                }
             }
         }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Test.Find
         {
             get
             {
-                yield return false; 
+                yield return false;
                 yield return true;
             }
         }
@@ -124,15 +124,15 @@ namespace Nethermind.Blockchain.Test.Find
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter).ToArray();
             logs.Length.Should().Be(5);
-            var indexes = logs.Select(l => (int) l.LogIndex).ToArray();
+            var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
             // indexes[0].Should().Be(0);
             // indexes[1].Should().Be(1);
             // indexes[2].Should().Be(0);
             // indexes[3].Should().Be(1);
             // indexes[4].Should().Be(2);
-            indexes.Should().BeEquivalentTo(new []{0, 1, 0, 1, 2});
+            indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
         }
-        
+
         [Test]
         public void filter_all_logs_iteratively([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
         {
@@ -140,45 +140,45 @@ namespace Nethermind.Blockchain.Test.Find
             LogFilter logFilter = AllBlockFilter().Build();
             FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
             logs.Length.Should().Be(5);
-            var indexes = logs.Select(l => (int) l.LogIndex).ToArray();
+            var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
             // indexes[0].Should().Be(0);
             // indexes[1].Should().Be(1);
             // indexes[2].Should().Be(0);
             // indexes[3].Should().Be(1);
             // indexes[4].Should().Be(2);
             // BeEquivalentTo does not check the ordering!!! :O
-            indexes.Should().BeEquivalentTo(new []{0, 1, 0, 1, 2});
+            indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
         }
-        
+
         [Test]
         public void throw_exception_when_receipts_are_missing([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
             _receiptStorage = NullReceiptStorage.Instance;
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
-            
+
             var logFilter = AllBlockFilter().Build();
 
             _logFinder.Invoking(it => it.FindLogs(logFilter))
                 .Should()
                 .Throw<ResourceNotFoundException>();
         }
-        
+
         [Test]
         public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
         {
             _receiptStorage = NullReceiptStorage.Instance;
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
-            
+
             SetupHeadWithNoTransaction();
-            
+
             var logFilter = AllBlockFilter().Build();
 
             _logFinder.Invoking(it => it.FindLogs(logFilter))
                 .Should()
                 .NotThrow<ResourceNotFoundException>();
         }
-        
+
         [Test]
         public void filter_all_logs_should_throw_when_to_block_is_not_found([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
@@ -186,27 +186,27 @@ namespace Nethermind.Blockchain.Test.Find
             var blockFinder = Substitute.For<IBlockFinder>();
             _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             var logFilter = AllBlockFilter().Build();
-            var action = new Func<IEnumerable<FilterLog>>(() =>_logFinder.FindLogs(logFilter));
+            var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
             action.Should().Throw<ResourceNotFoundException>();
             blockFinder.Received().FindHeader(logFilter.ToBlock, false);
             blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
         }
-        
+
         public static IEnumerable FilterByAddressTestsData
         {
             get
             {
-                yield return new TestCaseData(new[] {TestItem.AddressA}, 2, false);
-                yield return new TestCaseData(new[] {TestItem.AddressB}, 1, false);
-                yield return new TestCaseData(new[] {TestItem.AddressC}, 1, false);
-                yield return new TestCaseData(new[] {TestItem.AddressD}, 1, false);
-                yield return new TestCaseData(new[] {TestItem.AddressA, TestItem.AddressC, TestItem.AddressD}, 4, false);
-                
-                yield return new TestCaseData(new[] {TestItem.AddressA}, 2, true);
-                yield return new TestCaseData(new[] {TestItem.AddressB}, 1, true);
-                yield return new TestCaseData(new[] {TestItem.AddressC}, 1, true);
-                yield return new TestCaseData(new[] {TestItem.AddressD}, 1, true);
-                yield return new TestCaseData(new[] {TestItem.AddressA, TestItem.AddressC, TestItem.AddressD}, 4, true);
+                yield return new TestCaseData(new[] { TestItem.AddressA }, 2, false);
+                yield return new TestCaseData(new[] { TestItem.AddressB }, 1, false);
+                yield return new TestCaseData(new[] { TestItem.AddressC }, 1, false);
+                yield return new TestCaseData(new[] { TestItem.AddressD }, 1, false);
+                yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4, false);
+
+                yield return new TestCaseData(new[] { TestItem.AddressA }, 2, true);
+                yield return new TestCaseData(new[] { TestItem.AddressB }, 1, true);
+                yield return new TestCaseData(new[] { TestItem.AddressC }, 1, true);
+                yield return new TestCaseData(new[] { TestItem.AddressD }, 1, true);
+                yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4, true);
             }
         }
 
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Test.Find
             var filterBuilder = AllBlockFilter();
             filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
             var logFilter = filterBuilder.Build();
-            
+
             var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
@@ -227,33 +227,33 @@ namespace Nethermind.Blockchain.Test.Find
         {
             get
             {
-                yield return new TestCaseData(new[] {TestTopicExpressions.Specific(TestItem.KeccakA)}, 3, false);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB)}, 2, false);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any}, 1, false);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE)}, 1, false);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB)}, 4, false);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB)}, 2, false);
-                
-                yield return new TestCaseData(new[] {TestTopicExpressions.Specific(TestItem.KeccakA)}, 3, true);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB)}, 2, true);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any}, 1, true);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE)}, 1, true);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB)}, 4, true);
-                yield return new TestCaseData(new[] {TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB)}, 2, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, 3, false);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, 2, false);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, 1, false);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, 1, false);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, 4, false);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, 2, false);
+
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, 3, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, 2, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, 1, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, 1, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, 4, true);
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, 2, true);
             }
         }
-            
+
         [TestCaseSource(nameof(FilterByTopicsTestsData))]
         public void filter_by_topics(TopicExpression[] topics, int expectedCount, bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
             var logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
-            
+
             var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }
-        
+
         public static IEnumerable FilterByBlocksTestsData
         {
             get
@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0, false);
                 yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2, false);
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0, false); //wrong order test
-                
+
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3, true);
                 yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5, true);
                 yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5, true);
@@ -273,7 +273,7 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0, true); //wrong order test
             }
         }
-        
+
         [TestCaseSource(nameof(FilterByBlocksTestsData))]
         public void filter_by_blocks(LogFilter filter, int expectedCount, bool withBloomDb)
         {
@@ -281,19 +281,19 @@ namespace Nethermind.Blockchain.Test.Find
             var logs = _logFinder.FindLogs(filter).ToArray();
             logs.Length.Should().Be(expectedCount);
         }
-        
+
         [Test]
-        public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))]bool withBloomDb)
+        public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
-            _logFinder = new LogFinder(_blockTree,  _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, 2);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery, 2);
             var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
             var logs = _logFinder.FindLogs(filter).ToArray();
 
             logs.Length.Should().Be(3);
         }
 
-        
+
         public static IEnumerable ComplexFilterTestsData
         {
             get
@@ -301,21 +301,21 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, false);
-                
+
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1, false);
-                
+
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, true);
-                
+
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1, true);
             }
         }
-        
+
         [TestCaseSource(nameof(ComplexFilterTestsData))]
         public void complex_filter(LogFilter filter, int expectedCount, bool withBloomDb)
         {
@@ -323,7 +323,7 @@ namespace Nethermind.Blockchain.Test.Find
             var logs = _logFinder.FindLogs(filter).ToArray();
             logs.Length.Should().Be(expectedCount);
         }
-        
+
         [Test]
         public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
         {
@@ -335,7 +335,7 @@ namespace Nethermind.Blockchain.Test.Find
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter, cancellationToken);
-            
+
             await Task.Delay(timeout * waitTime);
 
             Func<FilterLog[]> action = () => logs.ToArray();
@@ -351,7 +351,7 @@ namespace Nethermind.Blockchain.Test.Find
         }
 
         private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
-        
+
         private void StoreTreeBlooms(bool withBloomDb)
         {
             if (withBloomDb)

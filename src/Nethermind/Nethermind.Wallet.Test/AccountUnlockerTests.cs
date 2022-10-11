@@ -38,9 +38,9 @@ namespace Nethermind.Wallet.Test
             ("TestingFileF1", "PF1"),
             ("TestingFileF2", "PF2")
         };
-        
+
         private string TestDir => TestContext.CurrentContext.WorkDirectory;
-        
+
         [SetUp]
         public void SetUp()
         {
@@ -60,32 +60,32 @@ namespace Nethermind.Wallet.Test
             {
                 yield return new UnlockAccountsTest()
                 {
-                    UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
-                    Passwords = new []{"A", "B"},
+                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
+                    Passwords = new[] { "A", "B" },
                     PasswordFiles = new List<string> { _files[0].Name },
-                    ExpectedPasswords = new []{ _files[0].Content, _files[0].Content }, 
+                    ExpectedPasswords = new[] { _files[0].Content, _files[0].Content },
                 };
 
                 yield return new UnlockAccountsTest()
                 {
-                    UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
-                    Passwords = new []{"A", "B"},
+                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
+                    Passwords = new[] { "A", "B" },
                     PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
-                    ExpectedPasswords = new []{ _files[0].Content, _files[1].Content }, 
+                    ExpectedPasswords = new[] { _files[0].Content, _files[1].Content },
                 };
-                
+
                 yield return new UnlockAccountsTest()
                 {
-                    UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
-                    Passwords = new []{"A", "B"},
-                    ExpectedPasswords = new []{"A", "B"}, 
+                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
+                    Passwords = new[] { "A", "B" },
+                    ExpectedPasswords = new[] { "A", "B" },
                 };
-                
+
                 yield return new UnlockAccountsTest()
                 {
-                    UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
-                    Passwords = new []{"A", "B"},
-                    ExpectedPasswords = new []{"A", "B"}, 
+                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
+                    Passwords = new[] { "A", "B" },
+                    ExpectedPasswords = new[] { "A", "B" },
                 };
             }
         }
@@ -111,9 +111,9 @@ namespace Nethermind.Wallet.Test
             keyStoreConfig.Passwords.Returns(test.Passwords);
             keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
             keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-            
+
             IWallet wallet = Substitute.For<IWallet>();
-            
+
             AccountUnlocker unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
@@ -131,7 +131,7 @@ namespace Nethermind.Wallet.Test
             public List<string> PasswordFiles { get; set; } = new List<string>();
             public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
             public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
-            
+
             public override string ToString() => string.Join("; ", ExpectedPasswords);
         }
     }

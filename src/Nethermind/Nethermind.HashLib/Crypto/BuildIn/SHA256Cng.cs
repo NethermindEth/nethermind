@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@ namespace Nethermind.HashLib.Crypto.BuildIn
 {
     internal class SHA256Cng : HashCryptoBuildIn
     {
-        public SHA256Cng() 
+        public SHA256Cng()
             : base(System.Security.Cryptography.SHA256.Create(), 64)
         {
         }

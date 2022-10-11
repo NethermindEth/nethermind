@@ -26,13 +26,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IComparer<Transaction> _differentSenderNoncePriorityComparer;
 
         public CompareTxSameSenderNonce(
-            IComparer<Transaction> sameSenderNoncePriorityComparer, 
+            IComparer<Transaction> sameSenderNoncePriorityComparer,
             IComparer<Transaction> differentSenderNoncePriorityComparer)
         {
             _sameSenderNoncePriorityComparer = sameSenderNoncePriorityComparer;
             _differentSenderNoncePriorityComparer = differentSenderNoncePriorityComparer;
         }
-            
+
         public int Compare(Transaction? x, Transaction? y)
         {
             IComparer<Transaction> firstComparer = _differentSenderNoncePriorityComparer;
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             bool sameNonceAndSender = Equals(x?.Nonce, y?.Nonce) && Equals(x?.SenderAddress, y?.SenderAddress);
             if (sameNonceAndSender)
             {
-                
+
                 firstComparer = _sameSenderNoncePriorityComparer;
                 secondComparer = _differentSenderNoncePriorityComparer;
             }

@@ -26,14 +26,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         public byte[] Serialize(InvalidDataMessage headerDataMessage)
             => Rlp.Encode(
                 Rlp.Encode(headerDataMessage.DepositId),
-                Rlp.Encode((int) headerDataMessage.Reason)).Bytes;
+                Rlp.Encode((int)headerDataMessage.Reason)).Bytes;
 
         public InvalidDataMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
-            var reason = (InvalidDataReason) context.DecodeInt();
+            var reason = (InvalidDataReason)context.DecodeInt();
 
             return new InvalidDataMessage(depositId, reason);
         }

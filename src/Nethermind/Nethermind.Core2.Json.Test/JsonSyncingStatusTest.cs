@@ -41,11 +41,11 @@ namespace Nethermind.Core2.Json.Test
             await using MemoryStream memoryStream = new MemoryStream();
             await JsonSerializer.SerializeAsync(memoryStream, syncingStatus, options);
             string jsonString = Encoding.UTF8.GetString(memoryStream.ToArray());
-            
+
             // Assert
             jsonString.ShouldBe("{\"current_slot\":2,\"highest_slot\":3,\"starting_slot\":1}");
         }
-        
+
         [Test]
         public async Task SyncingStatus_Deserialize()
         {
@@ -57,12 +57,12 @@ namespace Nethermind.Core2.Json.Test
             // Act - deserialize from string
             await using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
             SyncingStatus syncingStatus = await JsonSerializer.DeserializeAsync<SyncingStatus>(memoryStream, options);
-            
+
             syncingStatus.StartingSlot.ShouldBe(Slot.One);
             syncingStatus.CurrentSlot.ShouldBe(new Slot(2));
             syncingStatus.HighestSlot.ShouldBe(new Slot(3));
         }
-        
+
         [Test]
         public async Task SyncingStatus_DeserializeAlternativeOrder()
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Core2.Json.Test
             // Act - deserialize from string
             await using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
             SyncingStatus syncingStatus = await JsonSerializer.DeserializeAsync<SyncingStatus>(memoryStream, options);
-            
+
             syncingStatus.StartingSlot.ShouldBe(Slot.One);
             syncingStatus.CurrentSlot.ShouldBe(new Slot(2));
             syncingStatus.HighestSlot.ShouldBe(new Slot(3));

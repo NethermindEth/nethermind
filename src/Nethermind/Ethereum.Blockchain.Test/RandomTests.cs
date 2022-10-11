@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -35,7 +35,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRandom");
-            return (IEnumerable<GeneralStateTest>) loader.LoadTests();
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
         }
     }
 }

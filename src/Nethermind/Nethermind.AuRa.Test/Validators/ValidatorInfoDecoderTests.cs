@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void Can_decode_previously_encoded()
         {
-            ValidatorInfo info = new(10, 5, new[] {TestItem.AddressA, TestItem.AddressC});
+            ValidatorInfo info = new(10, 5, new[] { TestItem.AddressA, TestItem.AddressC });
             Rlp rlp = Rlp.Encode(info);
             ValidatorInfo decoded = Rlp.Decode<ValidatorInfo>(rlp);
             decoded.Should().BeEquivalentTo(info);

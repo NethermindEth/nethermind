@@ -1,22 +1,23 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Config;
@@ -26,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -85,7 +87,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             try
             {
@@ -93,10 +95,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
             catch (Exception e)
             {
-                if (!(e is OperationCanceledException))
-                {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
-                }
+                e.Should().BeOfType<TestException>();
             }
         }
 
@@ -111,7 +110,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
             try
             {
@@ -125,7 +124,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 }
             }
         }
-        
+
         private static T CreateApi<T>() where T : INethermindApi, new() =>
             new T()
             {
@@ -211,7 +210,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
         public override async Task Execute(CancellationToken cancellationToken)
         {
-            await Task.Run(() => throw new Exception());
+            await Task.Run(() => throw new TestException());
         }
     }
 
@@ -220,5 +219,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public StepCStandard(NethermindApi runnerContext)
         {
         }
+    }
+
+    class TestException : Exception
+    {
     }
 }

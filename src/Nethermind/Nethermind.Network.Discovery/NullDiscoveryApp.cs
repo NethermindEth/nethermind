@@ -33,7 +33,7 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
         return Task.CompletedTask;
     }
-    
+
     public void AddNodeToDiscovery(Node node)
     {
     }

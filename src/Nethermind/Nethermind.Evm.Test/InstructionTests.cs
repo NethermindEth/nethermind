@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
         {
             Instruction.PREVRANDAO.GetName(false).Should().Be("DIFFICULTY");
         }
-        
+
         [Test]
         public void Return_prevrandao_name_for_prevrandao_opcode_for_post_merge()
         {

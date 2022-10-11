@@ -24,13 +24,13 @@ namespace Nethermind.Blockchain.Filters.Topics
         public static readonly AnyTopic Instance = new();
 
         private AnyTopic() { }
-        
+
         public override bool Accepts(Keccak topic) => true;
         public override bool Accepts(ref KeccakStructRef topic) => true;
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;
-        
+
         public override string ToString() => "null";
     }
 }

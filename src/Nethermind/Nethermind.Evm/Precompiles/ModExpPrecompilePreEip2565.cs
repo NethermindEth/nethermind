@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Precompiles
         {
             return 0L;
         }
-        
+
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             try
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Precompiles
                 Span<byte> extendedInput = stackalloc byte[96];
                 inputData.Slice(0, Math.Min(96, inputData.Length)).Span
                     .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
-                
+
                 UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
@@ -72,12 +72,12 @@ namespace Nethermind.Evm.Precompiles
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
-            
+
             int baseLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
             BigInteger expLengthBig = inputData.Span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
             int modulusLength = (int)inputData.Span.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
-            
+
             BigInteger modulusInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
@@ -115,11 +115,11 @@ namespace Nethermind.Evm.Precompiles
 
             return
                 (
-                    lengthOver32 
-                    + (UInt256)exponent.Length 
-                    - (UInt256)leadingZeros 
-                    - (UInt256)1) 
-                * 8 
+                    lengthOver32
+                    + (UInt256)exponent.Length
+                    - (UInt256)leadingZeros
+                    - (UInt256)1)
+                * 8
                 + (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex() - 1);
         }
     }

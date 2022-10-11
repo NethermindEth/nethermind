@@ -123,14 +123,14 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
-        [TestCase(TxType.EIP1559,"{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
         public void can_serialize_accessList_with_empty_storageKeys(TxType txType, string txJson)
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
             _transaction.Type = txType;
 
-            _storageKeys = new HashSet<UInt256> {};
+            _storageKeys = new HashSet<UInt256> { };
             _data.Add(TestItem.AddressA, _storageKeys);
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}");
 
-            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256>{})};
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256> { }) };
             _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
 
-            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, null)};
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, null) };
             _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Length.Should().Be(1);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
@@ -181,7 +181,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"maxFeePerGas\":\"0x10\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x02\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
 
-            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, null)};
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, null) };
             _transactionForRpc.Type.Should().Be(TxType.EIP1559);
             _transactionForRpc.AccessList.Length.Should().Be(1);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);

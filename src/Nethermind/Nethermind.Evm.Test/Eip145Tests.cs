@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,19 +26,19 @@ namespace Nethermind.Evm.Test
     public class Eip145Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
-        
+
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         private void AssertEip145(TestAllTracerWithOutput receipt, byte result)
         {
-            AssertEip145(receipt, new[] {result});
+            AssertEip145(receipt, new[] { result });
         }
 
         private void AssertEip145(TestAllTracerWithOutput receipt, string result)
         {
             AssertEip145(receipt, Bytes.FromHexString(result));
         }
-        
+
         private void AssertEip145(TestAllTracerWithOutput receipt, ReadOnlySpan<byte> result)
         {
             AssertStorage(0, result);
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             AssertEip145(receipt, result);
         }
-        
+
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x00", "0x0000000000000000000000000000000000000000000000000000000000000001")]
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x01", "0x0000000000000000000000000000000000000000000000000000000000000000")]
         [TestCase("0x8000000000000000000000000000000000000000000000000000000000000000", "0x01", "0x4000000000000000000000000000000000000000000000000000000000000000")]
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             AssertEip145(receipt, result);
         }
-        
+
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x00", "0x0000000000000000000000000000000000000000000000000000000000000001")]
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x01", "0x0000000000000000000000000000000000000000000000000000000000000000")]
         [TestCase("0x8000000000000000000000000000000000000000000000000000000000000000", "0x01", "0xc000000000000000000000000000000000000000000000000000000000000000")]

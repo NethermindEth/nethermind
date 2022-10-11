@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Abi
     {
         private const int MaxSize = 256;
         private const int MinSize = 0;
-        
+
         public static new readonly AbiInt Int8 = new(8);
         public static new readonly AbiInt Int16 = new(16);
         public static new readonly AbiInt Int32 = new(32);
@@ -72,21 +72,21 @@ namespace Nethermind.Abi
         public int LengthInBytes => Length / 8;
 
         public override string Name { get; }
-        
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             var (value, length) = DecodeInt(data, position, packed);
-            
+
             switch (Length)
             {
                 case { } n when n <= 8:
-                    return ((sbyte) value, length);
+                    return ((sbyte)value, length);
                 case { } n when n <= 16:
-                    return ((short) value, length);
+                    return ((short)value, length);
                 case { } n when n <= 32:
-                    return ((int) value, length);
+                    return ((int)value, length);
                 case { } n when n <= 64:
-                    return ((long) value, length);
+                    return ((long)value, length);
                 default:
                     return (value, length);
             }
@@ -110,7 +110,7 @@ namespace Nethermind.Abi
         }
 
         public override Type CSharpType { get; } = typeof(BigInteger);
-        
+
         private Type GetCSharpType()
         {
             switch (Length)

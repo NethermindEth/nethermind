@@ -29,7 +29,7 @@ namespace Nethermind.Ssz
 
         public static int DepositLength()
         {
-           return DepositLengthOfProof() + Ssz.DepositDataLength;
+            return DepositLengthOfProof() + Ssz.DepositDataLength;
         }
 
         public static void Encode(Span<byte> span, Deposit[]? containers)
@@ -64,7 +64,7 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-        
+
         private static void Encode(Span<byte> span, Deposit[]? containers, ref int offset, ref int dynamicOffset)
         {
             int length = (containers?.Length ?? 0) * Ssz.DepositLength();
@@ -73,7 +73,7 @@ namespace Nethermind.Ssz
             dynamicOffset += length;
             offset += VarOffsetSize;
         }
-        
+
         public static void Encode(Span<byte> span, Deposit container)
         {
             if (span.Length != Ssz.DepositLength()) ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength());

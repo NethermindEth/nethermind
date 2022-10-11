@@ -53,7 +53,7 @@ namespace Nethermind.Merkleization
         {
             if (Lzcnt.IsSupported)
             {
-                return (uint) 1 << (int) (32 - Lzcnt.LeadingZeroCount(--v));
+                return (uint)1 << (int)(32 - Lzcnt.LeadingZeroCount(--v));
             }
 
             if (v != 0U) v--;
@@ -73,11 +73,11 @@ namespace Nethermind.Merkleization
             {
                 return 0;
             }
-            
+
             int leadingZeros = 0;
             if (Lzcnt.IsSupported)
             {
-                leadingZeros = (int) Lzcnt.X64.LeadingZeroCount(--v);
+                leadingZeros = (int)Lzcnt.X64.LeadingZeroCount(--v);
             }
             else
             {
@@ -90,7 +90,7 @@ namespace Nethermind.Merkleization
         private static int CountLeadingZeros(ulong x)
         {
             x--;
-            
+
             int count = 0;
             for (int i = 63; i >= 0; i--)
             {
@@ -98,7 +98,7 @@ namespace Nethermind.Merkleization
                 {
                     break;
                 }
-                
+
                 count++;
             }
 
@@ -109,7 +109,7 @@ namespace Nethermind.Merkleization
         {
             if (Lzcnt.IsSupported)
             {
-                return (ulong) 1 << (int) (64 - Lzcnt.X64.LeadingZeroCount(--v));
+                return (ulong)1 << (int)(64 - Lzcnt.X64.LeadingZeroCount(--v));
             }
 
             if (v != 0UL) v--;
@@ -252,7 +252,7 @@ namespace Nethermind.Merkleization
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value));
             }
         }
-        
+
         public static void Ize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
         {
             const int typeSize = 1;
@@ -269,7 +269,7 @@ namespace Nethermind.Merkleization
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value), chunkCount);
             }
         }
-        
+
         public static void IzeBits(out UInt256 root, Span<byte> value, uint limit)
         {
             // reset lowest bit perf
@@ -427,7 +427,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint) (value.Length + lastChunk.Length) : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)
@@ -452,7 +452,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             for (int i = 0; i < length; i++)
             {
@@ -462,7 +462,7 @@ namespace Nethermind.Merkleization
 
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, List<DepositData> value, ulong limit)
         {
             int length = value.Count;
@@ -472,7 +472,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             for (int i = 0; i < length; i++)
             {
@@ -482,7 +482,7 @@ namespace Nethermind.Merkleization
 
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)
@@ -491,7 +491,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) value.Length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)

@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test
     public class SessionMonitorTests
     {
         private IPingSender _pingSender;
-        
+
         private IPingSender _noPong;
 
         [SetUp]
@@ -40,11 +40,11 @@ namespace Nethermind.Network.Test
         {
             _pingSender = Substitute.For<IPingSender>();
             _pingSender.SendPing().Returns(Task.FromResult(true));
-            
+
             _noPong = Substitute.For<IPingSender>();
             _noPong.SendPing().Returns(Task.FromResult(false));
         }
-        
+
         [Test]
         public void Will_unregister_on_disconnect()
         {
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test
             sessionMonitor.AddSession(session);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
-        
+
         [Test]
         [Explicit("Travis fails here")]
         public async Task Will_keep_pinging()
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test
 
             await _pingSender.Received().SendPing();
             await _noPong.Received().SendPing();
-            
+
             Assert.AreEqual(SessionState.Initialized, session1.State);
             Assert.AreEqual(SessionState.Disconnected, session2.State);
         }
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Test
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
             return session;
         }
-        
+
         private ISession CreateUnresponsiveSession()
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);

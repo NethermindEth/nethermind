@@ -39,16 +39,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReceiptsMessageSerializer serializer = new(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
-            
-            Assert.AreEqual(bytes,  serialized);
+
+            Assert.AreEqual(bytes, serialized);
             Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
-            
+
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];
-            
+
             txReceipt.StatusCode.Should().Be(0);
             txReceipt.GasUsedTotal.Should().Be(1);
             txReceipt.Bloom.Should().Be(Bloom.Empty);
-            
+
             txReceipt.Logs[0].LoggersAddress.Should().BeEquivalentTo(new Address("0x0000000000000000000000000000000000000011"));
             txReceipt.Logs[0].Topics[0].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000dead"));
             txReceipt.Logs[0].Topics[1].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000beef"));
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.TxHash.Should().BeNull();
             txReceipt.BlockHash.Should().BeNull();
             txReceipt.Index.Should().Be(0x0);
-            
+
             ReceiptsMessage message = new(1111, ethMessage);
 
             SerializerTester.TestZero(serializer, message, rlp);

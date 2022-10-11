@@ -34,7 +34,7 @@ namespace Nethermind.Cli
         {
             return NodeManager.PostJint("clique_getSnapshotAtHash", CliParseHash(hash)).Result;
         }
-        
+
         [CliFunction("clique", "getSigners")]
         public JsValue GetSigners()
         {
@@ -46,49 +46,49 @@ namespace Nethermind.Cli
         {
             return NodeManager.PostJint("clique_getSignersAtNumber", number.ToString()).Result;
         }
-        
+
         [CliFunction("clique", "getSignersAtHash")]
         public JsValue GetSignersAtHash(string hash)
         {
             return NodeManager.PostJint("clique_getSignersAtHash", CliParseHash(hash)).Result;
         }
-        
+
         [CliFunction("clique", "getSignersAnnotated")]
         public JsValue GetSignersAnnotated()
         {
             return NodeManager.PostJint("clique_getSignersAnnotated").Result;
         }
-        
+
         [CliFunction("clique", "getSignersAtHashAnnotated")]
         public JsValue GetSignersAtHashAnnotated(string hash)
         {
             return NodeManager.PostJint("clique_getSignersAtHashAnnotated", CliParseHash(hash)).Result;
         }
-        
+
         [CliFunction("clique", "propose")]
         public bool Propose(string address, bool vote)
         {
             return NodeManager.Post<bool>("clique_propose", CliParseAddress(address), vote).Result;
         }
-        
+
         [CliFunction("clique", "discard")]
         public bool Discard(string address)
         {
             return NodeManager.Post<bool>("clique_discard", CliParseAddress(address)).Result;
         }
-        
+
         [CliFunction("clique", "produceBlock")]
         public bool ProduceBlock(string parentHash)
         {
             return NodeManager.Post<bool>("clique_produceBlock", CliParseHash(parentHash)).Result;
         }
-        
+
         [CliFunction("clique", "getBlockSigner")]
         public Address? GetBlockSigner(string hash)
         {
             return NodeManager.Post<Address>("clique_getBlockSigner", CliParseHash(hash)).Result;
         }
-        
+
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }

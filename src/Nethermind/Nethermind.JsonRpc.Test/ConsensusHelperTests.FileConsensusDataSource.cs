@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,13 +28,13 @@ namespace Nethermind.JsonRpc.Test
         {
             private readonly Uri _file;
             private readonly IJsonSerializer _serializer;
-            
+
             public FileConsensusDataSource(Uri file, IJsonSerializer serializer)
             {
                 _file = file;
                 _serializer = serializer;
             }
-            
+
             public async Task<(T, string)> GetData()
             {
                 string jsonData = await GetJsonData();

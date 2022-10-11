@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Reporting
     public class SyncReport : ISyncReport
     {
         private const int SpeedPaddingLength = 5;
-        
+
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Reporting
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
             _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
             _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
-            
+
             StartTime = DateTime.UtcNow;
 
             TickTime = tickTime;
@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 return;
             }
-            
+
             if (e.Previous != e.Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.Reporting
         private void WriteSyncReport()
         {
             UpdateMetrics();
-            
+
             if (!_logger.IsInfo)
             {
                 return;
@@ -196,12 +196,12 @@ namespace Nethermind.Synchronization.Reporting
                     WriteStateNodesReport();
                 }
             }
-            
+
             if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
             {
                 WriteFastBlocksReport(currentSyncMode);
             }
-            
+
             if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
             {
                 WriteFullSyncReport();
@@ -287,10 +287,10 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            _logger.Info($"Downloaded {Pad(FullSyncBlocksDownloaded.CurrentValue,_blockPaddingLength)} / {Pad(FullSyncBlocksKnown,_blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)}bps");
+            _logger.Info($"Downloaded {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
-    
+
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)

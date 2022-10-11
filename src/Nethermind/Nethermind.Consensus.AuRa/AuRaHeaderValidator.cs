@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.AuRa
         private readonly IList<long> _blockGasLimitContractTransitions;
 
         public AuRaHeaderValidator(
-            IBlockTree blockTree, 
-            ISealValidator sealValidator, 
+            IBlockTree blockTree,
+            ISealValidator sealValidator,
             ISpecProvider specProvider,
             ILogManager logManager,
             IList<long> blockGasLimitContractTransitions)
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
             _blockGasLimitContractTransitions = blockGasLimitContractTransitions ?? throw new ArgumentNullException(nameof(blockGasLimitContractTransitions));
         }
 
-        protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec) => 
+        protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec) =>
             _blockGasLimitContractTransitions.TryGetForBlock(header.Number, out _) || base.ValidateGasLimitRange(header, parent, spec);
     }
 }

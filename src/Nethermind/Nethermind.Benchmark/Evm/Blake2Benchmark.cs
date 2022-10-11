@@ -47,7 +47,7 @@ namespace Nethermind.Benchmarks.Evm
             _blake2Compression.Compress(input, result);
             return result;
         }
-        
+
         [Benchmark]
         public Span<byte> Improved()
         {

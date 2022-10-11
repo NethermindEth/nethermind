@@ -60,13 +60,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_MultiplePaths()
         {
             GetTrieNodesMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
+                RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
                 Paths = new PathGroup[]
                     {

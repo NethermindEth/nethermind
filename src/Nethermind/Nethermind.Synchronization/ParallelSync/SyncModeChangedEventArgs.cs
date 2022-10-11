@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Previous = previous;
             Current = current;
         }
-        
+
         public SyncMode Previous { get; }
         public SyncMode Current { get; }
     }

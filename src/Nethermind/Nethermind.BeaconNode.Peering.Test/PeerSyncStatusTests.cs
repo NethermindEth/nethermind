@@ -33,7 +33,7 @@ namespace Nethermind.BeaconNode.Peering.Test
             List<Task> taskList = new List<Task>();
             for (int i = 0; i < 10; i++)
             {
-                Slot slot = new Slot((ulong) random.Next(5, 10));
+                Slot slot = new Slot((ulong)random.Next(5, 10));
                 Task task = Task.Run(() =>
                 {
                     startEvent.Wait();
@@ -43,13 +43,13 @@ namespace Nethermind.BeaconNode.Peering.Test
             }
             taskList.Add(Task.Run(() =>
             {
-                Slot slot = new Slot((ulong) 50);
+                Slot slot = new Slot((ulong)50);
                 startEvent.Wait();
                 peerManager.UpdateMostRecentSlot(slot);
             }));
             for (int i = 0; i < 10; i++)
             {
-                Slot slot = new Slot((ulong) random.Next(5, 10));
+                Slot slot = new Slot((ulong)random.Next(5, 10));
                 Task task = Task.Run(() =>
                 {
                     startEvent.Wait();
@@ -59,9 +59,9 @@ namespace Nethermind.BeaconNode.Peering.Test
             }
 
             // act
-            startEvent.Set();            
+            startEvent.Set();
             Task.WaitAll(taskList.ToArray());
-            
+
             // assert
             peerManager.HighestPeerSlot.ShouldBe(new Slot(50));
         }
@@ -83,10 +83,10 @@ namespace Nethermind.BeaconNode.Peering.Test
 
             // NOTE: Doesn't make properties mutable, as you need the field ref (not a property), e.g. the following doesn't compile:
             // Example: Slot.InterlockedCompareExchange(ref slotContainer.InclusionDelay, slot, containerToSourceUpdatedSlotFrom.InclusionDelay, comparand);
-            
+
             // assert
             slot.ShouldBe(new Slot(20));
-            
+
             slot2.ShouldBe(new Slot(10));
             slotContainer.InclusionDelay.ShouldBe(new Slot(10));
             original.ShouldBe(new Slot(10));

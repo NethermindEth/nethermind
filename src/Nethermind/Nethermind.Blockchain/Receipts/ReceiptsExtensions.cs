@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         public static TxReceipt ForTransaction(this TxReceipt[] receipts, Keccak txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
-        
+
         public static void SetSkipStateAndStatusInRlp(this TxReceipt[] receipts, bool value)
         {
             for (int i = 0; i < receipts.Length; i++)
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipts[i].SkipStateAndStatusInRlp = value;
             }
         }
-        
+
         public static Keccak GetReceiptsRoot(this TxReceipt[] txReceipts, IReleaseSpec releaseSpec, Keccak suggestedRoot)
         {
             Keccak SkipStateAndStatusReceiptsRoot()
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             return receiptsRoot;
         }
-        
+
         public static int GetBlockLogFirstIndex(this TxReceipt[] receipts, int receiptIndex)
         {
             int sum = 0;

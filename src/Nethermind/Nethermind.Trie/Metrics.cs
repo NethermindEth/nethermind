@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,11 +22,11 @@ namespace Nethermind.Trie
     {
         [Description("Number of trie node hash calculations.")]
         public static long TreeNodeHashCalculations { get; set; }
-        
+
         [Description("Number of trie node RLP encodings.")]
         public static long TreeNodeRlpEncodings { get; set; }
-        
+
         [Description("Number of trie node RLP decodings.")]
         public static long TreeNodeRlpDecodings { get; set; }
     }
-} 
+}

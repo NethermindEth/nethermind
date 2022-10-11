@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Providers.Test.EndToEnd
             var logsManager = LimboLogs.Instance;
             var serializer = new EthereumJsonSerializer();
             _client = new JsonRpcClientProxy(new DefaultHttpClient(new HttpClient(), serializer, logsManager, 0),
-                new[] {jsonRpcUrl}, logsManager);
+                new[] { jsonRpcUrl }, logsManager);
         }
 
         public async Task RunAsync()

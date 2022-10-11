@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var receipts = receiptsBytes
                 .Select(b => receiptDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Provider receipts") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Provider receipts") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             if (!receipts.Any())
             {
                 MessageBox.Query(40, 7, "Provider receipts", "No data." +
@@ -54,7 +54,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var receiptDetailsWindow = new Window("Receipt details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(receiptDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

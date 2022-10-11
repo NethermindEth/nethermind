@@ -47,7 +47,7 @@ namespace Nethermind.Network
             switch (protocol)
             {
                 case Protocol.P2P:
-                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs) eventArgs;
+                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
@@ -69,7 +69,7 @@ namespace Nethermind.Network
                     break;
                 case Protocol.Eth:
                 case Protocol.Les:
-                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs) eventArgs;
+                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateChainId(syncPeerArgs.ChainId))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
@@ -87,10 +87,10 @@ namespace Nethermind.Network
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)");
                         return false;
                     }
-                    
+
                     break;
             }
-            
+
             return true;
         }
 
@@ -110,9 +110,9 @@ namespace Nethermind.Network
             return capabilities.Any(x =>
                 // x.ProtocolCode == Protocol.Les ||
                 x.ProtocolCode == Protocol.Eth && (
-                    x.Version == 62 || 
-                    x.Version == 63 || 
-                    x.Version == 64 || 
+                    x.Version == 62 ||
+                    x.Version == 63 ||
+                    x.Version == 64 ||
                     x.Version == 65 ||
                     x.Version == 66));
         }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Benchmarks.Rlp
     public class RlpEncodeHeaderBenchmark
     {
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
-        
+
         private static BlockHeader _header;
 
         private BlockHeader[] _scenarios;
@@ -41,7 +41,7 @@ namespace Nethermind.Benchmarks.Rlp
             var transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
-                transactions[i] = Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
+                transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             }
 
             _scenarios = new[]
@@ -57,14 +57,14 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             _header = _scenarios[ScenarioIndex];
-            
+
             Console.WriteLine($"Length current: {Current().Length}");
             Console.WriteLine($"Length improved: {Improved().Length}");
             Console.WriteLine($"Length improved2: {Improved2().Length}");
             Check(Current(), Improved());
             Check(Current(), Improved2());
         }
-        
+
         private void Check(byte[] a, byte[] b)
         {
             if (!a.SequenceEqual(b))
@@ -81,11 +81,11 @@ namespace Nethermind.Benchmarks.Rlp
         {
             return _headerDecoder.Encode(_header).Bytes;
         }
-        
+
         [Benchmark]
         public byte[] Improved()
         {
-         throw new NotImplementedException();
+            throw new NotImplementedException();
         }
 
         [Benchmark(Baseline = true)]

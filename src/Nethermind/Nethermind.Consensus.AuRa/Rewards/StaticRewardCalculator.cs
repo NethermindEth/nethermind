@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
             return blockRewardInfos;
         }
-        
+
         private class BlockRewardInfo : IActivatedAt
         {
             public long BlockNumber { get; }

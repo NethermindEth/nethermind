@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,16 +38,16 @@ public class ClientTypeStrategy : IPeerAllocationStrategy
     {
         _strategy = strategy;
         _allowOtherIfNone = allowOtherIfNone;
-        _supportedClientTypes = new HashSet<NodeClientType>(supportedClientTypes);   
+        _supportedClientTypes = new HashSet<NodeClientType>(supportedClientTypes);
     }
-    
+
     public bool CanBeReplaced => _strategy.CanBeReplaced;
 
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         IEnumerable<PeerInfo> originalPeers = peers;
         peers = peers.Where(p => _supportedClientTypes.Contains(p.PeerClientType));
-        
+
         if (_allowOtherIfNone)
         {
             if (!peers.Any())

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,70 +26,70 @@ namespace Nethermind.Core.Extensions
         {
             return @this * 1_000_000_000L;
         }
-        
+
         public static long MB(this int @this)
         {
             return @this * 1_000_000L;
         }
-        
+
         public static long KB(this int @this)
         {
             return @this * 1_000L;
         }
-        
+
         public static long GiB(this int @this)
         {
             return @this * 1024L * 1024L * 1024L;
         }
-        
+
         public static long MiB(this int @this)
         {
             return @this * 1024L * 1024L;
         }
-        
+
         public static long KiB(this int @this)
         {
             return @this * 1024L;
         }
-        
+
         public static long GB(this long @this)
         {
             return ((int)@this).GB();
         }
-        
+
         public static long MB(this long @this)
         {
             return ((int)@this).MB();
         }
-        
+
         public static long KB(this long @this)
         {
             return ((int)@this).KB();
         }
-        
+
         public static long GiB(this long @this)
         {
             return ((int)@this).GiB();
         }
-        
+
         public static long MiB(this long @this)
         {
             return ((int)@this).MiB();
         }
-        
+
         public static long KiB(this long @this)
         {
             return ((int)@this).KiB();
         }
     }
-    
+
     public static class IntExtensions
     {
         public static string ToHexString(this int @this)
         {
             return $"0x{@this:X}";
         }
-        
+
         public static UInt256 Ether(this int @this)
         {
             return (uint)@this * Unit.Ether;
@@ -99,7 +99,7 @@ namespace Nethermind.Core.Extensions
         {
             return (uint)@this * Unit.Wei;
         }
-        
+
         public static UInt256 GWei(this int @this)
         {
             return (uint)@this * Unit.GWei;
@@ -111,7 +111,7 @@ namespace Nethermind.Core.Extensions
             BinaryPrimitives.WriteInt32BigEndian(bytes, value);
             return bytes;
         }
-        
+
         public static byte[] ToBigEndianByteArray(this int value)
         {
             byte[] bytes = BitConverter.GetBytes(value);

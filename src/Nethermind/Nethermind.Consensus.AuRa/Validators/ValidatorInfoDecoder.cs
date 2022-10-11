@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var length = rlpStream.ReadSequenceLength();
             int check = rlpStream.Position + length;
             var finalizingBlockNumber = rlpStream.DecodeLong();
-            var previousFinalizingBlockNumber= rlpStream.DecodeLong();
+            var previousFinalizingBlockNumber = rlpStream.DecodeLong();
 
             int addressesSequenceLength = rlpStream.ReadSequenceLength();
             int addressesCheck = rlpStream.Position + addressesSequenceLength;
@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             int i = 0;
             while (rlpStream.Position < addressesCheck)
             {
-                addresses[i++] = rlpStream.DecodeAddress();                
+                addresses[i++] = rlpStream.DecodeAddress();
             }
             rlpStream.Check(addressesCheck);
             rlpStream.Check(check);
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            var (contentLength, validatorLength)  = GetContentLength(item, rlpBehaviors);
+            var (contentLength, validatorLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.FinalizingBlockNumber);
             stream.Encode(item.PreviousFinalizingBlockNumber);
@@ -87,4 +87,4 @@ namespace Nethermind.Consensus.AuRa.Validators
             return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.LengthOfSequence(validatorsLength), validatorsLength);
         }
     }
-} 
+}

@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Filters
                 List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Add(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
-                
+
             }
         }
 
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Filters
                 List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Remove(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
-                
+
             }
         }
 
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Filters
             {
                 if (_lastBlockHash != null)
                 {
-                    Keccak[] hackedResult = {_lastBlockHash}; // truffle hack
+                    Keccak[] hackedResult = { _lastBlockHash }; // truffle hack
                     _lastBlockHash = null;
                     return hackedResult;
                 }
@@ -199,7 +199,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             IEnumerable<BlockFilter> filters = _filterStore.GetFilters<BlockFilter>();
-            
+
             foreach (BlockFilter filter in filters)
             {
                 StoreBlock(filter, block);

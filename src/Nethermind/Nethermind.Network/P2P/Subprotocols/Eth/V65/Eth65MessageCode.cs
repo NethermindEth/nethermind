@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,8 +18,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public static class Eth65MessageCode
     {
-        public const int NewPooledTransactionHashes  = 0x08;
+        public const int NewPooledTransactionHashes = 0x08;
         public const int GetPooledTransactions = 0x09;
-        public const int PooledTransactions  = 0x0a;
+        public const int PooledTransactions = 0x0a;
     }
 }

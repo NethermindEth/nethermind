@@ -35,9 +35,9 @@ namespace Nethermind.Api.Extensions
         Task<IBlockProducer> InitBlockProducer(
             IBlockProductionTrigger? blockProductionTrigger = null,
             ITxSource? additionalTxSource = null);
-        
+
         string SealEngineType { get; }
-        
+
         /// <summary>
         /// Default block production trigger for this consensus plugin.
         /// </summary>
@@ -45,7 +45,7 @@ namespace Nethermind.Api.Extensions
         /// Needed when this plugin is used in combination with other plugin that affects block production like MEV plugin.
         /// </remarks>
         IBlockProductionTrigger DefaultBlockProductionTrigger { get; }
-		
-		INethermindApi CreateApi() => new NethermindApi();
+
+        INethermindApi CreateApi() => new NethermindApi();
     }
 }

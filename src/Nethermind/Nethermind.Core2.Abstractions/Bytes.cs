@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Core2
         {
             return ToHexString(bytes.AsSpan(), withZeroX, false);
         }
-        
+
         public static string ToHexString(this ReadOnlySpan<byte> span)
         {
             return ToHexString(span, false, false);
@@ -37,18 +37,18 @@ namespace Nethermind.Core2
         {
             return ToHexString(span, withZeroX, false);
         }
-        
+
         public static string ToHexString(this ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
         {
             return ByteArrayToHexViaLookup32(span, withZeroX, noLeadingZeros);
         }
-        
+
         [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(ReadOnlySpan<byte> span, bool withZeroX, bool skipLeadingZeros)
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
             char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
-          
+
             if (withZeroX)
             {
                 result[0] = '0';
@@ -58,8 +58,8 @@ namespace Nethermind.Core2
             for (int i = 0; i < span.Length; i++)
             {
                 uint val = Lookup32[span[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
 
                 if (leadingZeros <= i * 2)
                 {
@@ -79,7 +79,7 @@ namespace Nethermind.Core2
 
             return new string(result);
         }
-        
+
         private static readonly uint[] Lookup32 = CreateLookup32("x2");
 
         private static uint[] CreateLookup32(string format)
@@ -88,12 +88,12 @@ namespace Nethermind.Core2
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
 
             return result;
         }
-        
+
         private static int CountLeadingZeros(ReadOnlySpan<byte> span)
         {
             int leadingZeros = 0;
@@ -126,7 +126,7 @@ namespace Nethermind.Core2
             {
                 throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes.Length} and {otherBytes.Length}");
             }
-            
+
             byte[] result = new byte[bytes.Length];
             for (int i = 0; i < result.Length; i++)
             {
@@ -135,7 +135,7 @@ namespace Nethermind.Core2
 
             return result;
         }
-      
+
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
         {
@@ -148,8 +148,8 @@ namespace Nethermind.Core2
 
             return (fnvPrime * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
-        
-         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+
+        public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
 
         public static readonly IComparer<byte[]> Comparer = new BytesComparer();
 
@@ -207,7 +207,7 @@ namespace Nethermind.Core2
         {
             return a1.SequenceEqual(a2);
         }
-        
+
         private static byte[] FromHexNibble1Table =
         {
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -254,17 +254,17 @@ namespace Nethermind.Core2
             {
                 if (odd && i == 0)
                 {
-                    bytes[0] += FromHexNibble2Table[(byte) hexString[startIndex]];
+                    bytes[0] += FromHexNibble2Table[(byte)hexString[startIndex]];
                 }
                 else if (odd)
                 {
-                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex - 1]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex]];
+                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex - 1]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex]];
                 }
                 else
                 {
-                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex + 1]];
+                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex + 1]];
                 }
             }
 

@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain
 
         UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null);
 
-        (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash);
 
         ChainLevelInfo? FindLevel(long number);
 

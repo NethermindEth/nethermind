@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 8653);
         }
-        
+
         [Test]
         public void Case2()
         {
@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2835);
         }
-        
+
         [Test]
         public void Case3()
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 44529);
         }
-        
+
         [Test]
         public void Case4()
         {

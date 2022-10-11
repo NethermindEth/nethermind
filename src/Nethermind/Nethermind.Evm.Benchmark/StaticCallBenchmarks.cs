@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Benchmark
         private StorageProvider _storageProvider;
         private WorldState _worldState;
 
-        public IEnumerable<byte[]> Bytecodes 
+        public IEnumerable<byte[]> Bytecodes
         {
             get
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Benchmark
             .PushData(0)
             .Op(Instruction.JUMP)
             .Done;
-        
+
         byte[] bytecode2 = Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
             .PushData(0)
@@ -87,26 +87,26 @@ namespace Nethermind.Evm.Benchmark
             .PushData(0)
             .Op(Instruction.JUMP)
             .Done;
-        
+
         [ParamsSource(nameof(Bytecodes))]
         public byte[] Bytecode { get; set; }
 
         [GlobalSetup]
         public void GlobalSetup()
-        { 
+        {
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
-            
+
             _stateProvider = new StateProvider(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            
+
             _storageProvider = new StorageProvider(trieStore, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
-            
+
             _worldState = new WorldState(_stateProvider, _storageProvider);
             Console.WriteLine(MuirGlacier.Instance);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
-            
+
             _environment = new ExecutionEnvironment
             {
                 ExecutingAccount = Address.Zero,
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Benchmark
                 TransferValue = 0,
                 TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
             };
-        
+
             _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
         }
 
@@ -128,7 +128,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Reset();
             _storageProvider.Reset();
         }
-        
+
         [Benchmark(Baseline = true)]
         public void No_machine_running()
         {

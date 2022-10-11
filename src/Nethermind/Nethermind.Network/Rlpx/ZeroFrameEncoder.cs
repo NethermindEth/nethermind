@@ -50,7 +50,7 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
-                
+
                 // 0 if the buffer has enough writable bytes, and its capacity is unchanged.
                 // 1 if the buffer does not have enough bytes, and its capacity is unchanged.
                 // 2 if the buffer has enough writable bytes, and its capacity has been increased.

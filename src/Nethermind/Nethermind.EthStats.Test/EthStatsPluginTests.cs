@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,19 +27,19 @@ public class EthStatsPluginTests
     public IEthStatsConfig StatsConfig { get; private set; } = null!;
     private NethermindApi _context = null!;
     private EthStatsPlugin _plugin = null!;
-    
+
     [SetUp]
     public void Setup()
     {
         _context = Build.ContextWithMocks();
         _plugin = new EthStatsPlugin();
     }
-        
+
     [TestCase(true)]
     [TestCase(false)]
     public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
     {
-        StatsConfig = new EthStatsConfig() {Enabled = enabled};
+        StatsConfig = new EthStatsConfig() { Enabled = enabled };
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());

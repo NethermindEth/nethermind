@@ -54,10 +54,10 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             _value = Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
-            
+
             Check(Current(), Improved());
         }
-        
+
         private void Check(long a, long b)
         {
             if (a != b)

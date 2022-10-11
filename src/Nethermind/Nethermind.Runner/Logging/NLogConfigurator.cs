@@ -27,7 +27,7 @@ namespace Nethermind.Runner.Logging
     public static class NLogConfigurator
     {
         public static void ConfigureSeqBufferTarget(
-            string url = "http://localhost:5341", 
+            string url = "http://localhost:5341",
             string apiKey = "",
             string minLevel = "Off")
         {
@@ -52,7 +52,7 @@ namespace Nethermind.Runner.Logging
                         }
                     }
                 }
-                
+
                 // // // re-initialize single target
                 loggingConfiguration.AllTargets?.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
                 LogManager.ReconfigExistingLoggers();
@@ -83,11 +83,11 @@ namespace Nethermind.Runner.Logging
                     {
                         Console.WriteLine($"{ruleTarget.Name} TEST");
                         rule.DisableLoggingForLevels(LogLevel.Trace, nLogLevel);
-                        rule.EnableLoggingForLevels(nLogLevel, LogLevel.Off);                    
-                    }                        
+                        rule.EnableLoggingForLevels(nLogLevel, LogLevel.Off);
+                    }
                 }
             }
-            
+
             LogManager.ReconfigExistingLoggers();
         }
     }

@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain
     public static class BlockTraceDumper
     {
         public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
-        
+
         public static void LogDiagnosticTrace(
             IBlockTracer blockTracer,
             Keccak blockHash,
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
                     Path.Combine(Path.GetTempPath(), name),
                     FileMode.Create,
                     FileAccess.Write);
-            
+
             string fileName = string.Empty;
 
             try
@@ -54,14 +54,14 @@ namespace Nethermind.Blockchain
                 if (blockTracer is BlockReceiptsTracer receiptsTracer)
                 {
                     fileName = $"receipts_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);               
+                    using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
                     serializer.Serialize(diagnosticFile, receipts, true);
                     if (logger.IsInfo)
                         logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
 
                 }
-                
+
                 if (blockTracer is GethLikeBlockTracer gethTracer)
                 {
                     fileName = $"gethStyle_{blockHash}.txt";

@@ -31,13 +31,13 @@ namespace Nethermind.Network.IP
             _config = config;
             _logger = logManager.GetClassLogger<NetworkConfigLocalIPSource>();
         }
-        
+
         public Task<(bool, IPAddress)> TryGetIP()
         {
             if (_config.LocalIp != null)
             {
                 bool result = IPAddress.TryParse(_config.LocalIp, out IPAddress ipAddress);
-                
+
                 if (result)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
@@ -49,7 +49,7 @@ namespace Nethermind.Network.IP
 
                 return Task.FromResult((result, ipAddress));
             }
-            
+
             return Task.FromResult((false, (IPAddress)null));
         }
     }

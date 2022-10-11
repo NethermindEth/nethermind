@@ -42,7 +42,7 @@ namespace Nethermind.Facade.Proxy.Models
                 To = To,
                 Data = Input,
                 Value = Value,
-                GasLimit = (long) Gas,
+                GasLimit = (long)Gas,
                 GasPrice = GasPrice
             };
     }

@@ -30,7 +30,7 @@ namespace Ethereum2.Bls.Test
             YamlMappingNode? mappingNode = yamlNode as YamlMappingNode;
             IEnumerable<string?>? result =
                 (mappingNode?[propertyName] as YamlSequenceNode)?.Children.Select(i => (i as YamlScalarNode)?.Value);
-            return result?.Select(i => i is null ? null : (T) Convert.ChangeType(i, typeof(T))).ToArray();
+            return result?.Select(i => i is null ? null : (T)Convert.ChangeType(i, typeof(T))).ToArray();
         }
 
         public static T?[]? ArrayProp<T>(this YamlNode yamlNode, string propertyName,
@@ -50,7 +50,7 @@ namespace Ethereum2.Bls.Test
                 return null;
             }
 
-            return (T?) Convert.ChangeType((mappingNode[propertyName] as YamlScalarNode)?.Value, typeof(T));
+            return (T?)Convert.ChangeType((mappingNode[propertyName] as YamlScalarNode)?.Value, typeof(T));
         }
     }
 }

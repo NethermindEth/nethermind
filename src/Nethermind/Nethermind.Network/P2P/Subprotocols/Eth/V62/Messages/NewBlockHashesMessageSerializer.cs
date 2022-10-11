@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length, true);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
-            
+
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
+                return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());
             }, false);
 
             return new NewBlockHashesMessage(blockHashes);

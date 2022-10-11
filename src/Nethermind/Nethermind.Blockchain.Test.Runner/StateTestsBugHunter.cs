@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 {
                     EthereumTestResult result = RunTest(test);
                     testResults.Add(result);
-                    
+
                     if (result.Pass)
                     {
                         WriteGreen("PASS");
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
                         Setup(manager);
                         RunTest(test);
-                    }                    
+                    }
                 }
             }
 

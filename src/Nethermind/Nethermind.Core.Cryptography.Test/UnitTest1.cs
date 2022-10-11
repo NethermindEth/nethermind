@@ -30,7 +30,7 @@ namespace Nethermind.Core.Cryptography.Test
 
         public T CurrentValue { get; }
     }
-    
+
     public static class Default
     {
         public static IOptionsMonitor<T> Options<T>() where T : class, new()
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Cryptography.Test
             return new TestOptionsMonitor<T>(new T());
         }
     }
-    
+
     public class CryptographyServiceTests
     {
         [SetUp]
@@ -55,17 +55,17 @@ namespace Nethermind.Core.Cryptography.Test
                 Default.Options<TimeParameters>(),
                 Default.Options<StateListLengths>(),
                 Default.Options<MaxOperationsPerBlock>());
-            
+
             List<Ref<DepositData>> depositDataOrRoots = new List<Ref<DepositData>>();
             depositDataOrRoots.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             depositDataOrRoots.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             Root a = service.HashTreeRoot(depositDataOrRoots);
-            
+
             List<Ref<DepositData>> depositData = new List<Ref<DepositData>>();
             depositData.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             depositData.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             Root b = service.HashTreeRoot(depositData);
-            
+
             Assert.AreEqual(a, b);
         }
     }

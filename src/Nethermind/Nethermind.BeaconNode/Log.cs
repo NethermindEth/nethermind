@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode
     internal static class Log
     {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -46,22 +46,22 @@ namespace Nethermind.BeaconNode
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
-        
+
+
         // 1bxx preliminary
 
         public static readonly Action<ILogger, string, string, string, int, Exception?> BeaconNodeWorkerExecuteStarted =
             LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
                 new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
                 "Beacon Node {ProductTokenVersion} worker started; data directory '{DataDirectory}' (environment {Environment}) [{ThreadId}]");
-        
+
         public static readonly Action<ILogger, Bytes32, ulong, uint, Exception?> InitializeBeaconState =
             LoggerMessage.Define<Bytes32, ulong, uint>(LogLevel.Information,
                 new EventId(1300, nameof(InitializeBeaconState)),
                 "Initialise beacon state from ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
 
         // 2bxx completion
-        
+
         public static readonly Action<ILogger, ulong, ulong, long, int, Exception?> WorkerStoreAvailableTickStarted =
             LoggerMessage.Define<ulong, ulong, long, int>(LogLevel.Information,
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
@@ -71,7 +71,7 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<string, Slot, Root, Slot>(LogLevel.Information,
                 new EventId(2001, nameof(RequestingBlocksFromAheadPeer)),
                 "Peer {PeerId} is ahead, requesting blocks from finalized slot {FinalizedSlot} up to head {PeerHeadRoot}, slot {PeerHeadSlot}.");
-        
+
         public static readonly Action<ILogger, Root, BeaconState, Root, BeaconBlock, Exception?> ValidatedStateTransition =
             LoggerMessage.Define<Root, BeaconState, Root, BeaconBlock>(LogLevel.Information,
                 new EventId(2100, nameof(ValidatedStateTransition)),
@@ -203,9 +203,9 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<long>(LogLevel.Warning,
                 new EventId(4901, nameof(QuickStartClockCreated)),
                 "Quick start clock created with offset {ClockOffset:n0}.");
-        
+
         // 5bxx error
-        
+
         public static readonly Action<ILogger, Exception?> BeaconNodeWorkerLoopError =
             LoggerMessage.Define(LogLevel.Error,
                 new EventId(5000, nameof(BeaconNodeWorkerLoopError)),

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,14 +24,14 @@ namespace Nethermind.Consensus.AuRa.Validators
         void ReportMalicious(Address validator, long blockNumber, byte[] proof, MaliciousCause cause);
         void ReportBenign(Address validator, long blockNumber, BenignCause cause);
         void TryReportSkipped(BlockHeader header, BlockHeader parent);
-        
+
         public enum BenignCause
         {
             FutureBlock,
             IncorrectProposer,
             SkippedStep
         }
-        
+
         public enum MaliciousCause
         {
             DuplicateStep,

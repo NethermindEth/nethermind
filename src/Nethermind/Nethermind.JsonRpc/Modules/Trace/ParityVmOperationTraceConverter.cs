@@ -24,16 +24,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTrace>
     {
         //{
-//  "cost": 0.0,
-//            "ex": {
-//                "mem": null,
-//                "push": [],
-//                "store": null,
-//                "used": 16961.0
-//            },
-//            "pc": 526.0,
-//            "sub": null
-//        }
+        //  "cost": 0.0,
+        //            "ex": {
+        //                "mem": null,
+        //                "push": [],
+        //                "store": null,
+        //                "used": 16961.0
+        //            },
+        //            "pc": 526.0,
+        //            "sub": null
+        //        }
         public override void WriteJson(JsonWriter writer, ParityVmOperationTrace value, JsonSerializer serializer)
         {
             writer.WriteStartObject();

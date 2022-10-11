@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -75,14 +75,14 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 }
 
                 byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
-                byte[] privateKey = privateKeys[(int) (ulong) proposerIndex];
+                byte[] privateKey = privateKeys[(int)(ulong)proposerIndex];
 
                 Domain randaoDomain = beaconStateAccessor.GetDomain(state, signatureDomains.Randao, blockEpoch);
                 Root epochHashTreeRoot = cryptographyService.HashTreeRoot(blockEpoch);
                 Root randaoSigningRoot = beaconChainUtility.ComputeSigningRoot(epochHashTreeRoot, randaoDomain);
                 randaoReveal = TestSecurity.BlsSign(randaoSigningRoot, privateKey);
             }
-            
+
             BeaconBlock emptyBlock = new BeaconBlock(slot,
                 previousBlockHashTreeRoot,
                 Root.Zero,
@@ -155,7 +155,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             Domain proposerDomain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconProposer, blockEpoch);
             Root signingRoot = beaconChainUtility.ComputeSigningRoot(blockHashTreeRoot, proposerDomain);
             BlsSignature signature = TestSecurity.BlsSign(signingRoot, privateKey);
-            
+
             return new SignedBeaconBlock(block, signature);
         }
     }

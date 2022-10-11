@@ -856,9 +856,8 @@ namespace Nethermind.Blockchain
             }
 
             header.Hash ??= blockHash;
-
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
-            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) == BlockTreeLookupOptions.None;
+            bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
             if ((totalDifficultyNeeded && header.TotalDifficulty is null) || requiresCanonical)
@@ -868,18 +867,23 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-                    if (_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (calculateTotalDifficulty)
+                    // TODO: we should remove it - readonly method modifies DB
+                    bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && header.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
+                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
-                        SetTotalDifficulty(header);
+                        if (_logger.IsInfo) _logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
-
-                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Missing block info - creating level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
+                        SetTotalDifficulty(header);
+                        blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
+                        level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+                    }
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != 0)
+                    if (blockInfo.TotalDifficulty != UInt256.Zero || header.IsGenesis)
                         header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }
 
@@ -1710,9 +1714,9 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
+        public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
 
-        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
+        private (BlockInfo? Info, ChainLevelInfo? Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {
             ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
             if (chainLevelInfo is null)
@@ -1885,8 +1889,8 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
-            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
-                                            BlockTreeLookupOptions.None;
+            bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) ==
+                                        BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
 
@@ -1897,20 +1901,24 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (calculateTotalDifficulty)
+                    // TODO: we should remove it - readonly method modifies DB
+                    bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
+                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
                     {
-                        SetTotalDifficulty(block.Header);
+                        if (_logger.IsInfo) _logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
-
-                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
-                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo, false);
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Missing block info - creating level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
+                        SetTotalDifficulty(block.Header);
+                        blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
+                        level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
+                    }
                 }
                 else
                 {
-                    block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    if (blockInfo.TotalDifficulty != UInt256.Zero || block.IsGenesis)
+                        block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
                 }
 
                 if (requiresCanonical)
@@ -1942,7 +1950,7 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (current.TotalDifficulty is null)
+                while (!current.IsNonZeroTotalDifficulty())
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
@@ -1970,7 +1978,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.TotalDifficulty is not null)
+            if (header.IsNonZeroTotalDifficulty())
             {
                 return;
             }

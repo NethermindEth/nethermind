@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var deposits = depositsBytes
                 .Select(b => depositsDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Deposits") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Deposits") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             if (!deposits.Any())
             {
                 MessageBox.Query(40, 7, "Deposits", "No data." +
@@ -54,7 +54,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var depositDetailsWindow = new Window("Deposit details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(depositDetailsWindow);
                     var serializer = new EthereumJsonSerializer();

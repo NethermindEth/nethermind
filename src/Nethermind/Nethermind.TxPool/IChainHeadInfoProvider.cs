@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,13 +25,13 @@ namespace Nethermind.TxPool
     public interface IChainHeadInfoProvider
     {
         IChainHeadSpecProvider SpecProvider { get; }
-        
+
         IAccountStateProvider AccountStateProvider { get; }
 
         public long? BlockGasLimit { get; }
-        
+
         public UInt256 CurrentBaseFee { get; }
-        
+
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }
 }

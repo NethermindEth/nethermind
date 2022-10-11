@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,19 +40,19 @@ namespace Nethermind.Network.Test.P2P
         public void Can_read_single_byte_message()
         {
             DisconnectMessageSerializer serializer = new();
-            byte[] serialized = new byte[] {16};
+            byte[] serialized = new byte[] { 16 };
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
         }
-        
+
         // does this format happen more often?
-//        [Test]
-//        public void Can_read_other_format_message()
-//        {
-//            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
-//            byte[] serialized = Bytes.FromHexString("0204c108");
-//            DisconnectMessage deserialized = serializer.Deserialize(serialized);
-//            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
-//        }
+        //        [Test]
+        //        public void Can_read_other_format_message()
+        //        {
+        //            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+        //            byte[] serialized = Bytes.FromHexString("0204c108");
+        //            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+        //            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
+        //        }
     }
 }

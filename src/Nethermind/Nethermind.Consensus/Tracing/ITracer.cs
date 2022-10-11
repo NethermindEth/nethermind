@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="tracer">Trace to act on block processing events.</param>
         /// <returns>Processed block</returns>
         Block? Trace(Block block, IBlockTracer tracer);
-        
+
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
     }
 }

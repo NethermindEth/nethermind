@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
-[assembly:InternalsVisibleTo("Nethermind.Core.Tests")]
+[assembly: InternalsVisibleTo("Nethermind.Core.Tests")]
 
 namespace Nethermind.Core
 {
@@ -30,12 +30,12 @@ namespace Nethermind.Core
         public CompositeComparer(params IComparer<T>[] comparers) : this((IEnumerable<IComparer<T>>)comparers)
         {
         }
-        
+
         public CompositeComparer(IEnumerable<IComparer<T>> comparers)
         {
             _comparers = new List<IComparer<T>>(comparers);
         }
-        
+
         public CompositeComparer<T> FirstBy(IComparer<T> comparer)
         {
             switch (comparer)
@@ -43,7 +43,7 @@ namespace Nethermind.Core
                 case CompositeComparer<T> compositeComparer:
                     return new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers));
                 default:
-                    return new CompositeComparer<T>(new[] {comparer}.Concat(_comparers));
+                    return new CompositeComparer<T>(new[] { comparer }.Concat(_comparers));
             }
         }
 
@@ -54,10 +54,10 @@ namespace Nethermind.Core
                 case CompositeComparer<T> compositeComparer:
                     return new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers));
                 default:
-                    return new CompositeComparer<T>(_comparers.Concat(new[] {comparer}));
+                    return new CompositeComparer<T>(_comparers.Concat(new[] { comparer }));
             }
         }
-        
+
 
         public int Compare(T? x, T? y)
         {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,10 +43,10 @@ namespace Nethermind.Core.Test.Builders
                 DefaultDifficulty, 0,
                 4_000_000,
                 1_000_000,
-                new byte[] {1, 2, 3});
+                new byte[] { 1, 2, 3 });
             TestObjectInternal.Bloom = Bloom.Empty;
             TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
-            TestObjectInternal.Nonce = 1000;            
+            TestObjectInternal.Nonce = 1000;
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.TxRoot = Keccak.EmptyTreeHash;
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = bloom;
             return this;
         }
-        
+
         public BlockHeaderBuilder WithBaseFee(UInt256 baseFee)
         {
             TestObjectInternal.BaseFeePerGas = baseFee;
@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Number = blockNumber;
             return this;
         }
-        
+
         public BlockHeaderBuilder WithTotalDifficulty(long totalDifficulty)
         {
             TestObjectInternal.TotalDifficulty = (ulong)totalDifficulty;
@@ -176,7 +176,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Nonce = nonce;
             return this;
         }
-        
+
         public BlockHeaderBuilder WithAura(long step, byte[]? signature = null)
         {
             TestObjectInternal.AuRaStep = step;

@@ -54,7 +54,7 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
         _minPersistedBlock = null;
         if (_logger.IsDebug) _logger.Debug("In Full Pruning, persisting all state changes");
     }
-    
+
     private void OnPruningFinished(object? sender, EventArgs e)
     {
         if (_logger.IsDebug) _logger.Debug("Out of Full Pruning, stop persisting all state changes");

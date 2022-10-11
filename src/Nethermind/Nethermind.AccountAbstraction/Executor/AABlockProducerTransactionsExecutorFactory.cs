@@ -45,8 +45,8 @@ namespace Nethermind.AccountAbstraction.Executor
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 _specProvider,
-                _logManager, 
-                _signer, 
+                _logManager,
+                _signer,
                 _entryPointAddresses);
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test.Tracing
             TimeSpan timeout = TimeSpan.FromMilliseconds(10);
             using CancellationTokenSource cancellationTokenSource = new(timeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) {IsTracingActions = true};
+            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
 
             // ReSharper disable once MethodSupportsCancellation
             await Task.Delay(100);
@@ -49,13 +49,13 @@ namespace Nethermind.Evm.Test.Tracing
         public async Task Does_not_throw_if_cancellation_token_is_default()
         {
             CancellationToken cancellationToken = default;
-            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) {IsTracingActions = true};
-            
+            CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
+
             await Task.Delay(2000, cancellationToken);
 
-            Assert.DoesNotThrow(() => tracer.ReportActionError(EvmExceptionType.None)); 
+            Assert.DoesNotThrow(() => tracer.ReportActionError(EvmExceptionType.None));
         }
-        
+
         [Test]
         public void Creates_inner_tx_cancellation_tracers()
         {

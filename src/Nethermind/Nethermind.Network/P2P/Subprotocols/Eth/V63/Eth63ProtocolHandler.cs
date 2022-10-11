@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -109,7 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
-            
+
             byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
 
             return new NodeDataMessage(nodeData);
@@ -129,7 +129,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             GetNodeDataMessage msg = new(keys);
-            
+
             // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
             // on a sample 3M blocks Goerli fast sync
             byte[][] nodeData = await SendRequest(msg, token);
@@ -146,7 +146,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             return txReceipts;
         }
-        
+
         protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -155,36 +155,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
-            Request<GetNodeDataMessage, byte[][]> request = new(message);
-            _nodeDataRequests.Send(request);
-            
-            Task<byte[][]> task = request.CompletionSource.Task;
-
-            using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation
-                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-            if (firstTask.IsCanceled)
-            {
-                token.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask == task)
-            {
-                delayCancellation.Cancel();
-                long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace)
-                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
-
-                return task.Result;
-            }
-            
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
+            return await SendRequestGeneric(
+                _nodeDataRequests,
+                message,
+                TransferSpeedType.NodeData,
+                static (_) => $"{nameof(GetNodeDataMessage)}",
+                token);
         }
-        
+
         protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -193,33 +171,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            Request<GetReceiptsMessage, TxReceipt[][]> request = new(message);
-            _receiptsRequests.Send(request);
-
-            Task<TxReceipt[][]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation 
-                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-            if (firstTask.IsCanceled)
-            {
-                token.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask == task)
-            {
-                delayCancellation.Cancel();
-                long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace)
-                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);
-                return task.Result;
-            }
-
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, 0L);
-
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
+            return await SendRequestGeneric(
+                _receiptsRequests,
+                message,
+                TransferSpeedType.Receipts,
+                static (_) => $"{nameof(GetReceiptsMessage)}",
+                token);
         }
     }
 }

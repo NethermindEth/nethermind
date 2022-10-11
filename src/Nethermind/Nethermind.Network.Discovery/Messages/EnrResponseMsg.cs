@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.Network.Discovery.Messages;
 public class EnrResponseMsg : DiscoveryMsg
 {
     private const long MaxTime = long.MaxValue; // non-expiring message
-    
+
     public override MsgType MsgType => MsgType.EnrResponse;
 
     public NodeRecord NodeRecord { get; }
@@ -41,7 +41,7 @@ public class EnrResponseMsg : DiscoveryMsg
         NodeRecord = nodeRecord;
         RequestKeccak = requestKeccak;
     }
-    
+
     public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Keccak requestKeccak)
         : base(farPublicKey, MaxTime)
     {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         {
             GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
         }
-        
+
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
             bool fromReceipts = receipts != null;
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                     }
 
                     _lastHash = blockHeader.Hash;
-                    
+
                     if (_logger.IsTrace) _logger.Trace($"{GetType()} trying to {nameof(GetItemsFromContractAtBlock)} with params " +
                                                        $"{nameof(canGetFullStateFromReceipts)}:{canGetFullStateFromReceipts}, " +
                                                        $"{nameof(fromReceipts)}:{fromReceipts}, " +

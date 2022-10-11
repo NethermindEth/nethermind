@@ -41,10 +41,10 @@ namespace Nethermind.DataMarketplace.Initializers
                 throw new InvalidOperationException(
                     $"Cannot {nameof(InitNetworkProtocol)} in NDM before preparing an NDM initializer.");
             }
-            
+
             ILogger logger = _ndmApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Initializing NDM network protocol...");
-            
+
             _ndmApi.HttpClient = new DefaultHttpClient(new HttpClient(), _ndmApi.EthereumJsonSerializer, _ndmApi.LogManager);
             INdmConfig ndmConfig = _ndmApi.Config<INdmConfig>();
             if (ndmConfig.ProxyEnabled)
@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Initializers
         public Task InitRpcModules()
         {
             ILogger logger = _ndmApi.LogManager.GetClassLogger();
-            
+
             // TODO: ensure we can override during Register calls
             if (_ndmApi.Config<INdmConfig>().ProxyEnabled)
             {
@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 
-            if(_ndmInitializer == null)
+            if (_ndmInitializer == null)
             {
                 throw new InvalidOperationException("Ndm initializer is not created yet, can't start the rpc modules");
             }
@@ -121,7 +121,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
                 if (ndmInitializerType == null)
                 {
-                    if(logger.IsError) logger.Error(
+                    if (logger.IsError) logger.Error(
                         $"NDM enabled but the initializer {initializerName} has not been found. Ensure that a plugin exists with the properly set {nameof(NdmInitializerAttribute)}");
                 }
 
@@ -137,7 +137,7 @@ namespace Nethermind.DataMarketplace.Initializers
                     _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
-                NdmWebSocketsModule ndmWebSocketsModule = new( _ndmApi); 
+                NdmWebSocketsModule ndmWebSocketsModule = new(_ndmApi);
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }
 

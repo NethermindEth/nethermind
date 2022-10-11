@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,10 +39,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             };
 
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(destination, false).Should().Be(isValid);
         }
-        
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
-        
+
         [Test]
         public void Validates_when_push_with_data_like_begin_sub()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
-        
+
         [Test]
         public void Validate_CodeBitmap_With_Push10()
         {
@@ -98,12 +98,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 1,2,3,4,5,6,7,8,9,10,
                 (byte)Instruction.JUMPDEST
             };
-        
+
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(11, false).Should().BeTrue();
         }
-        
+
         [Test]
         public void Validate_CodeBitmap_With_Push30()
         {
@@ -113,9 +113,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,
                 (byte)Instruction.JUMPDEST
             };
-        
+
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(31, false).Should().BeTrue();
         }
 
@@ -126,17 +126,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b
             };
-        
+
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(10, false).Should().BeTrue();
-            
+
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
-            
+
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
         }
-        
+
         [Test]
         public void Small_Push1_Use_CodeDataAnalyzer()
         {
@@ -144,47 +144,47 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,
             };
-        
+
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(10, false).Should().BeFalse();
-            
+
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
-            
+
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
         }
-        
+
         [Test]
         public void Jumpdest_Over10k_Use_JumpdestAnalyzer()
         {
             var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(10, false).Should().BeTrue();
-            
+
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
-            
+
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
         }
-        
+
         [Test]
         public void Push1_Over10k_Use_JumpdestAnalyzer()
         {
             var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
-            
+
             codeInfo.ValidateJump(10, false).Should().BeFalse();
-            
+
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
-            
+
             Assert.IsInstanceOf<JumpdestAnalyzer>(calc);
         }
-        
+
         [Test]
         public void Push1Jumpdest_Over10k_Use_JumpdestAnalyzer()
         {
@@ -213,7 +213,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 iterations++;
             }
-            
+
             Assert.IsInstanceOf<JumpdestAnalyzer>(calc);
         }
     }

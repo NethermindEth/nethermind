@@ -44,10 +44,10 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
                 value: 4,
                 claimedValue: 5,
                 expiryTime: 6,
-                pepper: new byte[] {1, 2, 3},
+                pepper: new byte[] { 1, 2, 3 },
                 provider: TestItem.AddressA,
                 consumer: TestItem.AddressB,
-                signature: new Signature(1,2,37),
+                signature: new Signature(1, 2, 37),
                 timestamp: 7,
                 transactions: Enumerable.Empty<TransactionInfo>(),
                 status: PaymentClaimStatus.Claimed);
@@ -63,10 +63,10 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
                 value: 4,
                 claimedValue: 5,
                 expiryTime: 6,
-                pepper: new byte[] {1, 2, 3},
+                pepper: new byte[] { 1, 2, 3 },
                 provider: TestItem.AddressA,
                 consumer: TestItem.AddressC,
-                signature: new Signature(1,2,37),
+                signature: new Signature(1, 2, 37),
                 timestamp: 7,
                 transactions: Enumerable.Empty<TransactionInfo>(),
                 status: PaymentClaimStatus.Cancelled);
@@ -82,10 +82,10 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
                 value: 4,
                 claimedValue: 5,
                 expiryTime: 6,
-                pepper: new byte[] {1, 2, 3},
+                pepper: new byte[] { 1, 2, 3 },
                 provider: TestItem.AddressA,
                 consumer: TestItem.AddressD,
-                signature: new Signature(1,2,37),
+                signature: new Signature(1, 2, 37),
                 timestamp: 7,
                 transactions: Enumerable.Empty<TransactionInfo>(),
                 status: PaymentClaimStatus.Sent);
@@ -101,10 +101,10 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
                 value: 4,
                 claimedValue: 5,
                 expiryTime: 6,
-                pepper: new byte[] {1, 2, 3},
+                pepper: new byte[] { 1, 2, 3 },
                 provider: TestItem.AddressA,
                 consumer: TestItem.AddressA,
-                signature: new Signature(1,2,37),
+                signature: new Signature(1, 2, 37),
                 timestamp: 7,
                 transactions: new TransactionInfo[] { TransactionInfo.Default(Keccak.Zero, value: 10, gasPrice: 1, gasLimit: 100, timestamp: 10) },
                 status: PaymentClaimStatus.Sent);
@@ -115,11 +115,11 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
         {
             var claims = GetPaymentClaims();
 
-            foreach(var claim in claims)
+            foreach (var claim in claims)
             {
                 await repository.AddAsync(claim);
             }
-            
+
             PagedResult<PaymentClaim> pendingClaims = await repository.BrowseAsync(new GetPaymentClaims
             {
                 OnlyPending = true
@@ -133,11 +133,11 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
         {
             var claims = GetPaymentClaims();
 
-            foreach(var claim in claims)
+            foreach (var claim in claims)
             {
                 await repository.AddAsync(claim);
             }
-            
+
             PagedResult<PaymentClaim> unclaimedClaims = await repository.BrowseAsync(new GetPaymentClaims
             {
                 OnlyUnclaimed = true
@@ -151,14 +151,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
         {
             var claims = GetPaymentClaims();
 
-            foreach(var claim in claims)
+            foreach (var claim in claims)
             {
                 await repository.AddAsync(claim);
             }
 
             var claim1 = claims.First(c => c.DepositId.Equals(TestItem.KeccakB));
             var claim2 = claims.First(c => c.DepositId.Equals(TestItem.KeccakF));
-            
+
             PagedResult<PaymentClaim> browsedClaims = await repository.BrowseAsync(new GetPaymentClaims
             {
                 DepositId = TestItem.KeccakB
@@ -166,7 +166,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            var browsedClaim  = browsedClaims.Items[0]; 
+            var browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim1.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim1.Id, browsedClaim.Id);
@@ -180,7 +180,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            browsedClaim  = browsedClaims.Items[0]; 
+            browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim2.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim2.Id, browsedClaim.Id);
@@ -193,14 +193,14 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
         {
             var claims = GetPaymentClaims();
 
-            foreach(var claim in claims)
+            foreach (var claim in claims)
             {
                 await repository.AddAsync(claim);
             }
 
             var claim1 = claims.First(c => c.AssetId.Equals(TestItem.KeccakD));
             var claim2 = claims.First(c => c.AssetId.Equals(TestItem.KeccakF));
-            
+
             PagedResult<PaymentClaim> browsedClaims = await repository.BrowseAsync(new GetPaymentClaims
             {
                 AssetId = TestItem.KeccakD
@@ -208,7 +208,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            var browsedClaim  = browsedClaims.Items[0]; 
+            var browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim1.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim1.Id, browsedClaim.Id);
@@ -222,27 +222,27 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            browsedClaim  = browsedClaims.Items[0]; 
+            browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim2.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim2.Id, browsedClaim.Id);
             Assert.AreEqual(claim2.Value, browsedClaim.Value);
             Assert.AreEqual(claim2.Units, browsedClaim.Units);
-        } 
+        }
 
         [Test]
         public async Task can_browse_by_consumer_address()
         {
             var claims = GetPaymentClaims();
 
-            foreach(var claim in claims)
+            foreach (var claim in claims)
             {
                 await repository.AddAsync(claim);
             }
 
             var claim1 = claims.First(c => c.Consumer.Equals(TestItem.AddressA));
             var claim2 = claims.First(c => c.Consumer.Equals(TestItem.AddressC));
-            
+
             PagedResult<PaymentClaim> browsedClaims = await repository.BrowseAsync(new GetPaymentClaims
             {
                 Consumer = TestItem.AddressA
@@ -250,7 +250,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            var browsedClaim  = browsedClaims.Items[0]; 
+            var browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim1.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim1.Id, browsedClaim.Id);
@@ -264,12 +264,12 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.
 
             Assert.IsTrue(browsedClaims.Items.Count == 1);
 
-            browsedClaim  = browsedClaims.Items[0]; 
+            browsedClaim = browsedClaims.Items[0];
 
             Assert.AreEqual(claim2.DepositId, browsedClaim.DepositId);
             Assert.AreEqual(claim2.Id, browsedClaim.Id);
             Assert.AreEqual(claim2.Value, browsedClaim.Value);
             Assert.AreEqual(claim2.Units, browsedClaim.Units);
-        } 
+        }
     }
 }

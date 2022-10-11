@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             {
                 return PagedResult<DepositApproval>.Empty;
             }
-            
+
             var depositApprovals = DepositApprovals.AsQueryable();
             if (!(query.DataAssetId is null))
             {

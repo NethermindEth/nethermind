@@ -259,7 +259,7 @@ namespace Nethermind.Synchronization.Test
         {
             NoErrorLimboLogs logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new(LogLevel.Debug, "PEER " + index + " ");
-//            var logManager = new OneLoggerLogManager(logger);
+            //            var logManager = new OneLoggerLogManager(logger);
             SingleReleaseSpecProvider specProvider =
                 new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.ChainId);
 

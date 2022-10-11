@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -118,8 +119,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
-                // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
-                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
+                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
                 if (headers == null || headers.Length <= 1)
                 {
                     if (_logger.IsTrace)
@@ -192,7 +192,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
+                        string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
+                        if (_logger.IsWarn) _logger.Warn(message);
+                        throw new EthSyncException(message);
                     }
 
                     if (shouldProcess)
@@ -204,7 +206,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _syncProgressResolver.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState!=0;
+                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
                             if (!shouldProcess)
                             {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
@@ -294,6 +296,26 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
 
             return blocksSynced;
+        }
+
+        protected override async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        {
+            // Override PoW's RequestHeaders so that it won't request beyond PoW.
+            // This fixes `Incremental Sync` hive test.
+            BlockHeader[] response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
+            if (response.Length > 0)
+            {
+                BlockHeader lastBlockHeader = response[^1];
+                bool lastBlockIsPostMerge = _poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
+                if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
+                {
+                    response = response
+                        .TakeWhile((header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
+                        .ToArray();
+                    if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Length} sized batch.");
+                }
+            }
+            return response;
         }
 
         protected override void TryUpdateTerminalBlock(BlockHeader header, bool shouldProcess)
