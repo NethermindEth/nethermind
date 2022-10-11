@@ -116,7 +116,15 @@ public class InitializeNetwork : IStep
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
-        _api.SnapServer = new SnapServer(_api.DbProvider, _api.LogManager);
+        if (_syncConfig.SnapServe)
+        {
+            _api.SnapServer = new SnapServer(_api.DbProvider, _api.LogManager);
+        }
+        else
+        {
+            _api.SnapServer = null;
+        }
+
 
         SyncProgressResolver syncProgressResolver = new(
             _api.BlockTree!,
@@ -222,9 +230,9 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
-        if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync)
         {
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager, _syncConfig.SnapServe);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -533,11 +541,6 @@ public class InitializeNetwork : IStep
             _api.SpecProvider!,
             _api.GossipPolicy,
             _api.LogManager);
-
-        if (_syncConfig.SnapSync)
-        {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
 
         if (_syncConfig.WitnessProtocolEnabled)
         {

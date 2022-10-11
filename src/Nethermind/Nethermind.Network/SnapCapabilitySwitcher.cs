@@ -30,12 +30,15 @@ public class SnapCapabilitySwitcher
     private readonly IProtocolsManager _protocolsManager;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ILogger _logger;
+    private readonly bool _servingEnabled;
 
-    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector, ILogManager? logManager)
+    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector,
+        ILogManager? logManager, bool servingEnabled)
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _servingEnabled = servingEnabled;
     }
 
     /// <summary>
@@ -43,9 +46,16 @@ public class SnapCapabilitySwitcher
     /// </summary>
     public void EnableSnapCapabilityUntilSynced()
     {
-        _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        _syncModeSelector.Changed += OnSyncModeChanged;
-        if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
+        if (_servingEnabled)
+        {
+            _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
+        else if (!_progressTracker.IsSnapGetRangesFinished())
+        {
+            _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+            _syncModeSelector.Changed += OnSyncModeChanged;
+            if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
+        }
     }
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
