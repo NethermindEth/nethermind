@@ -66,7 +66,18 @@ namespace Nethermind.Merge.Plugin
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
-        public virtual bool MergeEnabled => _mergeConfig.Enabled;
+        public virtual bool MergeEnabled => HasTtd()
+                                            && !IsPreMergeConsensusAuRa(); // AuRa has dedicated plugin AuRaMergePlugin
+
+        public bool HasTtd()
+        {
+            return _api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
+        }
+
+        public bool IsPreMergeConsensusAuRa()
+        {
+            return _api.ChainSpec != null && _api.ChainSpec.SealEngineType == SealEngineType.AuRa;
+        }
 
         public MergePlugin() { }
 
@@ -446,8 +457,6 @@ namespace Nethermind.Merge.Plugin
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        public string SealEngineType => "Eth2Merge";
 
         public bool MustInitialize { get => true; }
     }
