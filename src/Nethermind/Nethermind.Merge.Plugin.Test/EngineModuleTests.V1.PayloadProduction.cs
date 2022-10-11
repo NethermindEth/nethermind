@@ -323,6 +323,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
     {
         using SemaphoreSlim blockImprovementLock = new(0);

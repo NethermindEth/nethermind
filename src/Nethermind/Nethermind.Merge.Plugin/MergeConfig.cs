@@ -22,6 +22,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class MergeConfig : IMergeConfig
     {
+        // No longer needed, but we can't remove it because backward compatibility. This settings is ignored
         public bool Enabled { get; set; }
 
         public string? FinalTotalDifficulty { get; set; }

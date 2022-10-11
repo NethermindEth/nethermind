@@ -20,10 +20,11 @@ namespace Nethermind.Merge.AuRa
     {
         private AuRaNethermindApi? _auraApi;
 
-        public override bool MergeEnabled => HasTtd() && IsPreMergeConsensusAuRa();
+        public override bool MergeEnabled => ShouldBeEnabled(_api);
 
         public override async Task Init(INethermindApi nethermindApi)
         {
+            _api = nethermindApi;
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
@@ -59,6 +60,8 @@ namespace Nethermind.Merge.AuRa
                 .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
         }
 
-        public bool ShouldRunSteps(INethermindApi api) => api.Config<IAuRaMergeConfig>().Enabled;
+        private bool ShouldBeEnabled(INethermindApi api) => HasTtd(api) && IsPreMergeConsensusAuRa(api);
+
+        public bool ShouldRunSteps(INethermindApi api) => ShouldBeEnabled(api);
     }
 }
