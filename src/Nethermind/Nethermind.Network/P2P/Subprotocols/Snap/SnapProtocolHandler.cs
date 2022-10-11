@@ -43,7 +43,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public static readonly TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(1000);
         private const double BytesLimitAdjustmentFactor = 2;
 
-        protected ISnapServer SyncServer { get; }
+        protected ISnapServer? SyncServer { get; }
+        protected bool ServingEnabled { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -63,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
-            ISnapServer snapServer,
+            ISnapServer? snapServer,
             ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
@@ -72,6 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
+            ServingEnabled = SyncServer != null;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -97,6 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
+                    if (!ServingEnabled) break;
                     GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
                     ReportIn(getAccountRangeMessage);
                     Handle(getAccountRangeMessage);
@@ -107,6 +110,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
+                    if (!ServingEnabled) break;
                     GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                     ReportIn(getStorageRangesMessage);
                     Handle(getStorageRangesMessage);
@@ -117,6 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
+                    if (!ServingEnabled) break;
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
                     ReportIn(getByteCodesMessage);
                     Handle(getByteCodesMessage);
@@ -127,6 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
+                    if (!ServingEnabled) break;
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage);
                     Handle(getTrieNodesMessage);
