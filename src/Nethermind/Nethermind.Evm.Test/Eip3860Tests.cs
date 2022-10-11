@@ -15,22 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
-using Nethermind.Specs.Test;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test
 {
     public class Eip3860Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
-        protected bool isEIP3860Enabled;
 
         [TestCase("0x61013860006000f0", false, 32039)] //length 312
         [TestCase("0x61013860006000f0", true, 32059)] //extra 20 cost
@@ -43,8 +39,6 @@ namespace Nethermind.Evm.Test
         [TestCase("0x600061C00060006000f5", true, 53516)]
         public void Test_EIP_3860_GasCost_Create(string createCode, bool eip3860Enabled, long expectedGasUsage)
         {
-            isEIP3860Enabled = eip3860Enabled;
-
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(createCode)
                 .Done;
@@ -55,7 +49,7 @@ namespace Nethermind.Evm.Test
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
-            var tracer = Execute(callCode);
+            var tracer = Execute(eip3860Enabled ? MainnetSpecProvider.ShanghaiBlockNumber : MainnetSpecProvider.GrayGlacierBlockNumber, callCode);
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
             Assert.AreEqual(expectedGasUsage, tracer.GasSpent - (GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow));
         }
@@ -63,7 +57,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_InitCode_CREATE_Exceeds_Limit()
         {
-            isEIP3860Enabled = true;
             string dataLenghtHex = (Spec.MaxInitCodeSize + 1).ToString("X");
             var dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
 
@@ -89,7 +82,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Disabled_InitCode_TxCreation_Exceeds_Limit_Succeeds()
         {
-            var tracer = PrepExecuteCreateTransaction(Spec.MaxInitCodeSize + 1);
+            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.GrayGlacierBlockNumber, Spec.MaxInitCodeSize + 1);
 
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
         }
@@ -97,9 +90,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Exceeds_Limit_Fails()
         {
-            isEIP3860Enabled = true;
-
-            var tracer = PrepExecuteCreateTransaction(Spec.MaxInitCodeSize + 1);
+            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockNumber, Spec.MaxInitCodeSize + 1);
 
             Assert.AreEqual(StatusCode.Failure, tracer.StatusCode);
             Assert.AreEqual(tracer.Error, "eip-3860 - transaction size over max init code size");
@@ -108,15 +99,13 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Within_Limit_Succeeds()
         {
-            isEIP3860Enabled = true;
-
             //7680 is the size of create instructions - Prepare.EvmCode.Create
-            var tracer = PrepExecuteCreateTransaction(Spec.MaxInitCodeSize - 7680);
+            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockNumber, Spec.MaxInitCodeSize - 7680);
 
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
         }
 
-        protected TestAllTracerWithOutput PrepExecuteCreateTransaction(long byteCodeSize)
+        protected TestAllTracerWithOutput PrepExecuteCreateTransaction(long blockNumber, long byteCodeSize)
         {
             var byteCode = new byte[byteCodeSize];
 
@@ -124,7 +113,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 500000, createCode);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 500000, createCode);
 
             transaction.GasPrice = 2.GWei();
             transaction.To = null;
@@ -134,7 +123,5 @@ namespace Nethermind.Evm.Test
 
             return tracer;
         }
-
-        protected override ISpecProvider SpecProvider => new OverridableSpecProvider(new TestSpecProvider(Shanghai.Instance), r => new OverridableReleaseSpec(r) { IsEip3860Enabled = isEIP3860Enabled});
     }
 }
