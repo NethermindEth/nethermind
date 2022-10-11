@@ -221,7 +221,7 @@ public class InitializeNetwork : IStep
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, (MultiSyncModeSelector)_api.SyncModeSelector, _api.LogManager);
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
