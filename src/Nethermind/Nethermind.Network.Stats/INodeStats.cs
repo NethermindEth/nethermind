@@ -32,7 +32,7 @@ namespace Nethermind.Stats
 
         void AddTransferSpeedCaptureEvent(TransferSpeedType speedType, long bytesPerMillisecond);
         long? GetAverageTransferSpeed(TransferSpeedType speedType);
-        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
+        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(ConnectionDirection connectionDirection = ConnectionDirection.Out);
 
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }

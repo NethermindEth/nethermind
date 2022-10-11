@@ -50,6 +50,9 @@ namespace Nethermind.Stats
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
+
+        private (DateTime, NodeStatsEventType) _outgoingConnectionDelay = (DateTime.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+
         private static readonly Random Random = new();
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
@@ -113,7 +116,35 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
 
+            if (disconnectType == DisconnectType.Remote)
+            {
+                if (disconnectReason == DisconnectReason.TooManyPeers)
+                {
+                    UpdateOutgoingConnectionDelay(
+                        _statsParameters.RemoteDisconnectDelay[DisconnectReason.TooManyPeers],
+                        NodeStatsEventType.RemoteTooManyPeer
+                    );
+                }
+                else if (disconnectReason == DisconnectReason.ClientQuitting)
+                {
+                    UpdateOutgoingConnectionDelay(
+                        _statsParameters.RemoteDisconnectDelay[DisconnectReason.ClientQuitting],
+                        NodeStatsEventType.RemoteClientQuitting
+                    );
+                }
+            }
+
             Increment(NodeStatsEventType.Disconnect);
+        }
+
+        private void UpdateOutgoingConnectionDelay(TimeSpan delay, NodeStatsEventType reason)
+        {
+            DateTime newDeadline = DateTime.Now + delay;
+            (DateTime currentDeadline, NodeStatsEventType _) = _outgoingConnectionDelay;
+            if (newDeadline > currentDeadline)
+            {
+                _outgoingConnectionDelay = (newDeadline, reason);
+            }
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
@@ -195,7 +226,8 @@ namespace Nethermind.Stats
             });
         }
 
-        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
+        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(
+            ConnectionDirection connectionDirection)
         {
             if (IsDelayedDueToDisconnect())
             {
@@ -205,6 +237,15 @@ namespace Nethermind.Stats
             if (IsDelayedDueToFailedConnection())
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
+            }
+
+            if (connectionDirection == ConnectionDirection.Out)
+            {
+                (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _outgoingConnectionDelay;
+                if (outgoingDelayDeadline > DateTime.Now)
+                {
+                    return (true, reason);
+                }
             }
 
             return (false, null);
