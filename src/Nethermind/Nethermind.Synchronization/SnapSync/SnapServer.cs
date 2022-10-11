@@ -42,6 +42,10 @@ public class SnapServer: ISnapServer
 
     private readonly AccountDecoder _decoder = new();
 
+    private const long HardResponseByteLimit = 2000000;
+    private const int HardResponseNodeLimit = 10000;
+
+
     public SnapServer(IDbProvider dbProvider, ILogManager logManager)
     {
         _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -83,7 +87,7 @@ public class SnapServer: ISnapServer
                     {
                         break;
                     }
-                    StorageTree sTree = new StorageTree(_store, storageRoot, _logManager);
+                    StorageTree sTree = new (_store, storageRoot, _logManager);
 
                     for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                     {
@@ -101,6 +105,11 @@ public class SnapServer: ISnapServer
     {
         long currentByteCount = 0;
         List<byte[]> response = new ();
+
+        if (byteLimit > HardResponseByteLimit)
+        {
+            byteLimit = HardResponseByteLimit;
+        }
 
         foreach (Keccak codeHash in requestedHashes)
         {
@@ -127,38 +136,26 @@ public class SnapServer: ISnapServer
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
     {
-
-        (object[]? accountNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash == null ? Keccak.MaxValue : limitHash, byteLimit, byteLimit, isStorage: false);
+        (Dictionary<byte[], byte[]>? requiredNodes, long  _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
+            limitHash ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, isStorage: false);
         StateTree tree = new(_store, _logManager);
-        PathWithAccount[] nodes = (PathWithAccount[]) accountNodes;
 
-        HashSet<byte[]> proofs = new();
-        if (nodes.Length != 0)
+        PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
+        int index = 0;
+        foreach (PathWithAccount? result in requiredNodes.Select(res => new PathWithAccount(new Keccak(res.Key), _decoder.Decode(new RlpStream(res.Value)))))
         {
-            // TODO: add error handling when proof is null
-            // first is proof for starting hash because the client needs the proof for non existance also
-            // a malicious server can skip values on the start
-            AccountProofCollector accountProofCollector = new(startingHash.Bytes);
-            tree.Accept(accountProofCollector, rootHash);
-            byte[][] firstProof = accountProofCollector.BuildResult().Proof;
-
-            // TODO: add error handling when proof is null
-            accountProofCollector = new AccountProofCollector(nodes[^1].Path.Bytes);
-            tree.Accept(accountProofCollector, rootHash);
-            byte[][] lastProof = accountProofCollector.BuildResult().Proof;
-
-            proofs.AddRange(firstProof);
-            proofs.AddRange(lastProof);
+            nodes[index] = result;
+            index += 1;
         }
 
-        return (nodes, proofs.ToArray());
+        if (nodes.Length == 0) return (nodes, Array.Empty<byte[]>());
+        byte[][]? proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, rootHash);
+        return (nodes, proofs);
     }
 
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
     {
         long responseSize = 0;
-        long hardByteLimit = 2000000;
         StateTree tree = new(_store, _logManager);
         List <PathWithStorageSlot[]> responseNodes = new();
         for (int i = 0; i < accounts.Length; i++)
@@ -168,84 +165,69 @@ public class SnapServer: ISnapServer
                 break;
             }
             Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
+            if (accountNeth is null)
+            {
+                return (responseNodes.ToArray(), null);
+            }
             Keccak? storageRoot = accountNeth.StorageRoot;
 
-            // TODO: handle null values in the node visitor - will be more efficient.
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
             limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
-            (object[]? storageNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
-                startingHash, limitHash, byteLimit - responseSize, hardByteLimit - responseSize, true);
-            PathWithStorageSlot[] nodes = (PathWithStorageSlot[]) storageNodes;
+            (Dictionary<byte[], byte[]>? requiredNodes, long  innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
+                startingHash, limitHash, byteLimit - responseSize, HardResponseByteLimit - responseSize, true);
+
+            PathWithStorageSlot[] nodes = new PathWithStorageSlot[requiredNodes.Count];
+            int index = 0;
+            foreach (PathWithStorageSlot? result in requiredNodes.Select(res => new PathWithStorageSlot(new Keccak(res.Key), res.Value)))
+            {
+                nodes[index] = result;
+                index += 1;
+            }
             responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
             {
-                // TODO: add error handling when proof is null
-                VisitingOptions opt = new() {ExpectAccounts = false};
-                ProofCollector accountProofCollector = new(startingHash.Bytes);
-                tree.Accept(accountProofCollector, storageRoot, opt);
-                byte[][]? firstProof = accountProofCollector.BuildResult();
-
-                // TODO: add error handling when proof is null
-                accountProofCollector = new ProofCollector(nodes[^1].Path.Bytes);
-                tree.Accept(accountProofCollector, storageRoot, opt);
-                byte[][]? lastProof = accountProofCollector.BuildResult();
-
-                HashSet<byte[]> proofs = new();
-                proofs.AddRange(firstProof);
-                proofs.AddRange(lastProof);
-                return (responseNodes.ToArray(), proofs.ToArray());
+                byte[][]? proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, storageRoot);
+                return (responseNodes.ToArray(), proofs);
             }
             responseSize += innerResponseSize;
         }
         return (responseNodes.ToArray(), null);
     }
 
-    private (object[], long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
+    private (Dictionary<byte[], byte[]>?, long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
         long byteLimit, long hardByteLimit, bool isStorage=false)
     {
-        // TODO: in case of storage trie its preferable to get the complete node - so this byteLimit should be a hard limit
-
-        bool stopped = false;
         PatriciaTree tree = new(_store, _logManager);
 
-
-        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit);
+        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
         VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
         tree.Accept(visitor, rootHash, opt);
         (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-        stopped = visitor._isStoppedDueToHardLimit;
 
-        // return (requiredNodes, responseSize, stopped);
-
-        if (isStorage)
-        {
-            PathWithStorageSlot[] nodes = new PathWithStorageSlot[requiredNodes.Count];
-            int i = 0;
-            foreach (PathWithStorageSlot? result in requiredNodes.Select(res => new PathWithStorageSlot(new Keccak(res.Key), res.Value)))
-            {
-                nodes[i] = result;
-                i += 1;
-            }
-            return (nodes.ToArray(), responseSize, stopped);
-        }
-        else
-        {
-            PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
-            int i = 0;
-            foreach (PathWithAccount? result in requiredNodes.Select(res => new PathWithAccount(new Keccak(res.Key), _decoder.Decode(new RlpStream(res.Value)))))
-            {
-                nodes[i] = result;
-                i += 1;
-            }
-            return (nodes.ToArray(), responseSize, stopped);
-        }
-
+        return (requiredNodes, responseSize, visitor._isStoppedDueToHardLimit);
     }
 
     private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)
     {
         byte[]? bytes = tree.Get(accountPath, rootHash);
         return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+    }
+
+    private byte[][] GenerateRangeProof(PatriciaTree tree, Keccak start, Keccak end, Keccak rootHash)
+    {
+        VisitingOptions opt = new() {ExpectAccounts = false};
+        ProofCollector accountProofCollector = new(start.Bytes);
+        tree.Accept(accountProofCollector, rootHash, opt);
+        byte[][]? firstProof = accountProofCollector.BuildResult();
+
+        accountProofCollector = new ProofCollector(end.Bytes);
+        tree.Accept(accountProofCollector, rootHash, opt);
+        byte[][]? lastProof = accountProofCollector.BuildResult();
+
+        HashSet<byte[]> proofs = new();
+        proofs.AddRange(firstProof);
+        proofs.AddRange(lastProof);
+        return proofs.ToArray();
     }
 }

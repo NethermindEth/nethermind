@@ -30,6 +30,7 @@ public class RangeQueryVisitor: ITreeVisitor
     private bool _checkStartRange = true;
 
     private readonly byte[] _limitHash;
+    private readonly bool _checkEndRange = true;
 
     private readonly bool _isAccountVisitor;
     private bool _shouldVisit = true;
@@ -48,11 +49,26 @@ public class RangeQueryVisitor: ITreeVisitor
 
     public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, long hardByteLimit = 200000, int nodeLimit = 10000)
     {
-        _startHash = new byte[64];
-        Nibbles.BytesToNibbleBytes(startHash, _startHash);
 
-        _limitHash = new byte[64];
-        Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
+        if (startHash.SequenceEqual(Keccak.Zero.Bytes))
+        {
+            _checkStartRange = false;
+        }
+        else
+        {
+            _startHash = new byte[64];
+            Nibbles.BytesToNibbleBytes(startHash, _startHash);
+        }
+
+        if (startHash.SequenceEqual(Keccak.MaxValue.Bytes))
+        {
+            _checkEndRange = false;
+        }
+        else
+        {
+            _limitHash = new byte[64];
+            Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
+        }
 
         _isAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
@@ -91,12 +107,13 @@ public class RangeQueryVisitor: ITreeVisitor
             return false;
         }
 
-        if (!_isAccountVisitor && (_currentBytesCount >= _hardByteLimit))
+        if (_currentBytesCount >= _hardByteLimit)
         {
             _isStoppedDueToHardLimit = true;
             return false;
         }
 
+        if (!_checkEndRange) return true;
         int compResult = ComparePath(path, _limitHash);
         return compResult != -1;
     }
