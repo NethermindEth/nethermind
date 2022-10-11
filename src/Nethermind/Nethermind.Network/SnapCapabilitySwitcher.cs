@@ -28,13 +28,13 @@ namespace Nethermind.Network;
 public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
-    private readonly MultiSyncModeSelector _multiSyncModeSelector;
+    private readonly ISyncModeSelector _syncModeSelector;
     private readonly ILogger _logger;
 
-    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, MultiSyncModeSelector? multiSyncModeSelector, ILogManager? logManager)
+    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector, ILogManager? logManager)
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
-        _multiSyncModeSelector = multiSyncModeSelector ?? throw new ArgumentNullException(nameof(multiSyncModeSelector));
+        _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
@@ -44,7 +44,7 @@ public class SnapCapabilitySwitcher
     public void EnableSnapCapabilityUntilSynced()
     {
         _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        _multiSyncModeSelector.Changed += OnSyncModeChanged;
+        _syncModeSelector.Changed += OnSyncModeChanged;
         if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
     }
 
@@ -52,7 +52,7 @@ public class SnapCapabilitySwitcher
     {
         if ((syncMode.Current & SyncMode.Full) != 0)
         {
-            _multiSyncModeSelector.Changed -= OnSyncModeChanged;
+            _syncModeSelector.Changed -= OnSyncModeChanged;
             _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
             if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
         }
