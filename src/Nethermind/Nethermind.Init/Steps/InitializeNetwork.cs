@@ -217,12 +217,14 @@ public class InitializeNetwork : IStep
         // {
         //     place for enabling eth67
         // }
+        // else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, (MultiSyncModeSelector)_api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
         {
