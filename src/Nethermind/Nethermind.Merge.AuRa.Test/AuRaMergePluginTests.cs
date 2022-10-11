@@ -34,7 +34,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null)
         => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
-    protected override Keccak ExpectedBlockHash => new("0x0ec8f29f7438df15ac81d68da632ea8bca8914335ed48cee8d613317c781b447");
+    protected override Keccak ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
     [Test]
     public override async Task processing_block_should_serialize_valid_responses()
