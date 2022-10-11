@@ -223,6 +223,10 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, (MultiSyncModeSelector)_api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+
+            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is no longer available).
+            // it is added here and never removed - when syncing process is finished we can run with eth67 and without snap.
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
