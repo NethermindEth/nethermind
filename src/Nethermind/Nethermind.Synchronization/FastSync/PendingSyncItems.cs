@@ -148,9 +148,16 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        /// <summary>
+        /// It takes items only from state node queues.
+        /// Codes are taken from the queue separately to support SNAP methods (2 different methods)
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
         private bool TryTake(out StateSyncItem? node)
         {
-            for (int i = 0; i < _allStacks.Length; i++)
+            // index 0 is Codes so we skip it
+            for (int i = 1; i < _allStacks.Length; i++)
             {
                 if (_allStacks[i].TryPop(out node))
                 {
@@ -168,8 +175,28 @@ namespace Nethermind.Synchronization.FastSync
             // the moment we find the first leaf we will know something more about the tree structure and hence
             // prevent lot of Stream2 entries to stay in memory for a long time 
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
-
             List<StateSyncItem> requestItems = new(length);
+
+            // Codes have priority over State Nodes
+            if (CodeItems.Count > 0)
+            {
+                int codeMaxCount = Math.Min(length, CodeItems.Count);
+
+                for (int i = 0; i < codeMaxCount; i++)
+                {
+                    if(CodeItems.TryPop(out var codeItem))
+                    {
+                        requestItems.Add(codeItem!);
+                    }
+                }
+
+                if(requestItems.Count > 0)
+                {
+                    return requestItems;
+                }
+            }
+
+            // Take Stae Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
