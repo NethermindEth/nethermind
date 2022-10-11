@@ -211,18 +211,17 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_api.SyncModeSelector is MultiSyncModeSelector multiSyncModeSelector)
-        {
-            // if (_syncConfig.SnapSync || multiSyncModeSelector.SyncFinished)
-            // {
-            //     place for enabling eth67
-            // }
+        bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-            if (_syncConfig.SnapSync && !multiSyncModeSelector.SyncFinished)
-            {
-                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, multiSyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
+        // if (_syncConfig.SnapSync || stateSyncFinished)
+        // {
+        //     place for enabling eth67
+        // }
+
+        if (_syncConfig.SnapSync && !stateSyncFinished)
+        {
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, (MultiSyncModeSelector)_api.SyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
         if (cancellationToken.IsCancellationRequested)

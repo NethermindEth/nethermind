@@ -44,14 +44,17 @@ public class SnapCapabilitySwitcher
     public void EnableSnapCapabilityUntilSynced()
     {
         _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        _multiSyncModeSelector.SnapSyncFinished += OnSnapSyncFinished;
+        _multiSyncModeSelector.Changed += OnSyncModeChanged;
         if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
     }
 
-    private void OnSnapSyncFinished(object? sender, EventArgs e)
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
     {
-        _multiSyncModeSelector.SnapSyncFinished -= OnSnapSyncFinished;
-        _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
-        if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
+        if ((syncMode.Current & SyncMode.Full) != 0)
+        {
+            _multiSyncModeSelector.Changed -= OnSyncModeChanged;
+            _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
+            if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
+        }
     }
 }
