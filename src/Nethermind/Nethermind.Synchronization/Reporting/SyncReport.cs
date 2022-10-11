@@ -61,9 +61,9 @@ namespace Nethermind.Synchronization.Reporting
             _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
             _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
             long amountOfBodiesToDownload = _fastBlocksPivotNumber - syncConfig.AncientBodiesBarrier;
-            _paddedAmountOfOldBodiesToDownload = $"{Pad(amountOfBodiesToDownload, $"{_blockPaddingLength}".Length)}";
+            _paddedAmountOfOldBodiesToDownload = $"{Pad(amountOfBodiesToDownload, $"{amountOfBodiesToDownload}".Length)}";
             long amountOfReceiptsToDownload = _fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier;
-            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier, $"{_blockPaddingLength}".Length)}";
+            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier, $"{amountOfReceiptsToDownload}".Length)}";
 
             StartTime = DateTime.UtcNow;
 
