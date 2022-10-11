@@ -70,7 +70,6 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             if (t.IsFaulted)
                             {
-                                Logger.Info("StorageRangeResponse FAILED");
                                 if (Logger.IsTrace)
                                     Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
                             }
