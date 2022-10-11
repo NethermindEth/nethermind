@@ -59,7 +59,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = true;
         }
 
-        public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
+        public Account(in UInt256 nonce, in UInt256 balance, Keccak? storageRoot, Keccak? codeHash)
         {
             Nonce = nonce;
             Balance = balance;
@@ -68,7 +68,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
-        private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
+        private Account(in UInt256 nonce, in UInt256 balance, Keccak? storageRoot, Keccak? codeHash, bool isTotallyEmpty)
         {
             Nonce = nonce;
             Balance = balance;
@@ -77,14 +77,14 @@ namespace Nethermind.Core
             IsTotallyEmpty = isTotallyEmpty;
         }
 
-        public bool HasCode => CodeHash == null ? false: !CodeHash.Equals(Keccak.OfAnEmptyString);
+        public bool HasCode => CodeHash != null && !CodeHash.Equals(Keccak.OfAnEmptyString);
 
-        public bool HasStorage => StorageRoot == null ? false: !StorageRoot.Equals(Keccak.EmptyTreeHash);
+        public bool HasStorage => StorageRoot != null && !StorageRoot.Equals(Keccak.EmptyTreeHash);
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
-        public Keccak StorageRoot { get; }
-        public Keccak CodeHash { get; }
+        public Keccak? StorageRoot { get; }
+        public Keccak? CodeHash { get; }
         public bool IsTotallyEmpty { get; }
         public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString);
         public bool IsContract => CodeHash != Keccak.OfAnEmptyString;
