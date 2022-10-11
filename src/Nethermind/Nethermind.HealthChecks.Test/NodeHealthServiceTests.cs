@@ -278,7 +278,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 10,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
-                    TimeSpanSeconds = 71,
+                    TimeSpanSeconds = 301,
                     ForkchoiceUpdatedCalls = 0,
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
                 };
@@ -300,7 +300,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 10,
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
-                    TimeSpanSeconds = 71,
+                    TimeSpanSeconds = 301,
                     ForkchoiceUpdatedCalls = 1,
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };

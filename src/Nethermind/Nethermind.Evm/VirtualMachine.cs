@@ -590,8 +590,9 @@ namespace Nethermind.Evm
                 CallResult callResult = new(output.ToArray(), success, !success);
                 return callResult;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
                 CallResult callResult = new(Array.Empty<byte>(), false, true);
                 return callResult;
             }

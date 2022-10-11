@@ -160,9 +160,6 @@ jobs:
     - name: Nethermind.Sockets.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
-    - name: MathGmp.Native
-      run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
     - name: Upload Codecov Report
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2

@@ -120,8 +120,6 @@ namespace Nethermind.Blockchain.Test
         {
             List<Block> events = new();
 
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
-
             Block block0 = Build.A.Block.Genesis.WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
             Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
             Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;
@@ -132,11 +130,6 @@ namespace Nethermind.Blockchain.Test
             _blockTree.BlockAddedToMain += (_, args) =>
             {
                 events.Add(args.Block);
-
-                if (args.Block == block2B)
-                {
-                    resetEvent.Set();
-                }
             };
 
             _blockchainProcessor.Start();
@@ -148,9 +141,8 @@ namespace Nethermind.Blockchain.Test
             _blockTree.SuggestBlock(block1B);
             _blockTree.SuggestBlock(block2B);
 
-            resetEvent.WaitOne(2000);
+            Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
-            _blockTree.Head.Should().Be(block2B);
             events.Should().HaveCount(6);
             events[4].Hash.Should().Be(block1B.Hash);
             events[5].Hash.Should().Be(block2B.Hash);

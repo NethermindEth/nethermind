@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,25 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Nethermind.Api.Extensions
+namespace Ethereum.Blockchain.Block.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class Eip3675Tests : BlockchainTestBase
 {
-    public interface INethermindPlugin : IAsyncDisposable
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test)
     {
-        string Name { get; }
+        await RunTest(test);
+    }
 
-        string Description { get; }
-
-        string Author { get; }
-
-        Task Init(INethermindApi nethermindApi);
-
-        Task InitNetworkProtocol();
-
-        Task InitRpcModules();
-
-        bool MustInitialize { get => false; }
+    public static IEnumerable<BlockchainTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3675");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }

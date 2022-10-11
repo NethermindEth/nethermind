@@ -549,22 +549,62 @@ namespace Nethermind.Synchronization.Peers
 
             if (PeerCount == PeerMaxCount)
             {
-                long lowestBlockNumber = long.MaxValue;
-                PeerInfo? worstPeer = null;
-                foreach (PeerInfo peerInfo in NonStaticPeers)
-                {
-                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || PriorityPeerCount >= PriorityPeerMaxCount))
-                    {
-                        lowestBlockNumber = peerInfo.HeadNumber;
-                        worstPeer = peerInfo;
-                    }
-                }
-
-                peersDropped++;
-                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LOWEST NUMBER");
+                peersDropped += DropWorstPeer();
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+        }
+
+        private int DropWorstPeer()
+        {
+            string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
+            {
+                if (toCompare.HeadNumber < currentPeer.HeadNumber)
+                {
+                    return "LOWEST NUMBER";
+                }
+
+                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                {
+                    return "LOWEST DIFFICULTY";
+                }
+
+                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
+                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
+                {
+                    return "HIGHEST PING";
+                }
+
+                return null;
+            }
+
+            bool canDropPriorityPeer = PriorityPeerCount >= PriorityPeerMaxCount;
+
+            PeerInfo? worstPeer = null;
+            string? worstReason = "DEFAULT";
+
+            foreach (PeerInfo peerInfo in NonStaticPeers)
+            {
+                if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
+                {
+                    continue;
+                }
+
+                if (worstPeer == null)
+                {
+                    worstPeer = peerInfo;
+                }
+
+                string? peerWorstReason = IsPeerWorstWithReason(worstPeer, peerInfo);
+                if (peerWorstReason != null)
+                {
+                    worstPeer = peerInfo;
+                    worstReason = peerWorstReason;
+                }
+            }
+
+            worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, $"PEER REVIEW / {worstReason}");
+            return 1;
         }
 
         public void SignalPeersChanged()
