@@ -212,8 +212,8 @@ public partial class BlockDownloaderTests
         notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
     }
 
-    [TestCase(32L, 32L, 0,  32)]
-    [TestCase(32L, 32L, 10,  22)]
+    [TestCase(32L, 32L, 0, 32)]
+    [TestCase(32L, 32L, 10, 22)]
     public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -245,7 +245,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(notSyncedTree, beaconPivot,  new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 

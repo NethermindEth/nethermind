@@ -37,6 +37,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
+    private bool _isDisposing;
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
@@ -273,7 +274,7 @@ public class DbOnTheRocks : IDbWithSpan
     {
         get
         {
-            if (_isDisposed)
+            if (_isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
@@ -283,7 +284,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
         set
         {
-            if (_isDisposed)
+            if (_isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
             }
@@ -305,7 +306,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public Span<byte> GetSpan(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -319,7 +320,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Remove(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
         }
@@ -329,7 +330,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
         }
@@ -347,7 +348,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -370,7 +371,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -387,7 +388,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     public bool KeyExists(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -407,6 +408,7 @@ public class DbOnTheRocks : IDbWithSpan
     internal class RocksDbBatch : IBatch
     {
         private readonly DbOnTheRocks _dbOnTheRocks;
+        private bool _isDisposed;
 
         internal readonly WriteBatch _rocksBatch;
 
@@ -414,7 +416,7 @@ public class DbOnTheRocks : IDbWithSpan
         {
             _dbOnTheRocks = dbOnTheRocks;
 
-            if (_dbOnTheRocks._isDisposed)
+            if (_dbOnTheRocks._isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
@@ -429,6 +431,12 @@ public class DbOnTheRocks : IDbWithSpan
                 throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
             }
 
+            if (_isDisposed)
+            {
+                return;
+            }
+            _isDisposed = true;
+
             _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
             _dbOnTheRocks._currentBatches.TryRemove(this);
             _rocksBatch.Dispose();
@@ -436,9 +444,18 @@ public class DbOnTheRocks : IDbWithSpan
 
         public byte[]? this[byte[] key]
         {
-            get => _dbOnTheRocks[key];
+            get
+            {
+                // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
+                return _dbOnTheRocks[key];
+            }
             set
             {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
+                }
+
                 if (value == null)
                 {
                     _rocksBatch.Delete(key);
@@ -453,11 +470,16 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Flush()
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
         }
 
+        InnerFlush();
+    }
+
+    private void InnerFlush()
+    {
         RocksDbSharp.Native.Instance.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
     }
 
@@ -529,13 +551,14 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Dispose()
     {
-        if (!_isDisposed)
-        {
-            if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
-            Flush();
-            ReleaseUnmanagedResources();
-            _dbsByPath.Remove(_fullPath!, out _);
-        }
+        if (_isDisposing) return;
+        _isDisposing = true;
+
+        if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+        InnerFlush();
+        ReleaseUnmanagedResources();
+
+        _dbsByPath.Remove(_fullPath!, out _);
 
         _isDisposed = true;
     }

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -62,25 +64,39 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
 
+            CancellationTokenSource cancelSource = new();
+            ManualResetEventSlim firstWriteWait = new();
+            firstWriteWait.Reset();
+            bool writeCompleted = false;
+
             Task task = new(() =>
             {
-                while (true)
+                for (int i = 0; i < 10000; i++)
                 {
-                    // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] { 1, 2, 3 });
+                    if (i == 0) firstWriteWait.Set();
+
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        return;
+                    }
                 }
 
-                // ReSharper disable once FunctionNeverReturns
+                writeCompleted = true;
             });
 
             task.Start();
 
-            await Task.Delay(100);
+            firstWriteWait.Wait(TimeSpan.FromSeconds(1)).Should().BeTrue();
 
             db.Dispose();
 
             await Task.Delay(100);
 
+            cancelSource.Cancel();
+            writeCompleted.Should().BeFalse();
+
+            task.IsFaulted.Should().BeTrue();
             task.Dispose();
         }
 
