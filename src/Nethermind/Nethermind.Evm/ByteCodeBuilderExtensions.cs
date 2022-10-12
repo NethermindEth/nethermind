@@ -59,7 +59,7 @@ namespace Nethermind.Evm
         }
         internal static Prepare PushSequence(this Prepare @this, params UInt256?[] args)
         {
-            for(int i = 0; i < args.Length; i++)
+            for (int i = 0; i < args.Length; i++)
             {
                 @this.PushSingle(args[i]);
             }
@@ -76,7 +76,7 @@ namespace Nethermind.Evm
         public static Prepare ADDRESS(this Prepare @this)
             => @this.Op(Instruction.ADDRESS);
         public static Prepare CALLER(this Prepare @this)
-            => @this.Op(Instruction.CALLER);    
+            => @this.Op(Instruction.CALLER);
         public static Prepare CALLVALUE(this Prepare @this)
             => @this.Op(Instruction.CALLVALUE);
         public static Prepare ORIGIN(this Prepare @this)
@@ -172,38 +172,38 @@ namespace Nethermind.Evm
         #endregion
 
         #region opcodes_with_2_args
-        public static Prepare ADD(this Prepare @this   , UInt256? lhs = null, UInt256? rhs = null)
+        public static Prepare ADD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.ADD);
         public static Prepare MUL(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.MUL);
-        public static Prepare SUB(this Prepare @this   , UInt256? from = null , UInt256? value = null)
+        public static Prepare SUB(this Prepare @this, UInt256? from = null, UInt256? value = null)
             => @this.PushSequence(value, from)
                     .Op(Instruction.SUB);
         public static Prepare DIV(this Prepare @this, UInt256? dividend = null, UInt256? divider = null)
             => @this.PushSequence(divider, dividend)
                     .Op(Instruction.DIV);
-        public static Prepare SDIV(this Prepare @this  , UInt256? dividend = null, UInt256? divider = null)
+        public static Prepare SDIV(this Prepare @this, UInt256? dividend = null, UInt256? divider = null)
             => @this.PushSequence(divider, dividend)
                     .Op(Instruction.SDIV);
-        public static Prepare MOD(this Prepare @this   , UInt256? lhs = null , UInt256? mod = null)
+        public static Prepare MOD(this Prepare @this, UInt256? lhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, lhs)
                     .Op(Instruction.MOD);
         public static Prepare SMOD(this Prepare @this, UInt256? lhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, lhs)
                     .Op(Instruction.SMOD);
-        public static Prepare SIGNEXTEND(this Prepare @this, UInt256 ? arg = null, byte[] bytes = null)
+        public static Prepare SIGNEXTEND(this Prepare @this, UInt256? arg = null, byte[] bytes = null)
             => @this.PushSingle(bytes)
                     .PushSingle(arg)
                     .Op(Instruction.SIGNEXTEND);
         public static Prepare EXP(this Prepare @this, UInt256? exp = null, UInt256? @base = null)
             => @this.PushSequence(@base, exp)
                     .Op(Instruction.EXP);
-        public static Prepare LT(this Prepare @this , UInt256? lhs = null, UInt256? rhs = null)
+        public static Prepare LT(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.LT);
-        public static Prepare GT(this Prepare @this , UInt256? lhs = null, UInt256? rhs = null)
+        public static Prepare GT(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.GT);
         public static Prepare SLT(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
@@ -212,7 +212,7 @@ namespace Nethermind.Evm
         public static Prepare SGT(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.SGT);
-        public static Prepare EQ(this Prepare @this , UInt256? lhs = null, UInt256? rhs = null)
+        public static Prepare EQ(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.EQ);
         public static Prepare AND(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
@@ -272,10 +272,10 @@ namespace Nethermind.Evm
         #endregion
 
         #region opcodes_with_3_args
-        public static Prepare ADDMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null,  UInt256? mod = null)
+        public static Prepare ADDMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, rhs, lhs)
                     .Op(Instruction.ADDMOD);
-        public static Prepare MULMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null,  UInt256? mod = null)
+        public static Prepare MULMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, rhs, lhs)
                     .Op(Instruction.MULMOD);
         public static Prepare CREATEx(this Prepare @this, byte i, UInt256? value = null, UInt256? initCodePos = null, UInt256? initCodeLen = null)
@@ -287,7 +287,7 @@ namespace Nethermind.Evm
         public static Prepare CODECOPY(this Prepare @this, UInt256? dest = null, UInt256? src = null, UInt256? len = null)
             => @this.PushSequence(len, src, dest)
                     .Op(Instruction.CODECOPY);
-        
+
         public static Prepare RETURNDATACOPY(this Prepare @this, UInt256? dest = null, UInt256? src = null, UInt256? len = null)
             => @this.PushSequence(len, src, dest)
                     .Op(Instruction.RETURNDATACOPY);
@@ -318,11 +318,11 @@ namespace Nethermind.Evm
                     .PushSingle(codeSrc)
                     .PushSingle(gasLim)
                     .Op(Instruction.DELEGATECALL);
-        public static Prepare STATICCALL(this   Prepare @this, UInt256? gasLim = null,
+        public static Prepare STATICCALL(this Prepare @this, UInt256? gasLim = null,
                                                 Address? codeSrc = null, UInt256? dataOffset = null,
                                                 UInt256? dataLength = null, UInt256? outputOffset = null,
                                                 UInt256? outputLength = null)
-            => @this.PushSequence(outputLength, outputOffset, dataLength, dataOffset)   
+            => @this.PushSequence(outputLength, outputOffset, dataLength, dataOffset)
                     .PushSingle(codeSrc)
                     .PushSingle(gasLim)
                     .Op(Instruction.STATICCALL);

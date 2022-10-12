@@ -63,11 +63,11 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [TestCase(1   , false, Description = "Shanghai fork deactivated")]
-        [TestCase(123 , false, Description = "Shanghai fork deactivated")]
+        [TestCase(1, false, Description = "Shanghai fork deactivated")]
+        [TestCase(123, false, Description = "Shanghai fork deactivated")]
         [TestCase(1234, false, Description = "Shanghai fork deactivated")]
-        [TestCase(1025, true , Description = "Shanghai fork activated, stackoverflow")]
-        [TestCase(1026, true , Description = "Shanghai fork activated, stackoverflow")]
+        [TestCase(1025, true, Description = "Shanghai fork activated, stackoverflow")]
+        [TestCase(1026, true, Description = "Shanghai fork activated, stackoverflow")]
         public void Test_Eip3855_should_fail(int repeat, bool isShanghai)
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
                 receipt.Error.Should().Be(EvmExceptionType.StackOverflow.ToString());
             }
 
-            if(!isShanghai) // should fail because of bad instruction (push zero is an EIP-3540 new instruction)
+            if (!isShanghai) // should fail because of bad instruction (push zero is an EIP-3540 new instruction)
             {
                 receipt.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
             }
