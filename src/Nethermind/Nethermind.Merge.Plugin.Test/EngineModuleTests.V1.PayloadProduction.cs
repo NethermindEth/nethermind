@@ -317,8 +317,14 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        improvementContextFactory.CreatedContexts.Select(c => c.CurrentBestBlock?.Transactions.Length).Should().Equal(3, 6, 11);
-        getPayloadResult.GetTransactions().Should().HaveCount(11);
+        List<int?> transactionsLength = improvementContextFactory.CreatedContexts
+            .Select(c =>
+                c.CurrentBestBlock?.Transactions.Length).ToList();
+
+        transactionsLength.Should().Equal(3, 6, 11);
+        Transaction[] txs = getPayloadResult.GetTransactions();
+
+        txs.Should().HaveCount(11);
     }
 
     [Test]
