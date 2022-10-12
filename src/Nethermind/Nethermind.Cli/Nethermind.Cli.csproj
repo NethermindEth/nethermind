@@ -15,6 +15,7 @@
     <ItemGroup>
       <PackageReference Include="Colorful.Console" Version="1.2.15" />
       <PackageReference Include="Jint" Version="2.11.58" />
+      <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
       <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>
 

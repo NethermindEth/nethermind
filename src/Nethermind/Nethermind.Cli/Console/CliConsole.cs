@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 
@@ -24,11 +23,10 @@ namespace Nethermind.Cli.Console;
 
 public class CliConsole : ICliConsole
 {
-    private static ColorScheme _colorScheme = DraculaColorScheme.Instance;
+    protected static Terminal _terminal;
+    public Terminal Terminal { get => _terminal; }
 
-    private static Terminal _terminal;
-
-    private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
+    protected static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
     {
         ["cmd.exe"] = Terminal.Cmd,
         ["cmd"] = Terminal.Cmder,
@@ -36,42 +34,26 @@ public class CliConsole : ICliConsole
         ["cygwin"] = Terminal.Cygwin
     };
 
-    public Terminal Init(ColorScheme colorScheme)
+    public CliConsole()
     {
-        _colorScheme = colorScheme;
-        Colorful.Console.BackgroundColor = colorScheme.BackgroundColor;
-        Colorful.Console.ForegroundColor = colorScheme.Text;
-        _terminal = GetTerminal();
-        if (_terminal != Terminal.Powershell)
-        {
-            Colorful.Console.ResetColor();
-        }
+        _terminal = PrepareConsoleForTerminal();
 
-        if (_terminal != Terminal.Cygwin)
-        {
-            Colorful.Console.Clear();
-        }
-
-        string version = ProductInfo.Version;
-
-        Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
+        Colorful.Console.WriteLine("**********************************************");
         Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("Nethermind CLI {0}", GetColor(_colorScheme.Good), version);
-        Colorful.Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
-        Colorful.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor(_colorScheme.Interesting));
+        Colorful.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
+        Colorful.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
+        Colorful.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
         Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("powered by:", _colorScheme.Text);
-        Colorful.Console.WriteLine("  https://github.com/sebastienros/jint", GetColor(_colorScheme.Interesting));
-        Colorful.Console.WriteLine("  https://github.com/tomakita/Colorful.Console", GetColor(_colorScheme.Interesting));
-        Colorful.Console.WriteLine("  https://github.com/tonerdo/readline", GetColor(_colorScheme.Interesting));
+        Colorful.Console.WriteLine("powered by:");
+        Colorful.Console.WriteLine("  https://github.com/sebastienros/jint");
+        Colorful.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
+        Colorful.Console.WriteLine("  https://github.com/tonerdo/readline");
         Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
+        Colorful.Console.WriteLine("**********************************************");
         Colorful.Console.WriteLine();
-
-        return _terminal;
     }
 
-    private Terminal GetTerminal()
+    protected Terminal GetTerminal()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -91,63 +73,78 @@ public class CliConsole : ICliConsole
         return Terminal.Unknown;
     }
 
-    private Color GetColor(Color defaultColor)
+    protected Terminal PrepareConsoleForTerminal()
     {
-        return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
+        _terminal = GetTerminal();
+        if (_terminal != Terminal.Powershell)
+        {
+            Colorful.Console.ResetColor();
+        }
+
+        if (_terminal != Terminal.Cygwin)
+        {
+            Colorful.Console.Clear();
+        }
+        return _terminal;
     }
 
-    public void WriteException(Exception e)
+    public virtual void WriteException(Exception e)
     {
-        Colorful.Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
+        Colorful.Console.WriteLine(e.ToString());
     }
 
-    public void WriteErrorLine(string errorMessage)
+    public virtual void WriteErrorLine(string errorMessage)
     {
-        Colorful.Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
+        Colorful.Console.WriteLine(errorMessage);
     }
 
-    public void WriteLine(object objectToWrite)
+    public virtual void WriteLine(object objectToWrite)
     {
-        Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Text);
+        Colorful.Console.WriteLine(objectToWrite.ToString());
     }
 
-    public void Write(object objectToWrite)
+    public virtual void Write(object objectToWrite)
     {
-        Colorful.Console.Write(objectToWrite.ToString(), _colorScheme.Text);
+        Colorful.Console.Write(objectToWrite.ToString());
     }
 
-    public void WriteCommentLine(object objectToWrite)
+    public virtual void WriteCommentLine(object objectToWrite)
     {
-        Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Comment);
+        Colorful.Console.WriteLine(objectToWrite.ToString());
     }
 
-    public void WriteLessImportant(object objectToWrite)
+    public virtual void WriteLessImportant(object objectToWrite)
     {
-        Colorful.Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
+        Colorful.Console.Write(objectToWrite.ToString());
     }
 
-    public void WriteKeyword(string keyword)
+    public virtual void WriteKeyword(string keyword)
     {
-        Colorful.Console.Write(keyword, GetColor(_colorScheme.Keyword));
+        Colorful.Console.Write(keyword);
     }
 
-    public void WriteInteresting(string interesting)
+    public virtual void WriteInteresting(string interesting)
     {
-        Colorful.Console.WriteLine(interesting, GetColor(_colorScheme.Interesting));
+        Colorful.Console.WriteLine(interesting);
     }
 
-    public void WriteLine()
+    public virtual void WriteLine()
     {
         Colorful.Console.WriteLine();
     }
 
-    public void WriteGood(string goodText)
+    public virtual void WriteGood(string goodText)
     {
-        Colorful.Console.WriteLine(goodText, GetColor(_colorScheme.Good));
+        Colorful.Console.WriteLine(goodText);
     }
 
-    public void WriteString(object result)
+    public virtual void WriteString(object result)
     {
-        Colorful.Console.WriteLine(result, GetColor(_colorScheme.String));
+        Colorful.Console.WriteLine(result);
+    }
+
+    public void ResetColor()
+    {
+        Colorful.Console.ResetColor();
     }
 }

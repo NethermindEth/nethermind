@@ -41,5 +41,9 @@ namespace Nethermind.Cli.Console
         void WriteGood(string goodText);
 
         void WriteString(object result);
+
+        void ResetColor();
+
+        Terminal Terminal { get; }
     }
 }
