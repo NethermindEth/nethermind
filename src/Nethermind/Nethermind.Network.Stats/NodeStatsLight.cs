@@ -51,7 +51,7 @@ namespace Nethermind.Stats
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
 
-        private (DateTime, NodeStatsEventType) _outgoingConnectionDelay = (DateTime.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+        private (DateTime, NodeStatsEventType) _delayConnectDeadline = (DateTime.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
 
         private static readonly Random Random = new();
 
@@ -96,6 +96,11 @@ namespace Nethermind.Stats
                 _lastFailedConnectionTime = DateTime.UtcNow;
             }
 
+            if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
+            {
+                UpdateDelayConnectDeadline(delay, nodeStatsEventType);
+            }
+
             Increment(nodeStatsEventType);
         }
 
@@ -116,34 +121,31 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
 
-            if (disconnectType == DisconnectType.Remote)
+            if (disconnectType == DisconnectType.Local)
             {
-                if (disconnectReason == DisconnectReason.TooManyPeers)
+                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
                 {
-                    UpdateOutgoingConnectionDelay(
-                        _statsParameters.RemoteDisconnectDelay[DisconnectReason.TooManyPeers],
-                        NodeStatsEventType.RemoteTooManyPeer
-                    );
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.LocalDisconnectDelay);
                 }
-                else if (disconnectReason == DisconnectReason.ClientQuitting)
+            }
+            else if (disconnectType == DisconnectType.Remote)
+            {
+                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
                 {
-                    UpdateOutgoingConnectionDelay(
-                        _statsParameters.RemoteDisconnectDelay[DisconnectReason.ClientQuitting],
-                        NodeStatsEventType.RemoteClientQuitting
-                    );
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.RemoteDisconnectDelay);
                 }
             }
 
             Increment(NodeStatsEventType.Disconnect);
         }
 
-        private void UpdateOutgoingConnectionDelay(TimeSpan delay, NodeStatsEventType reason)
+        private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
         {
             DateTime newDeadline = DateTime.Now + delay;
-            (DateTime currentDeadline, NodeStatsEventType _) = _outgoingConnectionDelay;
+            (DateTime currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
             if (newDeadline > currentDeadline)
             {
-                _outgoingConnectionDelay = (newDeadline, reason);
+                _delayConnectDeadline = (newDeadline, reason);
             }
         }
 
@@ -238,7 +240,7 @@ namespace Nethermind.Stats
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
 
-            (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _outgoingConnectionDelay;
+            (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
             if (outgoingDelayDeadline > DateTime.Now)
             {
                 return (true, reason);

@@ -36,7 +36,9 @@ namespace Nethermind.Stats.Model
 
         NodeDiscovered,
         ConnectionEstablished,
+        ConnectionFailedTargetUnreachable,
         ConnectionFailed,
+        Connecting,
         HandshakeCompleted,
         P2PInitialized,
         Eth62Initialized,
@@ -49,8 +51,8 @@ namespace Nethermind.Stats.Model
         SyncFailed,
         SyncCompleted,
 
-        RemoteTooManyPeer,
-        RemoteClientQuitting,
+        LocalDisconnectDelay,
+        RemoteDisconnectDelay,
 
         Disconnect,
 
