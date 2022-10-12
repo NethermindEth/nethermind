@@ -226,7 +226,7 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, bool>(configWildcard, c => c.Enabled, false);
             Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".cfg", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
             Test<IMetricsConfig, int>(configWildcard, c => c.IntervalSeconds, 5);
-            Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "http://localhost:9091/metrics");
+            Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
         [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]

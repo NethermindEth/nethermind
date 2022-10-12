@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -90,7 +91,7 @@ namespace Nethermind.Merge.Plugin.Test
             byte[] expectedPayloadId = Bytes.FromHexString("0x6454408c425ddd96");
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-            Keccak blockHash = new("0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7");
+            Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
             var expectedPayload = new
             {
                 parentHash = startingHead.ToString(),
@@ -103,7 +104,7 @@ namespace Nethermind.Merge.Plugin.Test
                 gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
                 gasUsed = "0x0",
                 timestamp = timestamp.ToHexString(true),
-                extraData = "0x",
+                extraData = "0x4e65746865726d696e64", // Nethermind
                 baseFeePerGas = "0x0",
                 blockHash = blockHash.ToString(),
                 transactions = Array.Empty<object>(),
@@ -125,7 +126,9 @@ namespace Nethermind.Merge.Plugin.Test
             parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
+            result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
+                               blockHash +
+                               "\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
         }
 
         [Test]
@@ -168,7 +171,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.SetTransactions(Array.Empty<Transaction>());
             expected.Timestamp = timestamp;
             expected.PrevRandao = random;
-            expected.ExtraData = Array.Empty<byte>();
+            expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
 
             executionPayloadV1.Should().BeEquivalentTo(expected);
             Keccak actualHead = chain.BlockTree.HeadHash;
@@ -176,7 +179,7 @@ namespace Nethermind.Merge.Plugin.Test
             actualHead.Should().Be(startingHead);
         }
 
-        protected virtual Keccak ExpectedBlockHash => new("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
+        protected virtual Keccak ExpectedBlockHash => new("0x3accc4186d73f4826acf1a8da3f7c696f16c3863e4f76b1315d65daa88fe28ff");
 
         [Test]
         public async Task getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
