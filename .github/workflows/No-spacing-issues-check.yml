@@ -14,6 +14,6 @@ jobs:
       uses: actions/setup-dotnet@v2
       with:
         dotnet-version: 6.0.x
-    - name: Setting up dotnet format
+    - name: running dotnet format check
       run: |
         dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
