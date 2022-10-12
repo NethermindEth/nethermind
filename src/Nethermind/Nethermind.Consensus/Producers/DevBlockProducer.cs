@@ -51,7 +51,8 @@ namespace Nethermind.Consensus.Producers
                 timestamper,
                 specProvider,
                 logManager,
-                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One))
+                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One),
+                miningConfig)
         {
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
