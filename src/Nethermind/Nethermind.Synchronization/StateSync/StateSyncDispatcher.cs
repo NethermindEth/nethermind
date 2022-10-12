@@ -50,12 +50,12 @@ namespace Nethermind.Synchronization.StateSync
             Task<byte[][]> task = null;
 
             // Use GETNODEDATA if possible
-            // TODO: Currently all SyncPeer support ETH66 but it's going to change
-            // so we need to introduce some IF here to check ETH66 support
-            task = peer.GetNodeData(a, cancellationToken);
-
+            if (peer.TryGetSatelliteProtocol("eth", out ISyncPeer ethHandler) && ethHandler.Node.EthDetails.Equals("eth66"))
+            {
+                task = peer.GetNodeData(a, cancellationToken);
+            }
             // GETNODEDATA is not supported so we try with SNAP protocol
-            if (task is null && peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out ISnapSyncPeer handler))
+            else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
