@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
-                EnsureReceiptAvailable();
+                // EnsureReceiptAvailable();
 
                 _blockCacheService = new BlockCacheService();
                 _poSSwitcher = new PoSSwitcher(

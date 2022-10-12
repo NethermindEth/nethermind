@@ -128,7 +128,8 @@ namespace Nethermind.Synchronization.Blocks
                 else
                 {
                     if (Logger.IsDebug) Logger.Debug("Downloading headers");
-                    await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token)
+                    // Hack just for testing
+                    await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token)
                         .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
                     if (Logger.IsDebug) Logger.Debug("Finished downloading headers");
                 }
