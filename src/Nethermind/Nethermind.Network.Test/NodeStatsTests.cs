@@ -89,6 +89,7 @@ namespace Nethermind.Network.Test
         [TestCase(NodeStatsEventType.Connecting, true)]
         [TestCase(NodeStatsEventType.None, false)]
         [TestCase(NodeStatsEventType.ConnectionFailedTargetUnreachable, true)]
+        [TestCase(NodeStatsEventType.ConnectionFailed, true)]
         public void DisconnectDelayDueToNodeStatsEvent(NodeStatsEventType eventType, bool connectionDelayed)
         {
             _nodeStats = new NodeStatsLight(_node);
@@ -115,23 +116,6 @@ namespace Nethermind.Network.Test
             await Task.Delay(125); // Standard disconnect delay without specific handling
             (isConnDelayed, _) = _nodeStats.IsConnectionDelayed();
             isConnDelayed.Should().Be(connectionDelayed);
-        }
-
-        [Test]
-        public async Task FailedConnectionDelayTest()
-        {
-            _nodeStats = new NodeStatsLight(_node);
-
-            var isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result, "before failure");
-
-            _nodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsTrue(isConnDelayed.Result, "just after failure");
-            Assert.AreEqual(NodeStatsEventType.ConnectionFailed, isConnDelayed.DelayReason);
-            await Task.Delay(125);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result, "125ms after failure");
         }
     }
 }
