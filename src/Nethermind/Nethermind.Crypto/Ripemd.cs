@@ -33,7 +33,7 @@ namespace Nethermind.Crypto
                 _ripemd160.Value = ripemd;
             }
         }
-        
+
         public static byte[] Compute(byte[] input)
         {
             InitIfNeeded();

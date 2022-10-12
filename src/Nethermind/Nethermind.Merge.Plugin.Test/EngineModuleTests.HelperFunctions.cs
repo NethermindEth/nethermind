@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -46,25 +46,23 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-        
+
         private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
             Assert.AreEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-             Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
+            Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
         }
-        
+
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayloadV1 executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
-            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value,
-                out Account accountFrom, out parentHeader);
+            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
             executePayloadRequest.SetTransactions(transactions);
             UInt256 totalValue = ((int)(count * value)).GWei();
-            return (accountFrom.Balance - totalValue,
-                chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
+            return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Keccak parentHash, PrivateKey from,
@@ -82,11 +80,10 @@ namespace Nethermind.Merge.Plugin.Test
                     .TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, @from.Address)!;
+            Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
             accountFrom = account;
 
-            return Enumerable.Range(0, (int)count)
-                .Select(i => BuildTransaction((uint)i, account)).ToArray();
+            return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
         private ExecutionPayloadV1 CreateParentBlockRequestOnHead(IBlockTree blockTree)
@@ -95,7 +92,12 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new ExecutionPayloadV1()
             {
-                BlockNumber = head.Number, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
+                BlockNumber = head.Number,
+                BlockHash = head.Hash!,
+                StateRoot = head.StateRoot!,
+                ReceiptsRoot = head.ReceiptsRoot!,
+                GasLimit = head.GasLimit,
+                Timestamp = (ulong)head.Timestamp
             };
         }
 
@@ -136,8 +138,7 @@ namespace Nethermind.Merge.Plugin.Test
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {
-            BlockTreeLookupOptions options =
-                requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
+            BlockTreeLookupOptions options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
             Block? current = blockTree.FindBlock(blockHash, options);
             while (current is not null && !shouldStop(current))
             {
@@ -155,8 +156,7 @@ namespace Nethermind.Merge.Plugin.Test
             Action<ExecutionPayloadV1> wrongValueSetter = r => setter(r, wrongValue);
             return new TestCaseData(wrongValueSetter)
             {
-                TestName =
-                    $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
+                TestName = $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
             };
         }
 
@@ -173,7 +173,7 @@ namespace Nethermind.Merge.Plugin.Test
                 return false;
             }
         }
-        
+
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
             SingleReleaseSpecProvider spec = new(London.Instance, 1);
@@ -183,4 +183,4 @@ namespace Nethermind.Merge.Plugin.Test
             return testRpc;
         }
     }
-}      
+}

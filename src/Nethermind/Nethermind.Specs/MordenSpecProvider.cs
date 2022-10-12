@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -47,6 +47,6 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber => null;
 
         public ulong ChainId => 2;
-        public long[] TransitionBlocks { get; } = {0};
+        public long[] TransitionBlocks { get; } = { 0 };
     }
 }

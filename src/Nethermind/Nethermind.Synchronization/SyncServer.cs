@@ -274,7 +274,7 @@ namespace Nethermind.Synchronization
             }
 
             if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
-            AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
+            AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.ForceDontSetAsMain : BlockTreeSuggestOptions.ShouldProcess);
             if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
         }
 

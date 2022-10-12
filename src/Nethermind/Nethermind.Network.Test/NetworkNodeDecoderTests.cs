@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(node.Port, decoded.Port);
             Assert.AreEqual(node.Reputation, decoded.Reputation);
         }
-        
+
         [Test]
         public void Can_do_roundtrip_negative_reputation()
         {
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(node.Port, decoded.Port);
             Assert.AreEqual(node.Reputation, decoded.Reputation);
         }
-        
+
         [Test]
         public void Can_read_regression()
         {
@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(38086, decoded.Port);
             Assert.AreEqual(0L, decoded.Reputation);
         }
-        
+
         [Test]
         public void Negative_port_just_in_case_for_resilience()
         {

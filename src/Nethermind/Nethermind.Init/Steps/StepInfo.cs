@@ -28,10 +28,10 @@ namespace Nethermind.Init.Steps
             {
                 throw new ArgumentException("Step type cannot be abstract", nameof(type));
             }
-            
+
             StepType = type;
             StepBaseType = baseType;
-            
+
             RunnerStepDependenciesAttribute? dependenciesAttribute =
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
             Dependencies = dependenciesAttribute?.Dependencies ?? Array.Empty<Type>();
@@ -40,7 +40,7 @@ namespace Nethermind.Init.Steps
         public Type StepBaseType { get; }
 
         public Type StepType { get; }
-        
+
         public Type[] Dependencies { get; }
 
         public StepInitializationStage Stage { get; set; }

@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             return paymentClaims.Items.Where(pc => pc != null).Select(c => new ResourceTransaction(c!.Id.ToString(), "payment",
                 c!.Transaction!));
         }
-        
+
         public async Task<IEnumerable<ResourceTransaction>> GetAllTransactionsAsync()
         {
             var paymentClaims = await _paymentClaimRepository.BrowseAsync(new GetPaymentClaims
@@ -67,19 +67,19 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return new UpdatedTransactionInfo(status);
             }
-            
+
             TransactionInfo? currentTransaction = paymentClaim!.Transaction;
             if (currentTransaction == null)
             {
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
-            
+
             Keccak? currentHash = currentTransaction.Hash;
             if (currentHash == null)
             {
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
-            
+
             ulong gasLimit = currentTransaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for payment claim with id: '{paymentClaim!.Id}', current transaction hash: '{currentHash}'.");
             Keccak transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
@@ -100,7 +100,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 return new UpdatedTransactionInfo(status);
             }
 
-            TransactionInfo? currentTransaction = paymentClaim!.Transaction; 
+            TransactionInfo? currentTransaction = paymentClaim!.Transaction;
             if (currentTransaction == null)
             {
                 if (_logger.IsError) _logger.Error($"Cannot cancel missing transaction for payment claim with id: '{paymentClaim!.Id}'.");
@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{hash}' for payment claim with id: '{paymentClaim!.Id}' (state: '{currentTransaction.State}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.AlreadyIncluded);
             }
-            
+
             if (_logger.IsWarn) _logger.Warn($"Canceling transaction for payment claim with id: '{paymentClaimId}'.");
             CanceledTransactionInfo transaction = await _transactionService.CancelAsync(hash);
             if (_logger.IsWarn) _logger.Warn($"Canceled transaction for payment claim with id: '{paymentClaimId}', transaction hash: '{transaction.Hash}'.");
@@ -130,7 +130,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
             return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transaction.Hash);
         }
-        
+
         private async Task<(UpdatedTransactionStatus status, PaymentClaim?)> TryGetPaymentClaimAsync(Keccak paymentClaimId, string method)
         {
             PaymentClaim paymentClaim = await _paymentClaimRepository.GetAsync(paymentClaimId);
@@ -139,17 +139,17 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 if (_logger.IsError) _logger.Error($"Payment claim with id: '{paymentClaimId}' was not found.");
                 return (UpdatedTransactionStatus.ResourceNotFound, null);
             }
-            
+
             if (paymentClaim.Transaction is null)
             {
                 if (_logger.IsError) _logger.Error($"Payment claim with id: '{paymentClaimId}' has no transaction.");
                 return (UpdatedTransactionStatus.MissingTransaction, null);
             }
-            
+
             switch (paymentClaim.Status)
             {
                 case PaymentClaimStatus.Sent:
-                    
+
                     return (UpdatedTransactionStatus.Ok, paymentClaim);
                 case PaymentClaimStatus.Rejected:
                     if (_logger.IsError) LogError();
@@ -160,8 +160,8 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 default:
                     if (_logger.IsError) LogError();
                     return (UpdatedTransactionStatus.AlreadyIncluded, null);
-                
-                void LogError() => _logger.Error($"Cannot {method} for payment claim with id: '{paymentClaimId}' (status: '{paymentClaim.Status}').");
+
+                    void LogError() => _logger.Error($"Cannot {method} for payment claim with id: '{paymentClaimId}' (status: '{paymentClaim.Status}').");
             }
         }
     }

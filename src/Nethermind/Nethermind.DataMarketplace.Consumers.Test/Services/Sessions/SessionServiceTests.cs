@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             _ndmPeer = Substitute.For<INdmPeer>();
             _ndmPeer.ProviderAddress.Returns(_providerAddress);
             _ndmPeer.NodeId.Returns(_providerNodeId);
-            
+
             _providerService = new ProviderService(providerRepository, notifier, LimboLogs.Instance);
             _providerService.Add(_ndmPeer);
 
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             ConsumerSession consumerSession = new ConsumerSession(_session1Id, _deposit1Id, _asset1Id, _consumerAddress, _consumerNodeId, _providerAddress, _providerNodeId, SessionState.Started, 1, 2, 4);
             await _sessionService.StartSessionAsync(consumerSession, _ndmPeer);
             var result = _sessionService.GetActive(_deposit1Id);
-            result.UnpaidUnits.Should().Be((uint) _asset1.Rules.UpfrontPayment.Value);
+            result.UnpaidUnits.Should().Be((uint)_asset1.Rules.UpfrontPayment.Value);
         }
 
         [Test]
@@ -190,7 +190,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             var result = _sessionService.GetActive(_deposit1Id);
             result.Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Can_request_session_finish()
         {
@@ -199,7 +199,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             await _sessionService.SendFinishSessionAsync(_deposit1Id);
             _ndmPeer.Received().SendFinishSession(_deposit1Id);
         }
-        
+
         [Test]
         public async Task Can_handle_request_session_finish_even_when_peer_is_missing()
         {
@@ -210,7 +210,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             await _sessionService.SendFinishSessionAsync(_deposit1Id);
             _ndmPeer.DidNotReceive().SendFinishSession(_deposit1Id);
         }
-        
+
         [Test]
         public async Task Can_handle_request_session_finish_even_when_deposit_is_unknown()
         {
@@ -218,14 +218,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             await _sessionService.SendFinishSessionAsync(_missingDepositId);
             _ndmPeer.DidNotReceive().SendFinishSession(_deposit1Id);
         }
-        
+
         [Test]
         public async Task Can_handle_request_session_finish_even_when_there_is_no_session()
         {
             await _sessionService.SendFinishSessionAsync(_deposit1Id);
             _ndmPeer.DidNotReceive().SendFinishSession(_deposit1Id);
         }
-        
+
         [Test]
         public async Task Can_finish_session_without_removing_provider()
         {
@@ -236,7 +236,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             result.Should().BeNull();
             _providerService.GetPeer(_ndmPeer.ProviderAddress).Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Can_finish_session_and_remove_provider()
         {
@@ -259,7 +259,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             result.Should().BeNull();
             _providerService.GetPeer(_ndmPeer.ProviderAddress).Should().BeNull();
         }
-        
+
         [Test]
         public async Task Can_finish_provider_sessions_without_removing_provider()
         {
@@ -270,7 +270,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             result.Should().BeNull();
             _providerService.GetPeer(_ndmPeer.ProviderAddress).Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Will_not_finish_sessions_from_other_providers()
         {
@@ -285,7 +285,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             result.Should().NotBeNull();
             _providerService.GetPeer(_ndmPeer.ProviderAddress).Should().NotBeNull();
         }
-        
+
         [Test]
         public async Task Can_finish_provider_sessions_and_remove_provider()
         {
@@ -305,7 +305,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Sessions
             var result = _sessionService.GetActive(_deposit1Id);
             result.Should().BeNull();
         }
-        
+
         [Test]
         public async Task Cannot_start_session_when_data_asset_ids_do_not_match_between_session_and_deposit()
         {

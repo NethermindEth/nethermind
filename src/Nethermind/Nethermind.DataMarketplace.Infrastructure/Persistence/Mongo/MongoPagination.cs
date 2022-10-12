@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
                 results = 10;
             }
 
-            var totalPages = (int) Math.Ceiling((double) totalResults / results);
+            var totalPages = (int)Math.Ceiling((double)totalResults / results);
             var skip = (page - 1) * results;
             var items = await values.Skip(skip).Take(results).ToListAsync();
 

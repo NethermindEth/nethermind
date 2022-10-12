@@ -9,7 +9,7 @@ namespace Nethermind.Core2.Configuration
         {
             return new StaticOptionsMonitor<T>(options);
         }
-        
+
         public static IOptionsMonitor<T> OptionsMonitor<T>()
             where T : class, new()
         {

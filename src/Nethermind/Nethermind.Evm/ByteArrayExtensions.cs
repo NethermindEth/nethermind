@@ -36,11 +36,11 @@ namespace Nethermind.Evm
                 return span.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0, padDirection) : new ZeroPaddedSpan(span.Slice(startIndex, 1), 0, padDirection);
                 // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
-            
+
             int copiedLength = Math.Min(span.Length - startIndex, length);
             return new ZeroPaddedSpan(span.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }
-        
+
         private static ZeroPaddedMemory MemoryWithZeroPadding(this ReadOnlyMemory<byte> memory, int startIndex, int length, PadDirection padDirection)
         {
             if (startIndex >= memory.Length)
@@ -56,7 +56,7 @@ namespace Nethermind.Evm
                 return memory.Length == 0 ? new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, 0, padDirection) : new ZeroPaddedMemory(memory.Slice(startIndex, 1), 0, padDirection);
                 // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
-            
+
             int copiedLength = Math.Min(memory.Length - startIndex, length);
             return new ZeroPaddedMemory(memory.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }
@@ -68,9 +68,9 @@ namespace Nethermind.Evm
                 return new ZeroPaddedSpan(Span<byte>.Empty, length, PadDirection.Right);
             }
 
-            return SliceWithZeroPadding(span, (int) startIndex, length, padDirection);
+            return SliceWithZeroPadding(span, (int)startIndex, length, padDirection);
         }
-        
+
         public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
             if (startIndex >= bytes.Length || startIndex > int.MaxValue)
@@ -78,13 +78,13 @@ namespace Nethermind.Evm
                 return new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, length, PadDirection.Right);
             }
 
-            return MemoryWithZeroPadding(bytes, (int) startIndex, length, padDirection);
+            return MemoryWithZeroPadding(bytes, (int)startIndex, length, padDirection);
         }
-        
-        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right) => 
+
+        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right) =>
             bytes.AsSpan().SliceWithZeroPadding(startIndex, length, padDirection);
 
-        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, int startIndex, int length, PadDirection padDirection = PadDirection.Right) => 
+        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, int startIndex, int length, PadDirection padDirection = PadDirection.Right) =>
             bytes.AsSpan().SliceWithZeroPadding(startIndex, length, padDirection);
     }
 }

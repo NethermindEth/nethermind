@@ -56,12 +56,12 @@ namespace Nethermind.Trie
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
                 Debug.Assert(item.Key != null,
                     "Extension key is null when encoding");
-                
+
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef != null,
                     "Extension child is null when encoding.");
-                
+
                 nodeRef.ResolveKey(tree, false);
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
@@ -144,13 +144,13 @@ namespace Nethermind.Trie
                         {
                             totalLength++;
                         }
-                        else if(item._data[i] is Keccak)
+                        else if (item._data[i] is Keccak)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
@@ -185,13 +185,13 @@ namespace Nethermind.Trie
                         {
                             destination[position++] = 128;
                         }
-                        else if(item._data[i] is Keccak)
+                        else if (item._data[i] is Keccak)
                         {
                             position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false);
                             if (childNode.Keccak is null)
                             {

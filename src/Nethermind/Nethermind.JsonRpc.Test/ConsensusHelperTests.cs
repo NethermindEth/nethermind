@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Test
                 yield break;
             }
         }
-        
+
         [TestCaseSource(nameof(Tests))]
         public async Task CompareReceipts(Uri uri1, Uri uri2, Keccak blockHash = null)
         {
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test
             TrySetData(blockHash, receipt1Source, receipt2Source);
             await CompareCollection(receipt1Source, receipt2Source, false, ReceiptOptions);
         }
-        
+
         [TestCaseSource(nameof(Tests))]
         public async Task CompareReceipt(Uri uri1, Uri uri2, Keccak blockHash = null)
         {
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test
             TrySetData(blockHash, receipt1Source, receipt2Source);
             await Compare(receipt1Source, receipt2Source, false, ReceiptOptions);
         }
-        
+
         [TestCaseSource(nameof(Tests))]
         public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Keccak blockHash = null, GethTraceOptions gethTraceOptions = null)
         {
@@ -93,7 +93,7 @@ namespace Nethermind.JsonRpc.Test
             TrySetData(gethTraceOptions, receipt1Source, receipt2Source);
             await CompareCollection(receipt1Source, receipt2Source, true);
         }
-        
+
         [TestCaseSource(nameof(Tests))]
         public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Keccak transactionHash = null, GethTraceOptions gethTraceOptions = null)
         {
@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Test
             TrySetData(gethTraceOptions, receipt1Source, receipt2Source);
             await Compare(receipt1Source, receipt2Source, true);
         }
-        
+
         [TestCaseSource(nameof(Tests))]
         public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, long blockNumber)
         {
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
-        private IConsensusDataSource<T> GetSource<T>(Uri uri, IEnumerable<JsonConverter> additionalConverters = null) 
+        private IConsensusDataSource<T> GetSource<T>(Uri uri, IEnumerable<JsonConverter> additionalConverters = null)
         {
             var serializer = GetSerializer(additionalConverters);
             if (uri.IsFile)
@@ -231,7 +231,7 @@ namespace Nethermind.JsonRpc.Test
 
             }
         }
-        
+
         private static async Task WriteOutJson(string dataJson, string expectationJson)
         {
             try
@@ -258,7 +258,7 @@ namespace Nethermind.JsonRpc.Test
         {
             TData Parameter { get; set; }
         }
-        
+
         public static class JsonHelper
         {
             public static JToken ParseNormalize(string json) => Normalize(JToken.Parse(json));

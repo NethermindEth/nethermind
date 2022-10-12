@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,14 +25,14 @@ namespace Nethermind.Abi
         public AbiDescriptionType Type { get; set; } = AbiDescriptionType.Function;
         public string Name { get; set; } = string.Empty;
     }
-    
+
     public abstract class AbiBaseDescription<T> : AbiBaseDescription where T : AbiParameter
     {
         private AbiSignature? _callSignature;
-        
+
         public T[] Inputs { get; set; } = Array.Empty<T>();
-        
-        public AbiEncodingInfo GetCallInfo(AbiEncodingStyle encodingStyle = AbiEncodingStyle.IncludeSignature) => 
+
+        public AbiEncodingInfo GetCallInfo(AbiEncodingStyle encodingStyle = AbiEncodingStyle.IncludeSignature) =>
             new(encodingStyle, _callSignature ??= new AbiSignature(Name, Inputs.Select(i => i.Type).ToArray()));
 
         public Keccak GetHash() => GetCallInfo().Signature.Hash;

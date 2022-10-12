@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Core2.Containers
         public IReadOnlyList<Root> BlockRoots { get { return _blockRoots; } }
 
         public IReadOnlyList<Root> StateRoots { get { return _stateRoots; } }
-        
+
         public bool Equals(HistoricalBatch other)
         {
             return BlockRoots.SequenceEqual(other.BlockRoots)

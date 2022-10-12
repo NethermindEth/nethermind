@@ -45,12 +45,12 @@ namespace Nethermind.Consensus.AuRa
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
         public AuRaBlockFinalizationManager(
-            IBlockTree blockTree, 
-            IChainLevelInfoRepository chainLevelInfoRepository, 
-            IBlockProcessor blockProcessor, 
-            IValidatorStore validatorStore, 
+            IBlockTree blockTree,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            IBlockProcessor blockProcessor,
+            IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
-            ILogManager logManager, 
+            ILogManager logManager,
             long twoThirdsMajorityTransition = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -74,18 +74,18 @@ namespace Nethermind.Consensus.AuRa
             {
                 level--;
                 chainLevel = _chainLevelInfoRepository.LoadLevel(level);
-            } 
+            }
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
             LastFinalizedBlockLevel = level;
-            
+
             // This is needed if processing was stopped between processing last block and running finalization logic 
             if (hasHead)
             {
                 FinalizeBlocks(_blockTree.Head?.Header);
             }
         }
-        
+
         private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
         {
             void UnFinalizeBlock(BlockHeader blockHeader, BatchWrite batch)
@@ -111,7 +111,7 @@ namespace Nethermind.Consensus.AuRa
                             UnFinalizeBlock(header, batch);
                         }
                     }
-                    
+
                     for (int i = 0; i < e.Blocks.Count; i++)
                     {
                         UnFinalizeBlock(e.Blocks[i].Header, batch);
@@ -128,18 +128,18 @@ namespace Nethermind.Consensus.AuRa
         private void FinalizeBlocks(BlockHeader finalizingBlock)
         {
             var finalizedBlocks = GetFinalizedBlocks(finalizingBlock);
-            
+
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsTrace) _logger.Trace(finalizedBlocks.Count == 1
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
-                
+
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }
-        
+
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
             if (block.Number == _twoThirdsMajorityTransition)
@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.AuRa
 
             var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             var originalBlock = block;
-            
+
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
             bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
 
@@ -161,7 +161,7 @@ namespace Nethermind.Consensus.AuRa
             if (isConsecutiveBlock)
             {
                 _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
-                
+
                 // if block is consecutive than we can just check if this sealer will cause any blocks get finalized
                 // using cache of validators of not yet finalized blocks from previous block operation
                 iterateThroughBlocks = ConsecutiveBlockWillFinalizeBlocks();
@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.AuRa
                     // if this block sealer seals for 2nd time than this seal can not finalize any blocks
                     // as the 1st seal or some seal between 1st seal and current one would already finalize some of them
                     bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer;
-                    
+
                     while (!blockInfo.IsFinalized && (isConsecutiveBlock || OriginalBlockSealerSignedOnlyOnce()))
                     {
                         validators.Add(block.Beneficiary);
@@ -283,7 +283,7 @@ namespace Nethermind.Consensus.AuRa
         */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
-        
+
         public long GetLastLevelFinalizedBy(Keccak blockHash)
         {
             var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
@@ -299,10 +299,10 @@ namespace Nethermind.Consensus.AuRa
 
                 block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
             }
-            
+
             return 0;
         }
-        
+
         public long? GetFinalizationLevel(long level)
         {
             BlockHeader? block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
@@ -320,7 +320,7 @@ namespace Nethermind.Consensus.AuRa
                     return level + minSealersForFinalization - 1;
                 }
             }
-            
+
             while (block is not null)
             {
                 validators.Add(block.Beneficiary);
@@ -331,7 +331,7 @@ namespace Nethermind.Consensus.AuRa
 
                 block = _blockTree.FindHeader(block.Number + 1, BlockTreeLookupOptions.None);
             }
-            
+
             return null;
         }
 

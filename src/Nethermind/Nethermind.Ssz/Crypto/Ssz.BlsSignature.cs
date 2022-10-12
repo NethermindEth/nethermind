@@ -29,7 +29,7 @@ namespace Nethermind.Ssz
         {
             Encode(span, value.Bytes);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static BlsSignature DecodeBlsSignature(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -37,17 +37,17 @@ namespace Nethermind.Ssz
             offset += Ssz.BlsSignatureLength;
             return blsSignature;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BlsSignature value, ref int offset)
         {
             Encode(span.Slice(offset, Ssz.BlsSignatureLength), value.Bytes);
             offset += Ssz.BlsSignatureLength;
         }
-        
+
         public static BlsSignature DecodeBlsSignature(ReadOnlySpan<byte> span)
         {
             return new BlsSignature(span.ToArray());
-        }    
+        }
     }
 }

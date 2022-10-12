@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="number">The validator's number.</param>
         /// <returns>Transaction to be included in block.</returns>
         Transaction RevealNumber(in UInt256 number);
-        
+
         public enum Phase
         {
             /// <summary>
@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             return (phase, round);
         }
-        
+
         private Address SignerAddress => _signer.Address;
 
         /// <summary>
@@ -160,9 +160,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Serial number of the current collection round.</returns>
-        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => 
+        private UInt256 CurrentCollectRound(BlockHeader parentHeader) =>
             Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), SignerAddress);
-        
+
 
         /// <summary>
         /// Returns a boolean flag indicating whether the current phase of the current collection round is a `commits phase`.

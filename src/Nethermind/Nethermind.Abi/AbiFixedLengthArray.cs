@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Abi
 
             ElementType = elementType;
             Length = length;
-            Name =  $"{ElementType}[{Length}]";
+            Name = $"{ElementType}[{Length}]";
             CSharpType = ElementType.CSharpType.MakeArrayType();
             IsDynamic = Length != 0 && ElementType.IsDynamic;
         }
@@ -46,7 +46,7 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed) => 
+        public override (object, int) Decode(byte[] data, int position, bool packed) =>
             DecodeSequence(ElementType.CSharpType, Length, ElementTypes, data, packed, position);
 
         public override byte[] Encode(object? arg, bool packed)
@@ -66,7 +66,7 @@ namespace Nethermind.Abi
         }
 
         public override Type CSharpType { get; }
-        
+
         private IEnumerable<AbiType> ElementTypes
         {
             get

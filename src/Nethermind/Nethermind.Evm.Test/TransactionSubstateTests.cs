@@ -37,21 +37,21 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] {},
+                new LogEntry[] { },
                 true,
                 true);
             transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
         }
-        
+
         [Test]
         public void should_return_proper_revert_error_when_there_is_exception()
         {
-            byte[] data = {0x05, 0x06, 0x07, 0x08, 0x09};
+            byte[] data = { 0x05, 0x06, 0x07, 0x08, 0x09 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] {},
+                new LogEntry[] { },
                 true,
                 true);
             transactionSubstate.Error.Should().Be("Reverted 0x0506070809");

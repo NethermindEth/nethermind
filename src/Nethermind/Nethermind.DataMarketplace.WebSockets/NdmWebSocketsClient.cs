@@ -31,8 +31,8 @@ namespace Nethermind.DataMarketplace.WebSockets
     {
         private readonly INdmDataPublisher _dataPublisher;
 
-        public NdmWebSocketsClient(string clientName, ISocketHandler handler, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer) 
-            :base(clientName, handler, jsonSerializer)
+        public NdmWebSocketsClient(string clientName, ISocketHandler handler, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer)
+            : base(clientName, handler, jsonSerializer)
         {
             _dataPublisher = dataPublisher;
         }

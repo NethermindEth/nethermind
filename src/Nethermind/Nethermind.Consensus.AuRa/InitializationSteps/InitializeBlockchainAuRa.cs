@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,11 +45,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
     {
         private readonly AuRaNethermindApi _api;
         private INethermindApi NethermindApi => _api;
-        
+
         private AuRaSealValidator? _sealValidator;
         private IAuRaStepCalculator? _auRaStepCalculator;
         private readonly IAuraConfig _auraConfig;
-        
+
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
             _api = api;
@@ -71,20 +71,20 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-       
+
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 txPermissionFilterOnlyTxProcessorSource,
-                _api.SpecProvider, 
+                _api.SpecProvider,
                 new ServiceTxFilter(_api.SpecProvider));
 
-            IDictionary<long,IDictionary<Address,byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
+            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-            
+
             var processor = (AuRaBlockProcessor)NewBlockProcessor(_api, auRaTxFilter, contractRewriter);
-            
+
             var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
             var reportingValidator = auRaValidator.GetReportingValidator();
@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 contractRewriter
             );
 
-        protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
+        protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
             new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         protected override IHealthHintService CreateHealthHintService() =>
@@ -128,23 +128,23 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
-            
+
             _api.FinalizationManager = new AuRaBlockFinalizationManager(
-                _api.BlockTree, 
-                _api.ChainLevelInfoRepository, 
-                processor, 
-                _api.ValidatorStore, 
-                new ValidSealerStrategy(), 
-                _api.LogManager, 
+                _api.BlockTree,
+                _api.ChainLevelInfoRepository,
+                processor,
+                _api.ValidatorStore,
+                new ValidSealerStrategy(),
+                _api.LogManager,
                 chainSpecAuRa.TwoThirdsMajorityTransition);
-            
-            IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder, 
-                    _api.StateProvider, 
-                    _api.TransactionProcessor, 
-                    _api.BlockTree, 
+
+            IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder,
+                    _api.StateProvider,
+                    _api.TransactionProcessor,
+                    _api.BlockTree,
                     readOnlyTxProcessorSource,
                     _api.ReceiptStorage,
-                    _api.ValidatorStore, 
+                    _api.ValidatorStore,
                     _api.FinalizationManager,
                     new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)),
                     _api.TxPool,
@@ -168,11 +168,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
-            
+
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 _api.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
-                
+
                 AuRaContractGasLimitOverride gasLimitCalculator = new(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
@@ -183,9 +183,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()), 
+                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()),
                     _api.LogManager);
-                
+
                 return gasLimitCalculator;
             }
 
@@ -199,7 +199,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            
+
             _api.ValidatorStore = new ValidatorStore(_api.DbProvider.BlockInfosDb);
 
             ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
@@ -209,7 +209,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
             _auRaStepCalculator = auRaStepCalculator;
         }
-        
+
         // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
         //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
         //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
@@ -253,13 +253,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
                 IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(_api.BlockTree, _api.SpecProvider!), txByPriorityComparer);
-                
+
                 return sameSenderNonceComparer
                     .ThenBy(CompareTxByTimestamp.Instance)
                     .ThenBy(CompareTxByPoolIndex.Instance)
                     .ThenBy(CompareTxByGasLimit.Instance);
             }
-            
+
             return CreateTxPoolTxComparer();
         }
 
@@ -279,7 +279,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 txPoolReadOnlyTransactionProcessorSource,
                 minGasPricesContractDataStore,
                 _api.SpecProvider);
-            
+
             return new TxPool.TxPool(
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
@@ -293,7 +293,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
         {
             ILogger? logger = _api.LogManager.GetClassLogger();
-            
+
             if (localDataSource?.FilePath != null)
             {
                 if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");

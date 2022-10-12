@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = false,
             Description = "Returns miner's gas price",
             IsSharable = true,
-            ExampleResponse = "0x4a817c800" )]
+            ExampleResponse = "0x4a817c800")]
         ResultWrapper<UInt256?> eth_gasPrice();
 
         [JsonRpcMethod(IsImplemented = false,
@@ -166,7 +166,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a tx call and returns gas used (does not create a transaction)",
             IsSharable = false,
             ExampleResponse = "0x")]
-        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue =  "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
+        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction",
@@ -218,7 +218,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IsSharable = true,
             ExampleResponse = "{\"hash\":\"0xfd320a4949990929f64b52041c58a74c8ce13289b3d6853bd8073b0580aa031a\",\"nonce\":\"0x5b\",\"blockHash\":\"0xd779e1a5ce8f34544d66d219bb3e5331a7b280fae89a36d7d52813a23e1ca1e3\",\"blockNumber\":\"0x4dfdd8\",\"transactionIndex\":\"0x8\",\"from\":\"0xadb540569e2db497bd973c141b0b63be98461e40\",\"to\":\"0x074b24cef703f17fe123fa1b82081055775b7004\",\"value\":\"0x0\",\"gasPrice\":\"0x12a05f200\",\"gas\":\"0x927c0\",\"data\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"input\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"type\":\"0x0\",\"v\":\"0x2e\",\"s\":\"0x37b90a929884787df717c87258f0434e2f115ce2fbb4bfc230322112fa9d5bbc\",\"r\":\"0x5222eff9e16b5c3e9e8901d9c45fc8e0f9cf774e8a56546a504025ef67ceefec\"}")]
         ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(
-        [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]" )] BlockParameter blockParameter, UInt256 positionIndex);
+        [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction receipt by tx hash",
@@ -238,7 +238,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Creates an update filter",
             IsSharable = false,
             ExampleResponse = "0x9")]
-        ResultWrapper<UInt256?> eth_newFilter([JsonRpcParameter(ExampleValue = "[{\"toBlock\":\"latest\"}]" )] Filter filter);
+        ResultWrapper<UInt256?> eth_newFilter([JsonRpcParameter(ExampleValue = "[{\"toBlock\":\"latest\"}]")] Filter filter);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an update filter",
@@ -261,7 +261,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Reads filter changes",
             IsSharable = true,
             ExampleResponse = "[]")]
-        ResultWrapper<IEnumerable<object>> eth_getFilterChanges([JsonRpcParameter(ExampleValue = "[\"0x9\"]" )] UInt256 filterId);
+        ResultWrapper<IEnumerable<object>> eth_getFilterChanges([JsonRpcParameter(ExampleValue = "[\"0x9\"]")] UInt256 filterId);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Reads filter changes",

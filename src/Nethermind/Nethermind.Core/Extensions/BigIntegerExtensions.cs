@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Core.Extensions
             {
                 return Bytes.Empty;
             }
-            
+
             byte[] result = bigInteger.ToByteArray(false, true);
             if (result[0] == 0 && result.Length != 1)
             {
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Extensions
 
             if (outputLength != -1)
             {
-                result = result.PadLeft(outputLength, bigInteger.Sign < 0 ? (byte) 0xff : (byte) 0x00);
+                result = result.PadLeft(outputLength, bigInteger.Sign < 0 ? (byte)0xff : (byte)0x00);
             }
 
             return result;

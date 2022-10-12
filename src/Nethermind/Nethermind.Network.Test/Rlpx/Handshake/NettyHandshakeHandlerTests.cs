@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,9 +45,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _pipeline = Substitute.For<IChannelPipeline>();
 
             _group = new SingleThreadEventLoop();
-            
+
             _serializationService = new MessageSerializationService();
-            
+
             _channel = Substitute.For<IChannel>();
             _channel.Pipeline.Returns(_pipeline);
             _channel.RemoteAddress.Returns(new IPEndPoint(IPAddress.Loopback, 8003));
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IMessageSerializationService _serializationService;
         private ILogManager _logger;
         private IEventExecutorGroup _group;
-        
+
         [Test]
         public async Task Ignores_non_byte_buffer_input()
         {
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             received.Should().BeTrue();
             _handshakeService.Received(1).Auth(_session.RemoteNodeId, Arg.Any<EncryptionHandshake>());
-            
+
         }
 
         [Test]

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            
+
             string path = "path";
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.Path.GetFullPath(path).Returns(path);
@@ -44,10 +44,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
             fileSystem.DriveInfo.FromDriveName(path).AvailableFreeSpace.Returns(availableFreeSpace);
 
             bool triggered = false;
-            
+
             DiskFreeSpacePruningTrigger trigger = new(path, 1000, timerFactory, fileSystem);
             trigger.Prune += (o, e) => triggered = true;
-            
+
             timer.Elapsed += Raise.Event();
             return triggered;
         }

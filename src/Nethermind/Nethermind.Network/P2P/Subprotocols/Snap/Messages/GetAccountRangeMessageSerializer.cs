@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         protected override GetAccountRangeMessage Deserialize(RlpStream rlpStream)
         {
-            GetAccountRangeMessage message = new ();
+            GetAccountRangeMessage message = new();
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message)
         {
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
-            
+
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.AccountRange.RootHash);
             rlpStream.Encode(message.AccountRange.StartingHash);

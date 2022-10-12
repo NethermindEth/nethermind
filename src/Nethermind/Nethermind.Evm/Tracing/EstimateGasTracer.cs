@@ -183,7 +183,7 @@ namespace Nethermind.Evm.Tracing
                     long maxGasNeeded = GasOnStart + ExtraGasPressure - GasLeft + GasUsageFromChildren;
                     for (int i = 0; i < NestingLevel; i++)
                     {
-                        maxGasNeeded = (long) Math.Ceiling(maxGasNeeded * 64m / 63);
+                        maxGasNeeded = (long)Math.Ceiling(maxGasNeeded * 64m / 63);
                     }
 
                     return maxGasNeeded;
@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Tracing
         private void UpdateAdditionalGas(long? gasLeft = null)
         {
             GasAndNesting current = _currentGasAndNesting.Pop();
-            
+
             if (gasLeft.HasValue)
             {
                 current.GasLeft = gasLeft.Value;

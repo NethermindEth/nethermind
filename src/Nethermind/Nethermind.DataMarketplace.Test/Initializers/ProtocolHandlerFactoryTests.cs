@@ -72,12 +72,12 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _factory.Create(session);
             var eventArgs = new NdmProtocolInitializedEventArgs(protocolHandler);
             protocolHandler.ProtocolInitialized += Raise.EventWith(protocolHandler,
-                (ProtocolInitializedEventArgs) eventArgs);
+                (ProtocolInitializedEventArgs)eventArgs);
             _subprotocolFactory.Received().Create(session);
             _protocolValidator.Received().DisconnectOnInvalid(Protocol.Ndm, session, eventArgs);
             _ethRequestService.DidNotReceiveWithAnyArgs().UpdateFaucet(Arg.Any<INdmPeer>());
         }
-        
+
         [Test]
         public void protocol_initialized_event_should_be_and_set_to_faucet_if_host_address_doest_match()
         {
@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _factory.Create(session);
             var eventArgs = new NdmProtocolInitializedEventArgs(protocolHandler);
             protocolHandler.ProtocolInitialized += Raise.EventWith(protocolHandler,
-                (ProtocolInitializedEventArgs) eventArgs);
+                (ProtocolInitializedEventArgs)eventArgs);
             _subprotocolFactory.Received().Create(session);
             _protocolValidator.Received().DisconnectOnInvalid(Protocol.Ndm, session, eventArgs);
             _ethRequestService.Received().UpdateFaucet(protocolHandler as INdmPeer);

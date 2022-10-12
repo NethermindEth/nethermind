@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,37 +36,37 @@ namespace Nethermind.TxPool
     internal class HashCache
     {
         private const int SafeCapacity = 1024 * 16;
-        
+
         private readonly LruKeyCache<Keccak> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize,
-            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize), 
+            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "long term hash cache");
-        
+
         private readonly LruKeyCache<Keccak> _currentBlockCache = new(
             SafeCapacity,
-            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize), 
+            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "current block hash cache");
 
         public bool Get(Keccak hash)
         {
             return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
         }
-        
+
         public void SetLongTerm(Keccak hash)
         {
             _longTermCache.Set(hash);
         }
-        
+
         public void SetForCurrentBlock(Keccak hash)
         {
             _currentBlockCache.Set(hash);
         }
-        
+
         public void DeleteFromLongTerm(Keccak hash)
         {
             _longTermCache.Delete(hash);
         }
-        
+
         public void Delete(Keccak hash)
         {
             _longTermCache.Delete(hash);

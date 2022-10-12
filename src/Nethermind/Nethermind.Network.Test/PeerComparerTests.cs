@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(a).Returns(100);
             _statsManager.GetCurrentReputation(b).Returns(50);
             _statsManager.GetCurrentReputation(c).Returns(200);
-            
+
             _statsManager.UpdateCurrentReputation(a, b, c);
 
             Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test
 
             Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305);
             Peer peerC = new(c);
-            
+
             Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306);
             Peer peerD = new(d);
             Peer peerE = null;
@@ -84,11 +84,11 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(c).Returns(200);
             _statsManager.GetCurrentReputation(d).Returns(10);
 
-            List<Peer> peers = new() {peerA, peerB, peerC, peerD, peerE};
-            
+            List<Peer> peers = new() { peerA, peerB, peerC, peerD, peerE };
+
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);
-            
+
             Assert.AreEqual(peerC, peers[0]);
             Assert.AreEqual(peerA, peers[1]);
             Assert.AreEqual(peerB, peers[2]);

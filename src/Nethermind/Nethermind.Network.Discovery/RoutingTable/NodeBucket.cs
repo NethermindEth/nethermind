@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ public class NodeBucket
     /// Distance from Master Node
     /// </summary>
     public int Distance { get; }
-        
+
     public int BucketSize { get; }
 
     public IEnumerable<NodeBucketItem> BondedItems
@@ -59,7 +59,7 @@ public class NodeBucket
             }
         }
     }
-        
+
     public int BondedItemsCount
     {
         get
@@ -74,7 +74,7 @@ public class NodeBucket
                     {
                         break;
                     }
-                        
+
                     node = node.Previous;
                     result--;
                 }
@@ -95,13 +95,13 @@ public class NodeBucket
                 {
                     _items.AddFirst(item);
                 }
-                    
+
                 return NodeAddResult.Added();
             }
 
             NodeBucketItem evictionCandidate = GetEvictionCandidate();
             return NodeAddResult.Full(evictionCandidate);
-        }  
+        }
     }
 
     public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)

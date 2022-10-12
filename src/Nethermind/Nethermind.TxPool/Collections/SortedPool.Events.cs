@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Collections
                 Group = group;
             }
         }
-        
+
         public class SortedPoolRemovedEventArgs : SortedPoolEventArgs
         {
             public bool Evicted { get; }

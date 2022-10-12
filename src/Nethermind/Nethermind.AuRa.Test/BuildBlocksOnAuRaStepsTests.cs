@@ -57,7 +57,7 @@ namespace Nethermind.AuRa.Test
             allButLastCancellations.Should().AllBeEquivalentTo(true);
             allButLastCancellations.Should().HaveCountGreaterOrEqualTo(2);
         }
-        
+
         [Test]
         [Retry(3)]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
@@ -80,12 +80,12 @@ namespace Nethermind.AuRa.Test
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested);
             enumerable.Should().AllBeEquivalentTo(false);
         }
-        
+
         private class TestAuRaStepCalculator : IAuRaStepCalculator
         {
             public const long StepDuration = 10;
             public static readonly TimeSpan StepDurationTimeSpan = TimeSpan.FromMilliseconds(StepDuration);
-            
+
             public long CurrentStep => UnixTime.MillisecondsLong / StepDuration;
 
             public TimeSpan TimeToNextStep

@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 paymentClaim.Pepper,
                 coldWalletAddress,
                 paymentClaim.Consumer,
-                new[] {paymentClaim.UnitsRange.From, paymentClaim.UnitsRange.To},
+                new[] { paymentClaim.UnitsRange.From, paymentClaim.UnitsRange.To },
                 paymentClaim.Signature.V,
                 paymentClaim.Signature.R,
                 paymentClaim.Signature.S);
@@ -74,21 +74,21 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 _logger.Info($"Sending a payment claim transaction - Range: [{paymentClaim.UnitsRange.From},{paymentClaim.UnitsRange.To}] Units: {paymentClaim.Units} to be paid out to {coldWalletAddress}");
             }
-            
+
             Transaction transaction = new Transaction
             {
                 Value = 0,
                 Data = txData,
                 To = _contractAddress,
                 SenderAddress = paymentClaim.Provider,
-                GasLimit = (long) GasLimit, // when account does not exist then we pay for account creation of cold wallet
+                GasLimit = (long)GasLimit, // when account does not exist then we pay for account creation of cold wallet
                 GasPrice = gasPrice,
                 Nonce = await _bridge.GetNonceAsync(paymentClaim.Provider)
             };
 
             // check  
             _wallet.Sign(transaction, await _bridge.GetNetworkIdAsync());
-            
+
             return await _bridge.SendOwnTransactionAsync(transaction);
         }
     }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Can_do_roundtrip()
         {
-            byte[] message = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            byte[] message = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
             byte[] encrypted = new byte[16];
             byte[] decrypted = new byte[16];
 
@@ -35,11 +35,11 @@ namespace Nethermind.Network.Test.Rlpx
             frameCipher.Decrypt(encrypted, 0, 16, decrypted, 0);
             Assert.AreEqual(message, decrypted);
         }
-        
+
         [Test]
         public void Can_run_twice()
         {
-            byte[] message = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            byte[] message = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
             byte[] encrypted = new byte[16];
             byte[] decrypted = new byte[16];
 
@@ -47,18 +47,18 @@ namespace Nethermind.Network.Test.Rlpx
             frameCipher.Encrypt(message, 0, 16, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, 16, decrypted, 0);
             Assert.AreEqual(message, decrypted);
-            
+
             Array.Clear(encrypted, 0, encrypted.Length);
             Array.Clear(decrypted, 0, decrypted.Length);
             frameCipher.Encrypt(message, 0, 16, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, 16, decrypted, 0);
             Assert.AreEqual(message, decrypted);
         }
-        
+
         [Test]
         public void Should_not_return_same_value_when_used_twice_with_same_input()
         {
-            byte[] message = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            byte[] message = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
             byte[] encrypted1 = new byte[16];
             byte[] encrypted2 = new byte[16];
 
@@ -67,17 +67,17 @@ namespace Nethermind.Network.Test.Rlpx
             frameCipher.Encrypt(message, 0, 16, encrypted2, 0);
             Assert.AreNotEqual(encrypted1, encrypted2);
         }
-        
+
         [Test]
         public void Can_run_twice_longer_message()
         {
             int length = 16;
-            
+
             byte[] message = new byte[length * 2];
             message[3] = 123;
             message[4] = 123;
             message[5] = 12;
-            
+
             byte[] encrypted = new byte[length];
             byte[] decrypted = new byte[2 * length];
 
@@ -85,18 +85,18 @@ namespace Nethermind.Network.Test.Rlpx
             frameCipher.Encrypt(message, 0, length, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, length, decrypted, 0);
             Assert.AreEqual(message, decrypted);
-            
+
             Array.Clear(encrypted, 0, encrypted.Length);
             Array.Clear(decrypted, 0, decrypted.Length);
             frameCipher.Encrypt(message, 0, length, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, length, decrypted, 0);
             Assert.AreEqual(message, decrypted);
         }
-        
+
         [Test]
         public void Can_do_inline()
         {
-            byte[] message = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            byte[] message = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
             byte[] messageClone = (byte[])message.Clone();
 
             FrameCipher frameCipher = new(NetTestVectors.AesSecret);

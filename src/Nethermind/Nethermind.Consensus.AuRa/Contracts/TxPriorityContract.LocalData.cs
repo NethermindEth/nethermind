@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public class LocalDataSource : FileLocalDataSource<LocalData>
         {
-            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500) 
+            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
                 : base(filePath, jsonSerializer, fileSystem, logManager, interval)
             {
             }
@@ -53,8 +53,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 _getData = getData;
             }
 
-            public IEnumerable<T> Data => _localDataSource.Data == null 
-                ? Enumerable.Empty<T>() 
+            public IEnumerable<T> Data => _localDataSource.Data == null
+                ? Enumerable.Empty<T>()
                 : _getData(_localDataSource.Data) ?? Enumerable.Empty<T>();
 
             public event EventHandler Changed

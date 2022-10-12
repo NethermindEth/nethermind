@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,8 +25,8 @@ namespace Nethermind.Consensus.Processing
     internal static class BlockExtensions
     {
         public static Block CreateCopy(this Block block, BlockHeader header) =>
-            block is BlockToProduce blockToProduce 
-                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Uncles) 
+            block is BlockToProduce blockToProduce
+                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Uncles)
                 : new Block(header, block.Transactions, block.Uncles);
 
         public static IEnumerable<Transaction> GetTransactions(this Block block) =>
@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Processing
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
             block.Header.TxRoot = new TxTrie(transactions).RootHash;
-            
+
             if (block is BlockToProduce blockToProduce)
             {
                 blockToProduce.Transactions = transactions;

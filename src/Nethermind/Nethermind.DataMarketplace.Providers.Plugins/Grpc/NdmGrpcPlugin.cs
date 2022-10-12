@@ -50,9 +50,9 @@ namespace Nethermind.DataMarketplace.Providers.Plugins.Grpc
         {
             if (_client == null)
             {
-                throw new InvalidOperationException("Cannot subscribe to uninitialized plugin");    
+                throw new InvalidOperationException("Cannot subscribe to uninitialized plugin");
             }
-            
+
             return _initialized ? _client.SubscribeAsync(callback, enabled, args, token) : Task.CompletedTask;
         }
     }

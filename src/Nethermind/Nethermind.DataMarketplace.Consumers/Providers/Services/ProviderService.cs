@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Consumers.Providers.Services
             }
 
             if (_logger.IsWarn) _logger.Warn($"Provider node: '{nodeId}' was not found.");
-            
+
             return null;
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Providers.Services
             {
                 throw new InvalidOperationException("Trying to add a provider node without a provider address known.");
             }
-            
+
             ConcurrentDictionary<PublicKey, string> nodes = _providersWithCommonAddress.AddOrUpdate(peer.ProviderAddress,
                 _ => new ConcurrentDictionary<PublicKey, string>(), (_, n) => n);
             nodes.TryAdd(peer.NodeId, string.Empty);
@@ -108,28 +108,28 @@ namespace Nethermind.DataMarketplace.Consumers.Providers.Services
             {
                 return;
             }
-            
+
             nodes.TryRemove(provider.NodeId, out _);
             if (nodes.Count == 0)
             {
                 _providersWithCommonAddress.TryRemove(provider.ProviderAddress, out _);
             }
         }
-        
+
         public async Task ChangeAddressAsync(INdmPeer peer, Address address)
         {
             if (peer.ProviderAddress == address)
             {
                 return;
             }
-            
+
             if (peer.ProviderAddress == null)
             {
                 throw new InvalidOperationException($"While changing {nameof(INdmPeer.ProviderAddress)} to {address} found that the previous address has been null.");
             }
-            
+
             Address previousAddress = peer.ProviderAddress;
-            
+
             if (_logger.IsInfo) _logger.Info($"Changing provider address: '{previousAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
             _providersWithCommonAddress.TryRemove(peer.ProviderAddress, out _);
             peer.ChangeProviderAddress(address);

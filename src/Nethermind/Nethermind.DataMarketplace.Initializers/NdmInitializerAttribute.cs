@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Initializers
             {
                 throw new ArgumentException("NDM initializer name cannot be empty.", nameof(name));
             }
-            
+
             Name = name;
         }
     }

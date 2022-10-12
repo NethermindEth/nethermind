@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
-{ 
+{
     [DebuggerDisplay("{StartBlockHash} {MaxHeaders} {Skip} {Reverse}")]
     public class GetBlockHeadersMessage : P2PMessage
     {

@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         IDbProvider? RocksProvider { get; set; }
         IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; } // maybe only in NDM
         IJsonRpcClientProxy? JsonRpcClientProxy { get; set; } // maybe only in NDM
-        
+
         // TODO: handle this override somehow (maybe override Config<> so it returns this? 
         INdmConfig? NdmConfig { get; set; }
         string? BaseDbPath { get; set; }

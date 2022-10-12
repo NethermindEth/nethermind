@@ -59,9 +59,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly ISigner _signer;
         public Address NodeAddress => _signer.Address;
-        
+
         public ReportingValidatorContract(
-            IAbiEncoder abiEncoder, 
+            IAbiEncoder abiEncoder,
             Address contractAddress,
             ISigner signer)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))

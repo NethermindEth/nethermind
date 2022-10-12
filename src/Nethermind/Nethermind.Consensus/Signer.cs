@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace Nethermind.Consensus
             _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
-        
+
         public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus
             return default;
         }
 
-        public PrivateKey? Key => _key is null ? null : new PrivateKey(_key.KeyBytes); 
+        public PrivateKey? Key => _key is null ? null : new PrivateKey(_key.KeyBytes);
 
         public void SetSigner(PrivateKey? key)
         {
@@ -76,12 +76,12 @@ namespace Nethermind.Consensus
 
         public void SetSigner(ProtectedPrivateKey? key)
         {
-            PrivateKey? pk = null; 
+            PrivateKey? pk = null;
             if (key is not null)
             {
                 pk = key.Unprotect();
             }
-            
+
             SetSigner(pk);
         }
     }

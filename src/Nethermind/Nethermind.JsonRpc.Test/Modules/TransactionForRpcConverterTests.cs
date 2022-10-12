@@ -36,10 +36,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             byte[] s = new byte[32];
             r[1] = 1;
             s[2] = 2;
-            
+
             Transaction tx = new();
             tx.Signature = new Signature(r, s, 27);
-            
+
             TransactionForRpc txForRpc = new(tx);
 
             EthereumJsonSerializer serializer = new();

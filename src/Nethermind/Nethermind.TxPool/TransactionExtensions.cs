@@ -19,7 +19,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 
-[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
+[assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.TxPool
 {
@@ -33,20 +33,20 @@ namespace Nethermind.TxPool
                 {
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
                     effectiveGasPrice.Multiply((UInt256)tx.GasLimit, out UInt256 gasCost);
-                            
+
                     if (balance >= tx.Value + gasCost)
                     {
                         return effectiveGasPrice;
                     }
-            
+
                     UInt256 balanceAvailableForFeePayment = balance - tx.Value;
                     balanceAvailableForFeePayment.Divide((UInt256)tx.GasLimit, out UInt256 payablePricePerGasUnit);
                     return payablePricePerGasUnit;
                 }
-                        
+
                 return 0;
             }
-            
+
             return tx.GasPrice;
         }
     }

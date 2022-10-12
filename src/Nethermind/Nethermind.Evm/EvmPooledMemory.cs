@@ -62,7 +62,7 @@ namespace Nethermind.Evm
             {
                 return;
             }
-            
+
             CheckMemoryAccessViolation(in location, (UInt256)value.Length);
             UpdateSize(in location, (UInt256)value.Length);
 
@@ -85,39 +85,39 @@ namespace Nethermind.Evm
             {
                 return;
             }
-            
+
             CheckMemoryAccessViolation(in location, (UInt256)value.Length);
             UpdateSize(in location, (UInt256)value.Length);
 
             Array.Copy(value, 0, _memory, (long)location, value.Length);
         }
-        
+
         public void Save(in UInt256 location, ZeroPaddedSpan value)
         {
             if (value.Length == 0)
             {
                 return;
             }
-            
+
             CheckMemoryAccessViolation(in location, (UInt256)value.Length);
             UpdateSize(in location, (UInt256)value.Length);
 
-            int intLocation = (int) location;
+            int intLocation = (int)location;
             value.Span.CopyTo(_memory.AsSpan().Slice(intLocation, value.Span.Length));
             _memory.AsSpan().Slice(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
-        
+
         public void Save(in UInt256 location, ZeroPaddedMemory value)
         {
             if (value.Length == 0)
             {
                 return;
             }
-            
+
             CheckMemoryAccessViolation(in location, (UInt256)value.Length);
             UpdateSize(in location, (UInt256)value.Length);
 
-            int intLocation = (int) location;
+            int intLocation = (int)location;
             value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
             _memory.AsSpan().Slice(intLocation + value.Memory.Length, value.PaddingLength).Clear();
         }
@@ -126,7 +126,7 @@ namespace Nethermind.Evm
         {
             CheckMemoryAccessViolation(in location, WordSize);
             UpdateSize(in location, WordSize);
-            
+
             return _memory.AsSpan((int)location, WordSize);
         }
 
@@ -154,7 +154,7 @@ namespace Nethermind.Evm
             {
                 return new byte[(long)length];
             }
-            
+
             UpdateSize(in location, length);
 
             return _memory.AsMemory((int)location, (int)length);
@@ -205,7 +205,7 @@ namespace Nethermind.Evm
                 {
                     return long.MaxValue;
                 }
-                
+
                 UpdateSize(in newSize, 0, false);
 
                 return (long)cost;
@@ -240,7 +240,7 @@ namespace Nethermind.Evm
         }
 
         private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
-        
+
         public static long Div32Ceiling(in UInt256 length)
         {
             UInt256 rem = length & 31;
@@ -251,7 +251,7 @@ namespace Nethermind.Evm
                 Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
-            
+
             return (long)withCeiling;
         }
 

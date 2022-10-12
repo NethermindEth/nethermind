@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            
+
             Keccak[]? hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
             if (hashes.Length == 0)
             {

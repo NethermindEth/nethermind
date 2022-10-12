@@ -28,7 +28,7 @@ namespace Nethermind.Core.Collections
                 list.Add(item);
             }
         }
-        
+
         public static void AddRange<T>(this ICollection<T> list, params T[] items)
         {
             for (int index = 0; index < items.Length; index++)

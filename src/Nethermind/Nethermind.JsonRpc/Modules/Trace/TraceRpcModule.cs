@@ -107,7 +107,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 
-        private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter) {
+        private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter)
+        {
             SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
@@ -143,7 +144,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
             }
 
-            Block block = new(headerSearch.Object!, new[] {tx}, Enumerable.Empty<BlockHeader>());
+            Block block = new(headerSearch.Object!, new[] { tx }, Enumerable.Empty<BlockHeader>());
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));

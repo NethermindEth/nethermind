@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc
             Response = null;
             Report = default;
         }
-        
+
         private JsonRpcResult(JsonRpcResponse response, RpcReport report)
         {
             IsCollection = false;

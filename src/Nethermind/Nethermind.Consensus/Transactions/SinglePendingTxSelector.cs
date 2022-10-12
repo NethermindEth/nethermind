@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,12 +31,12 @@ namespace Nethermind.Consensus.Transactions
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
             _innerSource.GetTransactions(parent, gasLimit)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);
-        
+
         public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
 
     }

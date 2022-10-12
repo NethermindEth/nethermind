@@ -41,7 +41,7 @@ namespace Nethermind.Ssz.Test
             // Arrange
             Attestation attestation = new Attestation(
                 new BitArray(new[] {
-                    true, false, false, false, false, true, false, false, 
+                    true, false, false, false, false, true, false, false,
                     true, true, false}),
                 new AttestationData(
                     new Slot(2 * 8 + 5),
@@ -50,24 +50,24 @@ namespace Nethermind.Ssz.Test
                     new Checkpoint(
                         new Epoch(1),
                         new Root(Enumerable.Repeat((byte)0x34, 32).ToArray())
-                    ), 
+                    ),
                     new Checkpoint(
                         new Epoch(2),
                         new Root(Enumerable.Repeat((byte)0x56, 32).ToArray())
                     )
                 ),
-                new BlsSignature(Enumerable.Repeat((byte) 0xef, 96).ToArray()));
-            
+                new BlsSignature(Enumerable.Repeat((byte)0xef, 96).ToArray()));
+
             // Act
             Span<byte> encoded = new byte[Ssz.AttestationLength(attestation)];
             Ssz.Encode(encoded, attestation);
-            
+
             // Assert
-            
+
             // Bitlist is little endian
             // true, false, false, false, false, true, false, false, = 0b 0010 0001 = 0x 21
             // true, true, false}), = 0b 0000 0011, add sentinel bit (so we know only 3 bits used) -> 0b 0000 1011 = 0x 0b
-            
+
             string expectedHex =
                 // static
                 "e4000000" + // aggregation dynamic offset 4 + 8+8+32+(8+32)+(8+32) + 96 = 228 = 0xe4
@@ -81,7 +81,7 @@ namespace Nethermind.Ssz.Test
                 "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef" +
                 // dynamic part
                 "210b";
-            
+
             encoded.ToHexString().ShouldBe(expectedHex);
         }
 
@@ -103,10 +103,10 @@ namespace Nethermind.Ssz.Test
                 // dynamic part
                 "210b";
             byte[] bytes = Bytes.FromHexString(hex);
-            
+
             // Act
             Attestation attestation = Ssz.DecodeAttestation(bytes);
-            
+
             // Assert
             attestation.Data.Slot.ShouldBe(new Slot(21));
             attestation.Data.Target.Epoch.ShouldBe(new Epoch(2));

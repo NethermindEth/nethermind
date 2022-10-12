@@ -25,7 +25,7 @@ namespace Nethermind.Baseline.Tree
         {
             TrackedTrees = trackedTrees;
         }
-        
+
         public Address[] TrackedTrees { get; set; }
     }
 }

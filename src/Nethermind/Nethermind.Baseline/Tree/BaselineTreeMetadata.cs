@@ -102,7 +102,7 @@ namespace Nethermind.Baseline.Tree
                 result = LoadBlockNumberCount(lastBlockWithLeaves);
                 result.NewLastBlockWithLeaves = lastBlockWithLeaves;
             }
-            
+
             return result;
         }
 
@@ -141,17 +141,17 @@ namespace Nethermind.Baseline.Tree
             {
                 return;
             }
-            
+
             if (blockNumber <= previousBlockWithLeaves)
             {
                 throw new InvalidDataException($"Trying to save {blockNumber}->{previousBlockWithLeaves} (current->previous)");
             }
-            
+
             if (_logger.IsWarn)
                 _logger.Warn(
                     $"Saving count for block {blockNumber} in {DbPrefix.ToHexString()} - ({count},{previousBlockWithLeaves})");
 
-            int length = Rlp.LengthOfSequence(Rlp.LengthOf((long) count) + Rlp.LengthOf(previousBlockWithLeaves));
+            int length = Rlp.LengthOfSequence(Rlp.LengthOf((long)count) + Rlp.LengthOf(previousBlockWithLeaves));
             RlpStream rlpStream = new RlpStream(length);
             rlpStream.StartSequence(length);
             rlpStream.Encode(count);

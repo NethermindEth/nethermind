@@ -69,7 +69,7 @@ namespace Nethermind.TxPool.Test
             var codeDb = new MemDb();
             _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
-            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
             _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
         }
@@ -132,7 +132,7 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AcceptTxResult.Invalid);;
+            result.Should().Be(AcceptTxResult.Invalid); ;
         }
 
         [Test]
@@ -243,7 +243,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, true, ExpectedResult = nameof(AcceptTxResult.SenderIsContract))]
         public string should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
-            ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) {IsEip3607Enabled = eip3607Enabled});
+            ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { IsEip3607Enabled = eip3607Enabled });
             TxPool txPool = CreatePool(null, specProvider);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -397,23 +397,23 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.GasLimitExceeded);
         }
 
-        [TestCase(4,0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4,11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4,12, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(5,0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5,10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5,11, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(9,0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(9,6, nameof(AcceptTxResult.Accepted))]
-        [TestCase(9,7, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(11,0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11,4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11,5, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(15,0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(16,0, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(4, 11, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(4, 12, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(5, 0, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(5, 11, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(9, 0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(9, 6, nameof(AcceptTxResult.Accepted))]
+        [TestCase(9, 7, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11, 5, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(16, 0, nameof(AcceptTxResult.InsufficientFunds))]
         public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, string expected)
         {
-            _txPool = CreatePool(new TxPoolConfig() {Size = 30});
+            _txPool = CreatePool(new TxPoolConfig() { Size = 30 });
             Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
 
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
@@ -443,19 +443,19 @@ namespace Nethermind.TxPool.Test
             result.ToString().Should().Contain(expected);
         }
 
-        [TestCase(10,0, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(11,0, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11,4, nameof(AcceptTxResult.Accepted))]
-        [TestCase(11,5, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(11,15, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(11,16, nameof(AcceptTxResult.InsufficientFunds))]
-        [TestCase(50,0, nameof(AcceptTxResult.Invalid))]
-        [TestCase(50,15, nameof(AcceptTxResult.Invalid))]
-        [TestCase(50,16, nameof(AcceptTxResult.Invalid))]
+        [TestCase(10, 0, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11, 5, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11, 15, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11, 16, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(50, 0, nameof(AcceptTxResult.Invalid))]
+        [TestCase(50, 15, nameof(AcceptTxResult.Invalid))]
+        [TestCase(50, 16, nameof(AcceptTxResult.Invalid))]
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, string expected)
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
-            _txPool = CreatePool(new TxPoolConfig() {Size = 30}, specProvider);
+            _txPool = CreatePool(new TxPoolConfig() { Size = 30 }, specProvider);
             Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
 
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
@@ -489,7 +489,7 @@ namespace Nethermind.TxPool.Test
         {
             TxHandlingOptions txHandlingOptions = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
 
-            _txPool = CreatePool(new TxPoolConfig() {Size = 30});
+            _txPool = CreatePool(new TxPoolConfig() { Size = 30 });
             Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
 
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
@@ -703,7 +703,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_remove_txHash_from_hashCache_when_tx_removed_because_of_txPool_size_exceeded()
         {
-            _txPool = CreatePool(new TxPoolConfig(){Size = 1});
+            _txPool = CreatePool(new TxPoolConfig() { Size = 1 });
             Transaction transaction = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice(2)
@@ -766,7 +766,7 @@ namespace Nethermind.TxPool.Test
 
             for (int i = 0; i < 3; i++)
             {
-               _stateProvider.IncrementNonce(TestItem.AddressA);
+                _stateProvider.IncrementNonce(TestItem.AddressA);
             }
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
@@ -896,7 +896,7 @@ namespace Nethermind.TxPool.Test
         public void should_add_transactions_concurrently()
         {
             int size = 3;
-            TxPoolConfig config = new() {GasLimit = _txGasLimit, Size = size};
+            TxPoolConfig config = new() { GasLimit = _txGasLimit, Size = size };
             _txPool = CreatePool(config);
 
             foreach (PrivateKey privateKey in TestItem.PrivateKeys)
@@ -916,10 +916,10 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(size);
         }
 
-        [TestCase(true, true,10)]
-        [TestCase(false, true,100)]
-        [TestCase(true, false,100)]
-        [TestCase(false, false,100)]
+        [TestCase(true, true, 10)]
+        [TestCase(false, true, 100)]
+        [TestCase(true, false, 100)]
+        [TestCase(false, false, 100)]
         public void should_add_pending_transactions(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool();
@@ -927,10 +927,10 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
         }
 
-        [TestCase(true, true,10)]
-        [TestCase(false, true,100)]
-        [TestCase(true, false,100)]
-        [TestCase(false, false,100)]
+        [TestCase(true, true, 10)]
+        [TestCase(false, true, 100)]
+        [TestCase(true, false, 100)]
+        [TestCase(false, false, 100)]
         public void should_remove_tx_from_txPool_when_included_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool();
@@ -950,10 +950,10 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().Length.Should().Be(0);
         }
 
-        [TestCase(true, true,10)]
-        [TestCase(false, true,100)]
-        [TestCase(true, false,100)]
-        [TestCase(false, false,100)]
+        [TestCase(true, true, 10)]
+        [TestCase(false, true, 100)]
+        [TestCase(true, false, 100)]
+        [TestCase(false, false, 100)]
         public void should_not_remove_txHash_from_hashCache_when_tx_removed_because_of_including_in_block(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool();
@@ -1082,7 +1082,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved().TestObject;
             _specProvider = Substitute.For<ISpecProvider>();
             _specProvider.ChainId.Returns(transaction.Signature.ChainId.Value);
-            _txPool = CreatePool(config:new TxPoolConfig(){Size = 1});
+            _txPool = CreatePool(config: new TxPoolConfig() { Size = 1 });
 
             EnsureSenderBalance(transaction);
             _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
@@ -1236,16 +1236,16 @@ namespace Nethermind.TxPool.Test
             _txPool.RemoveTransaction(null).Should().Be(false);
         }
 
-        [TestCase(0,0,false)]
-        [TestCase(0,1,true)]
-        [TestCase(1,2,true)]
-        [TestCase(10,11,true)]
-        [TestCase(100,0,false)]
-        [TestCase(100,80,false)]
-        [TestCase(100,109,false)]
-        [TestCase(100,110,true)]
-        [TestCase(1_000_000_000,1_099_999_999,false)]
-        [TestCase(1_000_000_000,1_100_000_000,true)]
+        [TestCase(0, 0, false)]
+        [TestCase(0, 1, true)]
+        [TestCase(1, 2, true)]
+        [TestCase(10, 11, true)]
+        [TestCase(100, 0, false)]
+        [TestCase(100, 80, false)]
+        [TestCase(100, 109, false)]
+        [TestCase(100, 110, true)]
+        [TestCase(1_000_000_000, 1_099_999_999, false)]
+        [TestCase(1_000_000_000, 1_100_000_000, true)]
         public void should_replace_tx_with_same_sender_and_nonce_only_if_new_fee_is_at_least_10_percent_higher_than_old(int oldGasPrice, int newGasPrice, bool replaced)
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
@@ -1407,7 +1407,7 @@ namespace Nethermind.TxPool.Test
             return peer;
         }
 
-        private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer= false, int transactionsPerPeer = 10)
+        private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = false, int transactionsPerPeer = 10)
         {
             var transactions = GetTransactions(GetPeers(transactionsPerPeer), sameTransactionSenderPerPeer, sameNoncePerPeer);
 
@@ -1446,7 +1446,7 @@ namespace Nethermind.TxPool.Test
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(sameTransactionSenderPerPeer ? privateKey : Build.A.PrivateKey.TestObject, Address.FromNumber((UInt256)i), sameNoncePerPeer ? UInt256.Zero : (UInt256?) i));
+                    transactions.Add(GetTransaction(sameTransactionSenderPerPeer ? privateKey : Build.A.PrivateKey.TestObject, Address.FromNumber((UInt256)i), sameNoncePerPeer ? UInt256.Zero : (UInt256?)i));
                 }
             }
 

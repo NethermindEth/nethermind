@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public UInt256 RefundedValue { get; }
         public UInt256 RemainingValue { get; }
         public IEnumerable<DataDeliveryReceiptReportItemForRpc> Receipts { get; }
-        
+
         public DepositReportItemForRpc(DepositReportItem report)
         {
             Id = report.Id;

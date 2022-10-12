@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,11 +26,11 @@ namespace Nethermind.Consensus.AuRa
     {
         T Activation { get; }
     }
-	
-	public interface IActivatedAt : IActivatedAt<long>
+
+    public interface IActivatedAt : IActivatedAt<long>
     {
     }
-    
+
     public interface IActivatedAtBlock : IActivatedAt
     {
         public long ActivationBlock => Activation;

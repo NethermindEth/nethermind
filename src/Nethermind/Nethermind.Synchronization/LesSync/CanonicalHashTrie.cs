@@ -28,7 +28,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.LesSync
 {
-    public class CanonicalHashTrie: PatriciaTree
+    public class CanonicalHashTrie : PatriciaTree
     {
         private static readonly ChtDecoder _decoder = new();
         public static readonly int SectionSize = 32768; // 2**15
@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.LesSync
         {
             return Get(GetKey(key));
         }
-        
+
         public (Keccak?, UInt256) Get(Span<byte> key)
         {
             byte[]? val = base.Get(key);
@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization.LesSync
             {
                 throw new InvalidDataException("Missing CHT data");
             }
-            
+
             return _decoder.Decode(val);
         }
 
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.LesSync
         {
             if (!header.TotalDifficulty.HasValue)
             {
-                throw new ArgumentException("Trying to use a header with a null total difficulty in LES Canonical Hash Trie") ;
+                throw new ArgumentException("Trying to use a header with a null total difficulty in LES Canonical Hash Trie");
             }
 
             return _decoder.Encode((header.Hash, header.TotalDifficulty.Value));

@@ -20,9 +20,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>
     {
         public GetPooledTransactionsMessage()
-        { 
+        {
         }
-        
+
         public GetPooledTransactionsMessage(long requestId, V65.Messages.GetPooledTransactionsMessage ethMessage) : base(requestId, ethMessage)
         {
         }

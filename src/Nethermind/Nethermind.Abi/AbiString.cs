@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ namespace Nethermind.Abi
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (object bytes, int newPosition) = DynamicBytes.Decode(data, position, packed);
-            return (Encoding.ASCII.GetString((byte[]) bytes), newPosition);
+            return (Encoding.ASCII.GetString((byte[])bytes), newPosition);
         }
 
         public override byte[] Encode(object? arg, bool packed)

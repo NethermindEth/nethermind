@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.ReadByte();
                 return null;
             }
-            
+
             rlpStream.ReadSequenceLength();
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.ReadByte();
                 return null;
             }
-            
+
             decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
@@ -89,7 +89,7 @@ namespace Nethermind.Serialization.Rlp
 
             var (total, topics) = GetContentLength(item);
             rlpStream.StartSequence(total);
-            
+
             rlpStream.Encode(item.LoggersAddress);
             rlpStream.StartSequence(topics);
 
@@ -97,20 +97,20 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(item.Topics[i]);
             }
-            
-            rlpStream.Encode(item.Data);   
+
+            rlpStream.Encode(item.Data);
         }
-        
+
         public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
                 return 1;
             }
-            
+
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
-        
+
         private static (int Total, int Topics) GetContentLength(LogEntry? item)
         {
             var contentLength = 0;
@@ -120,27 +120,27 @@ namespace Nethermind.Serialization.Rlp
             }
 
             contentLength += Rlp.LengthOf(item.LoggersAddress);
-            
+
             int topicsLength = GetTopicsLength(item);
             contentLength += Rlp.LengthOfSequence(topicsLength);
             contentLength += Rlp.LengthOf(item.Data);
-            
+
             return (contentLength, topicsLength);
         }
-        
+
         private static int GetTopicsLength(LogEntry? item)
         {
             if (item == null)
             {
                 return 0;
             }
-            
+
             int topicsLength = 0;
             for (int i = 0; i < item.Topics.Length; i++)
             {
                 topicsLength += Rlp.LengthOf(item.Topics[i]);
             }
-            
+
             return topicsLength;
         }
 
@@ -152,7 +152,7 @@ namespace Nethermind.Serialization.Rlp
                 item = new LogEntryStructRef();
                 return;
             }
-            
+
             decoderContext.ReadSequenceLength();
             decoderContext.DecodeAddressStructRef(out var address);
             var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();

@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         }
 
         public BlockInfoForRpc[] BlockInfos { get; set; }
-        
+
         public bool HasBlockOnMainChain { get; set; }
     }
 }

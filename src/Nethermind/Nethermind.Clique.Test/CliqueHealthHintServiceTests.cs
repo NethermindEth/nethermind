@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Clique.Test
 {
     public class CliqueHealthHintServiceTests
-    { 
+    {
         [Test]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
@@ -45,7 +45,7 @@ namespace Nethermind.Clique.Test
         public class BlockProcessorIntervalHint
         {
             public ChainSpec ChainSpec { get; set; }
-            
+
             public ulong ValidatorsCount { get; set; }
 
             public ulong? ExpectedProcessingHint { get; set; }
@@ -62,27 +62,27 @@ namespace Nethermind.Clique.Test
             {
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 15}},
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 15 } },
                     ExpectedProcessingHint = 60,
                     ExpectedProducingHint = 30
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23}},
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23 } },
                     ExpectedProcessingHint = 92,
                     ExpectedProducingHint = 46
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
                     ValidatorsCount = 10,
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23}},
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 23 } },
                     ExpectedProcessingHint = 92,
                     ExpectedProducingHint = 460
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
                     ValidatorsCount = 2,
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 10}},
+                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Clique, Clique = new CliqueParameters() { Period = 10 } },
                     ExpectedProcessingHint = 40,
                     ExpectedProducingHint = 40
                 };

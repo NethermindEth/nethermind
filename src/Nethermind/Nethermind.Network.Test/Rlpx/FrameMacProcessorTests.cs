@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -68,7 +68,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] egressUpdate = new byte[32];
             for (int i = 0; i < egressUpdate.Length; i++)
             {
-                egressUpdate[i] = (byte) i;
+                egressUpdate[i] = (byte)i;
             }
 
             var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();

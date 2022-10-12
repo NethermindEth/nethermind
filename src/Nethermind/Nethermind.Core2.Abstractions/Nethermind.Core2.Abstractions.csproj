@@ -12,11 +12,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Dirichlet" Version="1.0.0" />
       <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
     </ItemGroup>
 
 </Project>

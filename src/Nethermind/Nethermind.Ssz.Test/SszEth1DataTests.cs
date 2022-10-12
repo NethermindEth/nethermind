@@ -34,14 +34,14 @@ namespace Nethermind.Ssz.Test
         {
             // Arrange
             Eth1Data eth1Data = new Eth1Data(
-                new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x12, 32).ToArray()),
                 64,
-                new Bytes32(Enumerable.Repeat((byte) 0x34, 32).ToArray()));
-            
+                new Bytes32(Enumerable.Repeat((byte)0x34, 32).ToArray()));
+
             // Act
             Span<byte> encoded = new byte[Ssz.Eth1DataLength];
             Ssz.Encode(encoded, eth1Data);
-            
+
             // Assert
             string expectedHex =
                 "1212121212121212121212121212121212121212121212121212121212121212" +
@@ -49,7 +49,7 @@ namespace Nethermind.Ssz.Test
                 "3434343434343434343434343434343434343434343434343434343434343434";
             encoded.ToHexString().ShouldBe(expectedHex);
         }
-        
+
         [TestCase]
         public void BasicEth1DataDecode()
         {
@@ -59,14 +59,14 @@ namespace Nethermind.Ssz.Test
                 "4000000000000000" +
                 "3434343434343434343434343434343434343434343434343434343434343434";
             byte[] bytes = Bytes.FromHexString(hex);
-            
+
             // Act
             Eth1Data eth1Data = Ssz.DecodeEth1Data(bytes);
-            
+
             // Assert
-            eth1Data.DepositRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x12, 32).ToArray());
+            eth1Data.DepositRoot.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x12, 32).ToArray());
             eth1Data.DepositCount.ShouldBe(64uL);
-            eth1Data.BlockHash.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte) 0x34, 32).ToArray());
+            eth1Data.BlockHash.AsSpan().ToArray().ShouldBe(Enumerable.Repeat((byte)0x34, 32).ToArray());
         }
     }
 }

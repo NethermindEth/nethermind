@@ -45,9 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         public override string Name => "eth64";
-        
+
         public override byte ProtocolVersion => 64;
 
         protected override void EnrichStatusMessage(StatusMessage statusMessage)

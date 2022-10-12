@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var dataAssets = dataAssetsBytes
                 .Select(b => dataAssetDecoder.Decode(b.Value.AsRlpStream()));
 
-            var window = new Window("Data assets") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
+            var window = new Window("Data assets") { X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill() };
             if (!dataAssets.Any())
             {
                 MessageBox.Query(40, 7, "Data assets", "No data." +
@@ -54,7 +54,10 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var dataAssetDetailsWindow = new Window("Data asset details")
                     {
-                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
+                        X = 0,
+                        Y = 10,
+                        Width = Dim.Fill(),
+                        Height = Dim.Fill()
                     };
                     Application.Top.Add(dataAssetDetailsWindow);
 

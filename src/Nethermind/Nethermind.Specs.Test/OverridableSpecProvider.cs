@@ -31,7 +31,7 @@ namespace Nethermind.Specs.Test
             _specProvider = specProvider;
             _overrideAction = overrideAction;
         }
-        
+
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 
 using System.Diagnostics;
 using System.Linq;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
@@ -53,6 +54,20 @@ namespace Nethermind.Core
                 // Note: The first block info is main
                 return BlockInfos[0];
             }
+        }
+
+        public int? FindBlockInfoIndex(Keccak blockHash)
+        {
+            for (int i = 0; i < BlockInfos.Length; i++)
+            {
+                Keccak hashAtIndex = BlockInfos[i].BlockHash;
+                if (hashAtIndex.Equals(blockHash))
+                {
+                    return i;
+                }
+            }
+
+            return null;
         }
     }
 }

@@ -56,8 +56,8 @@ namespace Nethermind.Blockchain.Test.Filters
 
         [Test]
         public void many_logs_should_not_be_empty_for_default_filters_parameters()
-            => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] {filter => { }, filter => { }, filter => { }},
-                new Action<ReceiptBuilder>[] {receipt => { }, receipt => { }, receipt => { }});
+            => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { filter => { }, filter => { }, filter => { } },
+                new Action<ReceiptBuilder>[] { receipt => { }, receipt => { }, receipt => { } });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_earliest_type()
@@ -158,25 +158,25 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void logs_should_not_be_empty_for_existing_address()
             => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
-                receipt => receipt.WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject}));
+                receipt => receipt.WithLogs(new[] { Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject }));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_address()
             => LogsShouldBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject}));
+                    .WithLogs(new[] { Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject }));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_addresses()
-            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB}),
+            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new[] { TestItem.AddressA, TestItem.AddressB }),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject}));
+                    .WithLogs(new[] { Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject }));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_addresses()
-            => LogsShouldBeEmpty(filter => filter.WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB}),
+            => LogsShouldBeEmpty(filter => filter.WithAddresses(new[] { TestItem.AddressA, TestItem.AddressB }),
                 receipt => receipt
-                    .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject}));
+                    .WithLogs(new[] { Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject }));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_specific_topic()
@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(1L)
                     .ToBlock(10L)
-                    .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
+                    .WithAddresses(new[] { TestItem.AddressA, TestItem.AddressB })
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
                         TestTopicExpressions.Specific(TestItem.KeccakB),
@@ -269,7 +269,7 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldBeEmpty(filter => filter
                     .FromBlock(1L)
                     .ToBlock(10L)
-                    .WithAddresses(new[] {TestItem.AddressA, TestItem.AddressB})
+                    .WithAddresses(new[] { TestItem.AddressA, TestItem.AddressB })
                     .WithTopicExpressions(TestTopicExpressions.Or(new[]
                     {
                         TestTopicExpressions.Specific(TestItem.KeccakC),
@@ -286,11 +286,11 @@ namespace Nethermind.Blockchain.Test.Filters
 
         private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<ReceiptBuilder> receiptBuilder)
-            => LogsShouldNotBeEmpty(new[] {filterBuilder}, new[] {receiptBuilder});
+            => LogsShouldNotBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
 
         private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<ReceiptBuilder> receiptBuilder)
-            => LogsShouldBeEmpty(new[] {filterBuilder}, new[] {receiptBuilder});
+            => LogsShouldBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
 
         private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
             IEnumerable<Action<ReceiptBuilder>> receiptBuilders)

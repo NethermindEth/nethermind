@@ -45,7 +45,7 @@ namespace Nethermind.Ssz
             DecodeDynamicOffset(span, ref offset, out int _);
             return DecodeSignedVoluntaryExitVector(span, ref offset, span.Length);
         }
-        
+
         public static void Encode(Span<byte> span, SignedVoluntaryExit container)
         {
             if (span.Length != SignedVoluntaryExitLength)
@@ -80,7 +80,7 @@ namespace Nethermind.Ssz
             Encode(span, container.Message, ref offset);
             Encode(span, container.Signature, ref offset);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void EncodeList(Span<byte> span, IReadOnlyList<SignedVoluntaryExit> containers, ref int offset)
         {

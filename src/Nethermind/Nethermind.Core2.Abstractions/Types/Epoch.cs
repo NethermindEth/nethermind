@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Core2.Types
         {
             Number = number;
         }
-        
+
         public ulong Number { get; }
 
         public static bool operator <(Epoch a, Epoch b)
@@ -38,7 +38,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Number > b.Number;
         }
-        
+
         public static bool operator <=(Epoch a, Epoch b)
         {
             return a.Number <= b.Number;
@@ -48,7 +48,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Number >= b.Number;
         }
-        
+
         public static bool operator ==(Epoch a, Epoch b)
         {
             return a.Number == b.Number;
@@ -73,7 +73,7 @@ namespace Nethermind.Core2.Types
         {
             return Number.GetHashCode();
         }
-        
+
         public override string ToString()
         {
             return Number.ToString();
@@ -82,13 +82,13 @@ namespace Nethermind.Core2.Types
         public static Epoch? None => null;
 
         public static Epoch Zero => new Epoch(0);
-        
+
         public static Epoch One => new Epoch(1);
 
         public static explicit operator Epoch(ulong value) => new Epoch(value);
 
         public static implicit operator ulong(Epoch slot) => slot.Number;
-        
+
         public static implicit operator int(Epoch slot) => (int)slot.Number;
 
         public static Epoch Max(Epoch val1, Epoch val2)

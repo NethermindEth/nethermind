@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -71,7 +71,7 @@ namespace Nethermind.BeaconNode.Storage
             _fileSystem = fileSystem;
             _headSelectionStrategy = headSelectionStrategy;
             _storeAccessor = storeAccessor;
-            _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
+            _jsonSerializerOptions = new JsonSerializerOptions { WriteIndented = true };
             _jsonSerializerOptions.ConfigureNethermindCore2();
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson ||
                 inMemoryConfigurationOptions.CurrentValue.LogBlockStateJson)
@@ -206,7 +206,7 @@ namespace Nethermind.BeaconNode.Storage
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
             {
                 string logDirectoryPath = GetLogDirectory();
-                string fileName = string.Format("state{0:0000}_{1}.json", (int) beaconState.Slot, blockHashTreeRoot);
+                string fileName = string.Format("state{0:0000}_{1}.json", (int)beaconState.Slot, blockHashTreeRoot);
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                 await using Stream fileStream = _fileSystem.File.OpenWrite(path);
                 await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions)
@@ -247,7 +247,7 @@ namespace Nethermind.BeaconNode.Storage
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
             {
                 string logDirectoryPath = GetLogDirectory();
-                string fileName = string.Format("block{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot,
+                string fileName = string.Format("block{0:0000}_{1}.json", (int)signedBeaconBlock.Message.Slot,
                     blockHashTreeRoot);
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                 await using Stream fileStream = _fileSystem.File.OpenWrite(path);

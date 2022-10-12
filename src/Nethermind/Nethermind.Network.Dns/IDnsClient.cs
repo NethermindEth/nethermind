@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,14 +35,14 @@ public class DnsClient : IDnsClient
         _domain = domain ?? throw new ArgumentNullException(nameof(domain));
         _client = new();
     }
-    
+
     public async Task<IEnumerable<string>> Lookup(string query)
     {
         if (_client.NameServers.Count == 0)
         {
             return Enumerable.Empty<string>();
         }
-        
+
         string queryString = $"{(string.IsNullOrWhiteSpace(query) ? string.Empty : (query + "."))}{_domain}";
         DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
         IDnsQueryResponse response = await _client.QueryAsync(rootQuestion, CancellationToken.None);

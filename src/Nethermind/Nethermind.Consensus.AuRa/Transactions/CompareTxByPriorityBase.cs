@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
-        
+
         protected abstract BlockHeader BlockHeader { get; }
 
         public UInt256 GetPriority(Transaction tx) =>
@@ -70,13 +70,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-                
+
             // we already have nonce ordered by previous code, we don't deal with it here
-                
+
             // first order by whitelisted
             int whitelistedComparision = IsWhiteListed(y).CompareTo(IsWhiteListed(x));
             if (whitelistedComparision != 0) return whitelistedComparision;
-                
+
             // then order by priority descending
             return GetPriority(y).CompareTo(GetPriority(x));
         }

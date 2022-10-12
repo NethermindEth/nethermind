@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -23,16 +23,16 @@ namespace Nethermind.Hive
     {
         [ConfigItem(Description = "Path to a file with a test chain definition.", DefaultValue = "\"/chain.rlp\"")]
         string ChainFile { get; set; }
-        
+
         [ConfigItem(Description = "Path to a directory with additional blocks.", DefaultValue = "\"/blocks\"")]
         string BlocksDir { get; set; }
-        
+
         [ConfigItem(Description = "Path to a test key store directory.", DefaultValue = "\"/keys\"")]
         string KeysDir { get; set; }
-        
+
         [ConfigItem(Description = "Enabling hive for debugging purpose", DefaultValue = "false")]
         bool Enabled { get; set; }
-        
+
         [ConfigItem(Description = "Path to genesis block.", DefaultValue = "\"/genesis.json\"")]
         string GenesisFilePath { get; set; }
     }

@@ -42,13 +42,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             DepositDetailsRocksRepository detailsRocksRepository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             await detailsRocksRepository.AddAsync(depositDetails);
-            
+
             ProviderRocksRepository repository = new ProviderRocksRepository(db, new DepositDetailsDecoder());
 
             var retrieved = await repository.GetProvidersAsync();
             retrieved.Count.Should().Be(1);
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public async Task Get_assets(DepositDetails depositDetails)
         {
@@ -56,13 +56,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             IDepositUnitsCalculator depositUnitsCalculator = Substitute.For<IDepositUnitsCalculator>();
             DepositDetailsRocksRepository detailsRocksRepository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder(), depositUnitsCalculator);
             await detailsRocksRepository.AddAsync(depositDetails);
-            
+
             ProviderRocksRepository repository = new ProviderRocksRepository(db, new DepositDetailsDecoder());
 
             var retrieved = await repository.GetDataAssetsAsync();
             retrieved.Count.Should().Be(1);
         }
-        
+
         [Test]
         public async Task Get_providers_empty_db()
         {
@@ -74,7 +74,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             var retrieved = await repository.GetProvidersAsync();
             retrieved.Count.Should().Be(0);
         }
-        
+
         [Test]
         public async Task Get_assets_empty_db()
         {

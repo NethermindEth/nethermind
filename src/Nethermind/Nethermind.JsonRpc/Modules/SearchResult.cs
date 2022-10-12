@@ -24,14 +24,14 @@ namespace Nethermind.JsonRpc.Modules
             Error = error;
             ErrorCode = errorCode;
         }
-            
+
         public SearchResult(T @object)
         {
             Object = @object;
             Error = null;
             ErrorCode = 0;
         }
-            
+
         public T? Object { get; set; }
 
         public string? Error { get; set; }

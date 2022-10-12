@@ -29,7 +29,7 @@ namespace Nethermind.Db
     public class SimpleFilePublicKeyDb : IFullDb
     {
         public const string DbFileName = "SimpleFileDb.db";
-     
+
         private ILogger _logger;
         private bool _hasPendingChanges;
         private ConcurrentDictionary<byte[], byte[]> _cache;
@@ -37,7 +37,7 @@ namespace Nethermind.Db
         public string DbPath { get; }
         public string Name { get; }
         public string Description { get; }
-        
+
         public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
         public int Count => _cache.Count;
@@ -49,12 +49,12 @@ namespace Nethermind.Db
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";
-            
+
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
-            
+
             LoadData();
         }
 
@@ -74,7 +74,7 @@ namespace Nethermind.Db
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>  keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
 
         public void Remove(byte[] key)
         {
@@ -140,7 +140,7 @@ namespace Nethermind.Db
         {
             private readonly string _dbPath;
             private readonly ILogger _logger;
-            
+
             public string BackupPath { get; }
 
             public Backup(string dbPath, ILogger logger)
@@ -175,7 +175,7 @@ namespace Nethermind.Db
                         }
                         else
                         {
-                            File.Move(BackupPath, _dbPath);    
+                            File.Move(BackupPath, _dbPath);
                         }
                     }
                 }

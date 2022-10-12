@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ using Nethermind.HonestValidator.MockedStart;
 namespace Nethermind.HonestValidator.Host
 {
     public class Program
-    { 
+    {
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
                 // Default loads host configuration from DOTNET_ and command line,
@@ -37,7 +37,8 @@ namespace Nethermind.HonestValidator.Host
                 // configure logging to console, debug, and event source,
                 // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
-                .ConfigureHostConfiguration(config => {
+                .ConfigureHostConfiguration(config =>
+                {
                     config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
                     config.AddJsonFile("hostsettings.json");
                     config.AddCommandLine(args);
@@ -65,7 +66,7 @@ namespace Nethermind.HonestValidator.Host
 
                     // Base JSON settings
                     config.AddJsonFile("appsettings.json");
-                    
+
                     // Override with environment specific JSON files
                     DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
                     string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
@@ -79,7 +80,7 @@ namespace Nethermind.HonestValidator.Host
                     services.AddHonestValidator(hostContext.Configuration);
                     services.AddBeaconNodeOapiClient(hostContext.Configuration);
                     services.AddCryptographyService(hostContext.Configuration);
-                    
+
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {
                         services.AddHonestValidatorQuickStart(hostContext.Configuration);

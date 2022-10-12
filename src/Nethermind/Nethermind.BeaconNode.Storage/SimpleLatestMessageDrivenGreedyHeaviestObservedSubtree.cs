@@ -169,7 +169,7 @@ namespace Nethermind.BeaconNode.Storage
                     Root ancestor = await store.GetAncestorAsync(latestMessage.Root, rootSlot);
                     if (ancestor == root)
                     {
-                        Validator validator = state.Validators[(int) index];
+                        Validator validator = state.Validators[(int)index];
                         balance += validator.EffectiveBalance;
                     }
                 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Data
         public ReceiptForRpc()
         {
         }
-       
+
         public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart = 0)
         {
             TransactionHash = txHash;
@@ -55,13 +55,13 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
-        
+
         public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address To { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }

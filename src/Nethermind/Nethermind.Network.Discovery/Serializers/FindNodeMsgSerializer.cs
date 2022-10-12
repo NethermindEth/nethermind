@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeriali
             Rlp.Encode(msg.ExpirationTime)
         ).Bytes;
 
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, data);
+        byte[] serializedMsg = Serialize((byte)msg.MsgType, data);
         return serializedMsg;
     }
 
@@ -47,7 +47,7 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeriali
         byte[] searchedNodeId = rlpStream.DecodeByteArray();
         long expirationTime = rlpStream.DecodeLong();
 
-        FindNodeMsg findNodeMsg = new (results.FarPublicKey, expirationTime, searchedNodeId);
+        FindNodeMsg findNodeMsg = new(results.FarPublicKey, expirationTime, searchedNodeId);
         return findNodeMsg;
     }
 }

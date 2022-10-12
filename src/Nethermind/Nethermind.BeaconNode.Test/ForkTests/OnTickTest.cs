@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             // Act
             await RunOnTick(testServiceProvider, store, store.Time + 1, expectNewJustifiedCheckpoint: false);
@@ -60,7 +60,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
 
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -26,17 +26,17 @@ namespace Ethereum.Test.Base
         public byte[][]? Data { get; set; }
         public long[]? GasLimit { get; set; }
         public UInt256? GasPrice { get; set; }
-        
+
         public UInt256? MaxFeePerGas { get; set; }
-        
+
         public UInt256? MaxPriorityFeePerGas { get; set; }
         public UInt256 Nonce { get; set; }
         public Address? To { get; set; }
         public UInt256[]? Value { get; set; }
         public byte[]? SecretKey { get; set; }
-        
+
         public AccessListItemJson[]?[]? AccessLists { get; set; }
-        
+
         public AccessListItemJson[]? AccessList { get; set; }
     }
 }

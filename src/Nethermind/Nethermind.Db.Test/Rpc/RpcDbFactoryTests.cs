@@ -40,7 +40,7 @@ namespace Nethermind.Db.Test.Rpc
                     db.Should().BeAssignableTo<T>(db.Name);
                 }
             }
-            
+
             IJsonSerializer jsonSerializer = Substitute.For<IJsonSerializer>();
             IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
             IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
@@ -58,7 +58,7 @@ namespace Nethermind.Db.Test.Rpc
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.CodeDb);
-            
+
             ValidateDb<FullPruningDb>(
                 memDbProvider.StateDb);
         }
