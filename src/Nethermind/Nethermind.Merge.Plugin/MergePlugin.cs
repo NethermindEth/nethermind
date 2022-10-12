@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin
 
         protected bool HasTtd(INethermindApi api)
         {
-            return api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
+            return api.SpecProvider?.TerminalTotalDifficulty != null || api.Config<IMergeConfig>().TerminalTotalDifficulty != null;
         }
 
         protected bool IsPreMergeConsensusAuRa(INethermindApi api)
