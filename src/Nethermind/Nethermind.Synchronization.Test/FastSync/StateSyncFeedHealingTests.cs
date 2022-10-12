@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public async Task HealBigSquezedRandomTree()
+        public async Task HealBigSqueezedRandomTree()
         {
             DbContext dbContext = new DbContext(_logger, _logManager);
 
