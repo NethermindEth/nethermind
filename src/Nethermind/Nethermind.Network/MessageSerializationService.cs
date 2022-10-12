@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Les;
@@ -27,7 +28,6 @@ namespace Nethermind.Network
 {
     public class MessageSerializationService : IMessageSerializationService
     {
-        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _serializers = new();
         private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new();
 
         public T Deserialize<T>(byte[] bytes) where T : MessageBase
@@ -36,19 +36,14 @@ namespace Nethermind.Network
             {
                 IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
                 byteBuffer.WriteBytes(bytes);
-                T result;
                 try
                 {
-                    result = zeroMessageSerializer.Deserialize(byteBuffer);
+                    return zeroMessageSerializer.Deserialize(byteBuffer);
                 }
-                catch (Exception)
+                finally
                 {
-                    byteBuffer.Release();
-                    throw;
+                    byteBuffer.SafeRelease();
                 }
-
-                byteBuffer.Release();
-                return result;
             }
 
             throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
@@ -137,10 +132,18 @@ namespace Nethermind.Network
                         throw new ArgumentOutOfRangeException(nameof(allocator), allocator, null);
                 }
 
+                try
+                {
+                    WriteAdaptivePacketType(byteBuffer);
+                    zeroMessageSerializer.Serialize(byteBuffer, message);
+                    return byteBuffer;
+                }
+                catch (Exception)
+                {
+                    byteBuffer.SafeRelease();
+                    throw;
+                }
 
-                WriteAdaptivePacketType(byteBuffer);
-                zeroMessageSerializer.Serialize(byteBuffer, message);
-                return byteBuffer;
             }
             throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }

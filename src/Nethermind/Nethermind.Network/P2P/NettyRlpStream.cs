@@ -16,6 +16,7 @@
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P
@@ -102,7 +103,7 @@ namespace Nethermind.Network.P2P
         protected override string Description => "|NettyRlpStream|description missing|";
         public void Dispose()
         {
-            _buffer.Release();
+            _buffer.SafeRelease();
         }
     }
 }
