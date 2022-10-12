@@ -42,6 +42,6 @@ namespace Nethermind.Network.Config
         public string Bootnodes { get; set; } = string.Empty;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
-        public int P2PHandlerThreadCount { get; set; } = 1;
+        public int P2PHandlerThreadCount { get; set; } = 0;
     }
 }

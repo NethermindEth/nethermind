@@ -82,6 +82,14 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
+            if (handlerThreadCount == 0)
+            {
+                // Using slightly less than processor count to give some compute for other tasks
+                // The thread count is rarely a limit, outside of old bodies/old receipts, but it may improve
+                // some latency as a peer message may get blocked by another peer's message deserialization
+                // if thread count is 1.
+                handlerThreadCount = Math.Max(1, Environment.ProcessorCount - 2);
+            }
             _group = new MultithreadEventLoopGroup(handlerThreadCount);
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
