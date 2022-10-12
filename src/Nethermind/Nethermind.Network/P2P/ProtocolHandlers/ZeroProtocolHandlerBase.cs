@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void HandleMessage(ZeroPacket message);
 
-        protected async Task<TResponse> SendRequestGeneric <TRequest, TResponse>(
+        protected async Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,

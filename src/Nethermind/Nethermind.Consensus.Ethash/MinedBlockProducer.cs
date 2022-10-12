@@ -42,7 +42,8 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IMiningConfig miningConfig)
             : base(
                 txSource,
                 processor,
@@ -54,7 +55,8 @@ namespace Nethermind.Consensus.Ethash
                 timestamper,
                 specProvider,
                 logManager,
-                new EthashDifficultyCalculator(specProvider))
+                new EthashDifficultyCalculator(specProvider),
+                miningConfig)
         {
         }
     }
