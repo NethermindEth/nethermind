@@ -91,10 +91,11 @@ namespace Nethermind.Evm.Test
             return typeof(BytecodeBuilder).GetMethods(BindingFlags.Static | BindingFlags.Public)
                 .Where(method =>
                 {
-                    if(hasDigit)
+                    if (hasDigit)
                     {
                         return method.Name.StartsWith(opcodeStr.Substring(0, prefixLen));
-                    } else
+                    }
+                    else
                     {
                         return method.Name == opcodeStr;
                     }
@@ -189,7 +190,7 @@ namespace Nethermind.Evm.Test
                     Instruction.JUMPSUB,
                 };
 
-            foreach(Instruction opcode in address_opcodes)
+            foreach (Instruction opcode in address_opcodes)
             {
                 Address arguments = Address.Zero;
                 var initBytecode = Prepare.EvmCode;
@@ -358,7 +359,7 @@ namespace Nethermind.Evm.Test
             var opcodeswith_7_args = new Instruction[] {
                     Instruction.CALL,
                     Instruction.CALLCODE,
-             
+
             };
             var opcodeswith_6_args = new Instruction[] {
                     Instruction.STATICCALL,
@@ -523,7 +524,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.JUMPDEST)
                         .Done
                 };
-                
+
                 yield return new TestCase()
                 {
                     Description = @"Test :
