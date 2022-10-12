@@ -65,9 +65,8 @@ namespace Nethermind.Stats
             {
                 // Actual explicit ClientQuitting is very rare, but internally we also use this status for connection
                 // closed, which can happen if remote client close connection without giving any reason.
-                // It is unclear why we have such large number of these, but it seems that at least some of it is
-                // transient.
-                { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(3) }
+                // It is unclear why we have such large number of these, but it seems that it is usually transient.
+                { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) }
             };
 
         public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()
