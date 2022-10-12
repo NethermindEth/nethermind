@@ -26,9 +26,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -198,10 +195,6 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
-                        63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
-                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _specProvider, _logManager),
-                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
