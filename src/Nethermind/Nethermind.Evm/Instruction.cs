@@ -96,7 +96,8 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c,
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
-
+        
+        PUSH0 = 0x5f, // EIP-3855
         PUSH1 = 0x60,
         PUSH2 = 0x61,
         PUSH3 = 0x62,
