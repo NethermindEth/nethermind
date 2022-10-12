@@ -446,11 +446,7 @@ public class DbOnTheRocks : IDbWithSpan
         {
             get
             {
-                if (_isDisposed)
-                {
-                    throw new ObjectDisposedException($"Attempted to read a disposed batch {_dbOnTheRocks.Name}");
-                }
-
+                // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
                 return _dbOnTheRocks[key];
             }
             set

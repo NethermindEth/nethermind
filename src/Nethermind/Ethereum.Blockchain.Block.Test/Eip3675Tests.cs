@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,16 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-using System.Timers;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Nethermind.Core.Timers
+namespace Ethereum.Blockchain.Block.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class Eip3675Tests : BlockchainTestBase
 {
-    public class TimerFactory : ITimerFactory
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test)
     {
-        public static readonly ITimerFactory Default = new TimerFactory();
+        await RunTest(test);
+    }
 
-        public ITimer CreateTimer(TimeSpan interval) => new
-            TimerWrapper(new Timer()) { Interval = interval };
+    public static IEnumerable<BlockchainTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3675");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
