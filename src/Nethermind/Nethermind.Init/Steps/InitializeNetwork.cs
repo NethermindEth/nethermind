@@ -211,15 +211,24 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
+        bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
+
+        // if (_syncConfig.SnapSync || stateSyncFinished)
+        // {
+        //     place for enabling eth67
+        // }
+        // else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+
+        if (_syncConfig.SnapSync && !stateSyncFinished)
         {
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
 
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is no longer available).
             // it is added here and never removed - when syncing process is finished we can run with eth67 and without snap.
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
         }
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -490,6 +499,7 @@ public class InitializeNetwork : IStep
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
+            _networkConfig.P2PHandlerThreadCount,
             _api.LogManager);
 
         await _api.RlpxPeer.Init();

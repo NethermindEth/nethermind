@@ -61,9 +61,6 @@ namespace Nethermind.Network.Test
             var av = _nodeStats.GetAverageTransferSpeed(speedType);
             Assert.AreEqual(122, av);
 
-            var paddedAv = _nodeStats.GetPaddedAverageTransferSpeed(speedType);
-            Assert.AreEqual("  122", paddedAv);
-
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 0);
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 0);
 

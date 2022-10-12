@@ -41,5 +41,11 @@ namespace Nethermind.Consensus
             Description = "Only used in NethDev. Setting this to true will change the difficulty of the block randomly within the constraints.",
             DefaultValue = "false")]
         bool RandomizedBlocks { get; set; }
+
+        [ConfigItem(Description = "Block header extra data.", DefaultValue = "Nethermind")]
+        string ExtraData { get; set; }
+
+        byte[] GetExtraDataBytes();
+
     }
 }

@@ -647,7 +647,7 @@ public partial class EthRpcModuleTests
 
         Block block = Build.A.Block.WithNumber(1)
             .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-            .WithTransactions(new [] { Build.A.Transaction.TestObject })
+            .WithTransactions(new[] { Build.A.Transaction.TestObject })
             .TestObject;
 
         LogEntry[] entries = new[]

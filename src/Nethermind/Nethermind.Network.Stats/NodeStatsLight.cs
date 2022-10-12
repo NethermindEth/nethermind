@@ -178,7 +178,7 @@ namespace Nethermind.Stats
 
         private void UpdateValue(ref decimal? currentValue, decimal newValue)
         {
-            currentValue = ((currentValue ?? newValue) * ( 1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+            currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         }
 
         public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
@@ -191,20 +191,6 @@ namespace Nethermind.Stats
                 TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
                 TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
                 TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
-                _ => throw new ArgumentOutOfRangeException()
-            });
-        }
-
-        public string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType)
-        {
-            return (transferSpeedType switch
-            {
-                TransferSpeedType.Latency => $"{_averageLatency ?? -1,5:0}",
-                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? -1,5:0}",
-                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? -1,5:0}",
                 _ => throw new ArgumentOutOfRangeException()
             });
         }

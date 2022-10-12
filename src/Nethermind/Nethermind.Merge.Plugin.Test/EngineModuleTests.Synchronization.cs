@@ -729,10 +729,13 @@ public partial class EngineModuleTests
 
         await bestBlockProcessed.WaitAsync();
 
-        // beacon sync should be finished
+        // beacon sync should be finished, eventually
         bestBeaconBlockRequest = CreateBlockRequest(bestBeaconBlockRequest, Address.Zero);
-        payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
-        payloadStatus.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(
+            () => rpc.engine_newPayloadV1(bestBeaconBlockRequest).Result.Data.Status,
+            Is.EqualTo(PayloadStatus.Valid).After(1000, 100)
+            );
+
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeTrue();
