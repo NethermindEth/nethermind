@@ -25,7 +25,7 @@ namespace Nethermind.Stats
         INodeStats GetOrAdd(Node node);
         void ReportHandshakeEvent(Node node, ConnectionDirection direction);
         void ReportEvent(Node node, NodeStatsEventType eventType);
-        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node, ConnectionDirection direction);
+        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node);
         CompatibilityValidationType? FindCompatibilityValidationResult(Node node);
         long GetCurrentReputation(Node node);
         void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails);

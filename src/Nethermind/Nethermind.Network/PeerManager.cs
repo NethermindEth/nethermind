@@ -352,7 +352,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node, ConnectionDirection.Out);
+            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
             if (delayed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
@@ -504,7 +504,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                (bool Result, NodeStatsEventType? DelayReason) delayResult = _stats.IsConnectionDelayed(preCandidate.Node, ConnectionDirection.Out);
+                (bool Result, NodeStatsEventType? DelayReason) delayResult = _stats.IsConnectionDelayed(preCandidate.Node);
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)

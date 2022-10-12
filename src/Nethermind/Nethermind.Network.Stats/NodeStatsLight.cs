@@ -226,8 +226,7 @@ namespace Nethermind.Stats
             });
         }
 
-        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(
-            ConnectionDirection connectionDirection)
+        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
         {
             if (IsDelayedDueToDisconnect())
             {
@@ -239,13 +238,10 @@ namespace Nethermind.Stats
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
 
-            if (connectionDirection == ConnectionDirection.Out)
+            (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _outgoingConnectionDelay;
+            if (outgoingDelayDeadline > DateTime.Now)
             {
-                (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _outgoingConnectionDelay;
-                if (outgoingDelayDeadline > DateTime.Now)
-                {
-                    return (true, reason);
-                }
+                return (true, reason);
             }
 
             return (false, null);

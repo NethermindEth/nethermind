@@ -128,10 +128,10 @@ namespace Nethermind.Stats
             stats.AddNodeStatsEvent(eventType);
         }
 
-        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node, ConnectionDirection direction)
+        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.IsConnectionDelayed(direction);
+            return stats.IsConnectionDelayed();
         }
 
         public CompatibilityValidationType? FindCompatibilityValidationResult(Node node)

@@ -58,8 +58,13 @@ namespace Nethermind.Stats
 
         public Dictionary<DisconnectReason, TimeSpan> RemoteDisconnectDelay { get; } = new()
             {
-                { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(3) },
-                { DisconnectReason.TooManyPeers, TimeSpan.FromMinutes(3) },
+                // Geth have 30 second reconnect delay. So its useless to try again before that.
+                { DisconnectReason.TooManyPeers, TimeSpan.FromSeconds(30) },
+
+                // explicit ClientQuitting is actually very low, but internally, we mark connection issues with
+                // ClientQuitting also. So this can also be, either the client not online, tcp connect timeout, or the
+                // client drop connection without providing any reason.
+                { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(5) },
             };
     }
 }
