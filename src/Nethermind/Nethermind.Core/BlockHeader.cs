@@ -59,6 +59,7 @@ namespace Nethermind.Core
         public Address? GasBeneficiary => Author ?? Beneficiary;
         public Keccak? StateRoot { get; set; }
         public Keccak? TxRoot { get; set; }
+        public Keccak? WithdrawalsRoot { get; set; }
         public Keccak? ReceiptsRoot { get; set; }
         public Bloom? Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
@@ -99,6 +100,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Nonce: {Nonce}");
             builder.AppendLine($"{indent}Uncles Hash: {UnclesHash}");
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
+            builder.AppendLine($"{indent}Withdrawals Root: {WithdrawalsRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
@@ -108,23 +110,14 @@ namespace Nethermind.Core
             return builder.ToString();
         }
 
-        public override string ToString()
-        {
-            return ToString(string.Empty);
-        }
+        public override string ToString() => ToString(string.Empty);
 
-        public string ToString(Format format)
+        public string ToString(Format format) => format switch
         {
-            switch (format)
-            {
-                case Format.Full:
-                    return ToString(string.Empty);
-                case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
-                default:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
-            }
-        }
+            Format.Full => ToString(string.Empty),
+            Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
+            _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
+        };
 
         [Todo(Improve.Refactor, "Use IFormattable here")]
         public enum Format
