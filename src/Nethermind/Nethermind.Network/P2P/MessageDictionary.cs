@@ -78,7 +78,7 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
             await Task.Delay(_oldRequestThreshold);
 
             ArrayPoolList<long> toRemove = new(_requestCount);
-            foreach (KeyValuePair<long,Request<T66Msg,TData>> requestIdValues in _requests)
+            foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
                 if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
