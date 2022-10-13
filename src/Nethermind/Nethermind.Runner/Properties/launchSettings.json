@@ -269,7 +269,7 @@
     },
     "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
