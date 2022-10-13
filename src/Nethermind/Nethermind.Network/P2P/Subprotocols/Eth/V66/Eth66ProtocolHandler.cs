@@ -180,11 +180,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
         }
 
-        private void Handle(PooledTransactionsMessage msg)
-        {
-            base.Handle(msg.EthMessage);
-        }
-
         private void Handle(BlockHeadersMessage message, long size)
         {
             _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
@@ -198,11 +193,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private void Handle(NodeDataMessage msg, int size)
         {
             _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
-        }
-
-        private void Handle(PooledTransactionsMessage msg)
-        {
-            base.Handle(msg.EthMessage);
         }
 
         private void Handle(ReceiptsMessage msg, long size)
