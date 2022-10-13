@@ -51,7 +51,7 @@ namespace Nethermind.Stats
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
 
-        private (DateTime, NodeStatsEventType) _delayConnectDeadline = (DateTime.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+        private (DateTimeOffset, NodeStatsEventType) _delayConnectDeadline = (DateTimeOffset.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
 
         private static readonly Random Random = new();
 
@@ -141,8 +141,8 @@ namespace Nethermind.Stats
 
         private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
         {
-            DateTime newDeadline = DateTime.Now + delay;
-            (DateTime currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
+            DateTimeOffset newDeadline = DateTimeOffset.Now + delay;
+            (DateTimeOffset currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
             if (newDeadline > currentDeadline)
             {
                 _delayConnectDeadline = (newDeadline, reason);
@@ -240,7 +240,7 @@ namespace Nethermind.Stats
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
 
-            (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
+            (DateTimeOffset outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
             if (outgoingDelayDeadline > DateTime.Now)
             {
                 return (true, reason);
