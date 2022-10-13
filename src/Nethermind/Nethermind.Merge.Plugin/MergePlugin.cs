@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin
                                             !IsPreMergeConsensusAuRa(_api); // AuRa has dedicated plugin AuRaMergePlugin
         protected bool IsPreMergeConsensusAuRa(INethermindApi api)
         {
-            return api.ChainSpec != null && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
+            return api.ChainSpec?.SealEngineType == SealEngineType.AuRa;
         }
 
         // Don't remove default constructor. It is used by reflection when we're loading plugins
