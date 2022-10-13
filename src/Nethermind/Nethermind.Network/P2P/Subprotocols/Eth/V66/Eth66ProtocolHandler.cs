@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -41,10 +42,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler
     {
-        private readonly MessageDictionary<GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
-        private readonly MessageDictionary<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
-        private readonly MessageDictionary<GetNodeDataMessage, byte[][]> _nodeDataRequests66;
-        private readonly MessageDictionary<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
+        private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
+        private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
+        private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
+        private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
 
         public Eth66ProtocolHandler(ISession session,
@@ -58,10 +59,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ILogManager logManager)
             : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
         {
-            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, BlockBody[]>(Send);
-            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, TxReceipt[][]>(Send);
+            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
+            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]>(Send);
+            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
+            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
         }
 
@@ -112,7 +113,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         = Deserialize<PooledTransactionsMessage>(message.Content);
                     Metrics.Eth66PooledTransactionsReceived++;
                     ReportIn(pooledTxMsg);
-                    Handle(pooledTxMsg);
+                    Handle(pooledTxMsg.EthMessage);
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
@@ -179,6 +180,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
         }
 
+        private void Handle(PooledTransactionsMessage msg)
+        {
+            base.Handle(msg.EthMessage);
+        }
+
         private void Handle(BlockHeadersMessage message, long size)
         {
             _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
@@ -230,7 +236,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             GetBlockHeadersMessage msg66 = new() { EthMessage = message };
 
-            return await SendRequestGeneric(
+            return await SendRequestGenericEth66(
                 _headersRequests66,
                 msg66,
                 TransferSpeedType.Headers,
@@ -247,7 +253,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             }
 
             GetBlockBodiesMessage msg66 = new() { EthMessage = message };
-            return await SendRequestGeneric(
+            return await SendRequestGenericEth66(
                 _bodiesRequests66,
                 msg66,
                 TransferSpeedType.Bodies,
@@ -264,7 +270,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             }
 
             GetNodeDataMessage msg66 = new() { EthMessage = message };
-            return await SendRequestGeneric(
+            return await SendRequestGenericEth66(
                 _nodeDataRequests66,
                 msg66,
                 TransferSpeedType.NodeData,
@@ -281,12 +287,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             }
 
             GetReceiptsMessage msg66 = new() { EthMessage = message };
-            return await SendRequestGeneric(
+            return await SendRequestGenericEth66(
                 _receiptsRequests66,
                 msg66,
                 TransferSpeedType.Receipts,
                 static (_) => $"{nameof(GetReceiptsMessage)}",
                 token);
+        }
+
+        private async Task<TResponse> SendRequestGenericEth66<T66, TRequest, TResponse>(
+            MessageDictionary<T66, TRequest, TResponse> messageQueue,
+            T66 message,
+            TransferSpeedType speedType,
+            Func<T66, string> describeRequestFunc,
+            CancellationToken token
+        )
+            where T66 : Eth66Message<TRequest>
+            where TRequest : P2PMessage
+        {
+            Request<T66, TResponse> request = new(message);
+            messageQueue.Send(request);
+
+            return await HandleResponse(request, speedType, describeRequestFunc, token);
         }
     }
 }
