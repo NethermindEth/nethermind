@@ -218,9 +218,12 @@ namespace Nethermind.Synchronization.Test
         [TestCase(32, false)]
         [TestCase(1, false)]
         [TestCase(0, false)]
-        public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int threshold, bool mergeDownloader)
+        public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int ignoredBlocks, bool mergeDownloader)
         {
             Context ctx = new();
+            SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
+            syncBatchSize.ExpandUntilMax();
+            ctx.SyncBatchSize = syncBatchSize;
             BlockDownloader downloader = mergeDownloader ? CreateMergeBlockDownloader(ctx) : CreateBlockDownloader(ctx);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -231,16 +234,15 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-            syncPeer.HeadNumber.Returns(SyncBatchSize.Max * 2 + threshold);
+            syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
 
             PeerInfo peerInfo = new(syncPeer);
 
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None).ContinueWith(t => { });
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
-            Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - threshold), ctx.BlockTree.BestSuggestedHeader.Number);
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, ignoredBlocks), CancellationToken.None).ContinueWith(t => { });
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, ignoredBlocks), CancellationToken.None);
+            Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - ignoredBlocks), ctx.BlockTree.BestSuggestedHeader.Number);
 
-            syncPeer.HeadNumber.Returns(2 * (SyncBatchSize.Max * 2 + threshold));
-            // peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), ctx.BlockTree.BestSuggestedHeader.Number);
@@ -871,7 +873,20 @@ namespace Nethermind.Synchronization.Test
         private BlockDownloader CreateBlockDownloader(Context ctx)
         {
             InMemoryReceiptStorage receiptStorage = new();
-            return new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
+            return new BlockDownloader(
+                ctx.Feed,
+                ctx.PeerPool,
+                ctx.BlockTree,
+                Always.Valid,
+                Always.Valid,
+                NullSyncReport.Instance,
+                receiptStorage,
+                RopstenSpecProvider.Instance,
+                new BlocksSyncPeerAllocationStrategyFactory(),
+                CreatePeerChoiceStrategy(),
+                LimboLogs.Instance,
+                ctx.SyncBatchSize
+            );
         }
 
         private IBetterPeerStrategy CreatePeerChoiceStrategy()
@@ -901,6 +916,8 @@ namespace Nethermind.Synchronization.Test
             public ResponseBuilder ResponseBuilder { get; }
             public Dictionary<long, Keccak> TestHeaderMapping { get; }
             public ISyncModeSelector SyncModeSelector { get; }
+
+            public SyncBatchSize? SyncBatchSize { get; set; } = new SyncBatchSize(LimboLogs.Instance);
 
             public Context(BlockTree? blockTree = null)
             {
