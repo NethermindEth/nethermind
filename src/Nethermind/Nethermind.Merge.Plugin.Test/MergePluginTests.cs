@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0"};
+            _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
             MiningConfig? miningConfig = new() { Enabled = true };
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
