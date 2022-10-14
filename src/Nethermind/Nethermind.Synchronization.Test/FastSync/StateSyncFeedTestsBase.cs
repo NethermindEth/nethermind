@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (executorResultFunction != null) _executorResultFunction = executorResultFunction;
 
-                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) {EthDetails = "eth66"};
+                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
