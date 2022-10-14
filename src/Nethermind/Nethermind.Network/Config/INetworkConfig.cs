@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-//
+// 
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -81,8 +81,5 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "", Description = "Bootnodes")]
         string Bootnodes { get; set; }
-
-        [ConfigItem(DefaultValue = "0", Description = "[TECHNICAL] Set P2P handler thread count. Set this to a low number such as 1 or 2 if you have too slow block processing during old bodies or old receipts sync which may cause missed attestation. Defaults to processor count - 2.")]
-        int P2PHandlerThreadCount { get; set; }
     }
 }

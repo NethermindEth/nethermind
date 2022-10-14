@@ -51,6 +51,11 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    "chiado": {
+        "url": "https://rpc.chiadochain.net",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
     "sepolia": {
         "url": "api-sepolia.etherscan.io",
         "blockReduced": 1000,
