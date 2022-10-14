@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -85,14 +85,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
             Test(data);
         }
 
         [Test]
         public void Roundtrip_with_IgnoreOutputs()
         {
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
             foreach (TxReceipt[] receipts in data)
             {
                 receipts.SetSkipStateAndStatusInRlp(true);
@@ -103,7 +103,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_eip658()
         {
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(RopstenSpecProvider.ConstantinopleBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(RopstenSpecProvider.ConstantinopleBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
             Test(data);
         }
 
@@ -134,20 +134,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
-            Assert.AreEqual(bytes,  serialized);
+            Assert.AreEqual(bytes, serialized);
         }
 
         [Test]
         public void Roundtrip_one_receipt_with_accessList()
         {
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject }};
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject } };
             Test(data);
         }
 
         [Test]
         public void Roundtrip_with_both_txTypes_of_receipt()
         {
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
             Test(data);
         }
     }

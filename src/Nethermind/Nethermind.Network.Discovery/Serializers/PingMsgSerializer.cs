@@ -69,7 +69,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlp = new (results.Data);
+        NettyRlpStream rlp = new(results.Data);
         rlp.ReadSequenceLength();
         int version = rlp.DecodeInt();
 
@@ -119,10 +119,10 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress);
 
-         int contentLength = Rlp.LengthOf(msg.Version)
-                        + Rlp.LengthOfSequence(sourceAddressLength)
-                        + Rlp.LengthOfSequence(destinationAddressLength)
-                        + Rlp.LengthOf(msg.ExpirationTime);
+        int contentLength = Rlp.LengthOf(msg.Version)
+                       + Rlp.LengthOfSequence(sourceAddressLength)
+                       + Rlp.LengthOfSequence(destinationAddressLength)
+                       + Rlp.LengthOf(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
         {

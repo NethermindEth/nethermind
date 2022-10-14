@@ -99,7 +99,7 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
-                    NettyRlpStream stream = new (output);
+                    NettyRlpStream stream = new(output);
                     int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
                     if (i == 0)
                     {

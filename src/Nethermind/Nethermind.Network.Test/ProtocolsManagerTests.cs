@@ -185,7 +185,7 @@ namespace Nethermind.Network.Test
 
                 // to account for AdaptivePacketType byte
                 disconnectPacket.ReadByte();
-                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket){ PacketType = P2PMessageCode.Disconnect });
+                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
                 return this;
             }
 
@@ -251,7 +251,7 @@ namespace Nethermind.Network.Test
                 // to account for AdaptivePacketType byte
                 helloPacket.ReadByte();
 
-                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket){ PacketType = P2PMessageCode.Hello });
+                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
                 return this;
             }
 

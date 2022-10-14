@@ -140,18 +140,18 @@ namespace Nethermind.Evm.Test
         private Dictionary<long, Instruction[]> _validOpcodes
             = new()
             {
-                {0, FrontierInstructions},
-                {MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
-                {MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
-                {MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
-                {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
-                {MainnetSpecProvider.ShanghaiBlockNumber, ShanghaiInstructions},
-                {long.MaxValue, ShanghaiInstructions}
+                { 0, FrontierInstructions },
+                { MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions },
+                { MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions },
+                { MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions },
+                { MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions },
+                { MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions },
+                { MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions },
+                { MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions },
+                { MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions },
+                { MainnetSpecProvider.LondonBlockNumber, LondonInstructions },
+                { MainnetSpecProvider.ShanghaiBlockNumber, ShanghaiInstructions },
+                { long.MaxValue, ShanghaiInstructions }
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";

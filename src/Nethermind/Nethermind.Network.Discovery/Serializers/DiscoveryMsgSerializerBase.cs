@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@ public abstract class DiscoveryMsgSerializerBase
 
         Span<byte> forMdc = resultSpan.Slice(32);
         ValueKeccak mdc = ValueKeccak.Compute(forMdc);
-        mdc.BytesAsSpan.CopyTo(resultSpan.Slice(0,32));
+        mdc.BytesAsSpan.CopyTo(resultSpan.Slice(0, 32));
         byteBuffer.EnsureWritable(resultSpan.Length);
         byteBuffer.WriteBytes(resultSpan);
     }

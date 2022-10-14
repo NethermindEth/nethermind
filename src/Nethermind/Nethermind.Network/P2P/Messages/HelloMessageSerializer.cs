@@ -68,7 +68,7 @@ namespace Nethermind.Network.P2P.Messages
 
         public HelloMessage Deserialize(IByteBuffer msgBytes)
         {
-            NettyRlpStream rlpStream = new (msgBytes);
+            NettyRlpStream rlpStream = new(msgBytes);
             rlpStream.ReadSequenceLength();
 
             HelloMessage helloMessage = new();

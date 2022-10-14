@@ -99,7 +99,7 @@ namespace Nethermind.Network
             _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
         }
 
-        public IByteBuffer ZeroSerialize<T>(T message,  ByteBufferAllocator allocator = ByteBufferAllocator.PooledByteBufferAllocator) where T : MessageBase
+        public IByteBuffer ZeroSerialize<T>(T message, ByteBufferAllocator allocator = ByteBufferAllocator.PooledByteBufferAllocator) where T : MessageBase
         {
             void WriteAdaptivePacketType(in IByteBuffer buffer)
             {

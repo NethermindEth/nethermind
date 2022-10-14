@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
 
-            PacketSender packetSender = new(serializer ,LimboLogs.Instance);
+            PacketSender packetSender = new(serializer, LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(PingMessage.Instance);
 
