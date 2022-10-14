@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -37,7 +38,9 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public void Pad(IByteBuffer message)
         {
-            byte[] padding = _cryptoRandom.GenerateRandomBytes(100 + _cryptoRandom.NextInt(201));
+            int length = 100 + _cryptoRandom.NextInt(201);
+            Span<byte> padding = stackalloc byte[length];
+            _cryptoRandom.GenerateRandomBytes(padding);
             message.WriteBytes(padding);
         }
     }
