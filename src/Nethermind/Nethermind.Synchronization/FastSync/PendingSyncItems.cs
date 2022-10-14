@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Concurrent;
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             // the limitation is to prevent an early explosion of request sizes with low level nodes
             // the moment we find the first leaf we will know something more about the tree structure and hence
-            // prevent lot of Stream2 entries to stay in memory for a long time 
+            // prevent lot of Stream2 entries to stay in memory for a long time
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
             List<StateSyncItem> requestItems = new(length);
 
@@ -184,13 +184,13 @@ namespace Nethermind.Synchronization.FastSync
 
                 for (int i = 0; i < codeMaxCount; i++)
                 {
-                    if(CodeItems.TryPop(out var codeItem))
+                    if (CodeItems.TryPop(out var codeItem))
                     {
                         requestItems.Add(codeItem!);
                     }
                 }
 
-                if(requestItems.Count > 0)
+                if (requestItems.Count > 0)
                 {
                     return requestItems;
                 }

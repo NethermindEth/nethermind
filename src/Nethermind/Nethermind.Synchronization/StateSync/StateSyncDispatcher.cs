@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            if(task is null)
+            if (task is null)
             {
                 return;
             }
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.StateSync
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
-                if(item.AccountPathNibbles?.Length > 0)
+                if (item.AccountPathNibbles?.Length > 0)
                 {
                     if (!dict.TryGetValue(item.AccountPathNibbles, out var storagePaths))
                     {
