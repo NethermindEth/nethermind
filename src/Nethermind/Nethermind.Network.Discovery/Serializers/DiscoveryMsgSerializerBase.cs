@@ -32,6 +32,8 @@ public abstract class DiscoveryMsgSerializerBase
 
     private readonly INodeIdResolver _nodeIdResolver;
 
+    protected const int MdcSigOffset = 32 + 64 + 1;
+
     protected DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         IPrivateKeyGenerator nodeKey,
         INodeIdResolver nodeIdResolver)
@@ -43,23 +45,64 @@ public abstract class DiscoveryMsgSerializerBase
 
     protected void Serialize(byte type, Span<byte> data, IByteBuffer byteBuffer)
     {
+        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
         int length = 32 + 1 + data.Length + 64 + 1;
         byteBuffer.EnsureWritable(length);
-        Span<byte> resultSpan = stackalloc byte[length];
-        resultSpan[32 + 65] = type;
-        data.CopyTo(resultSpan.Slice(32 + 65 + 1, data.Length));
 
-        Span<byte> payload = resultSpan.Slice(32 + 65);
-        Keccak toSign = Keccak.Compute(payload);
+        int startReadIndex = byteBuffer.ReaderIndex;
+        int startWriteIndex = byteBuffer.WriterIndex;
+
+        byteBuffer.SetWriterIndex(startWriteIndex + 32 + 65);
+        byteBuffer.WriteByte(type);
+        byteBuffer.WriteBytes(data.ToArray(), 0, data.Length);
+
+        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
+        Keccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        byteBuffer.SetReaderIndex(startReadIndex);
+
         Signature signature = _ecdsa.Sign(_privateKey, toSign);
-        signature.Bytes.AsSpan().CopyTo(resultSpan.Slice(32, 64));
-        resultSpan[32 + 64] = signature.RecoveryId;
+        byteBuffer.SetWriterIndex(startWriteIndex + 32);
+        byteBuffer.WriteBytes(signature.Bytes, 0, 64);
+        byteBuffer.WriteByte(signature.RecoveryId);
 
-        Span<byte> forMdc = resultSpan.Slice(32);
-        ValueKeccak mdc = ValueKeccak.Compute(forMdc);
-        mdc.BytesAsSpan.CopyTo(resultSpan.Slice(0, 32));
-        byteBuffer.EnsureWritable(resultSpan.Length);
-        byteBuffer.WriteBytes(resultSpan);
+        byteBuffer.SetReaderIndex(startReadIndex + 32);
+        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        ValueKeccak mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        byteBuffer.SetReaderIndex(startReadIndex);
+
+        byteBuffer.SetWriterIndex(startWriteIndex);
+        byteBuffer.WriteBytes(mdc.BytesAsSpan.ToArray(), 0, 32);
+        byteBuffer.SetWriterIndex(startWriteIndex + length);
+    }
+
+    protected void AddSignatureAndMdc(IByteBuffer byteBuffer, int dataLength)
+    {
+        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
+        int length = 32 + 64 + 1 + dataLength;
+
+        int startReadIndex = byteBuffer.ReaderIndex;
+        int startWriteIndex = byteBuffer.WriterIndex;
+
+        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
+        Keccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        byteBuffer.SetReaderIndex(startReadIndex);
+
+        Signature signature = _ecdsa.Sign(_privateKey, toSign);
+        byteBuffer.SetWriterIndex(startWriteIndex + 32);
+        byteBuffer.WriteBytes(signature.Bytes, 0, 64);
+        byteBuffer.WriteByte(signature.RecoveryId);
+
+        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        byteBuffer.SetReaderIndex(startReadIndex + 32);
+        ValueKeccak mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        byteBuffer.SetReaderIndex(startReadIndex);
+
+        byteBuffer.SetWriterIndex(startWriteIndex);
+        byteBuffer.WriteBytes(mdc.BytesAsSpan.ToArray(), 0, 32);
+
+        byteBuffer.SetReaderIndex(startReadIndex);
+        byteBuffer.SetWriterIndex(startWriteIndex + length);
     }
 
     protected (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) PrepareForDeserialization(IByteBuffer msg)
@@ -120,6 +163,14 @@ public abstract class DiscoveryMsgSerializerBase
         length += Rlp.LengthOf(address.Port);
         length += Rlp.LengthOf(id);
         return length;
+    }
+
+    protected void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
+    {
+        byteBuffer.EnsureWritable(MdcSigOffset + 1 + dataLength);
+        byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + MdcSigOffset);
+
+        byteBuffer.WriteByte(msgType);
     }
 
     protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port)

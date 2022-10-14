@@ -37,33 +37,26 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     {
         (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
 
-        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
-        try
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        NettyRlpStream stream = new(byteBuffer);
+        stream.StartSequence(contentLength);
+        stream.Encode(msg.Version);
+        Encode(stream, msg.SourceAddress, sourceAddressLength);
+        Encode(stream, msg.DestinationAddress, destinationAddressLength);
+        stream.Encode(msg.ExpirationTime);
+
+        if (msg.EnrSequence.HasValue)
         {
-            RlpStream stream = new(array);
-
-            byte typeByte = (byte)msg.MsgType;
-
-            stream.StartSequence(contentLength);
-            stream.Encode(msg.Version);
-            Encode(stream, msg.SourceAddress, sourceAddressLength);
-            Encode(stream, msg.DestinationAddress, destinationAddressLength);
-            stream.Encode(msg.ExpirationTime);
-
-            if (msg.EnrSequence.HasValue)
-            {
-                stream.Encode(msg.EnrSequence.Value);
-            }
-
-            Serialize(typeByte, stream.Data.AsSpan(0, totalLength), byteBuffer);
-            byteBuffer.MarkReaderIndex();
-            msg.Mdc = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
-            byteBuffer.ResetReaderIndex();
+            stream.Encode(msg.EnrSequence.Value);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(array);
-        }
+
+        byteBuffer.ResetIndex();
+        AddSignatureAndMdc(byteBuffer, totalLength + 1);
+
+        byteBuffer.MarkReaderIndex();
+        msg.Mdc = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+        byteBuffer.ResetReaderIndex();
     }
 
     public PingMsg Deserialize(IByteBuffer msgBytes)

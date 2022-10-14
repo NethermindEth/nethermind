@@ -32,19 +32,16 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessa
     public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg)
     {
         int length = GetLength(msg, out int contentLength);
-        byte[] array = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            RlpStream stream = new(array);
-            stream.StartSequence(contentLength);
-            stream.Encode(msg.SearchedNodeId);
-            stream.Encode(msg.ExpirationTime);
-            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, length), byteBuffer);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(array);
-        }
+
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
+        NettyRlpStream stream = new(byteBuffer);
+        stream.StartSequence(contentLength);
+        stream.Encode(msg.SearchedNodeId);
+        stream.Encode(msg.ExpirationTime);
+
+        byteBuffer.ResetIndex();
+        AddSignatureAndMdc(byteBuffer, length + 1);
     }
 
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)

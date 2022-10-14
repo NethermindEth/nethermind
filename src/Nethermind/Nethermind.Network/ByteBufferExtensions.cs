@@ -66,5 +66,17 @@ namespace Nethermind.Network
                 buffer.WriteByte(bytes[i]);
             }
         }
+
+        public static void MarkIndex(this IByteBuffer buffer)
+        {
+            buffer.MarkReaderIndex();
+            buffer.MarkWriterIndex();
+        }
+
+        public static void ResetIndex(this IByteBuffer buffer)
+        {
+            buffer.ResetReaderIndex();
+            buffer.ResetWriterIndex();
+        }
     }
 }

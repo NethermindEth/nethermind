@@ -38,23 +38,18 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         }
 
         (int totalLength, int contentLength, int farAddressLength) = GetLength(msg);
-        byteBuffer.EnsureWritable(totalLength);
 
-        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
-        try
-        {
-            RlpStream stream = new(array);
-            stream.StartSequence(contentLength);
-            Encode(stream, msg.FarAddress, farAddressLength);
-            stream.Encode(msg.PingMdc);
-            stream.Encode(msg.ExpirationTime);
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        NettyRlpStream stream = new(byteBuffer);
+        stream.StartSequence(contentLength);
+        Encode(stream, msg.FarAddress, farAddressLength);
+        stream.Encode(msg.PingMdc);
+        stream.Encode(msg.ExpirationTime);
 
-            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, totalLength), byteBuffer);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(array);
-        }
+        byteBuffer.ResetIndex();
+
+        AddSignatureAndMdc(byteBuffer, totalLength + 1);
     }
 
     public PongMsg Deserialize(IByteBuffer msgBytes)

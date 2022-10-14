@@ -42,19 +42,15 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
 
-        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
-        try
-        {
-            RlpStream rlpStream = new(array);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(msg.RequestKeccak);
-            msg.NodeRecord.Encode(rlpStream);
-            Serialize((byte)msg.MsgType, rlpStream.Data.AsSpan(0, totalLength), byteBuffer);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(array);
-        }
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        NettyRlpStream rlpStream = new(byteBuffer);
+        rlpStream.StartSequence(contentLength);
+        rlpStream.Encode(msg.RequestKeccak);
+        msg.NodeRecord.Encode(rlpStream);
+
+        byteBuffer.ResetIndex();
+        AddSignatureAndMdc(byteBuffer, totalLength + 1);
     }
 
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)

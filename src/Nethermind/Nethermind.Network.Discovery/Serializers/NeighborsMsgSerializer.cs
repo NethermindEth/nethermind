@@ -38,33 +38,28 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         (int totalLength, int contentLength, int nodesContentLength) = GetLength(msg);
 
-        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
-        try
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        NettyRlpStream stream = new(byteBuffer);
+        stream.StartSequence(contentLength);
+        if (msg.Nodes.Any())
         {
-            RlpStream stream = new(array);
-            stream.StartSequence(contentLength);
-            if (msg.Nodes.Any())
+            stream.StartSequence(nodesContentLength);
+            for (int i = 0; i < msg.Nodes.Length; i++)
             {
-                stream.StartSequence(nodesContentLength);
-                for (int i = 0; i < msg.Nodes.Length; i++)
-                {
-                    Node node = msg.Nodes[i];
-                    SerializeNode(stream, node.Address, node.Id.Bytes);
-                }
+                Node node = msg.Nodes[i];
+                SerializeNode(stream, node.Address, node.Id.Bytes);
             }
-            else
-            {
-                stream.Encode(Rlp.OfEmptySequence);
-            }
-
-            stream.Encode(msg.ExpirationTime);
-
-            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, totalLength), byteBuffer);
         }
-        finally
+        else
         {
-            ArrayPool<byte>.Shared.Return(array);
+            stream.Encode(Rlp.OfEmptySequence);
         }
+
+        stream.Encode(msg.ExpirationTime);
+        byteBuffer.ResetIndex();
+
+        AddSignatureAndMdc(byteBuffer, totalLength + 1);
     }
 
     public NeighborsMsg Deserialize(IByteBuffer msgBytes)
