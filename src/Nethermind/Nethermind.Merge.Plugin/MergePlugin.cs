@@ -161,7 +161,7 @@ namespace Nethermind.Merge.Plugin
 
         private void EnsureReceiptAvailable()
         {
-            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we aren't requiring below sync configuration, but we can still working with MergePlugin
+            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
                 return;
 
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
@@ -178,7 +178,7 @@ namespace Nethermind.Merge.Plugin
 
         private void EnsureJsonRpcUrl()
         {
-            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we aren't requiring engine module configured, but we can still working with MergePlugin
+            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
                 return;
 
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
