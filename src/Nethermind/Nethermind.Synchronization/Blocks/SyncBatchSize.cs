@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
-            Current = Math.Min(Max, (int) Math.Ceiling(Current * AdjustmentFactor));
+            Current = Math.Min(Max, (int)Math.Ceiling(Current * AdjustmentFactor));
             if (_logger.IsDebug) _logger.Debug($"Changing sync batch size to {Current}");
         }
 
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public void Shrink()
         {
-            Current = Math.Max(Min, (int) (Current / AdjustmentFactor));
+            Current = Math.Max(Min, (int)(Current / AdjustmentFactor));
             if (_logger.IsDebug) _logger.Debug($"Changing sync batch size to {Current}");
         }
 
