@@ -33,7 +33,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -326,12 +325,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
-                ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-                syncPeer.ProtocolCode.Returns(Protocol.Eth);
-                Node.EthDetails = "eth66";
-                syncPeer.Node.Returns(Node);
-                protocolHandler = syncPeer as T;
-                return true;
+                throw new NotImplementedException();
             }
         }
     }

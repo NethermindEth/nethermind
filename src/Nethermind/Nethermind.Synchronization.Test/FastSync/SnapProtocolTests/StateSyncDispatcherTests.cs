@@ -20,12 +20,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
 using FluentAssertions;
-using Nethermind.Network.P2P;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     public class StateSyncDispatcherTests
     {
         private static IBlockTree _blockTree;
@@ -56,16 +55,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
         public async Task Eth66Peer_RunGetNodeData()
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
-            Stats.Model.Node node = new(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)) { EthDetails = "eth66" };
-            peer.Node.Returns(node);
-            ISyncPeer handler = Substitute.For<ISyncPeer>();
-            handler.Node.Returns(node);
-            handler.ProtocolCode.Returns(Protocol.Eth);
-            peer.TryGetSatelliteProtocol(Arg.Any<string>(), out Arg.Any<ISyncPeer>()).Returns(h =>
-            {
-                h[1] = handler;
-                return true;
-            });
+            peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
             peer.IsInitialized.Returns(true);
             peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
             _pool.AddPeer(peer);
@@ -79,6 +69,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
         }
 
         [Test]
+        [Ignore("ETH67 not implemented yet")]
         public async Task GroupMultipleStorageSlotsByAccount()
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
