@@ -84,7 +84,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBuffer = Serialize(discoveryMsg, ByteBufferAllocator.UnpooledByteBufferAllocator);
+            msgBuffer = Serialize(discoveryMsg, ByteBufferAllocator.PooledByteBufferAllocator);
         }
         catch (Exception e)
         {
