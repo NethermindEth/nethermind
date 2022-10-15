@@ -39,7 +39,7 @@ namespace Nethermind.Core.Specs
         /// It affects all post-merge logic, for example, difficulty opcode, post-merge block rewards.
         /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
         /// </summary>
-        long? MergeBlockNumber { get; }
+        ForkActivation? MergeBlockNumber { get; }
 
         UInt256? TerminalTotalDifficulty { get; }
 
@@ -62,13 +62,13 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
-        long[] TransitionBlocks { get; }
+        ForkActivation[] TransitionBlocks { get; }
 
         /// <summary>
         /// Resolves a spec for the given block number.
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0);
+        IReleaseSpec GetSpec(ForkActivation forkActivation);
     }
 }

@@ -23,7 +23,7 @@ namespace Nethermind.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
@@ -33,10 +33,10 @@ namespace Nethermind.Specs
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; set; }
         public ulong ChainId { get; }
-        public long[] TransitionBlocks { get; } = { 0 };
+        public ForkActivation[] TransitionBlocks { get; } = { 0 };
 
         private readonly IReleaseSpec _releaseSpec;
 
@@ -52,7 +52,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) => _releaseSpec;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
     }

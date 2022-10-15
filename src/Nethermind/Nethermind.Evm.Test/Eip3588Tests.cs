@@ -35,7 +35,8 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
         {

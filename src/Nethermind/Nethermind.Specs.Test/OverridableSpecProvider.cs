@@ -38,18 +38,18 @@ namespace Nethermind.Specs.Test
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
-        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);
 
-        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0) => _overrideAction(_specProvider.GetSpec(blockNumber, timestamp));
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(_specProvider.GetSpec(forkActivation));
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
         public ulong ChainId => _specProvider.ChainId;
 
-        public long[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
     }
 }

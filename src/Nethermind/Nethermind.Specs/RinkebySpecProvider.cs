@@ -33,12 +33,12 @@ namespace Nethermind.Specs
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) =>
-            blockNumber switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            forkActivation.BlockNumber switch
             {
                 < HomesteadBlockNumber => Frontier.Instance,
                 < TangerineWhistleBlockNumber => Homestead.Instance,
@@ -66,7 +66,7 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 
-        public long[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionBlocks { get; } =
         {
             HomesteadBlockNumber,
             TangerineWhistleBlockNumber,

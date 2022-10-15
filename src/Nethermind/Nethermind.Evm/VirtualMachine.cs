@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
+            IReleaseSpec spec = _specProvider.GetSpec((state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp));
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;

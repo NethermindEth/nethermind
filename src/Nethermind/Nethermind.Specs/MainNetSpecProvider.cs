@@ -23,7 +23,7 @@ namespace Nethermind.Specs
 {
     public class MainnetSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
         private UInt256? _terminalTotalDifficulty = UInt256.Parse("58750000000000000000000");
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -34,26 +34,26 @@ namespace Nethermind.Specs
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp = 0) =>
-            (blockNumber, timestamp) switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            forkActivation switch
             {
-                { blockNumber: < HomesteadBlockNumber } => Frontier.Instance,
-                { blockNumber: < DaoBlockNumberConst } => Homestead.Instance,
-                { blockNumber: < TangerineWhistleBlockNumber } => Dao.Instance,
-                { blockNumber: < SpuriousDragonBlockNumber } => TangerineWhistle.Instance,
-                { blockNumber: < ByzantiumBlockNumber } => SpuriousDragon.Instance,
-                { blockNumber: < ConstantinopleFixBlockNumber } => Byzantium.Instance,
-                { blockNumber: < IstanbulBlockNumber } => ConstantinopleFix.Instance,
-                { blockNumber: < MuirGlacierBlockNumber } => Istanbul.Instance,
-                { blockNumber: < BerlinBlockNumber } => MuirGlacier.Instance,
-                { blockNumber: < LondonBlockNumber } => Berlin.Instance,
-                { blockNumber: < ArrowGlacierBlockNumber } => London.Instance,
-                { blockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-                { timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
+                { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,
+                { BlockNumber: < DaoBlockNumberConst } => Homestead.Instance,
+                { BlockNumber: < TangerineWhistleBlockNumber } => Dao.Instance,
+                { BlockNumber: < SpuriousDragonBlockNumber } => TangerineWhistle.Instance,
+                { BlockNumber: < ByzantiumBlockNumber } => SpuriousDragon.Instance,
+                { BlockNumber: < ConstantinopleFixBlockNumber } => Byzantium.Instance,
+                { BlockNumber: < IstanbulBlockNumber } => ConstantinopleFix.Instance,
+                { BlockNumber: < MuirGlacierBlockNumber } => Istanbul.Instance,
+                { BlockNumber: < BerlinBlockNumber } => MuirGlacier.Instance,
+                { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
+                { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
+                { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
+                { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
                 _ => Shanghai.Instance
             };
 
@@ -77,11 +77,13 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
-        public long[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionBlocks { get; } =
         {
             HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
             ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
-            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber
+            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber,
+            //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
+            //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };
 
         private MainnetSpecProvider() { }

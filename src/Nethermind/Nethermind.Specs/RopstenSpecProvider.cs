@@ -23,7 +23,7 @@ namespace Nethermind.Specs
 {
     public class RopstenSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock;
+        private ForkActivation? _theMergeBlock;
         private UInt256? _terminalTotalDifficulty = 50000000000000000;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -34,12 +34,12 @@ namespace Nethermind.Specs
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber, ulong timestamp) =>
-            blockNumber switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            forkActivation.BlockNumber switch
             {
                 < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
                 < ByzantiumBlockNumber => SpuriousDragon.Instance,
@@ -63,7 +63,7 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 10_499_401;
 
         public ulong ChainId => Core.ChainId.Ropsten;
-        public long[] TransitionBlocks => new[]
+        public ForkActivation[] TransitionBlocks => new ForkActivation[]
         {
             SpuriousDragonBlockNumber,
             ByzantiumBlockNumber,
