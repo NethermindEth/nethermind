@@ -49,7 +49,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; set; }
         public ulong ChainId { get; set; }
-        public ForkActivation[] TransitionBlocks { get; set; } = new ForkActivation[]{ 0 };
+        public ForkActivation[] TransitionBlocks { get; set; } = new ForkActivation[] { 0 };
         public bool AllowTestChainOverride { get; set; } = true;
 
         private TestSpecProvider() { }
