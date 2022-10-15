@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin
                 finally
                 {
                     watch.Stop();
-                    Metrics.NewPayloadExecutionTime = watch.Elapsed;
+                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
                     _locker.Release();
                 }
             }
@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin
                 finally
                 {
                     watch.Stop();
-                    Metrics.ForkchoiceUpdedExecutionTime = watch.Elapsed;
+                    Metrics.ForkchoiceUpdedExecutionTime = watch.ElapsedMilliseconds;
                     _locker.Release();
                 }
             }

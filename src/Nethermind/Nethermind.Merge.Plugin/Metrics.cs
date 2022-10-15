@@ -11,10 +11,10 @@ namespace Nethermind.Merge.Plugin
     {
 
         [Description("NewPayload request execution time")]
-        public static TimeSpan NewPayloadExecutionTime { get; set; }
+        public static long NewPayloadExecutionTime { get; set; }
 
         [Description("ForkchoiceUpded request execution time")]
-        public static TimeSpan ForkchoiceUpdedExecutionTime { get; set; }
+        public static long ForkchoiceUpdedExecutionTime { get; set; }
 
         [Description("Number of GetPayload Requests")]
         public static long GetPayloadRequests { get; set; }
