@@ -131,7 +131,8 @@ namespace Nethermind.Evm.Test
                                     new Instruction[]
                                         {
                                             Instruction.TLOAD,
-                                            Instruction.TSTORE
+                                            Instruction.TSTORE,
+                                            Instruction.PUSH0
                                         }
                                     )
                             )))))).ToArray();

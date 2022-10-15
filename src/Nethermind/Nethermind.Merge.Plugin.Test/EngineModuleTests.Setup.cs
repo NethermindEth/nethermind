@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.PoSSwitcher,
                 chain.BlockTree,
                 blockCacheService,
-                new TestErrorLogManager());
+                chain.LogManager);
             invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
+            public sealed override ILogManager LogManager { get; } = LimboLogs.Instance;
 
             public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -54,7 +54,9 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IEventExecutorGroup _group;
+
+        // Main executor group. Used to execute snappy decompression and message deserialization.
+        private readonly IEventExecutorGroup _group;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
@@ -62,6 +64,7 @@ namespace Nethermind.Network.Rlpx
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
+            int handlerThreadCount,
             ILogManager logManager)
         {
             // .NET Core definitely got the easy logging setup right :D
@@ -79,7 +82,15 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
-            _group = new SingleThreadEventLoop();
+            if (handlerThreadCount == 0)
+            {
+                // Using slightly less than processor count to give some compute for other tasks
+                // The thread count is rarely a limit, outside of old bodies/old receipts, but it may improve
+                // some latency as a peer message may get blocked by another peer's message deserialization
+                // if thread count is 1.
+                handlerThreadCount = Math.Max(1, Environment.ProcessorCount - 2);
+            }
+            _group = new MultithreadEventLoopGroup(handlerThreadCount);
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
