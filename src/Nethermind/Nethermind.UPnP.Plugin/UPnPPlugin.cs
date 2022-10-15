@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using MathGmp.Native;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -10,7 +10,7 @@ using Open.Nat;
 
 namespace Nethermind.UPnP.Plugin;
 
-public class UPnPPlugin: INethermindPlugin
+public class UPnPPlugin : INethermindPlugin
 {
     public string Name => "UPnP";
     public string Description => "Automatic port forwarding with UPnP";
@@ -18,16 +18,12 @@ public class UPnPPlugin: INethermindPlugin
 
     // Routers tend to clean mapping, so we need to periodically
     private readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
-    private CancellationToken _cancellationToken;
-    private INetworkConfig _networkConfig;
-    private ILogger _logger;
+    private CancellationTokenSource _cancellationTokenSource = new();
+    private INetworkConfig _networkConfig = new NetworkConfig();
+    private ILogger _logger = NullLogger.Instance;
 
     public Task Init(INethermindApi api)
     {
-        CancellationTokenSource cts = new();
-        api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => cts.Cancel()));
-
-        _cancellationToken = cts.Token;
         _networkConfig = api.Config<INetworkConfig>();
         _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
 
@@ -52,7 +48,7 @@ public class UPnPPlugin: INethermindPlugin
                 if (_logger.IsWarn) _logger.Error("Unable to setup UPnP mapping.", exception);
             }
 
-            if (await _cancellationToken.WaitHandle.WaitOneAsync(ExpirationRate, CancellationToken.None))
+            if (await _cancellationTokenSource.Token.WaitHandle.WaitOneAsync(ExpirationRate, CancellationToken.None))
             {
                 break;
             }
@@ -63,7 +59,7 @@ public class UPnPPlugin: INethermindPlugin
     {
         if (_logger.IsInfo) _logger.Info("Setting up port forwarding via UPnP...");
 
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
         cts.CancelAfter(TimeSpan.FromSeconds(10));
         NatDiscoverer discoverer = new();
         NatDevice device;
@@ -106,6 +102,7 @@ public class UPnPPlugin: INethermindPlugin
 
     public ValueTask DisposeAsync()
     {
+        _cancellationTokenSource.Cancel();
         return ValueTask.CompletedTask;
     }
 }
