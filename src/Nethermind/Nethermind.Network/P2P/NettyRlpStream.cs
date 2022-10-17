@@ -16,12 +16,11 @@
 
 using System;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P
 {
-    public class NettyRlpStream : RlpStream, IDisposable
+    public class NettyRlpStream : RlpStream
     {
         private readonly IByteBuffer _buffer;
 
@@ -101,9 +100,6 @@ namespace Nethermind.Network.P2P
         public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
-        public void Dispose()
-        {
-            _buffer.SafeRelease();
-        }
+
     }
 }
