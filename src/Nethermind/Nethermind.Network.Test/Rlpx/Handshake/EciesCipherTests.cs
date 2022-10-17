@@ -16,6 +16,7 @@
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -94,6 +95,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
             Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -127,6 +129,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
             Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169).ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -148,6 +151,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
             Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -183,6 +187,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             // TODO: check 102
             Assert.AreEqual(deciphered.Slice(0, 102), data.ReadAllBytesAsArray().Slice(0, 102), "serialization");
+            data.SafeRelease();
         }
 
         [Test]

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -45,7 +47,10 @@ namespace Nethermind.Network.Test.P2P
 
         private Packet CreatePacket(P2PMessage message)
         {
-            return new(message.Protocol, message.PacketType, _serializer.ZeroSerialize(message).ReadAllBytesAsArray());
+            IByteBuffer data = _serializer.ZeroSerialize(message);
+            Packet packet = new(message.Protocol, message.PacketType, data.ReadAllBytesAsArray());
+            data.SafeRelease();
+            return packet;
         }
 
         private const int ListenPort = 8003;

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -34,6 +35,7 @@ namespace Nethermind.Network.Test.P2P
             IByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
             serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+            serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(true);
@@ -52,6 +54,7 @@ namespace Nethermind.Network.Test.P2P
             IByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
             serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+            serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(false);
