@@ -267,9 +267,9 @@
       "commandName": "Docker",
       "commandLineArgs": "-c goerli -dd /data --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0"
     },
-    "Denver": {
+    "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c denver -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
