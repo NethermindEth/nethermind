@@ -315,7 +315,7 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
+            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
         }
     }
 }

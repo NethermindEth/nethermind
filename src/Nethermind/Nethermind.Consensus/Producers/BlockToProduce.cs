@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
@@ -43,8 +44,12 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles)
+        public BlockToProduce(
+            BlockHeader blockHeader,
+            IEnumerable<Transaction> transactions,
+            IEnumerable<BlockHeader> uncles,
+            IEnumerable<Withdrawal> withdrawals)
+            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
         {
             Transactions = transactions;
         }

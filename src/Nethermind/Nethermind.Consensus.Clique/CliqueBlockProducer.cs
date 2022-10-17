@@ -438,7 +438,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
+        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>(), Enumerable.Empty<Withdrawal>());
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
         return block;
