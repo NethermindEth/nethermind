@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -10,6 +10,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Monitoring.Generator\Nethermind.Monitoring.Generator.csproj" OutputItemType="Analyzer"/>
   </ItemGroup>
 
 </Project>

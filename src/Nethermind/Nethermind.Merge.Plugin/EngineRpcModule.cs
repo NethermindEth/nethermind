@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Monitoring.Generator.Attributes;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -92,7 +93,6 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.", ErrorCodes.Timeout);
             }
         }
-
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
