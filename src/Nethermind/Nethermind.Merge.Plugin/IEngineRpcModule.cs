@@ -53,7 +53,19 @@ namespace Nethermind.Merge.Plugin
             Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
+        Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayloadV1 executionPayload);
+
+        [JsonRpcMethod(
+            Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
+
+        [JsonRpcMethod(
+            Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
         [JsonRpcMethod(
             Description = "Returns an array of execution payload bodies for the list of provided block hashes.",

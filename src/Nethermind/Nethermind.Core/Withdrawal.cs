@@ -25,14 +25,9 @@ public class Withdrawal
 
     public override string ToString() => ToString(string.Empty);
 
-    public string ToString(string indentation)
-    {
-        var sb = new StringBuilder();
-
-        sb.Append(indentation).Append("Index:     ").AppendLine(Index.ToString());
-        sb.Append(indentation).Append("Recipient: ").AppendLine(Recipient.ToString());
-        sb.Append(indentation).Append("Amount:    ").AppendLine(Amount.ToString());
-
-        return sb.ToString();
-    }
+    public string ToString(string indentation) => new StringBuilder()
+        .AppendLine($"{indentation}{nameof(Index)}:     {Index}")
+        .AppendLine($"{indentation}{nameof(Recipient)}: {Recipient}")
+        .AppendLine($"{indentation}{nameof(Amount)}:    {Amount}")
+        .ToString();
 }

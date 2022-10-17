@@ -97,6 +97,8 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
+        public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayloadV1 executionPayload) =>
+            engine_newPayloadV1(executionPayload);
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
@@ -120,6 +122,9 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.", ErrorCodes.Timeout);
             }
         }
+
+        public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null) =>
+            engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
         public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
         {

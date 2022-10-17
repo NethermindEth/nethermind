@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -29,6 +31,8 @@ namespace Nethermind.Consensus.Producers
 
         public Address SuggestedFeeRecipient { get; set; }
 
+        public IList<Withdrawal> Withdrawals { get; set; }
+
         /// <summary>
         /// GasLimit
         /// </summary>
@@ -37,9 +41,13 @@ namespace Nethermind.Consensus.Producers
         /// </remarks>
         public long? GasLimit { get; set; }
 
-        public override string ToString()
-        {
-            return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";
-        }
+        public override string ToString() => ToString(string.Empty);
+
+        public string ToString(string indentation) => new StringBuilder()
+            .AppendLine($"{indentation}{nameof(Timestamp)}:             {Timestamp}")
+            .AppendLine($"{indentation}{nameof(PrevRandao)}:            {PrevRandao}")
+            .AppendLine($"{indentation}{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}")
+            .AppendLine($"{indentation}{nameof(Withdrawals)}:           {Withdrawals}")
+            .ToString();
     }
 }
