@@ -26,8 +26,6 @@ namespace Nethermind.Core.Crypto
     {
         public const int HASH_SIZE = 32;
         private const int STATE_SIZE = 200;
-        private const int ROUND_SIZE = STATE_SIZE - 2 * HASH_SIZE;
-        private const int ROUND_SIZE_U64 = ROUND_SIZE / 8;
         private const int HASH_DATA_AREA = 136;
         private const int ROUNDS = 24;
         private const int LANE_BITS = 8 * 8;
@@ -51,6 +49,9 @@ namespace Nethermind.Core.Crypto
         private int _remainderLength;
         private Memory<ulong> _state;
         private byte[]? _hash;
+
+        private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
+        private static int GetRoundSizeU64(int hashSize) => GetRoundSize(hashSize) / 8;
 
         /// <summary>
         /// Indicates the hash size in bytes.
@@ -383,19 +384,41 @@ namespace Nethermind.Core.Crypto
 
         public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
-            var output = new byte[HASH_SIZE];
+            var output = new byte[size];
             ComputeHash(input, output);
             return output;
         }
 
-        public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> input, Span<byte> output, int size = HASH_SIZE)
+        public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> input, Span<byte> output)
         {
             ComputeHash(input, output);
+        }
+
+        public static void ComputeUIntsToUint(Span<uint> input, Span<uint> output)
+        {
+            ComputeHash(MemoryMarshal.Cast<uint, byte>(input), MemoryMarshal.Cast<uint, byte>(output));
+        }
+
+        public static uint[] ComputeUIntsToUint(Span<uint> input, int size)
+        {
+            var output = new uint[size / 4];
+            ComputeUIntsToUint(input, output);
+            return output;
+        }
+
+        public static uint[] ComputeBytesToUint(byte[] input, int size)
+        {
+            var output = new uint[size / 4];
+            ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
+            return output;
         }
 
         // compute a keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
+            var size = output.Length;
+            var roundSize = GetRoundSize(size);
+            var roundSizeU64 = GetRoundSizeU64(size);
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {
                 throw new ArgumentException("Bad keccak use");
@@ -406,11 +429,11 @@ namespace Nethermind.Core.Crypto
 
             var remainingInputLength = input.Length;
             int i;
-            for (; remainingInputLength >= ROUND_SIZE; remainingInputLength -= ROUND_SIZE, input = input.Slice(ROUND_SIZE))
+            for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input.Slice(roundSize))
             {
                 var input64 = MemoryMarshal.Cast<byte, ulong>(input);
 
-                for (i = 0; i < ROUND_SIZE_U64; i++)
+                for (i = 0; i < roundSizeU64; i++)
                 {
                     state[i] ^= input64[i];
                 }
@@ -419,24 +442,24 @@ namespace Nethermind.Core.Crypto
             }
 
             // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > ROUND_SIZE || ROUND_SIZE + 1 >= TEMP_BUFF_SIZE || ROUND_SIZE == 0 || ROUND_SIZE - 1 >= TEMP_BUFF_SIZE || ROUND_SIZE_U64 * 8 > TEMP_BUFF_SIZE)
+            if (input.Length >= TEMP_BUFF_SIZE || input.Length > roundSize || roundSize + 1 >= TEMP_BUFF_SIZE || roundSize == 0 || roundSize - 1 >= TEMP_BUFF_SIZE || roundSizeU64 * 8 > TEMP_BUFF_SIZE)
             {
                 throw new ArgumentException("Bad keccak use");
             }
 
             input.Slice(0, remainingInputLength).CopyTo(temp);
             temp[remainingInputLength] = 1;
-            temp[ROUND_SIZE - 1] |= 0x80;
+            temp[roundSize - 1] |= 0x80;
 
             var tempU64 = MemoryMarshal.Cast<byte, ulong>(temp);
 
-            for (i = 0; i < ROUND_SIZE_U64; i++)
+            for (i = 0; i < roundSizeU64; i++)
             {
                 state[i] ^= tempU64[i];
             }
 
             KeccakF(state);
-            MemoryMarshal.AsBytes(state.Slice(0, HASH_SIZE / sizeof(ulong))).CopyTo(output);
+            MemoryMarshal.AsBytes(state.Slice(0, size / sizeof(ulong))).CopyTo(output);
         }
 
         public void Update(Span<byte> array, int index, int size)
