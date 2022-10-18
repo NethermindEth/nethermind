@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Precompiles
 
             int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
             UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
-            int expLength = expLengthUint256 > int.MaxValue ? int.MaxValue : (int)expLengthUint256;
+            int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
 
             return (baseLength, expLength, modulusLength);
@@ -120,6 +120,12 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+
+            // if both are 0, than expLenght can be huge, which leads to potential buffer to big exception
+            if (baseLength == 0 && modulusLength == 0)
+            {
+                return (Bytes.Empty, true);
+            }
 
             byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
