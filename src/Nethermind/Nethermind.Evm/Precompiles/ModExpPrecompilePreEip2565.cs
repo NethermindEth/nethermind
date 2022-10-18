@@ -107,14 +107,19 @@ namespace Nethermind.Evm.Precompiles
 
         private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
         {
+            bool overflow = false;
+            bool underflow = false;
+            UInt256 result;
+
             int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
-                return lengthOver32 * 8;
+                overflow |= UInt256.MultiplyOverflow(lengthOver32, 8, out result);
+                return overflow ? UInt256.MaxValue : result;
             }
 
-            bool overflow = UInt256.AddOverflow(lengthOver32, (UInt256)exponent.Length, out UInt256 result);
-            bool underflow = UInt256.SubtractUnderflow(result, (UInt256)leadingZeros, out result);
+            overflow |= UInt256.AddOverflow(lengthOver32, (UInt256)exponent.Length, out result);
+            underflow |= UInt256.SubtractUnderflow(result, (UInt256)leadingZeros, out result);
             underflow |= UInt256.SubtractUnderflow(result, (UInt256)1, out result);
             overflow |= UInt256.MultiplyOverflow(result, 8, out result);
             overflow |= UInt256.AddOverflow(result, (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex()), out result);
