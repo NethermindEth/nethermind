@@ -124,16 +124,16 @@ namespace Nethermind.Evm.Precompiles
             byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
 
+            if (gmp_lib.mpz_sgn(modulusInt) == 0)
+            {
+                return (new byte[modulusLength], true);
+            }
+
             byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
             using mpz_t baseInt = ImportDataToGmp(baseData);
 
             byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
             using mpz_t expInt = ImportDataToGmp(expData);
-
-            if (gmp_lib.mpz_sgn(modulusInt) == 0)
-            {
-                return (new byte[modulusLength], true);
-            }
 
             using mpz_t powmResult = new();
             gmp_lib.mpz_init(powmResult);
