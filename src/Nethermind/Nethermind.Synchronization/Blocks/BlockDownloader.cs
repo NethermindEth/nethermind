@@ -461,19 +461,26 @@ namespace Nethermind.Synchronization.Blocks
                 IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
-                BlockBody[] result = getBodiesRequest.Result;
+                BlockBody?[] result = getBodiesRequest.Result;
+
+                int receivedBodies = 0;
                 for (int i = 0; i < result.Length; i++)
                 {
+                    if (result[i] == null)
+                    {
+                        break;
+                    }
                     context.SetBody(i + offset, result[i]);
+                    receivedBodies++;
                 }
 
-                if (result.Length == 0)
+                if (receivedBodies == 0)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Peer sent no bodies. Peer: {peer}, Request: {hashesToRequest.Count}");
                     return;
                 }
 
-                offset += result.Length;
+                offset += receivedBodies;
             }
         }
 
