@@ -36,7 +36,6 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
-        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, startDateTime);
+        PayloadAttributes payloadAttributes) =>
+        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes);
 }

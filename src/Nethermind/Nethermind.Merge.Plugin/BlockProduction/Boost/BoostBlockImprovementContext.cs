@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,14 +43,16 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
-        IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        IStateReader stateReader)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
+
         _cancellationTokenSource = new CancellationTokenSource(timeout);
+        Watch = new Stopwatch();
+        Watch.Start();
+
         CurrentBestBlock = currentBestBlock;
-        StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
 
@@ -76,7 +79,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public Task<Block?> ImprovementTask { get; }
     public Block? CurrentBestBlock { get; private set; }
     public bool Disposed { get; private set; }
-    public DateTimeOffset StartDateTime { get; }
+    public Stopwatch Watch { get; }
 
     public void Dispose()
     {

@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -33,12 +34,13 @@ public class BlockImprovementContext : IBlockImprovementContext
         IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
+        Watch = new Stopwatch();
+        Watch.Start();
+
         CurrentBestBlock = currentBestBlock;
-        StartDateTime = startDateTime;
         ImprovementTask = blockProductionTrigger
             .BuildBlock(parentHeader, _cancellationTokenSource.Token, NullBlockTracer.Instance, payloadAttributes)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
@@ -62,7 +64,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     }
 
     public bool Disposed { get; private set; }
-    public DateTimeOffset StartDateTime { get; }
+    public Stopwatch Watch { get; }
 
     public void Dispose()
     {

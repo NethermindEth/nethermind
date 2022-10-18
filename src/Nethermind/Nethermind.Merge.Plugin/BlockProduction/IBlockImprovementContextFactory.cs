@@ -26,6 +26,5 @@ public interface IBlockImprovementContextFactory
     IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime);
+        PayloadAttributes payloadAttributes);
 }

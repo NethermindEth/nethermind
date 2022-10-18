@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -61,7 +62,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private readonly TimeSpan _cleanupOldPayloadDelay;
         private readonly TimeSpan _timePerSlot;
-
+        
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
@@ -84,6 +85,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
+            timer.Enabled = true;
             timer.Start();
 
             _logger = logManager.GetClassLogger();
@@ -95,7 +97,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             if (!_payloadStorage.ContainsKey(payloadId))
             {
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-                ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow);
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
             }
             else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -110,9 +112,18 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return emptyBlock;
         }
 
-        private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+        private void ImproveBlock(string payloadId,
+            BlockHeader parentHeader,
+            PayloadAttributes payloadAttributes,
+            Block currentBestBlock,
+            TimeSpan? offsetFromStartTime = null) =>
+
             _payloadStorage.AddOrUpdate(payloadId,
-                id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
+                id => CreateBlockImprovementContext(id,
+                    parentHeader,
+                    payloadAttributes,
+                    currentBestBlock,
+                    offsetFromStartTime),
                 (id, currentContext) =>
                 {
                     // if there is payload improvement and its not yet finished leave it be
@@ -122,22 +133,35 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                         return currentContext;
                     }
 
-                    IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                    IBlockImprovementContext newContext = CreateBlockImprovementContext(id,
+                        parentHeader,
+                        payloadAttributes,
+                        currentBestBlock,
+                        offsetFromStartTime);
+
+                    //TODO: Dispose here may be not thread-safe, possibly investigate atomic swap.
                     currentContext.Dispose();
                     return newContext;
                 });
 
 
-        private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        private IBlockImprovementContext CreateBlockImprovementContext(
+            string payloadId,
+            BlockHeader parentHeader,
+            PayloadAttributes payloadAttributes,
+            Block currentBestBlock,
+            TimeSpan? offsetFromStartTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
+            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory
+                .StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes);
+
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
             {
                 // if after delay we still have time to try producing the block in this slot
-                DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
-                DateTimeOffset slotFinished = startDateTime + _timePerSlot;
+                TimeSpan whenWeCouldFinishNextProduction = blockImprovementContext.Watch.Elapsed + _improvementDelay + _minTimeForProduction;
+                TimeSpan slotFinished =  _timePerSlot;
                 if (whenWeCouldFinishNextProduction < slotFinished)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
@@ -145,7 +169,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                        ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
+                        ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, offsetFromStartTime);
                     }
                     else
                     {
@@ -166,10 +190,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
             foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
             {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                TimeSpan elapsed = payload.Value.Watch.Elapsed;
+                if (_cleanupOldPayloadDelay <= elapsed)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}," +
+                                                      $" Elapsed block time {elapsed:t}, " +
+                                                      $"Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }

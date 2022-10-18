@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -26,5 +27,5 @@ public interface IBlockImprovementContext : IDisposable
     Task<Block?> ImprovementTask { get; }
     Block? CurrentBestBlock { get; }
     bool Disposed { get; }
-    DateTimeOffset StartDateTime { get; }
+    Stopwatch Watch { get; }
 }
