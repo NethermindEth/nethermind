@@ -53,12 +53,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
     {
-        new(Protocol.Eth, 62),
-        new(Protocol.Eth, 63),
-        new(Protocol.Eth, 64),
-        new(Protocol.Eth, 65),
-        new(Protocol.Eth, 66),
-        // new Capability(Protocol.Les, 3)
+        new(Protocol.Eth, 66)
     };
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }

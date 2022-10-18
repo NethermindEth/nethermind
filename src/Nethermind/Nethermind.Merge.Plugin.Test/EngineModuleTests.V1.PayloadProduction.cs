@@ -65,7 +65,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
@@ -246,9 +246,10 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -281,13 +282,13 @@ public partial class EngineModuleTests
         improvementContextFactory.CreatedContexts.Should().OnlyContain(i => i.Disposed);
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 10 * delay;
+        TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
@@ -307,13 +308,13 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
 
         ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -328,12 +329,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 10 * delay;
+        TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,

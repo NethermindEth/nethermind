@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin
     {
         [ConfigItem(
             Description = "Defines whether the Merge plugin is enabled bundles are allowed.",
-            DefaultValue = "false")]
+            DefaultValue = "true")]
         bool Enabled { get; set; }
 
         [ConfigItem(Description = "Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.", DefaultValue = "null")]
