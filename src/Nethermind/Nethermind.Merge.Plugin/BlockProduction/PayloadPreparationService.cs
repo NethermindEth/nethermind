@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private readonly TimeSpan _cleanupOldPayloadDelay;
         private readonly TimeSpan _timePerSlot;
-        
+
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
@@ -161,7 +161,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 // if after delay we still have time to try producing the block in this slot
                 TimeSpan whenWeCouldFinishNextProduction = blockImprovementContext.Watch.Elapsed + _improvementDelay + _minTimeForProduction;
-                TimeSpan slotFinished =  _timePerSlot;
+                TimeSpan slotFinished = _timePerSlot;
                 if (whenWeCouldFinishNextProduction < slotFinished)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");

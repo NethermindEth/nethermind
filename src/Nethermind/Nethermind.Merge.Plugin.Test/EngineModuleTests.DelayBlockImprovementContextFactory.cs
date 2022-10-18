@@ -65,7 +65,7 @@ public partial class EngineModuleTests
             Watch.Start();
 
             CurrentBestBlock = currentBestBlock;
-            
+
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
 
