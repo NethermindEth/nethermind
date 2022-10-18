@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -347,6 +348,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+        }
+
+        [TestCase(5, 5)]
+        [TestCase(50, 20)]
+        public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)
+        {
+            List<Block> blocks = new List<Block>();
+            Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
+            for (int i = 0; i < availableBody; i++)
+            {
+                if (i == 0)
+                {
+                    blocks.Add(Build.A.Block.WithTransactions(transactions).TestObject);
+                }
+                else
+                {
+                    blocks.Add(Build.A.Block.WithTransactions(transactions).WithParent(blocks[^1]).TestObject);
+                }
+
+                _syncManager.Find(blocks[^1].Hash).Returns(blocks[^1]);
+            }
+
+            GetBlockBodiesMessage msg = new(blocks.Select(block => block.Hash).ToArray());
+
+            BlockBodiesMessage response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>())).Do((call) => response = (BlockBodiesMessage)call[0]);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+
+            response.Should().NotBeNull();
+            response.Bodies.Length.Should().Be(expectedResponseSize);
+            foreach (BlockBody responseBody in response.Bodies)
+            {
+                responseBody.Should().NotBeNull();
+            }
         }
 
         [Test]

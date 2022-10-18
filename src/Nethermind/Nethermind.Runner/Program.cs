@@ -45,6 +45,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using RocksDbSharp;
@@ -137,7 +138,13 @@ namespace Nethermind.Runner
 
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
-                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;

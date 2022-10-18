@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Filters
     {
         bool FilterExists(int filterId);
         IEnumerable<T> GetFilters<T>() where T : FilterBase;
+        T GetFilter<T>(int filterId) where T : FilterBase;
         BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true);
         PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true);
 

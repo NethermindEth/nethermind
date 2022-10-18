@@ -248,13 +248,15 @@ namespace Nethermind.Synchronization.Test
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), ctx.BlockTree.BestSuggestedHeader.Number);
         }
 
-        [TestCase(32, 32, true)]
-        [TestCase(32, 16, true)]
-        [TestCase(500, 250, true)]
-        [TestCase(32, 32, false)]
-        [TestCase(32, 16, false)]
-        [TestCase(500, 250, false)]
-        public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, bool mergeDownloader)
+        [TestCase(32, 32, 0, true)]
+        [TestCase(32, 16, 0, true)]
+        [TestCase(500, 250, 0, true)]
+        [TestCase(32, 32, 0, false)]
+        [TestCase(32, 16, 0, false)]
+        [TestCase(500, 250, 0, false)]
+        [TestCase(32, 16, 100, true)]
+        [TestCase(32, 16, 100, false)]
+        public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, int minResponseLength, bool mergeDownloader)
         {
             Context ctx = new();
             BlockDownloader downloader = mergeDownloader ? CreateMergeBlockDownloader(ctx) : CreateBlockDownloader(ctx);
@@ -277,8 +279,19 @@ namespace Nethermind.Synchronization.Test
                         return Array.Empty<BlockBody>();
                     }
 
-                    return ctx.ResponseBuilder.BuildBlocksResponse(blockHashes,
-                        Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown).Result;
+                    BlockBody[] response = ctx.ResponseBuilder.BuildBlocksResponse(blockHashes, Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown).Result;
+
+                    if (response.Length < minResponseLength)
+                    {
+                        BlockBody[] nullPaddedResponse = new BlockBody[minResponseLength];
+                        for (int i = 0; i < response.Length; i++)
+                        {
+                            nullPaddedResponse[i] = response[i];
+                        }
+                        response = nullPaddedResponse;
+                    }
+
+                    return response;
                 });
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
