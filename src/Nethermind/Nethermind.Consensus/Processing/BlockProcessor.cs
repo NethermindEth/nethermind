@@ -358,6 +358,9 @@ namespace Nethermind.Consensus.Processing
 
         private void ApplyWithdrawals(Block block, IReleaseSpec spec)
         {
+            if (!spec.IsEip4895Enabled)
+                return;
+
             if (_logger.IsTrace) _logger.Trace($"Applying withdrawals");
 
             foreach (var withdrawal in block.Withdrawals)

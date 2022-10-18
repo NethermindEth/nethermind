@@ -272,6 +272,13 @@ namespace Nethermind.Core.Specs
         bool IsEip3855Enabled { get; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the 
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
+        /// validator withdrawals are enabled.
+        /// </summary>
+        bool IsEip4895Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
