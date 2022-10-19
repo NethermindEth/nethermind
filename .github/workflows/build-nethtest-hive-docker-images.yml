@@ -17,8 +17,8 @@ jobs:
       - name: Settings
         id: settings
         run: |
-          echo "::set-output name=BUILD_TIMESTAMP::$(date '+%s')"
-          echo "::set-output name=COMMIT_HASH::$(git describe --always --exclude=* --abbrev=40)"
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
       - name: Setting up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Setting up Docker Buildx
@@ -35,4 +35,4 @@ jobs:
       - name: Clearing
         if: always()
         run: |
-          rm -f ${HOME}/.docker/config.json
+          rm -f $HOME/.docker/config.json

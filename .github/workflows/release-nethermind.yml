@@ -67,8 +67,8 @@ jobs:
         cd nethermind/
         build_timestamp=$(date '+%s')
         commit_hash=$(git describe --always --exclude=* --abbrev=40)
-        echo "::set-output name=BUILD_TIMESTAMP::$build_timestamp"
-        echo "::set-output name=COMMIT_HASH::$commit_hash"
+        echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
+        echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
         ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
@@ -306,7 +306,7 @@ jobs:
     - name: Clearing
       if: always()
       run: |
-        rm -f ${HOME}/.docker/config.json
+        rm -f $HOME/.docker/config.json
 
   publish-ppa:
     name: Publishing Nethermind to PPA repository
