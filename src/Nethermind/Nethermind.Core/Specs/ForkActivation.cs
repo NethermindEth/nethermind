@@ -5,20 +5,27 @@ namespace Nethermind.Core.Specs;
 public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<ForkActivation>
 {
     public long BlockNumber { get; }
-    public ulong Timestamp { get; }
+    public ulong? Timestamp { get; }
 
-    public ForkActivation(long blockNumber, ulong timestamp = 0)
+    public ForkActivation(long blockNumber, ulong? timestamp = null)
     {
         BlockNumber = blockNumber;
         Timestamp = timestamp;
+    }
+    public void Deconstruct(out long blockNumber, out ulong? timestamp)
+    {
+        blockNumber = BlockNumber;
+        timestamp = Timestamp;
     }
 
     public static implicit operator ForkActivation(long blocknumber) => new(blocknumber);
 
     public static implicit operator ForkActivation((long, ulong) blocknumberAndTimestamp)
         => new(blocknumberAndTimestamp.Item1, blocknumberAndTimestamp.Item2);
+    public static implicit operator ForkActivation((long, ulong?) blocknumberAndTimestamp)
+        => new(blocknumberAndTimestamp.Item1, blocknumberAndTimestamp.Item2 ?? 0);
 
-    public static implicit operator (long, ulong)(ForkActivation forkActivation)
+    public static implicit operator (long, ulong?)(ForkActivation forkActivation)
         => (forkActivation.BlockNumber, forkActivation.Timestamp);
 
     public bool Equals(ForkActivation other)
@@ -43,20 +50,9 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
 
     public int CompareTo(ForkActivation other)
     {
-        if (BlockNumber < other.BlockNumber)
-            return -1;
-        if (BlockNumber > other.BlockNumber)
-            return 1;
-        if (BlockNumber == other.BlockNumber)
-        {
-            if (Timestamp < other.Timestamp)
-                return -1;
-            if (Timestamp > other.Timestamp)
-                return 1;
-            if (Timestamp == other.Timestamp)
-                return 0;
-        }
-        throw new InvalidOperationException("This is unreachable exception");
+        return Timestamp is null || other.Timestamp is null
+            ? BlockNumber.CompareTo(other.BlockNumber)
+            : Timestamp.Value.CompareTo(other.Timestamp.Value);
     }
 
     public static bool operator ==(ForkActivation first, ForkActivation second)

@@ -70,5 +70,7 @@ namespace Nethermind.Core.Specs
         /// <param name="blockNumber"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
         IReleaseSpec GetSpec(ForkActivation forkActivation);
+
+        IReleaseSpec GetSpec(long blockNumber, ulong timestamp) => GetSpec((blockNumber, timestamp));
     }
 }

@@ -44,10 +44,10 @@ namespace Nethermind.Specs.Test
                 throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
             }
 
-            _transitions = transitions.OrderBy(r => r.Item1).ToArray();
-            TransitionBlocks = _transitions.Select(t => t.Item1).ToArray();
+            _transitions = transitions.OrderBy(r => r.forkActivation).ToArray();
+            TransitionBlocks = _transitions.Select(t => t.forkActivation).ToArray();
 
-            if (transitions[0].Item1.BlockNumber != 0L)
+            if (transitions[0].forkActivation.BlockNumber != 0L)
             {
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }
@@ -75,7 +75,7 @@ namespace Nethermind.Specs.Test
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
             {
-                if (forkActivation >= _transitions[i].Item1)
+                if (forkActivation >= _transitions[i].forkActivation)
                 {
                     spec = _transitions[i].Release;
                 }

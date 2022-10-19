@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test
         private class Custom0 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, ((0, 0), Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, (0, Istanbul.Instance));
 
             [Test]
             public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test
         private class Custom32000 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, ((0, 0), Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
 
             [Test]
             public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()

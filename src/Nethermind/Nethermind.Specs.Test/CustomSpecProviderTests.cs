@@ -35,8 +35,8 @@ namespace Nethermind.Specs.Test
             Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(((1, 0), Byzantium.Instance)), "ordered");
 
             Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(
-                ((1, 0), Byzantium.Instance),
-                ((0, 0), Frontier.Instance)), "not ordered");
+                (1, Byzantium.Instance),
+                (0, Frontier.Instance)), "not ordered");
         }
 
         [Test]
@@ -52,8 +52,8 @@ namespace Nethermind.Specs.Test
         {
             long daoBlockNumber = 100;
             var specProvider = new CustomSpecProvider(
-                ((0L, 0), Frontier.Instance),
-                ((daoBlockNumber, 0), Dao.Instance));
+                (0L, Frontier.Instance),
+                (daoBlockNumber, Dao.Instance));
 
             Assert.AreEqual(daoBlockNumber, specProvider.DaoBlockNumber);
         }
@@ -62,8 +62,8 @@ namespace Nethermind.Specs.Test
         public void If_no_dao_then_no_dao_block_number()
         {
             var specProvider = new CustomSpecProvider(
-                ((0L, 0), Frontier.Instance),
-                ((1L, 0), Homestead.Instance));
+                (0L, Frontier.Instance),
+                (1L, Homestead.Instance));
 
             Assert.IsNull(specProvider.DaoBlockNumber);
         }
@@ -72,15 +72,15 @@ namespace Nethermind.Specs.Test
         public void When_more_releases_specified_then_transitions_work()
         {
             var specProvider = new CustomSpecProvider(
-                ((0, 0), Frontier.Instance),
-                ((1, 0), Homestead.Instance));
+                (0, Frontier.Instance),
+                (1, Homestead.Instance));
             Assert.IsInstanceOf<Frontier>(specProvider.GetSpec(0), "2 releases, block 0");
             Assert.IsInstanceOf<Homestead>(specProvider.GetSpec(1), "2 releases, block 1");
 
             specProvider = new CustomSpecProvider(
-                ((0, 0), Frontier.Instance),
-                ((1, 0), Homestead.Instance),
-                ((10, 0), Byzantium.Instance));
+                (0, Frontier.Instance),
+                (1, Homestead.Instance),
+                (10, Byzantium.Instance));
             Assert.IsInstanceOf<Frontier>(specProvider.GetSpec(0), "3 releases, block 0");
             Assert.IsInstanceOf<Homestead>(specProvider.GetSpec(1), "3 releases, block 1");
             Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(100), "3 releases, block 10");
