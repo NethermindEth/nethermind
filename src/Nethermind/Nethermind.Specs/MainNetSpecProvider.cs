@@ -53,7 +53,7 @@ namespace Nethermind.Specs
                 { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
                 { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
                 { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-                { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
+                { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
                 _ => Shanghai.Instance
             };
 
