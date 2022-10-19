@@ -26,6 +26,8 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
+        //EIP-3860: Limit and meter initcode
+        long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
@@ -281,6 +283,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip3670Enabled { get; }
 
+
+        /// <summary>
+        /// EIP-3860: Limit and meter initcode
+        /// </summary>
+        bool IsEip3860Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

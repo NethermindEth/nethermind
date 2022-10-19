@@ -2368,7 +2368,20 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
-                            long gasCost = GasCostOf.Create + (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
+                            var initCodeWordLength = EvmPooledMemory.Div32Ceiling(initCodeLength);
+                            long gasCost = GasCostOf.Create +
+                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWordLength : 0) +
+                                (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * initCodeWordLength : 0);
+
+
                             if (!UpdateGas(gasCost, ref gasAvailable))
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);

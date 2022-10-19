@@ -192,6 +192,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
+            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            {
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                return;
+            }
+
             if (!noValidation && transaction.Nonce >= ulong.MaxValue - 1)
             {
                 // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,

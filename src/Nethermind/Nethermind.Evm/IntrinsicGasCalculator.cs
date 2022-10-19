@@ -57,6 +57,11 @@ namespace Nethermind.Evm
                 }
             }
 
+            if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
+            {
+                dataCost += EvmPooledMemory.Div32Ceiling((ulong)transaction.Data.Length) * GasCostOf.InitCodeWord;
+            }
+
             return dataCost;
         }
 

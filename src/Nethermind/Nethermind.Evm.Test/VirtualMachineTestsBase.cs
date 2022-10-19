@@ -102,7 +102,12 @@ namespace Nethermind.Evm.Test
 
         protected TestAllTracerWithOutput Execute(params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            return Execute(BlockNumber, code);
+        }
+
+        protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code)
+        {
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
