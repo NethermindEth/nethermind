@@ -81,7 +81,7 @@ jobs:
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
-      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ needs.build-nethermind.outputs.COMMIT_HASH }} ${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP}}
+      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
       name: Uploading Nethermind darwin package
       with:
@@ -297,12 +297,12 @@ jobs:
     - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
       if: ${{ !contains(github.event.inputs.tag, 'beta') && !contains(github.event.inputs.tag, 'unstable') }}
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${ DOCKER_IMAGE }:latest" -t "${ DOCKER_IMAGE }:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
         curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
     - name: Building & Pushing image to docker registry  (patch)
       if: ${{ contains(github.event.inputs.tag, 'beta') || contains(github.event.inputs.tag, 'unstable') }}
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${ DOCKER_IMAGE }:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clearing
       if: always()
       run: |
