@@ -13,14 +13,13 @@ namespace Nethermind.Evm
 {
     enum SectionDividor : byte
     {
-        Terminator  = 0,
+        Terminator = 0,
         CodeSection = 1,
         DataSection = 2,
     }
     public class EofHeader
     {
         #region public construction properties
-        public byte[] MachineCode { get; set; }
         public UInt16 CodeSize { get; set; }
         public UInt16 DataSize { get; set; }
         #endregion
@@ -38,7 +37,7 @@ namespace Nethermind.Evm
         {
             get
             {
-                if(_codeStartOffset is null)
+                if (_codeStartOffset is null)
                     _codeStartOffset = DataSize == 0 ? 7 : 10;
                 return _codeStartOffset.Value;
             }
@@ -68,17 +67,14 @@ namespace Nethermind.Evm
         private const byte EofMagicLength = 2;
         private const byte EofFormatByte = 0xEF;
         private const byte EofFormatDiff = 0x00;
+        private byte[] EofMagic => new byte[] { EofFormatByte, EofFormatDiff };
 
-        private const byte EofVersion = 1;
-
-        private byte[] EofMagic => new byte[]{ EofFormatByte, EofFormatDiff };
-
-        public bool HasEOFFormat(Span<byte> code) => code.Length >= EofMagicLength && code.StartsWith(EofMagic);
+        public bool HasEOFFormat(Span<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
         public bool ExtractHeader(Span<byte> code, out EofHeader header)
         {
             if (!HasEOFFormat(code))
             {
-                if(LoggingEnabled && _logger.IsTrace)
+                if (LoggingEnabled && _logger.IsTrace)
                 {
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EofMagic.ToHexString(true)} ");
                 }
@@ -88,20 +84,25 @@ namespace Nethermind.Evm
             int codeLen = code.Length;
 
             int i = EofMagicLength;
-
-            if(i >= codeLen || code[i] != EofVersion)
+            int EOFVersion = code[i++];
+            switch (EOFVersion)
             {
-                if (LoggingEnabled && _logger.IsTrace)
-                {
-                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {code[i]}");
-                }
-                header = null;  return false;
+                case 1:
+                    return HandleEOF1(code, out header, codeLen, ref i);
+                default:
+                    if (LoggingEnabled && _logger.IsTrace)
+                    {
+                        _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {code[i]}");
+                    }
+                    header = null; return false;
             }
-            i++;
+        }
 
+        private bool HandleEOF1(Span<byte> code, out EofHeader header, int codeLen, ref int i)
+        {
             bool continueParsing = true;
-            header = new EofHeader {
-                MachineCode = code.ToArray(),
+            header = new EofHeader
+            {
             };
 
             while (i < codeLen && continueParsing)
@@ -109,7 +110,8 @@ namespace Nethermind.Evm
                 var sectionKind = (SectionDividor)code[i];
                 i++;
 
-                switch (sectionKind) {
+                switch (sectionKind)
+                {
                     case SectionDividor.Terminator:
                         {
                             continueParsing = false;
@@ -153,7 +155,7 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
-                            if(header.DataSize != 0 || i + 2 > codeLen)
+                            if (header.DataSize != 0 || i + 2 > codeLen)
                             {
                                 if (LoggingEnabled && _logger.IsTrace)
                                 {
@@ -188,7 +190,6 @@ namespace Nethermind.Evm
                         }
                 }
             }
-
             var contractBody = code[i..];
             var calculatedCodeLen = (int)header.CodeSize + (int)header.DataSize;
             if (calculatedCodeLen != contractBody.Length)
@@ -199,7 +200,6 @@ namespace Nethermind.Evm
                 }
                 header = null; return false;
             }
-
             return true;
         }
 

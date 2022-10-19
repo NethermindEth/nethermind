@@ -522,7 +522,7 @@ namespace Nethermind.Evm.Test
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
-                            .PushData(new byte[] { 23, 69})
+                            .PushData(new byte[] { 23, 69 })
                             .Return(2, 0)
                             .Done,
                     ResultIfEOF = (StatusCode.Success, null),
