@@ -27,7 +27,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.State;
 using Org.BouncyCastle.Crypto;

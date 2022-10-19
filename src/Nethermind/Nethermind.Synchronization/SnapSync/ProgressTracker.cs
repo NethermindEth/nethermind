@@ -38,7 +38,6 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
-        public event EventHandler<EventArgs> SnapSyncFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -275,12 +274,15 @@ namespace Nethermind.Synchronization.SnapSync
             if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
-                _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished. Healing (Phase 2) starting...");
+                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
                     MoreAccountsToRight = false;
+                }
+                else
+                {
+                    _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
                 }
             }
         }
@@ -290,8 +292,6 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
-
-            SnapSyncFinished?.Invoke(this, EventArgs.Empty);
         }
 
         private void LogRequest(string reqType)

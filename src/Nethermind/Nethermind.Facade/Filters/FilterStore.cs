@@ -56,6 +56,10 @@ namespace Nethermind.Blockchain.Filters
         public IEnumerable<T> GetFilters<T>() where T : FilterBase =>
             _filters.Select(f => f.Value).OfType<T>();
 
+        public T GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+                ? filter as T
+                : throw new InvalidOperationException($"Filter with ID {filterId} not found");
+
         public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
 
