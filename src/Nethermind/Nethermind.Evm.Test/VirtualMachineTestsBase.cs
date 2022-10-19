@@ -118,7 +118,7 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = ulong.MaxValue)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test
             SenderRecipientAndMiner senderRecipientAndMiner = null,
             int value = 1,
             long blockGasLimit = DefaultBlockGasLimit,
-            ulong timestamp = ulong.MaxValue)
+            ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -208,7 +208,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
             Transaction tx, long blockGasLimit = DefaultBlockGasLimit,
-            ulong timestamp = ulong.MaxValue)
+            ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(blockNumber)

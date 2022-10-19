@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
         {
-            long blockNumberParam = isShanghai ? BlockNumber : BlockNumber - 1;
+            ulong timestampParam = isShanghai ? Timestamp : Timestamp - 1;
             Prepare codeInitializer = Prepare.EvmCode;
             for (int i = 0; i < repeat; i++)
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
             }
 
             byte[] code = codeInitializer.Done;
-            TestAllTracerWithOutput receipt = Execute(blockNumberParam, 1_000_000, code);
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 1_000_000, code, timestamp: timestampParam);
             return receipt;
         }
 

@@ -20,12 +20,12 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
 
     public static implicit operator ForkActivation(long blocknumber) => new(blocknumber);
 
-    public static implicit operator ForkActivation((long, ulong) blocknumberAndTimestamp)
-        => new(blocknumberAndTimestamp.Item1, blocknumberAndTimestamp.Item2);
-    public static implicit operator ForkActivation((long, ulong?) blocknumberAndTimestamp)
-        => new(blocknumberAndTimestamp.Item1, blocknumberAndTimestamp.Item2 ?? 0);
+    public static implicit operator ForkActivation((long blocknumber, ulong timestamp) blocknumberAndTimestamp)
+        => new(blocknumberAndTimestamp.blocknumber, blocknumberAndTimestamp.timestamp);
+    public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) blocknumberAndTimestamp)
+        => new(blocknumberAndTimestamp.blocknumber, blocknumberAndTimestamp.timestamp);
 
-    public static implicit operator (long, ulong?)(ForkActivation forkActivation)
+    public static implicit operator (long blocknumber, ulong? timestamp)(ForkActivation forkActivation)
         => (forkActivation.BlockNumber, forkActivation.Timestamp);
 
     public bool Equals(ForkActivation other)

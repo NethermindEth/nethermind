@@ -174,7 +174,6 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ConstantinopleFixBlockNumber)]
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
-        [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
