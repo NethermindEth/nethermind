@@ -32,7 +32,7 @@ namespace Nethermind.Specs.Test
         [Test]
         public void When_first_release_is_not_at_block_zero_then_throws_argument_exception()
         {
-            Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(((1, 0), Byzantium.Instance)), "ordered");
+            Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider((1, Byzantium.Instance)), "ordered");
 
             Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(
                 (1, Byzantium.Instance),
