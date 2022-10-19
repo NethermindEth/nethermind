@@ -36,7 +36,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             get
             {
-                if(_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
+                if (_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
                 {
                     return _header;
                 }
