@@ -30,6 +30,7 @@ namespace Nethermind.Specs.Forks
             IsEip1153Enabled = true;
             IsEip3675Enabled = true;
             IsEip3651Enabled = true;
+            IsEip3855Enabled = true;
             IsEip3670Enabled = true;
             IsEip3540Enabled = true;
         }

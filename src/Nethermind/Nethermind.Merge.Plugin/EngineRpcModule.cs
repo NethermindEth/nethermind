@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -72,6 +73,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (await _locker.WaitAsync(_timeout))
             {
+                Stopwatch watch = Stopwatch.StartNew();
                 try
                 {
                     return await _newPayloadV1Handler.HandleAsync(executionPayload);
@@ -83,6 +85,8 @@ namespace Nethermind.Merge.Plugin
                 }
                 finally
                 {
+                    watch.Stop();
+                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
                     _locker.Release();
                 }
             }
@@ -98,12 +102,15 @@ namespace Nethermind.Merge.Plugin
         {
             if (await _locker.WaitAsync(_timeout))
             {
+                Stopwatch watch = Stopwatch.StartNew();
                 try
                 {
                     return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
                 }
                 finally
                 {
+                    watch.Stop();
+                    Metrics.ForkchoiceUpdedExecutionTime = watch.ElapsedMilliseconds;
                     _locker.Release();
                 }
             }

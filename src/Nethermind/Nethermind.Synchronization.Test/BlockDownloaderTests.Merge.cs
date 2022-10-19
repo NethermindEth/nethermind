@@ -67,7 +67,7 @@ public partial class BlockDownloaderTests
         bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
@@ -132,7 +132,7 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         RopstenSpecProvider specProvider = new();
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
             specProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
@@ -184,7 +184,7 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         RopstenSpecProvider specProvider = new();
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
             specProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
@@ -212,8 +212,8 @@ public partial class BlockDownloaderTests
         notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
     }
 
-    [TestCase(32L, 32L, 0,  32)]
-    [TestCase(32L, 32L, 10,  22)]
+    [TestCase(32L, 32L, 0, 32)]
+    [TestCase(32L, 32L, 10, 22)]
     public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -227,7 +227,7 @@ public partial class BlockDownloaderTests
         Context ctx = new(notSyncedTree);
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
@@ -245,7 +245,7 @@ public partial class BlockDownloaderTests
             receiptStorage,
             RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
-            new ChainLevelHelper(notSyncedTree, beaconPivot,  new SyncConfig(),  LimboLogs.Instance),
+            new ChainLevelHelper(notSyncedTree, beaconPivot, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -278,7 +278,7 @@ public partial class BlockDownloaderTests
 
         InMemoryReceiptStorage receiptStorage = new();
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
 
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
@@ -336,7 +336,7 @@ public partial class BlockDownloaderTests
         MemDb metadataDb = new MemDb();
         var testSpecProvider = new TestSpecProvider(London.Instance);
         testSpecProvider.TerminalTotalDifficulty = 0;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, blockTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, blockTree,
             testSpecProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, blockTree, LimboLogs.Instance);
         InMemoryReceiptStorage receiptStorage = new();

@@ -107,7 +107,7 @@ namespace Nethermind.AuRa.Test
                     BlockTree,
                     LimboLogs.Instance,
                     !auraConfig.AllowAuRaPrivateChains);
-
+                IMiningConfig miningConfig = new MiningConfig();
                 FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
 
                 AuRaBlockProducer = new AuRaBlockProducer(
@@ -123,7 +123,8 @@ namespace Nethermind.AuRa.Test
                     auraConfig,
                     gasLimitCalculator,
                     MainnetSpecProvider.Instance,
-                    LimboLogs.Instance);
+                    LimboLogs.Instance,
+                    miningConfig);
 
                 ProducedBlockSuggester suggester = new(BlockTree, AuRaBlockProducer);
             }

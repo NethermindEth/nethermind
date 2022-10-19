@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() { Enabled = true };
+            _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
             MiningConfig? miningConfig = new() { Enabled = true };
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
         [TestCase(false)]
         public void Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
-            _mergeConfig.Enabled = enabled;
+            _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
             Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
