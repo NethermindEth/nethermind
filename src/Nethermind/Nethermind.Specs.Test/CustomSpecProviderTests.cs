@@ -42,7 +42,7 @@ namespace Nethermind.Specs.Test
         [Test]
         public void When_only_one_release_is_specified_then_returns_that_release()
         {
-            var specProvider = new CustomSpecProvider(((0, 0), Byzantium.Instance));
+            var specProvider = new CustomSpecProvider((0, Byzantium.Instance));
             Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(0), "0");
             Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(1), "1");
         }
