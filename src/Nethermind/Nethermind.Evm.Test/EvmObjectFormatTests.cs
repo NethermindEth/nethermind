@@ -24,17 +24,9 @@ using Nethermind.Specs.Forks;
 using NSubstitute;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Blockchain;
-using static Nethermind.Evm.CodeAnalysis.ByteCodeValidator;
-using NUnit.Framework.Constraints;
 using System;
-using System.Collections;
-using DotNetty.Common.Utilities;
-using Org.BouncyCastle.Asn1.Utilities;
-using static Nethermind.Evm.Test.Eip3541Tests;
+using static Nethermind.Evm.CodeAnalysis.ByteCodeValidator;
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
 
 namespace Nethermind.Evm.Test
 {
@@ -94,11 +86,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF0001010002020004006000AABBCCDD", true, 2, 4, true)]
         [TestCase("0xEF00010100040200020060006001AABB", true, 4, 2, true)]
         [TestCase("0xEF000101000602000400600060016002AABBCCDD", true, 6, 4, true)]
-        // code with invalid magic will NOT fail following EIP-3541 or EIP-3540 
-        [TestCase("", true, 0, 0, true, Description = "Empty code")]
-        [TestCase("0xFE", true, 0, 0, true, Description = "Codes starting with invalid magic first byte")]
-        [TestCase("0xFE0001010002020004006000AABBCCDD", true, 0, 0, true, Description = "Valid code with wrong magic first byte")]
-        // code with invalid magic will fail following EIP-3541
+        // code with invalid magic
         [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete Magic")]
         [TestCase("0xEF01", false, 0, 0, true, Description = "Incorrect Magic second byte")]
         [TestCase("0xEF0101010002020004006000AABBCCDD", false, 0, 0, true, Description = "Valid code with wrong magic second byte")]
@@ -108,9 +96,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF0001010002006000DEADBEEF", false, 0, 0, true, Description = "Invalid total Size")]
         [TestCase("0xEF00010100020100020060006000", false, 0, 0, true, Description = "Multiple Code sections")]
         [TestCase("0xEF000101000002000200AABB", false, 0, 0, true, Description = "Empty code section")]
-        [TestCase("0xEF000102000401000200AABBCCDD6000", false, 0, 0, true, Description = "PushData section before code section")]
-        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "PushData Section size Missing")]
-        [TestCase("0xEF0001010002020004020004006000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple PushData sections")]
+        [TestCase("0xEF000102000401000200AABBCCDD6000", false, 0, 0, true, Description = "Data section before code section")]
+        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "Data Section size Missing")]
+        [TestCase("0xEF0001010002020004020004006000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple Data sections")]
         [TestCase("0xEF0001010002030004006000AABBCCDD", false, 0, 0, true, Description = "Unknown Section")]
         public void EOF_Compliant_formats_Test(string code, bool isCorrectFormated, int codeSize, int dataSize, bool isShanghaiFork)
         {
@@ -118,7 +106,8 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
+            ReleaseSpec spec = (ReleaseSpec)(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
+            spec.IsEip3670Enabled = false;
 
             var expectedHeader = codeSize == 0 && dataSize == 0
                 ? null
@@ -576,6 +565,34 @@ namespace Nethermind.Evm.Test
                 receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
                 receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
             }
+        }
+
+        // valid code
+        [TestCase("0xEF000101000100FE", true, true)]
+        [TestCase("0xEF00010100050060006000F3", true, true)]
+        [TestCase("0xEF00010100050060006000FD", true, true)]
+        [TestCase("0xEF0001010003006000FF", true, true)]
+        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true, true)]
+        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true, true)]
+        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true, true)]
+        // code with invalid magic
+        [TestCase("0xEF0001010001000C", false, true, Description = "Undefined instruction")]
+        [TestCase("0xEF000101000100EF", false, true, Description = "Undefined instruction")]
+        [TestCase("0xEF00010100010060", false, true, Description = "Missing terminating instruction")]
+        [TestCase("0xEF00010100010030", false, true, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
+        [TestCase("EF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
+        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
+        {
+            var bytecode = Prepare.EvmCode
+                .FromCode(code)
+                .Done;
+
+            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
+
+            bool checkResult = ValidateByteCode(bytecode, spec, out _);
+
+            checkResult.Should().Be(isCorrectlyFormated);
         }
     }
 }

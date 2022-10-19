@@ -22,16 +22,20 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool HasEOFMagic(this Span<byte> code) => EofFormatChecker.HasEOFFormat(code);
         public static bool ValidateByteCode(Span<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
-            if(_spec.IsEip3540Enabled && code.HasEOFMagic())
+            if (_spec.IsEip3670Enabled && code.HasEOFMagic())
             {
-                 return IsEOFCode(code, out header);
+                return EofFormatChecker.ValidateInstructions(code, out header);
+            }
+            else if (_spec.IsEip3540Enabled && code.HasEOFMagic())
+            {
+                return IsEOFCode(code, out header);
             }
 
             header = null;
-            return  !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
+            return !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
         public static bool ValidateByteCode(this Span<byte> code, IReleaseSpec _spec)
-            => ValidateByteCode(code, _spec, out _);
+                => ValidateByteCode(code, _spec, out _);
 
         public static bool IsEOFCode(Span<byte> machineCode, out EofHeader header)
             => EofFormatChecker.ExtractHeader(machineCode, out header);
@@ -44,9 +48,9 @@ namespace Nethermind.Evm.CodeAnalysis
                     ? header.CodeEndOffset
                     : machineCode.Length;
 
-        public static int CodeSize(Span<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeSize
-                    : machineCode.Length;
+            public static int CodeSize(Span<byte> machineCode)
+                => IsEOFCode(machineCode, out var header)
+                        ? header.CodeSize
+                        : machineCode.Length;
+        }
     }
-}

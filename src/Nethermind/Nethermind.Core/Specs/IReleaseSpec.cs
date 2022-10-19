@@ -275,7 +275,12 @@ namespace Nethermind.Core.Specs
         /// Sectioned bytecode 
         /// </summary>
         bool IsEip3540Enabled { get; }
-        
+
+        /// <summary>
+        /// Strict bytecode validation 
+        /// </summary>
+        bool IsEip3670Enabled { get; }
+
 
         /// <summary>
         /// Should transactions be validated against chainId.

@@ -204,5 +204,61 @@ namespace Nethermind.Evm
         }
 
         public bool ValidateEofCode(Span<byte> code) => ExtractHeader(code, out _);
+        public bool ValidateEofCode(byte[] code) => ExtractHeader(code, out _);
+        public bool ValidateInstructions(Span<byte> code, out EofHeader header)
+        {
+            // check if code is EOF compliant
+            if (ExtractHeader(code, out header))
+            {
+                var (startOffset, endOffset) = (header.CodeStartOffset, header.CodeEndOffset);
+                Instruction? opcode = null;
+                for (int i = startOffset; i < endOffset;)
+                {
+                    opcode = (Instruction)code[i];
+
+                    // validate opcode
+                    if (!Enum.IsDefined(opcode.Value))
+                    {
+                        if (LoggingEnabled && _logger.IsTrace)
+                        {
+                            _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
+                        }
+                        return false;
+                    }
+
+                    if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                    {
+                        i += code[i] - (int)Instruction.PUSH1 + 1;
+                        if (i >= endOffset)
+                        {
+                            if (LoggingEnabled && _logger.IsTrace)
+                            {
+                                _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                            }
+                            return false;
+                        }
+                    }
+                    i++;
+                }
+
+                // check if terminating opcode : STOP, RETURN, REVERT, INVALID, SELFDESTRUCT
+                switch (opcode)
+                {
+                    case Instruction.STOP:
+                    case Instruction.RETURN:
+                    case Instruction.REVERT:
+                    case Instruction.INVALID:
+                    case Instruction.SELFDESTRUCT: // might be retired and replaced with SELLALL?
+                        return true;
+                    default:
+                        if (LoggingEnabled && _logger.IsTrace)
+                        {
+                            _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                        }
+                        return false;
+                }
+            }
+            return false;
+        }
     }
 }
