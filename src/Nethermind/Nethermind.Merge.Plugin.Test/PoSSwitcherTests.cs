@@ -243,7 +243,7 @@ namespace Nethermind.Merge.Plugin.Test
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
         {
             db ??= new MemDb();
-            MergeConfig? mergeConfig = new() { Enabled = true };
+            MergeConfig? mergeConfig = new() { };
             return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider ?? MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
     }
