@@ -8,12 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="PostSharp" Version="6.10.15" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Monitoring.Generator\Nethermind.Monitoring.Generator.csproj" OutputItemType="Analyzer"/>
+    <ProjectReference Include="..\Nethermind.Monitoring.Interceptor\Nethermind.Monitoring.Interceptor.csproj"/>
   </ItemGroup>
 
 </Project>

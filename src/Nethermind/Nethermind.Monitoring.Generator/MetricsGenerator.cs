@@ -15,22 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 using System.Linq;
-using System.Collections.Generic;
 using System.Reflection;
-using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
-using Nethermind.Monitoring.Generator.Attributes;
 using Microsoft.CodeAnalysis.Text;
-using System.Text;
-
-namespace Nethermind.Monitoring.Generator;
 
 [Generator]
 public class MetricsGenerator : ISourceGenerator
 {
+    public enum LogDestination { Debug, Console, Prometheus, None }
+    public enum InterceptionMode { ExecutionTime, CallCount, MetadataLog }
     private struct MetricData
     {
         public MetricData(params string[] args) : this(args[0], args[1], args[2]) { }
@@ -44,11 +43,10 @@ public class MetricsGenerator : ISourceGenerator
         public string Description { get; }
         public string PropertyName { get; }
     }
-    private string EmitProps(IEnumerable<MetricData> metrics)
-    => metrics
-    .Select(metric => @$"[Description(""{metric.Description}"")] public static {metric.Typename} {metric.PropertyName} {{ get; set; }}")
-    .Aggregate((a, b) => $"{a}\n\t{b}");
-    private string PartialMetrics(IEnumerable<MetricData> metrics) => @$"
+    private string EmitProps(MetricData[] metrics)
+    => metrics  .Select(metric => @$"[Description(""{metric.Description}"")] public static {metric.Typename} {metric.PropertyName} {{ get; set; }}")
+                .Aggregate((a, b) => $"{a}\n\t{b}");
+    private string PartialMetrics(MetricData[] metrics) => @$"
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -56,7 +54,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Plugin;
+namespace Nethermind.Merge.Plugin;
 public static partial class Metrics
 {{
 {EmitProps(metrics)}
@@ -64,29 +62,29 @@ public static partial class Metrics
 ";
     public void Execute(GeneratorExecutionContext context)
     {
-        var attributeToLookFor = typeof(MetricsAttribute);
-        var allFunctionsInCompilationUnit = GetMarkedFunctionBy(attributeToLookFor, context.Compilation);
-        var allAttributesToBeEmited = GetTargetAttributesFrom(allFunctionsInCompilationUnit, attributeToLookFor, context.Compilation);
+        var allFunctionsInCompilationUnit = GetMarkedFunctionBy(context.Compilation);
+        var allAttributesToBeEmited = GetTargetAttributesFrom(allFunctionsInCompilationUnit, context.Compilation);
 
         var classToEmitSourceCode = PartialMetrics(allAttributesToBeEmited);
-
         context.AddSource("Metrics.g.cs", SourceText.From(classToEmitSourceCode, Encoding.UTF8));
+
     }
 
     public void Initialize(GeneratorInitializationContext context)
     {
-
+        // #if DEBUG
+        //     if (!Debugger.IsAttached)
+        //     {
+        //         Debugger.Launch();
+        //     }
+        // #endif 
+        // Debug.WriteLine("Initalize code generator");
     }
 
-    private bool IsAttribute(Type flag) => flag.Name.EndsWith("Attribute") && flag.BaseType == typeof(System.Attribute);
-
-    private MethodDeclarationSyntax[] GetMarkedFunctionBy(Type flagType /* must be an attribute type*/, Compilation context)
+    // Note(Ayman) :    looks for this Pattern @ [Metrics(TypeName , PropertyName , Description)]
+    //                  looks for this Pattern @ [Monitor(InterceptionMode.interceptionMode, LogDestination.logDestination)]
+    private MethodDeclarationSyntax[] GetMarkedFunctionBy(Compilation context)
     {
-        if (!IsAttribute(flagType))
-        {
-            return Array.Empty<MethodDeclarationSyntax>();
-        }
-
         IEnumerable<SyntaxNode> allNodes = context.SyntaxTrees.SelectMany(s => s.GetRoot().DescendantNodes());
         return allNodes
             .Where(d => d.IsKind(SyntaxKind.MethodDeclaration))
@@ -94,22 +92,45 @@ public static partial class Metrics
             .ToArray();
     }
 
-    private MetricData[] GetTargetAttributesFrom(IEnumerable<MethodDeclarationSyntax> allFunctions, Type flagType, Compilation context)
-    { 
+    private MetricData[] GetTargetAttributesFrom(IEnumerable<MethodDeclarationSyntax> allFunctions, Compilation context)
+    {
         return allFunctions.SelectMany(funcDef =>
         {
+            bool isMonitorFlag = false; 
             var semanticModel = context.GetSemanticModel(funcDef.SyntaxTree);
             return funcDef.AttributeLists
                 .SelectMany(x => x.Attributes)
-                .Where(attr => flagType.Name.StartsWith(attr.Name.ToString()))
-                .Select(attr => attr.ArgumentList.Arguments
-                                    .Select(arg => semanticModel
-                                                    .GetConstantValue(arg.Expression)
-                                                    .ToString())
-                                    .ToArray())
+                .Where(attr => {
+                    var attrName = attr.Name.ToString();
+                    return attrName == "Metrics" || attrName == "Monitor";
+                })
+                .Select(attr => {
+                    bool isMonitor = attr.Name.ToString() == "Monitor";
+                    var args = attr.ArgumentList.Arguments
+                                    .Select(arg => semanticModel.GetConstantValue(arg.Expression).ToString())
+                                    .ToArray();
+                    if (isMonitor)
+                    {
+                        Enum.TryParse<InterceptionMode>(args[0], out var firstArg);
+                        Enum.TryParse<LogDestination>(args[1], out var SecndArg);
+                        var targtArg = funcDef.Identifier.ToString();
+                        if(     firstArg is InterceptionMode.ExecutionTime or InterceptionMode.CallCount
+                            &&  SecndArg is LogDestination.Prometheus)
+                        {
+                            var prop = $"{targtArg}{firstArg}";
+                            var desc = $"{targtArg} {firstArg} Metrics";
+                            return new string[] { $"long", prop, desc };
+
+                        }
+                    } return Array.Empty<string>();
+                })
+                .Where(x => x.Length > 0)
                 .ToArray();
         })
-        .Select(args => new MetricData(args))
+        .Select(args =>
+        {
+            return new MetricData(args);
+        })
         .ToArray();
     }
 }

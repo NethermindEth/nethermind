@@ -25,7 +25,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Monitoring.Generator.Attributes;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -69,6 +68,7 @@ namespace Nethermind.Merge.Plugin
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
 
+        [Monitor(InterceptionMode.ExecutionTime, LogDestination.Console)]
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
         {
             if (await _locker.WaitAsync(_timeout))
