@@ -60,6 +60,7 @@ public class SnapServer: ISnapServer
 
     public byte[][]?  GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
     {
+        _logger.Info("GetTrieNodes");
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
         List<byte[]> response = new ();
@@ -103,6 +104,7 @@ public class SnapServer: ISnapServer
 
     public byte[][] GetByteCodes(Keccak[] requestedHashes, long byteLimit)
     {
+        _logger.Info("GetByteCodes");
         long currentByteCount = 0;
         List<byte[]> response = new ();
 
@@ -136,6 +138,8 @@ public class SnapServer: ISnapServer
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
     {
+        _logger.Info("GetAccountRanges");
+
         (Dictionary<byte[], byte[]>? requiredNodes, long  _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
             limitHash ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, isStorage: false);
         StateTree tree = new(_store, _logManager);
@@ -155,6 +159,7 @@ public class SnapServer: ISnapServer
 
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
     {
+        _logger.Info("GetStorageRanges");
         long responseSize = 0;
         StateTree tree = new(_store, _logManager);
         List <PathWithStorageSlot[]> responseNodes = new();
@@ -210,6 +215,7 @@ public class SnapServer: ISnapServer
 
     private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)
     {
+        _logger.Info("GetAccountByPath");
         byte[]? bytes = tree.Get(accountPath, rootHash);
         return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
     }
