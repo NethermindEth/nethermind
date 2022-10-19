@@ -165,6 +165,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Shandong (Archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c shandong_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Sokol": {
       "commandName": "Project",
       "commandLineArgs": "-c sokol -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
