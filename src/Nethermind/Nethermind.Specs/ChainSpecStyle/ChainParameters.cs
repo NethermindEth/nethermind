@@ -62,9 +62,13 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip2930Transition { get; set; }
         public long? Eip3198Transition { get; set; }
         public long? Eip3529Transition { get; set; }
-
         public long? Eip3541Transition { get; set; }
         public long? Eip3607Transition { get; set; }
+        public long? Eip3540Transition { get; set; }
+        public long? Eip3651Transition { get; set; }
+        public long? Eip3670Transition { get; set; }
+        public long? Eip3855Transition { get; set; }
+        public long? Eip3860Transition { get; set; }
 
         public UInt256 Eip1559BaseFeeInitialValue { get; set; }
 

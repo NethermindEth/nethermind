@@ -146,5 +146,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? TerminalPoWBlockNumber { get; set; }
 
         public long? Eip1153Transition { get; set; }
+        public long? Eip3540Transition { get; set; }
+        public long? Eip3651Transition { get; set; }
+        public long? Eip3670Transition { get; set; }
+        public long? Eip3855Transition { get; set; }
+        public long? Eip3860Transition { get; set; }
     }
 }
