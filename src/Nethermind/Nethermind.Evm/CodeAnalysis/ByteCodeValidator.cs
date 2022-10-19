@@ -48,9 +48,9 @@ namespace Nethermind.Evm.CodeAnalysis
                     ? header.CodeEndOffset
                     : machineCode.Length;
 
-            public static int CodeSize(Span<byte> machineCode)
-                => IsEOFCode(machineCode, out var header)
-                        ? header.CodeSize
-                        : machineCode.Length;
-        }
+        public static int CodeSize(Span<byte> machineCode)
+            => IsEOFCode(machineCode, out var header)
+                    ? header.CodeSize
+                    : machineCode.Length;
     }
+}
