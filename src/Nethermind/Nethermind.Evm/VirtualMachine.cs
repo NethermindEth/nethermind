@@ -2123,7 +2123,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            int adjustedProgramCounter = programCounter - 1; 
+                            int adjustedProgramCounter = programCounter - 1;
                             stack.PushUInt32(adjustedProgramCounter);
                             break;
                         }

@@ -13,7 +13,7 @@ namespace Nethermind.Evm
 {
     enum SectionDividor : byte
     {
-        Terminator  = 0,
+        Terminator = 0,
         CodeSection = 1,
         DataSection = 2,
     }
@@ -37,7 +37,7 @@ namespace Nethermind.Evm
         {
             get
             {
-                if(_codeStartOffset is null)
+                if (_codeStartOffset is null)
                     _codeStartOffset = DataSize == 0 ? 7 : 10;
                 return _codeStartOffset.Value;
             }
@@ -67,14 +67,14 @@ namespace Nethermind.Evm
         private const byte EofMagicLength = 2;
         private const byte EofFormatByte = 0xEF;
         private const byte EofFormatDiff = 0x00;
-        private byte[] EofMagic => new byte[]{ EofFormatByte, EofFormatDiff };
+        private byte[] EofMagic => new byte[] { EofFormatByte, EofFormatDiff };
 
         public bool HasEOFFormat(Span<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
         public bool ExtractHeader(Span<byte> code, out EofHeader header)
         {
             if (!HasEOFFormat(code))
             {
-                if(LoggingEnabled && _logger.IsTrace)
+                if (LoggingEnabled && _logger.IsTrace)
                 {
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EofMagic.ToHexString(true)} ");
                 }
@@ -89,12 +89,12 @@ namespace Nethermind.Evm
             {
                 case 1:
                     return HandleEOF1(code, out header, codeLen, ref i);
-                default: 
+                default:
                     if (LoggingEnabled && _logger.IsTrace)
                     {
                         _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {code[i]}");
                     }
-                    header = null;  return false;
+                    header = null; return false;
             }
         }
 
