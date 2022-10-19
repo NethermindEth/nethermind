@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
-            PathGroup defaultValue = new PathGroup() {Group = Array.Empty<byte[]>()};
+            PathGroup defaultValue = new PathGroup() { Group = Array.Empty<byte[]>() };
             message.Paths = stream.DecodeArray(DecodeGroup, defaultElement: defaultValue);
 
             message.Bytes = stream.DecodeLong();
@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathGroup DecodeGroup(RlpStream stream)
         {
             PathGroup group = new PathGroup();
-            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: new byte[] {});
+            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: new byte[] { });
 
             return group;
         }

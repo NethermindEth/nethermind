@@ -118,16 +118,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void ReportIn(MessageBase msg)
         {
-            if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
-            {
-                ReportIn(msg.ToString());
-            }
+            ReportIn(msg.ToString());
         }
 
         protected void ReportIn(string messageInfo)
         {
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {messageInfo}");
+            Logger.Info($"OUT {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo);

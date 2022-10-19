@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (batch == null)
             {
-                if (_logger.IsError) _logger.Error("Received empty batch as a response");
+                _logger.Info("Received empty batch as a response");
                 return SyncResponseHandlingResult.InternalError;
             }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _logger.Trace($"SNAP - timeout {peer}");
+                    _logger.Info($"SNAP - timeout {peer}");
                     return SyncResponseHandlingResult.LesserQuality;
                 }
             }
@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     if (allLastFailures == peerLastFailures)
                                     {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
+                                        _logger.Info($"SNAP - peer to be punished:{peer}");
                                         return SyncResponseHandlingResult.LesserQuality;
                                     }
 

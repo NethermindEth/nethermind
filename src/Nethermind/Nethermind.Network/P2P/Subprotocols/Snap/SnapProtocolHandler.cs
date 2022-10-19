@@ -101,7 +101,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
-                    if (!ServingEnabled) break;
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Logger.Info(
+                                $"Peer disconnected because of requesting Snap data (GetAccountRange). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
                     ReportIn(getAccountRangeMessage);
                     Handle(getAccountRangeMessage);
@@ -112,7 +118,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
-                    if (!ServingEnabled) break;
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Logger.Info(
+                                $"Peer disconnected because of requesting Snap data (GetStorageRanges). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                     ReportIn(getStorageRangesMessage);
                     Handle(getStorageRangesMessage);
@@ -123,7 +135,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
-                    if (!ServingEnabled) break;
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Logger.Info(
+                                $"Peer disconnected because of requesting Snap data (GetByteCodes). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
                     ReportIn(getByteCodesMessage);
                     Handle(getByteCodesMessage);
@@ -134,7 +152,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    if (!ServingEnabled) break;
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Logger.Info(
+                                $"Peer disconnected because of requesting Snap data (GetTrieNodes). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage);
                     Handle(getTrieNodesMessage);
@@ -220,7 +244,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             AccountRange? accountRange = getAccountRangeMessage.AccountRange;
             (PathWithAccount[]? ranges, byte[][]? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
                 accountRange.LimitHash, getAccountRangeMessage.ResponseBytes);
-            AccountRangeMessage? response = new() {Proofs = proofs, PathsWithAccounts = ranges};
+            AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
             return response;
         }
         protected StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage)
@@ -228,7 +252,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
             (PathWithStorageSlot[][]? ranges, byte[][]? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes);
-            StorageRangeMessage? response = new() {Proofs = proofs, Slots = ranges};
+            StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
         }
         protected ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage)
