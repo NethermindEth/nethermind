@@ -38,19 +38,19 @@ public class CliConsole : ICliConsole
     {
         _terminal = PrepareConsoleForTerminal();
 
-        Colorful.Console.WriteLine("**********************************************");
-        Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
-        Colorful.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
-        Colorful.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
-        Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("powered by:");
-        Colorful.Console.WriteLine("  https://github.com/sebastienros/jint");
-        Colorful.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
-        Colorful.Console.WriteLine("  https://github.com/tonerdo/readline");
-        Colorful.Console.WriteLine();
-        Colorful.Console.WriteLine("**********************************************");
-        Colorful.Console.WriteLine();
+        System.Console.WriteLine("**********************************************");
+        System.Console.WriteLine();
+        System.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
+        System.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
+        System.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
+        System.Console.WriteLine();
+        System.Console.WriteLine("powered by:");
+        System.Console.WriteLine("  https://github.com/sebastienros/jint");
+        System.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
+        System.Console.WriteLine("  https://github.com/tonerdo/readline");
+        System.Console.WriteLine();
+        System.Console.WriteLine("**********************************************");
+        System.Console.WriteLine();
     }
 
     protected Terminal GetTerminal()
@@ -61,7 +61,7 @@ public class CliConsole : ICliConsole
                 RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? Terminal.MacBash : Terminal.Unknown;
         }
 
-        var title = Colorful.Console.Title.ToLowerInvariant();
+        var title = System.Console.Title.ToLowerInvariant();
         foreach (var (key, value) in Terminals)
         {
             if (title.Contains(key))
@@ -78,73 +78,73 @@ public class CliConsole : ICliConsole
         _terminal = GetTerminal();
         if (_terminal != Terminal.Powershell)
         {
-            Colorful.Console.ResetColor();
+            System.Console.ResetColor();
         }
 
         if (_terminal != Terminal.Cygwin)
         {
-            Colorful.Console.Clear();
+            System.Console.Clear();
         }
         return _terminal;
     }
 
     public virtual void WriteException(Exception e)
     {
-        Colorful.Console.WriteLine(e.ToString());
+        System.Console.WriteLine(e.ToString());
     }
 
     public virtual void WriteErrorLine(string errorMessage)
     {
-        Colorful.Console.WriteLine(errorMessage);
+        System.Console.WriteLine(errorMessage);
     }
 
     public virtual void WriteLine(object objectToWrite)
     {
-        Colorful.Console.WriteLine(objectToWrite.ToString());
+        System.Console.WriteLine(objectToWrite.ToString());
     }
 
     public virtual void Write(object objectToWrite)
     {
-        Colorful.Console.Write(objectToWrite.ToString());
+        System.Console.Write(objectToWrite.ToString());
     }
 
     public virtual void WriteCommentLine(object objectToWrite)
     {
-        Colorful.Console.WriteLine(objectToWrite.ToString());
+        System.Console.WriteLine(objectToWrite.ToString());
     }
 
     public virtual void WriteLessImportant(object objectToWrite)
     {
-        Colorful.Console.Write(objectToWrite.ToString());
+        System.Console.Write(objectToWrite.ToString());
     }
 
     public virtual void WriteKeyword(string keyword)
     {
-        Colorful.Console.Write(keyword);
+        System.Console.Write(keyword);
     }
 
     public virtual void WriteInteresting(string interesting)
     {
-        Colorful.Console.WriteLine(interesting);
+        System.Console.WriteLine(interesting);
     }
 
     public virtual void WriteLine()
     {
-        Colorful.Console.WriteLine();
+        System.Console.WriteLine();
     }
 
     public virtual void WriteGood(string goodText)
     {
-        Colorful.Console.WriteLine(goodText);
+        System.Console.WriteLine(goodText);
     }
 
     public virtual void WriteString(object result)
     {
-        Colorful.Console.WriteLine(result);
+        System.Console.WriteLine(result);
     }
 
     public void ResetColor()
     {
-        Colorful.Console.ResetColor();
+        System.Console.ResetColor();
     }
 }
