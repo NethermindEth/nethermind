@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
 
-                MergeConfig? mergeConfig = new() { Enabled = true };
+                MergeConfig? mergeConfig = new() { };
                 if (WithTTD(synchronizerType))
                 {
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();

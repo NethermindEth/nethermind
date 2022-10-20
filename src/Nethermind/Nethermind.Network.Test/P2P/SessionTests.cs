@@ -308,6 +308,23 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             session.InitiateDisconnect(DisconnectReason.Other);
             Assert.True(wasCalled);
+            Assert.True(session.IsClosing);
+        }
+
+        [Test]
+        public void Do_not_disconnects_after_initiating_disconnect_on_static_node()
+        {
+            bool wasCalled = false;
+            Node node = new Node(TestItem.PublicKeyA, "127.0.0.1", 8545);
+            node.IsStatic = true;
+            Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.Disconnecting += (s, e) => wasCalled = true;
+
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
+            Assert.False(wasCalled);
+            Assert.False(session.IsClosing);
         }
 
         [Test]

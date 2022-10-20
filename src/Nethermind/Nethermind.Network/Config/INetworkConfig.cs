@@ -82,7 +82,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "", Description = "Bootnodes")]
         string Bootnodes { get; set; }
 
-        [ConfigItem(DefaultValue = "0", Description = "[TECHNICAL] Set P2P handler thread count. Set this to a low number such as 1 or 2 if you have too slow block processing during old bodies or old receipts sync which may cause missed attestation. Defaults to processor count - 2.")]
-        int P2PHandlerThreadCount { get; set; }
+        [ConfigItem(DefaultValue = "false", Description = "Enable automatic port forwarding via UPnP")]
+        bool EnableUPnP { get; set; }
     }
 }
