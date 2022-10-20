@@ -612,22 +612,23 @@ public partial class EthRpcModule : IEthRpcModule
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        int id = (int)filterId;
-
         try
         {
-            if (_blockchainBridge.FilterExists(id))
+            int id;
+            if (filterId > int.MaxValue || !_blockchainBridge.FilterExists(id = (int)filterId))
+            {
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            }
+            else
             {
                 IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(id, cancellationToken);
                 return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
             }
-            else
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
         }
         catch (ResourceNotFoundException exception)
         {
+            cancellationTokenSource.Dispose();
             return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
         }
     }
