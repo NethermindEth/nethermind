@@ -490,7 +490,7 @@ public partial class EthRpcModuleTests
         test.BlockTree.BlockAddedToMain += handleNewBlock;
 
         await test.AddBlock(createCodeTx);
-        
+
         string getLogsSerialized = test.TestEthRpc("eth_getLogs", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
         var newFilterResp = RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
