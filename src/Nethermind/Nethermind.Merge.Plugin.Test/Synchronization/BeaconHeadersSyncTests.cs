@@ -179,7 +179,7 @@ public class BeaconHeadersSyncTests
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, ctx.SyncConfig, ctx.BlockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
@@ -216,7 +216,7 @@ public class BeaconHeadersSyncTests
             BlockTree = blockTree,
             Report = report,
             SyncConfig = syncConfig,
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;

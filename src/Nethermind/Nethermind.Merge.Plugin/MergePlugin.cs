@@ -66,8 +66,14 @@ namespace Nethermind.Merge.Plugin
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
-        public virtual bool MergeEnabled => _mergeConfig.Enabled;
+        public virtual bool MergeEnabled => _mergeConfig.Enabled &&
+                                            !IsPreMergeConsensusAuRa(_api); // AuRa has dedicated plugin AuRaMergePlugin
+        protected bool IsPreMergeConsensusAuRa(INethermindApi api)
+        {
+            return api.ChainSpec?.SealEngineType == SealEngineType.AuRa;
+        }
 
+        // Don't remove default constructor. It is used by reflection when we're loading plugins
         public MergePlugin() { }
 
         public virtual Task Init(INethermindApi nethermindApi)
@@ -155,6 +161,9 @@ namespace Nethermind.Merge.Plugin
 
         private void EnsureReceiptAvailable()
         {
+            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
+                return;
+
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (syncConfig.FastSync)
             {
@@ -169,6 +178,9 @@ namespace Nethermind.Merge.Plugin
 
         private void EnsureJsonRpcUrl()
         {
+            if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
+                return;
+
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
@@ -208,6 +220,11 @@ namespace Nethermind.Merge.Plugin
                     "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/nethermind/ethereum-client/engine-jsonrpc-configuration-examples",
                     ExitCodes.NoEngineModule);
             }
+        }
+
+        private bool HasTtd()
+        {
+            return _api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
         }
 
         public Task InitNetworkProtocol()
@@ -446,8 +463,6 @@ namespace Nethermind.Merge.Plugin
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        public string SealEngineType => "Eth2Merge";
 
         public bool MustInitialize { get => true; }
     }

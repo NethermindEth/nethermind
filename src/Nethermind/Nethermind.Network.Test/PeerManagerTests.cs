@@ -225,6 +225,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
+        [NonParallelizable]
         public async Task Will_fill_up_over_and_over_again_on_disconnects()
         {
             await using Context ctx = new();
@@ -232,13 +233,23 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            int currentCount = 0;
-            for (int i = 0; i < 10; i++)
+            TimeSpan prevConnectingDelay = StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting];
+            StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = TimeSpan.Zero;
+
+            try
             {
-                currentCount += 25;
-                await Task.Delay(_travisDelayLong);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
-                ctx.DisconnectAllSessions();
+                int currentCount = 0;
+                for (int i = 0; i < 10; i++)
+                {
+                    currentCount += 25;
+                    await Task.Delay(_travisDelayLong);
+                    Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                    ctx.DisconnectAllSessions();
+                }
+            }
+            finally
+            {
+                StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = prevConnectingDelay;
             }
         }
 
