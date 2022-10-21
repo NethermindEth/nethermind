@@ -27,7 +27,8 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
     private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly TimeSpan _timeout;
 
-    public BlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout)
+    public BlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger,
+        TimeSpan timeout)
     {
         _blockProductionTrigger = blockProductionTrigger;
         _timeout = timeout;
@@ -37,6 +38,6 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
-        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, startDateTime);
+        TimeSpan startTimeStamp) =>
+        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, startTimeStamp);
 }

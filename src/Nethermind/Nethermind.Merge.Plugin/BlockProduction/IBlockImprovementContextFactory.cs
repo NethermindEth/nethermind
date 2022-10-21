@@ -27,5 +27,5 @@ public interface IBlockImprovementContextFactory
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime);
+        TimeSpan startTimeStamp);
 }

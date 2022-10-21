@@ -43,13 +43,13 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        TimeSpan startTimeStamp)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
-        StartDateTime = startDateTime;
+        StartTimeStamp = startTimeStamp;
         ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
 
@@ -76,7 +76,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public Task<Block?> ImprovementTask { get; }
     public Block? CurrentBestBlock { get; private set; }
     public bool Disposed { get; private set; }
-    public DateTimeOffset StartDateTime { get; }
+    public TimeSpan StartTimeStamp { get; }
 
     public void Dispose()
     {
