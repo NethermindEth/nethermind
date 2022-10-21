@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nethermind.DotNetty.Buffers" Version="0.7.5-preview.1" />
+      <PackageReference Include="Nethermind.DotNetty.Buffers" Version="1.0.0" />
     </ItemGroup>
 
     <ItemGroup>
