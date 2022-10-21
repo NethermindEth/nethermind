@@ -614,8 +614,8 @@ public partial class EthRpcModule : IEthRpcModule
 
         try
         {
-            int id;
-            if (filterId > int.MaxValue || !_blockchainBridge.FilterExists(id = (int)filterId))
+            int id = filterId <= int.MaxValue ? (int)filterId : -1;
+            if (filterId < 0 || !_blockchainBridge.FilterExists(id))
             {
                 cancellationTokenSource.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
