@@ -43,6 +43,13 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
-        new BoostBlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime);
+        TimeSpan startTimeStamp) =>
+        new BoostBlockImprovementContext(currentBestBlock,
+            _blockProductionTrigger,
+            _timeout,
+            parentHeader,
+            payloadAttributes,
+            _boostRelay,
+            _stateReader,
+            startTimeStamp);
 }

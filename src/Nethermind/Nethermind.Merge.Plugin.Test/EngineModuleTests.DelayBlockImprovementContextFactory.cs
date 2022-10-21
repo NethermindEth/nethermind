@@ -41,8 +41,14 @@ public partial class EngineModuleTests
             _delay = delay;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
-            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, TimeSpan startTimeStamp) =>
+            new DelayBlockImprovementContext(currentBestBlock,
+                _productionTrigger,
+                _timeout,
+                parentHeader,
+                payloadAttributes,
+                _delay,
+                startTimeStamp);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
@@ -55,11 +61,11 @@ public partial class EngineModuleTests
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
-            DateTimeOffset startDateTime)
+            TimeSpan startTimeStamp)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
             CurrentBestBlock = currentBestBlock;
-            StartDateTime = startDateTime;
+            StartTimeStamp = startTimeStamp;
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
 
@@ -83,7 +89,7 @@ public partial class EngineModuleTests
         public Task<Block?> ImprovementTask { get; }
         public Block? CurrentBestBlock { get; private set; }
         public bool Disposed { get; private set; }
-        public DateTimeOffset StartDateTime { get; }
+        public TimeSpan StartTimeStamp { get; }
 
         public void Dispose()
         {

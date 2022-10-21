@@ -41,9 +41,13 @@ public partial class EngineModuleTests
             _blockImprovementContextFactory = blockImprovementContextFactory;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime)
+        public IBlockImprovementContext StartBlockImprovementContext(
+            Block currentBestBlock,
+            BlockHeader parentHeader,
+            PayloadAttributes payloadAttributes,
+            TimeSpan startTimeStamp)
         {
-            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
+            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startTimeStamp);
             CreatedContexts.Add(blockImprovementContext);
             Task.Run(() => ImprovementStarted?.Invoke(this, new ImprovementStartedEventArgs(blockImprovementContext)));
             return blockImprovementContext;
