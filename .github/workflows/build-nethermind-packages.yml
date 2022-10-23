@@ -3,8 +3,8 @@ name: '[BUILD] Nethermind packages'
 on: 
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'The version tag'
+      version:
+        description: 'Version'
         required: true
 
 jobs:
@@ -29,7 +29,6 @@ jobs:
       with:
         submodules: recursive
         path: nethermind
-        ref: ${{ github.event.inputs.tag }}
     - name: Checking out Nethermind Launcher repository
       uses: actions/checkout@v3
       with:
@@ -61,7 +60,7 @@ jobs:
         commit_hash=$(git describe --always --exclude=* --abbrev=40)
         echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
-        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
+        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.version }} $commit_hash $build_timestamp
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Building Launcher
@@ -73,7 +72,7 @@ jobs:
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
-      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
+      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.version }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
       name: Uploading Nethermind darwin package
       with:
