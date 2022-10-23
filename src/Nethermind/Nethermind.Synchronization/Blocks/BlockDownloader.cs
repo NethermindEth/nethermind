@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly Random _rnd = new();
 
         private bool _cancelDueToBetterPeer;
-        private AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
+        protected AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
         protected bool HasBetterPeer => _allocationWithCancellation.Cancellation.IsCancellationRequested;
 
         protected SyncBatchSize _syncBatchSize;
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
-        private PeerInfo? _previousBestPeer = null;
+        protected PeerInfo? _previousBestPeer = null;
 
         protected override async Task Dispatch(
             PeerInfo bestPeer,
@@ -646,7 +646,12 @@ namespace Nethermind.Synchronization.Blocks
 
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        private void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
+        protected void InvokeEvent(SyncEventArgs args)
+        {
+            SyncEvent?.Invoke(this, args);
+        }
+
+        protected void HandleSyncRequestResult(Task<long> task, PeerInfo? peerInfo)
         {
             switch (task)
             {
@@ -675,8 +680,8 @@ namespace Nethermind.Synchronization.Blocks
                     if (peerInfo is not null) // fix this for node data sync
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.DisconnectRequested, reason);
-                        // redirect sync event from block downloader here (move this one inside)
-                        SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Failed));
+                        // redirect sync event from block downloader here
+                        InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Failed));
                     }
 
                     break;
@@ -690,7 +695,7 @@ namespace Nethermind.Synchronization.Blocks
                         if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
                         if (peerInfo != null) // fix this for node data sync
                         {
-                            SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
+                            InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
                         }
                     }
 
@@ -699,7 +704,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed with progress {t.Result}.");
                     if (peerInfo != null) // fix this for node data sync
                     {
-                        SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
+                        InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
                     }
 
                     break;
@@ -784,7 +789,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private struct AllocationWithCancellation : IDisposable
+        protected struct AllocationWithCancellation : IDisposable
         {
             public AllocationWithCancellation(SyncPeerAllocation allocation, CancellationTokenSource cancellation)
             {

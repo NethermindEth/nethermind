@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
-                // EnsureReceiptAvailable();
+                EnsureReceiptAvailable();
 
                 _blockCacheService = new BlockCacheService();
                 _poSSwitcher = new PoSSwitcher(
@@ -167,7 +167,8 @@ namespace Nethermind.Merge.Plugin
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (syncConfig.FastSync)
             {
-                if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
+                if (!syncConfig.NoValidatorLightClient &&
+                    (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync))
                 {
                     throw new InvalidConfigurationException(
                         "Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync",
