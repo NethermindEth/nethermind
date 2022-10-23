@@ -68,7 +68,7 @@
     "registrar": "0x6000000000000000000000000000000000000000",
     "transactionPermissionContract": "0x4000000000000000000000000000000000000001",
     "transactionPermissionContractTransition": "0x0",
-    "terminalTotalDifficulty": "196182993000928652340539362422637326616871822"
+    "terminalTotalDifficulty": "231707791542740786049188744689299064356246512"
   },
   "genesis": {
     "seal": {
