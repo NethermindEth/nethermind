@@ -26,4 +26,5 @@ public static class ExitCodes
     public const int NoEngineModule = 100;
 
     public const int NoDownloadOldReceiptsOrBlocks = 101;
+    public const int TooLongExtraData = 102;
 }
