@@ -7,9 +7,9 @@ namespace Nethermind.Core.Timers;
 public static class FunctionalTimer
 {
     /// <summary>
-    /// Simple util to periodically run something. Interval does not include the time taken by
-    /// the action itself, so not accurate.
-    /// Blocks until cancellation token is cancelled, swallows `TaskCancelledException` (even by action) by design.
+    /// Simple util to periodically run something. Interval does not include the time taken by the action itself, so
+    /// not accurate. Blocks until cancellation token is cancelled, swallows `TaskCancelledException` (even by action)
+    /// by design.
     /// </summary>
     /// <param name="interval"></param>
     /// <param name="cancellationToken"></param>
