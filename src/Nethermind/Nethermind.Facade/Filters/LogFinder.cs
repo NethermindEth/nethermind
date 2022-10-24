@@ -63,9 +63,6 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
-            if (filter == null)
-                return Enumerable.Empty<FilterLog>();
-
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
                 _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 

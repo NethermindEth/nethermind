@@ -615,14 +615,14 @@ public partial class EthRpcModule : IEthRpcModule
         try
         {
             int id = filterId <= int.MaxValue ? (int)filterId : -1;
-            if (filterId < 0 || !_blockchainBridge.FilterExists(id))
+            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
+            if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
             }
             else
             {
-                IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(id, cancellationToken);
                 return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
             }
         }
