@@ -15,7 +15,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private static EvmObjectFormat? EofFormatChecker = new EvmObjectFormat();
         public static void Initialize(ILogger logger = null)
         {
-            if (EofFormatChecker is null)
+            if (EofFormatChecker is not null)
                 EofFormatChecker = new EvmObjectFormat(logger);
         }
 

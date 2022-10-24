@@ -1,9 +1,5 @@
-using System.Net;
-using MathGmp.Native;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Open.Nat;
@@ -18,6 +14,7 @@ public class UPnPPlugin : INethermindPlugin
 
     // Routers tend to clean mapping, so we need to periodically
     private readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
+    private PeriodicTimer? _timer = null;
     private CancellationTokenSource _cancellationTokenSource = new();
     private INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
@@ -37,6 +34,8 @@ public class UPnPPlugin : INethermindPlugin
 
     private async Task RunRefreshLoop()
     {
+        _timer = new PeriodicTimer(ExpirationRate);
+
         do
         {
             try
@@ -48,7 +47,8 @@ public class UPnPPlugin : INethermindPlugin
                 if (_logger.IsWarn) _logger.Error("Unable to setup UPnP mapping.", exception);
             }
 
-            if (await _cancellationTokenSource.Token.WaitHandle.WaitOneAsync(ExpirationRate, CancellationToken.None))
+            await _timer.WaitForNextTickAsync(_cancellationTokenSource.Token);
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 break;
             }
@@ -59,7 +59,7 @@ public class UPnPPlugin : INethermindPlugin
     {
         if (_logger.IsInfo) _logger.Info("Setting up port forwarding via UPnP...");
 
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
         cts.CancelAfter(TimeSpan.FromSeconds(10));
         NatDiscoverer discoverer = new();
         NatDevice device;
@@ -103,6 +103,8 @@ public class UPnPPlugin : INethermindPlugin
     public ValueTask DisposeAsync()
     {
         _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
+        _timer?.Dispose();
         return ValueTask.CompletedTask;
     }
 }

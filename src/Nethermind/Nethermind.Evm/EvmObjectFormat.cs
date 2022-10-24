@@ -22,6 +22,7 @@ namespace Nethermind.Evm
         #region public construction properties
         public UInt16 CodeSize { get; set; }
         public UInt16 DataSize { get; set; }
+        public byte Version { get; set; } 
         #endregion
 
         #region Equality methods
@@ -38,7 +39,9 @@ namespace Nethermind.Evm
             get
             {
                 if (_codeStartOffset is null)
-                    _codeStartOffset = DataSize == 0 ? 7 : 10;
+                    _codeStartOffset = DataSize == 0
+                        ? 7     // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
+                        : 10;   // MagicLength + Version + 2 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 2 * (1 + 2) + 1 = 10 
                 return _codeStartOffset.Value;
             }
         }
@@ -54,7 +57,6 @@ namespace Nethermind.Evm
         }
         #endregion
     }
-
 
     public class EvmObjectFormat
     {
@@ -74,7 +76,7 @@ namespace Nethermind.Evm
         {
             if (!HasEOFFormat(code))
             {
-                if (LoggingEnabled && _logger.IsTrace)
+                if (LoggingEnabled)
                 {
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EofMagic.ToHexString(true)} ");
                 }
@@ -84,13 +86,19 @@ namespace Nethermind.Evm
             int codeLen = code.Length;
 
             int i = EofMagicLength;
-            int EOFVersion = code[i++];
+            byte EOFVersion = code[i++];
+
+            header = new EofHeader
+            {
+                Version = EOFVersion
+            };
+
             switch (EOFVersion)
             {
                 case 1:
-                    return HandleEOF1(code, out header, codeLen, ref i);
+                    return HandleEOF1(code, ref header, codeLen, ref i);
                 default:
-                    if (LoggingEnabled && _logger.IsTrace)
+                    if (LoggingEnabled)
                     {
                         _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {code[i]}");
                     }
@@ -98,12 +106,9 @@ namespace Nethermind.Evm
             }
         }
 
-        private bool HandleEOF1(Span<byte> code, out EofHeader header, int codeLen, ref int i)
+        private bool HandleEOF1(Span<byte> code, ref EofHeader header, int codeLen, ref int i)
         {
             bool continueParsing = true;
-            header = new EofHeader
-            {
-            };
 
             while (i < codeLen && continueParsing)
             {
@@ -120,11 +125,20 @@ namespace Nethermind.Evm
                     case SectionDividor.CodeSection:
                         {
                             // code-section must come first and there can be only one data-section
-                            if (header.CodeSize > 0 || i + 2 > codeLen)
+                            if (header.CodeSize > 0)
                             {
-                                if (LoggingEnabled && _logger.IsTrace)
+                                if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : container must have exactly 1 CodeSection but found more");
+                                }
+                                header = null; return false;
+                            }
+
+                            if(i + 2 > codeLen)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : container code incomplete, failed parsing code section");
                                 }
                                 header = null; return false;
                             }
@@ -134,7 +148,7 @@ namespace Nethermind.Evm
 
                             if (header.CodeSize == 0) // code section must be non-empty (i.e : size > 0)
                             {
-                                if (LoggingEnabled && _logger.IsTrace)
+                                if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : CodeSection size must be strictly bigger than 0 but found 0");
                                 }
@@ -149,17 +163,26 @@ namespace Nethermind.Evm
                             // data-section must come after code-section and there can be only one data-section
                             if (header.CodeSize == 0)
                             {
-                                if (LoggingEnabled && _logger.IsTrace)
+                                if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
                                 }
                                 header = null; return false;
                             }
-                            if (header.DataSize != 0 || i + 2 > codeLen)
+                            if (header.DataSize != 0)
                             {
-                                if (LoggingEnabled && _logger.IsTrace)
+                                if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
+                                }
+                                header = null; return false;
+                            }
+
+                            if (i + 2 > codeLen)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : container code incomplete, failed parsing data section");
                                 }
                                 header = null; return false;
                             }
@@ -169,7 +192,7 @@ namespace Nethermind.Evm
 
                             if (header.DataSize == 0) // if declared data section must be non-empty
                             {
-                                if (LoggingEnabled && _logger.IsTrace)
+                                if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : DataSection size must be strictly bigger than 0 but found 0");
                                 }
@@ -181,7 +204,7 @@ namespace Nethermind.Evm
                         }
                     default: // if section kind is anything beside a section-limiter or a terminator byte we return false
                         {
-                            if (LoggingEnabled && _logger.IsTrace)
+                            if (LoggingEnabled)
                             {
                                 _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
                             }
@@ -194,7 +217,7 @@ namespace Nethermind.Evm
             var calculatedCodeLen = (int)header.CodeSize + (int)header.DataSize;
             if (calculatedCodeLen != contractBody.Length)
             {
-                if (LoggingEnabled && _logger.IsTrace)
+                if (LoggingEnabled)
                 {
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 }
@@ -219,7 +242,7 @@ namespace Nethermind.Evm
                     // validate opcode
                     if (!Enum.IsDefined(opcode.Value))
                     {
-                        if (LoggingEnabled && _logger.IsTrace)
+                        if (LoggingEnabled)
                         {
                             _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                         }
@@ -231,7 +254,7 @@ namespace Nethermind.Evm
                         i += code[i] - (int)Instruction.PUSH1 + 1;
                         if (i >= endOffset)
                         {
-                            if (LoggingEnabled && _logger.IsTrace)
+                            if (LoggingEnabled)
                             {
                                 _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                             }
@@ -251,7 +274,7 @@ namespace Nethermind.Evm
                     case Instruction.SELFDESTRUCT: // might be retired and replaced with SELLALL?
                         return true;
                     default:
-                        if (LoggingEnabled && _logger.IsTrace)
+                        if (LoggingEnabled)
                         {
                             _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                         }

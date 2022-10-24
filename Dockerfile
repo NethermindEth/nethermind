@@ -4,12 +4,14 @@ ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG BUILDPLATFORM
+ARG BUILD_TIMESTAMP
+ARG COMMIT_HASH
 
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
+    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
+    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-jammy
@@ -31,8 +33,7 @@ WORKDIR /nethermind
 
 COPY --from=build /out .
 
-ARG GIT_COMMIT=unspecified
-LABEL git_commit=$GIT_COMMIT
+LABEL git_commit=$COMMIT_HASH
 
 EXPOSE 8545
 EXPOSE 30303
