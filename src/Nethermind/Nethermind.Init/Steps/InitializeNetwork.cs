@@ -278,7 +278,7 @@ public class InitializeNetwork : IStep
     }
 
     protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+        => new(syncProgressResolver, _api.ConfigProvider, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
     private Task StartDiscovery()
     {

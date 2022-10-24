@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -59,6 +60,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private const int StickyStateNodesDelta = 32;
 
         private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly IConfigProvider _configurationProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
@@ -90,6 +92,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public MultiSyncModeSelector(
             ISyncProgressResolver syncProgressResolver,
+            IConfigProvider configProvider,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
@@ -103,6 +106,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
+            _configurationProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _needToWaitForHeaders = needToWaitForHeaders;
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
@@ -113,6 +117,16 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
+
+            Changed += (src, args) =>
+            {
+                Report.CurrentStage.Add(args.Current);
+                var progress = new Report.ProgressStage
+                {
+                    SyncMode = args.Current,
+                    Current = _pivotNumber,
+                };
+            };
 
             _ = StartAsync(_cancellation.Token);
         }

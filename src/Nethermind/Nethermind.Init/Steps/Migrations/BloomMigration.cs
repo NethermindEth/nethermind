@@ -94,7 +94,6 @@ namespace Nethermind.Init.Steps.Migrations
             if (CanMigrate(e.Current))
             {
                 if (_api.SyncModeSelector == null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
-
                 RunBloomMigration();
                 _api.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
             }
