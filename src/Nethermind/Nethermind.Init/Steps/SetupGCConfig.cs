@@ -8,7 +8,7 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(MigrateConfigs))]
-public class SetupGCConfig: IStep
+public class SetupGCConfig : IStep
 {
     IInitConfig _initConfig;
     private ILogger _logger;
@@ -21,28 +21,31 @@ public class SetupGCConfig: IStep
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        if (_initConfig.TriggerGCIntervalSec == null)
+        if (_initConfig.GCMemoryPressureHintMb != 0)
         {
-            return Task.CompletedTask;
+            GC.AddMemoryPressure(_initConfig.GCMemoryPressureHintMb * 1024);
         }
 
-        // Not blocking to run in background
-#pragma warning disable CS4014
-        FunctionalTimer.RunEvery(TimeSpan.FromSeconds((double)_initConfig.TriggerGCIntervalSec!), cancellationToken, (token =>
-#pragma warning restore CS4014
+        if (_initConfig.TriggerGCIntervalSec != null)
         {
-            GCMemoryInfo memoryInfo = GC.GetGCMemoryInfo();
+            // Not blocking to run in background
+    #pragma warning disable CS4014
+            FunctionalTimer.RunEvery(TimeSpan.FromSeconds((double)_initConfig.TriggerGCIntervalSec!), cancellationToken, (token =>
+    #pragma warning restore CS4014
+            {
+                GCMemoryInfo memoryInfo = GC.GetGCMemoryInfo();
 
-            if (memoryInfo.HeapSizeBytes > _initConfig.TriggerGCMinHeapMb * 1000)
-            {
-                _logger.Info($"Triggering GC");
-                GC.Collect();
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not triggering GC as threshold not met. Heap: {memoryInfo.HeapSizeBytes}, Threshold: {_initConfig.TriggerGCMinHeapMb * 1000}");
-            }
-        }));
+                if (memoryInfo.HeapSizeBytes > _initConfig.TriggerGCMinHeapMb * 1024)
+                {
+                    _logger.Info($"Triggering GC");
+                    GC.Collect();
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Not triggering GC as threshold not met. Heap: {memoryInfo.HeapSizeBytes}, Threshold: {_initConfig.TriggerGCMinHeapMb * 1000}");
+                }
+            }));
+        }
 
         return Task.CompletedTask;
     }

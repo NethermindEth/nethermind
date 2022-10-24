@@ -45,6 +45,7 @@ namespace Nethermind.Api
         public long? MemoryHint { get; set; }
         public long? TriggerGCIntervalSec { get; set; }
         public long TriggerGCMinHeapMb { get; set; } = 64000;
+        public long GCMemoryPressureHintMb { get; set; } = 0;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

@@ -89,6 +89,9 @@ namespace Nethermind.Api
 
         [ConfigItem(Description = "[TECHNICAL] Used together with TriggerGCIntervalSec. Specify minimum heap size required to trigger GC.", DefaultValue = "64000")]
         long TriggerGCMinHeapMb { get; set; }
+
+        [ConfigItem(Description = "[TECHNICAL] Specify hint to GC of an unmanaged memory pressure. This is useful to prevent GC from assuming all RAM can be used such as when running validator in the same VM.", DefaultValue = "0")]
+        long GCMemoryPressureHintMb { get; set; }
     }
 
     public enum DiagnosticMode
