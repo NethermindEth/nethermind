@@ -309,7 +309,7 @@ namespace Nethermind.Facade
                 filterLogs = _logFinder.FindLogs(filter, cancellationToken);
 
             return filter != null;
-        }            
+        }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object? address = null, IEnumerable<object>? topics = null)
