@@ -67,8 +67,8 @@ jobs:
         cd nethermind/
         build_timestamp=$(date '+%s')
         commit_hash=$(git describe --always --exclude=* --abbrev=40)
-        echo "::set-output name=BUILD_TIMESTAMP::$build_timestamp"
-        echo "::set-output name=COMMIT_HASH::$commit_hash"
+        echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
+        echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
         ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
@@ -122,8 +122,8 @@ jobs:
       OSX_ARM64_RELEASE: nethermind-osx-arm64
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       VERSION: ${{ github.event.inputs.tag }}
-      TIMESTAMP: ${{needs.build-nethermind.outputs.BUILD_TIMESTAMP}}
-      HASH: ${{needs.build-nethermind.outputs.COMMIT_HASH}} 
+      TIMESTAMP: ${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }}
+      HASH: ${{ needs.build-nethermind.outputs.COMMIT_HASH }} 
     steps:
       - name: Downloading Nethermind darwin package
         uses: actions/download-artifact@v3
@@ -283,12 +283,6 @@ jobs:
       with:
         ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
-    - name: Settings
-      id: settings
-      run: |
-        echo ::set-output name=TAG::$(git describe --tags --abbrev=0)
-        echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
-        echo ::set-output name=docker_image::nethermind/nethermind
     - name: Setting up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Setting up Docker Buildx
@@ -297,22 +291,22 @@ jobs:
     - name: Logging to Docker Hub
       if: success()
       env:
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        DOCKER_IMAGE: nethermind/nethermind
       run: |
-        echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
     - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
-      if: ${{ !contains(steps.settings.outputs.TAG, 'beta') && !contains(steps.settings.outputs.TAG, 'unstable') }}
+      if: ${{ !contains(github.event.inputs.tag, 'beta') && !contains(github.event.inputs.tag, 'unstable') }}
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
+        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
     - name: Building & Pushing image to docker registry  (patch)
-      if: ${{ contains(steps.settings.outputs.TAG, 'beta') || contains(steps.settings.outputs.TAG, 'unstable') }}
+      if: ${{ contains(github.event.inputs.tag, 'beta') || contains(github.event.inputs.tag, 'unstable') }}
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clearing
       if: always()
       run: |
-        rm -f ${HOME}/.docker/config.json
+        rm -f $HOME/.docker/config.json
 
   publish-ppa:
     name: Publishing Nethermind to PPA repository

@@ -312,6 +312,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
+                    Array.Resize(ref blocks, i + 1);
                     break;
                 }
             }

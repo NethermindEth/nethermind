@@ -5,12 +5,14 @@
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
-    <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
+    <!--<BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>-->
+    <!-- Temporary workaround for missing MSBuild v17.3 on Ubuntu 22 -->
+    <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.Convert]::ToInt64($([System.DateTime]::UtcNow.Subtract($([System.DateTime]::new(1970, 1, 1))).TotalSeconds)))</BuildTimestamp>
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
-    <!-- Fallback if not specified -->
-    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <VersionPrefix>1.14.4</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
