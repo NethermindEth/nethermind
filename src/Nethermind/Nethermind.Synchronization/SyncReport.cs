@@ -23,9 +23,9 @@ namespace Nethermind.Synchronization.Reports
     public class ProgressStage
     {
         public SyncMode SyncMode { get; set; }
-        public long Current { get; set; }
-        public long Total { get; set; }
-        public double Percent => Current / Total;
+        public long? Current { get; set; }
+        public long? Total { get; set; }
+        public double? Percent => Current / Total;
     }
     public class SyncReportSymmary
     {

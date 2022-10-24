@@ -26,6 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reports;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -120,12 +121,19 @@ namespace Nethermind.Synchronization.ParallelSync
 
             Changed += (src, args) =>
             {
-                Report.CurrentStage.Add(args.Current);
-                var progress = new Report.ProgressStage
+                bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
+                (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
+                ReportSink.CurrentStage.Add(args.Current);
+                var stage = new ProgressStage
                 {
                     SyncMode = args.Current,
-                    Current = _pivotNumber,
                 };
+                if (peerDifficulty is not null && peerBlock is not null) {
+                    Snapshot image = TakeSnapshot((UInt256)peerDifficulty, (long)peerBlock, inBeaconControl);
+                    stage.Current = image.Block;
+                    stage.Total = image.TargetBlock;
+                }
+                ReportSink.Progress.Add(stage);
             };
 
             _ = StartAsync(_cancellation.Token);
