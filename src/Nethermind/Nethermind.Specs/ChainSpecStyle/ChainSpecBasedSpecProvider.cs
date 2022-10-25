@@ -171,12 +171,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip3541Enabled = (_chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3607Enabled = (_chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3540Enabled = (_chainSpec.Parameters.Eip3540Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3651Enabled = (_chainSpec.Parameters.Eip3651Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3670Enabled = (_chainSpec.Parameters.Eip3670Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3855Enabled = (_chainSpec.Parameters.Eip3855Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3860Enabled = (_chainSpec.Parameters.Eip3860Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
                 releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
@@ -210,7 +204,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ReleaseSpec releaseSpec = new()
                 {
                     IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
-                    IsEip3651Enabled = (_chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
+                    IsEip3651Enabled = (_chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
+                    IsEip3540Enabled = (_chainSpec.Parameters.Eip3540TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
+                    IsEip3670Enabled = (_chainSpec.Parameters.Eip3670TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
+                    IsEip3855Enabled = (_chainSpec.Parameters.Eip3855TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp,
+                    IsEip3860Enabled = (_chainSpec.Parameters.Eip3860TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
                 };
                 _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;

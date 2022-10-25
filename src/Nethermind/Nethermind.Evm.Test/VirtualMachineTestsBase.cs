@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test
 
         protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, timestamp: Timestamp);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: Timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;

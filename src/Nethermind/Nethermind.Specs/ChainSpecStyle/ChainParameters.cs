@@ -64,11 +64,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip3529Transition { get; set; }
         public long? Eip3541Transition { get; set; }
         public long? Eip3607Transition { get; set; }
-        public long? Eip3540Transition { get; set; }
-        public long? Eip3651Transition { get; set; }
-        public long? Eip3670Transition { get; set; }
-        public long? Eip3855Transition { get; set; }
-        public long? Eip3860Transition { get; set; }
 
         public UInt256 Eip1559BaseFeeInitialValue { get; set; }
 
@@ -124,14 +119,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        /// <summary>
-        /// this feild will indicate the timestamp at which this EIP1153 will be enabled.
-        /// </summary>
         public ulong? Eip1153TransitionTimestamp { get; set; }
-
-        /// <summary>
-        /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
-        /// </summary>
+        public ulong? Eip3540TransitionTimestamp { get; set; }
         public ulong? Eip3651TransitionTimestamp { get; set; }
+        public ulong? Eip3670TransitionTimestamp { get; set; }
+        public ulong? Eip3855TransitionTimestamp { get; set; }
+        public ulong? Eip3860TransitionTimestamp { get; set; }
     }
 }
