@@ -228,7 +228,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
                 : null;
-            chainSpec.ShanghaiBlockNumber = chainSpec.Parameters.Eip1153Transition ?? (long.MaxValue - 1);
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip1153TransitionTimestamp ?? (long.MaxValue - 1);
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -356,7 +356,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
             Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
-            UInt256 timestamp = chainSpecJson.Genesis.Timestamp;
+            ulong timestamp = chainSpecJson.Genesis.Timestamp;
             UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
             byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;

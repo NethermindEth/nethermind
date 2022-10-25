@@ -29,9 +29,9 @@ namespace Nethermind.Evm.Test
 
         private bool _setAuthor;
 
-        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit)
+        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
         {
-            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
+            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit, timestamp);
             if (_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = TestItem.AddressB;
             return block;

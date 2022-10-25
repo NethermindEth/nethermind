@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -41,19 +42,19 @@ namespace Nethermind.Blockchain.Spec
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
-        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber) => _specProvider.GetSpec(blockNumber);
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
         public ulong ChainId => _specProvider.ChainId;
 
-        public long[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
 
         public IReleaseSpec GetCurrentHeadSpec()
         {
