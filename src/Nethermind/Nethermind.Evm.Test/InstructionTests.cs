@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         {
             Instruction.SENDALL.GetName(true, GrayGlacier.Instance).Should().Be("SELFDESTRUCT");
         }
-        
+
         [Test]
         public void Return_sendall_name_after_shanghai()
         {
