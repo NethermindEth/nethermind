@@ -226,7 +226,7 @@ namespace Nethermind.Hive
                 }
 
                 // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
-                // then event NewBestSuggestedBlock is invoked and block will be processed - we are not awaiting it.
+                // then event NewBestSuggestedBlock is invoked and block will be processed - we are not awaiting it here.
                 // Here, in HiveRunner, in method OnNewBestSuggestedBlock, flag BlockSuggested is set to true.
                 AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
