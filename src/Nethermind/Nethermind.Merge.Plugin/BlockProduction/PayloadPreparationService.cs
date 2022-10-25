@@ -26,10 +26,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers.V1;
-using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
