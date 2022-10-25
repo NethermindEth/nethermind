@@ -41,6 +41,7 @@ namespace Nethermind.Hive
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
         private SemaphoreSlim _resetEvent;
+        private bool BlockSuggested;
 
         public HiveRunner(
             IBlockTree blockTree,
@@ -63,6 +64,7 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
+            _blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
             _blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -70,9 +72,16 @@ namespace Nethermind.Hive
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
+            _blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
             _blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
+        }
+
+        private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
+        {
+            BlockSuggested = true;
+            if (_logger.IsInfo) _logger.Info($"HIVE suggested {e.Block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
         }
 
         private void BlockProcessingFinished(object? sender, BlockHashEventArgs e)
@@ -207,6 +216,8 @@ namespace Nethermind.Hive
         {
             try
             {
+                BlockSuggested = false;
+
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
@@ -216,16 +227,18 @@ namespace Nethermind.Hive
                 AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
-                    if (_logger.IsError)
-                        _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
+                    if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
                     return;
                 }
 
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-
-                await WaitForBlockProcessing(_resetEvent);
+                if (BlockSuggested)
+                {
+                    await WaitForBlockProcessing(_resetEvent);
+                }
+                else
+                {
+                    _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
+                }
             }
             catch (Exception e)
             {
