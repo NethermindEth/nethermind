@@ -4,7 +4,7 @@ using DotNetty.Transport.Channels;
 
 namespace Nethermind.Network.P2P;
 
-public class SendLatencyInjector: ChannelHandlerAdapter
+public class SendLatencyInjector : ChannelHandlerAdapter
 {
     private readonly TimeSpan _sendLatency;
 
