@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -67,7 +68,7 @@ namespace Nethermind.Mev
         public void ReportStorageRead(StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null) { }
         public void ReportOperationError(EvmExceptionType error) { }
         public void ReportOperationRemainingGas(long gas) { }
         public void SetOperationStack(List<string> stackTrace) { }

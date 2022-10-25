@@ -664,7 +664,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _specProvider.SpecToReturn = MuirGlacier.Instance;
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
-                .Op(Instruction.SELFDESTRUCT)
+                .Op(Instruction.SENDALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
 
@@ -677,7 +677,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _specProvider.SpecToReturn = MuirGlacier.Instance;
             byte[] code = Prepare.EvmCode
                 .PushData(Address.SystemUser)
-                .Op(Instruction.SELFDESTRUCT)
+                .Op(Instruction.SENDALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
             Assert.AreEqual(2, result.Accounts.Length);
