@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
 
         private readonly object _dummyObject = new();
-        private readonly object _handlerLock = new();
+        protected readonly object _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         protected long _lowestRequestedHeaderNumber;
@@ -110,6 +110,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _headersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
             }
+
+            _headersRequestSize = 8;
 
             if (!_syncConfig.FastBlocks && !alwaysStartHeaderSync)
             {
@@ -223,12 +225,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual HeadersSyncBatch BuildNewBatch()
         {
-            HeadersSyncBatch batch = new();
-            batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
-            _lowestRequestedHeaderNumber = batch.StartNumber;
-            return batch;
+            lock (_handlerLock)
+            {
+                HeadersSyncBatch batch = new();
+                batch.MinNumber = _lowestRequestedHeaderNumber - 1;
+                batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
+                batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+                _lowestRequestedHeaderNumber = batch.StartNumber;
+                return batch;
+            }
         }
 
         private void LogStateOnPrepare()

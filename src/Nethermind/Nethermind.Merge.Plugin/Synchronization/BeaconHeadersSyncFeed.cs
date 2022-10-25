@@ -17,6 +17,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -80,39 +82,67 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override AllocationContexts Contexts => AllocationContexts.Headers;
 
+    private long ExpectedPivotNumber()
+    {
+        return _pivot.PivotParentHash == null ? _pivot.PivotNumber : _pivot.PivotNumber - 1;
+    }
+
     public override void InitializeFeed()
     {
-        _chainMerged = false;
-
-        // First, we assume pivot
-        _pivotNumber = _pivot.PivotNumber;
-        _nextHeaderHash = _pivot.PivotHash ?? Keccak.Zero;
-        _nextHeaderDiff = _poSSwitcher.FinalTotalDifficulty;
-
-        // This is probably whats going to happen. We probably should just set the pivot directly to the parent of FcU head,
-        // but pivot underlying data is a Header, which we may not have. Maybe later we'll clean this up.
-        if (_pivot.PivotParentHash != null)
+        lock (_handlerLock)
         {
-            _pivotNumber = _pivotNumber - 1;
-            _nextHeaderHash = _pivot.PivotParentHash;
+            _chainMerged = false;
+
+            // First, we assume pivot
+            _pivotNumber = ExpectedPivotNumber();
+            _nextHeaderHash = _pivot.PivotHash ?? Keccak.Zero;
+            _nextHeaderDiff = _poSSwitcher.FinalTotalDifficulty;
+
+            // This is probably whats going to happen. We probably should just set the pivot directly to the parent of FcU head,
+            // but pivot underlying data is a Header, which we may not have. Maybe later we'll clean this up.
+            if (_pivot.PivotParentHash != null)
+            {
+                _nextHeaderHash = _pivot.PivotParentHash;
+            }
+
+            long startNumber = _pivotNumber;
+
+            // In case we already have beacon sync happened before
+            BlockHeader? lowestInserted = LowestInsertedBlockHeader;
+            if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+            {
+                startNumber = lowestInserted.Number - 1;
+                _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
+                _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
+            }
+
+            // the base class with starts with _lowestRequestedHeaderNumber - 1, so we offset it here.
+            _lowestRequestedHeaderNumber = startNumber + 1;
+
+            _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
+                         $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
         }
+    }
 
-        long startNumber = _pivotNumber;
-
-        // In case we already have beacon sync happened before
-        BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+    private void ResetStateIfNeeded()
+    {
+        long expectedPivotNumber = ExpectedPivotNumber();
+        _logger.Info($"check beacon header pivot. Before: {_pivotNumber}, After: {expectedPivotNumber}");
+        if (_pivotNumber != expectedPivotNumber)
         {
-            startNumber = lowestInserted.Number - 1;
-            _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
-            _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
+            // Something happened that cause the pivot to change but we did not go through shutting down sync feed
+            // then reinitialize it.
+            _logger.Info($"Resetting beacon header pivot. Before: {_pivotNumber}, After: {expectedPivotNumber}");
+            _blockTree.LowestInsertedBeaconHeader = null;
+            InitializeFeed();
         }
+    }
 
-        // the base class with starts with _lowestRequestedHeaderNumber - 1, so we offset it here.
-        _lowestRequestedHeaderNumber = startNumber + 1;
+    public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+    {
+        ResetStateIfNeeded();
 
-        _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
-                     $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
+        return base.PrepareRequest(cancellationToken);
     }
 
     protected override void FinishAndCleanUp()
@@ -163,14 +193,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     {
         if (_chainMerged)
         {
-            if (_logger.IsTrace)
-                _logger.Trace(
+            if (_logger.IsInfo)
+                _logger.Info(
                     "Chain already merged, skipping header insert");
             return AddBlockResult.AlreadyKnown;
         }
 
-        if (_logger.IsTrace)
-            _logger.Trace(
+        if (_logger.IsInfo)
+            _logger.Info(
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
         if (_nextHeaderDiff is null)
@@ -182,8 +212,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
-            if (_logger.IsTrace)
-                _logger.Trace(
+            if (_logger.IsInfo)
+                _logger.Info(
                     $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
             return AddBlockResult.AlreadyKnown;
         }
