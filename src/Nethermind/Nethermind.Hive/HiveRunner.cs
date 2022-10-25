@@ -216,6 +216,7 @@ namespace Nethermind.Hive
         {
             try
             {
+                // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
                 if (!_blockValidator.ValidateSuggestedBlock(block))
@@ -224,6 +225,9 @@ namespace Nethermind.Hive
                     return;
                 }
 
+                // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
+                // then event NewBestSuggestedBlock is invoked and block will be processed - we are not awaiting it.
+                // Here, in HiveRunner, in method OnNewBestSuggestedBlock, flag BlockSuggested is set to true.
                 AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
@@ -231,10 +235,12 @@ namespace Nethermind.Hive
                     return;
                 }
 
+                // If block was suggested, we need to wait for processing it.
                 if (BlockSuggested)
                 {
                     await WaitForBlockProcessing(_resetEvent);
                 }
+                // Otherwise, block will be only added and not processed, so there is nothing to wait for.
                 else
                 {
                     _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
