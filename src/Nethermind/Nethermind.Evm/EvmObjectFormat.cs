@@ -13,7 +13,7 @@ namespace Nethermind.Evm
 {
     enum SectionDividor : byte
     {
-        Terminator  = 0,
+        Terminator = 0,
         CodeSection = 1,
         DataSection = 2,
     }
@@ -22,7 +22,7 @@ namespace Nethermind.Evm
         #region public construction properties
         public UInt16 CodeSize { get; set; }
         public UInt16 DataSize { get; set; }
-        public byte Version { get; set; } 
+        public byte Version { get; set; }
         #endregion
 
         #region Equality methods
@@ -134,7 +134,7 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            if(i + 2 > codeLen)
+                            if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
                                 {

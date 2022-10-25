@@ -634,7 +634,7 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            CodeInfo CodeContainer = env.CodeInfo.SeparateEOFSections(out Span<byte> fullCode, out Span<byte>  codeSection, out Span<byte> dataSection);
+            CodeInfo CodeContainer = env.CodeInfo.SeparateEOFSections(out Span<byte> fullCode, out Span<byte> codeSection, out Span<byte> dataSection);
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
