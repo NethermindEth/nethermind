@@ -35,7 +35,7 @@ public class EnrTreeCrawler
             // Note: we have no verification of a DNS list signer!
             // Following EIP-1459 "public key must be known to the client in order to verify the list"
             // Thus there shall be a list of public keys that a client allows and we shall check against it
-            string[] pubkey_and_url= domain.Split("@");
+            string[] pubkey_and_url = domain.Split("@");
             if (pubkey_and_url.Length > 1)
             {
                 domain = pubkey_and_url[1];
