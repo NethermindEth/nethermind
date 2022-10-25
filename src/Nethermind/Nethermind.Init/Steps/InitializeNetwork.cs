@@ -551,8 +551,9 @@ public class InitializeNetwork : IStep
             _api.LogManager);
 
         string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
-        enrDiscovery.SearchTree($"all.{chainName}.ethdisco.net").ContinueWith(t =>
+        enrDiscovery.SearchTree(domain).ContinueWith(t =>
 #pragma warning restore CS4014
         {
             if (t.IsFaulted)

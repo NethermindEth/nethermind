@@ -23,6 +23,8 @@ namespace Nethermind.Network.Config
         public string? ExternalIp { get; set; }
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
+        public string? DiscoveryDns { get; set; }
+
         public bool OnlyStaticPeers { get; set; }
         public bool IsPeersPersistenceOn { get; set; } = true;
 
