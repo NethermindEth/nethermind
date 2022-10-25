@@ -27,6 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Rpc
 {
+    [Parallelizable(ParallelScope.All)]
     public class RpcDbFactoryTests
     {
         [Test]

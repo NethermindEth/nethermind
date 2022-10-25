@@ -50,6 +50,9 @@ namespace Nethermind.Stats
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
+
+        private (DateTimeOffset, NodeStatsEventType) _delayConnectDeadline = (DateTimeOffset.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+
         private static readonly Random Random = new();
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
@@ -93,6 +96,11 @@ namespace Nethermind.Stats
                 _lastFailedConnectionTime = DateTime.UtcNow;
             }
 
+            if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
+            {
+                UpdateDelayConnectDeadline(delay, nodeStatsEventType);
+            }
+
             Increment(nodeStatsEventType);
         }
 
@@ -113,7 +121,32 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
 
+            if (disconnectType == DisconnectType.Local)
+            {
+                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.LocalDisconnectDelay);
+                }
+            }
+            else if (disconnectType == DisconnectType.Remote)
+            {
+                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.RemoteDisconnectDelay);
+                }
+            }
+
             Increment(NodeStatsEventType.Disconnect);
+        }
+
+        private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
+        {
+            DateTimeOffset newDeadline = DateTimeOffset.Now + delay;
+            (DateTimeOffset currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
+            if (newDeadline > currentDeadline)
+            {
+                _delayConnectDeadline = (newDeadline, reason);
+            }
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
@@ -205,6 +238,12 @@ namespace Nethermind.Stats
             if (IsDelayedDueToFailedConnection())
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
+            }
+
+            (DateTimeOffset outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
+            if (outgoingDelayDeadline > DateTime.Now)
+            {
+                return (true, reason);
             }
 
             return (false, null);

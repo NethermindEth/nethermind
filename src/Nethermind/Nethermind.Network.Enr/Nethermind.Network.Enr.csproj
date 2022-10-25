@@ -8,12 +8,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <PackageReference Include="Nethermind.DotNetty.Buffers" Version="1.0.0" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="DotNetty.Buffers" Version="0.7.2" />
+      <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>
 
 </Project>
