@@ -242,7 +242,7 @@ namespace Nethermind.Evm
                     // validate opcode
                     if (!Enum.IsDefined(opcode.Value))
                     {
-                        if (LoggingEnabled && _logger.IsTrace)
+                        if (LoggingEnabled)
                         {
                             _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                         }
@@ -254,7 +254,7 @@ namespace Nethermind.Evm
                         i += code[i] - (int)Instruction.PUSH1 + 1;
                         if (i >= endOffset)
                         {
-                            if (LoggingEnabled && _logger.IsTrace)
+                            if (LoggingEnabled)
                             {
                                 _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                             }
@@ -274,7 +274,7 @@ namespace Nethermind.Evm
                     case Instruction.SELFDESTRUCT: // might be retired and replaced with SELLALL?
                         return true;
                     default:
-                        if (LoggingEnabled && _logger.IsTrace)
+                        if (LoggingEnabled)
                         {
                             _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                         }
