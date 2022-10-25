@@ -109,4 +109,17 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(9)
             .AssertChainLevel(0, 9);
     }
+
+    [Test]
+    public void Correct_levels_after_chain_level_sync_with_disconnected_beacon_chain()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 15)
+            .InsertBeaconPivot(11)
+            .InsertBeaconHeaders(4, 6)
+            .InsertBeaconHeaders(8, 10)
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertChainLevel(0, 4)
+            .AssertForceNewBeaconSync();
+    }
 }
