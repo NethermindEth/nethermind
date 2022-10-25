@@ -72,8 +72,6 @@ namespace Nethermind.Cli
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
-            JsValue returnValue = JsValue.Null;
-
             try
             {
                 if (_currentClient is null)
@@ -88,18 +86,16 @@ namespace Nethermind.Cli
                     stopwatch.Stop();
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
+
+                    if (result is bool boolResult)
+                    {
+                        return boolResult ? JsValue.True : JsValue.False;
+                    }
+
                     string? resultString = result?.ToString();
-                    if (result is bool)
+                    if (resultString != "0x" && resultString is not null)
                     {
-                        resultString = resultString?.ToLower();
-                    }
-                    if (resultString == "0x" || resultString is null)
-                    {
-                        returnValue = JsValue.Null;
-                    }
-                    else
-                    {
-                        returnValue = _jsonParser.Parse(resultString);
+                        return _jsonParser.Parse(resultString);
                     }
                 }
             }
@@ -117,8 +113,7 @@ namespace Nethermind.Cli
             {
                 _cliConsole.WriteException(e);
             }
-
-            return returnValue;
+            return JsValue.Null;
         }
 
         public async Task<string?> Post(string method, params object?[] parameters)
