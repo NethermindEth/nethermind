@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
                 {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
                 {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
-                {(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp), ShanghaiInstructions},
+                {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {(long.MaxValue, ulong.MaxValue), ShanghaiInstructions}
             };
 
