@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
+        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <OutputType>Exe</OutputType>
         <PackageId>Nethermind CLI</PackageId>

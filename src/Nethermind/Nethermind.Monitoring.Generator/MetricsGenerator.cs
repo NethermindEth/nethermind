@@ -91,11 +91,13 @@ public static partial class Metrics
             var semanticModel = context.GetSemanticModel(funcDef.SyntaxTree);
             return funcDef.AttributeLists
                 .SelectMany(x => x.Attributes)
-                .Where(attr => {
+                .Where(attr =>
+                {
                     var attrName = attr.Name.ToString();
                     return attrName == "Metrics" || attrName == "Monitor";
                 })
-                .Select(attr => {
+                .Select(attr =>
+                {
                     bool isMonitor = attr.Name.ToString() == "Monitor";
                     var args = attr.ArgumentList.Arguments
                                     .Select(arg =>

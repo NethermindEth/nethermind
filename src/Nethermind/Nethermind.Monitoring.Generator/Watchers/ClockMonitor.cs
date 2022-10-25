@@ -16,8 +16,9 @@ internal class ClockMonitor : IDisposable
         _hostProject = type;
         _propertyName = propName;
         _stopwatch.Start();
-    } 
-    public void Dispose() {
+    }
+    public void Dispose()
+    {
         _stopwatch.Stop();
         _hostProject.Assembly
             .GetType("Metrics")

@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
+        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
     <RootNamespace>Nethermind.Merge.AuRa</RootNamespace>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
