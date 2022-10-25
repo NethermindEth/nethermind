@@ -279,13 +279,13 @@
       "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "Shandong": {
-        "commandName": "Project",
-        "commandLineArgs": "-c Shandong -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
-        "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
-        }
+      }
+    },
+    "Shandong": {
+      "commandName": "Project",
+      "commandLineArgs": "-c shandong_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     }
   }
