@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -61,12 +62,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge, IReleaseSpec? spec = null)
         {
             GethTxTraceEntry previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
-            _traceEntry.Operation = opcode.GetName(isPostMerge);
+            _traceEntry.Operation = opcode.GetName(isPostMerge, spec);
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);

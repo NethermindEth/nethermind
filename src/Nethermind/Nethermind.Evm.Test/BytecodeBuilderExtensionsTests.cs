@@ -172,7 +172,7 @@ namespace Nethermind.Evm.Test
                     Instruction.BALANCE,
                     Instruction.EXTCODESIZE,
                     Instruction.EXTCODEHASH,
-                    Instruction.SELFDESTRUCT,
+                    Instruction.SENDALL,
 
             };
 
@@ -519,7 +519,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.JUMP)
                         .Op(Instruction.JUMPDEST)
                         .PushData(TestItem.PrivateKeyB.Address)
-                        .Op(Instruction.SELFDESTRUCT)
+                        .Op(Instruction.SENDALL)
                         .Op(Instruction.JUMPDEST)
                         .Done
                 };

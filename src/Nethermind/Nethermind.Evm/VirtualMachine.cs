@@ -644,7 +644,7 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
             {
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
+                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge, spec);
                 if (_txTracer.IsTracingMemory)
                 {
                     _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
@@ -2641,7 +2641,7 @@ namespace Nethermind.Evm
                                 outputOffset = 0;
                             }
 
-                            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
+                            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge, spec);
                             EvmState callState = new(
                                 gasLimitUl,
                                 callEnv,
@@ -2688,7 +2688,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
                         }
-                    case Instruction.SELFDESTRUCT | Instruction.SENDALL: // SELFDESTRUCT is depricated and now this OP code is called SENDALL.
+                    case Instruction.SENDALL: // SELFDESTRUCT is depricated and now this OP code is called SENDALL.
                         {
                             if (vmState.IsStatic)
                             {
@@ -2960,7 +2960,7 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
 
-        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
+        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
         {
             ExecutionType executionType;
             if (instruction == Instruction.CALL)
@@ -2981,7 +2981,7 @@ namespace Nethermind.Evm
             }
             else
             {
-                throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
+                throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge, spec)}");
             }
 
             return executionType;

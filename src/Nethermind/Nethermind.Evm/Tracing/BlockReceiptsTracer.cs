@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -106,8 +107,8 @@ namespace Nethermind.Evm.Tracing
             return txReceipt;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
-            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null) =>
+            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge, spec);
 
         public void ReportOperationError(EvmExceptionType error) =>
             _currentTxTracer.ReportOperationError(error);

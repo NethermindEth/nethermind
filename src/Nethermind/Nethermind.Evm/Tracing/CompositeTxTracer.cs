@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -161,14 +162,14 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {
                 ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
-                    innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+                    innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge, spec);
                 }
             }
         }

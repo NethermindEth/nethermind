@@ -142,7 +142,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.JUMP)
                         .Op(Instruction.JUMPDEST)
                         .PushData(0)
-                        .Op(Instruction.SELFDESTRUCT)
+                        .Op(Instruction.SENDALL)
                         .Op(Instruction.JUMPDEST)
                         .Done)
                 .Done;

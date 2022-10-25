@@ -19,6 +19,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -70,7 +71,7 @@ namespace Nethermind.Evm.Tracing
 
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
 
-        void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
+        void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null);
 
         void ReportOperationError(EvmExceptionType error);
 

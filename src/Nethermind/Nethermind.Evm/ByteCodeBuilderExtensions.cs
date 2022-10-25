@@ -130,7 +130,7 @@ namespace Nethermind.Evm
         #region opcodes_with_1_arg
         public static Prepare SELFDESTRUCT(this Prepare @this, Address? address = null)
             => @this.PushSingle(address)
-                    .Op(Instruction.SELFDESTRUCT);
+                    .Op(Instruction.SENDALL);
         public static Prepare EXTCODEHASH(this Prepare @this, Address? address = null)
             => @this.PushSingle(address)
                     .Op(Instruction.EXTCODEHASH);

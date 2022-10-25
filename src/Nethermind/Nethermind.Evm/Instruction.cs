@@ -18,6 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -184,18 +187,21 @@ namespace Nethermind.Evm
         STATICCALL = 0xfa,
         REVERT = 0xfd,
         INVALID = 0xfe,
-        SELFDESTRUCT = 0xff,
         SENDALL = 0xff,
     }
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        {
+            spec ??= Frontier.Instance;
+            return instruction switch
+            {
+                Instruction.PREVRANDAO => isPostMerge ? FastEnum.GetName(instruction) : "DIFFICULTY",
+                Instruction.SENDALL => spec.SelfDestructDeactivated ? FastEnum.GetName(instruction) : "SELFDESTRUCT",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
+            };
+        }
     }
 }
 
