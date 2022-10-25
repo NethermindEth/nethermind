@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
         <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
-        <Nullable>enable</Nullable>
+        <Nullable>annotations</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
   

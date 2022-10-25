@@ -48,7 +48,7 @@ public class MonitorAttribute : OnGeneralMethodBoundaryAspect
         _logDestination = LogDestination;
         _periodBetweenLogsWait = WaitInBetweenLogs;
         _timeUnit = TimeUnit;
-        if (LogDestination == LogDestination.File)
+        if (LogDestination == LogDestination.Logger)
         {
             _logFilePath = FilePath;
         }

@@ -114,8 +114,12 @@ namespace Nethermind.Runner
             }
         }
 
+        [Monitor(InterceptionMode: InterceptionMode.ExecutionTime, LogDestination: LogDestination.Console)]
+        public static void MarkStart() => Console.WriteLine("Starting Nethermind.Runner");
+
         private static void Run(string[] args)
         {
+            MarkStart();
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;

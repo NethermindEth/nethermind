@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
+    <MicroMonitored>false</MicroMonitored>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>

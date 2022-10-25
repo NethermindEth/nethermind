@@ -2,8 +2,8 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
-        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
-        <IsPackable>false</IsPackable>
+      <MicroMonitored>false</MicroMonitored>
+      <IsPackable>false</IsPackable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 

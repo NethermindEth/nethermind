@@ -13,7 +13,6 @@ public class OnGeneralMethodBoundaryAspect : MethodInterceptionAspect
 
     public override void OnInvoke(MethodInterceptionArgs executionArgs)
     {
-#if MONITOR
         MetricsMetadata args = OnStarting(executionArgs);
         args.Status = MethodStatus.OnGoing;
         try
@@ -35,14 +34,10 @@ public class OnGeneralMethodBoundaryAspect : MethodInterceptionAspect
             args.Status |= MethodStatus.Completed;
             OnCompletion(args);
         }
-#else
-        executionArgs.Proceed();
-#endif
     }
 
     public override async Task OnInvokeAsync(MethodInterceptionArgs executionArgs)
     {
-#if MONITOR
         MetricsMetadata args = OnStarting(executionArgs);
         args.Status = MethodStatus.OnGoing;
         try
@@ -63,8 +58,5 @@ public class OnGeneralMethodBoundaryAspect : MethodInterceptionAspect
             args.Status |= MethodStatus.Completed;
             OnCompletion(args);
         }
-#else
-        await executionArgs.ProceedAsync();
-#endif
     }
 }

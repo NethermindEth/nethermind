@@ -2,8 +2,8 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
-        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <MicroMonitored>false</MicroMonitored>
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
