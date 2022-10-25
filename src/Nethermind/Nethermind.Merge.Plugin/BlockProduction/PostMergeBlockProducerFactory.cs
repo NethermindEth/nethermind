@@ -65,7 +65,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 _sealEngine,
                 _timestamper,
                 _specProvider,
-                _logManager);
+                _logManager,
+                _miningConfig);
         }
     }
 }

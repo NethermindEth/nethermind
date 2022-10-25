@@ -590,8 +590,9 @@ namespace Nethermind.Evm
                 CallResult callResult = new(output.ToArray(), success, !success);
                 return callResult;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
                 CallResult callResult = new(Array.Empty<byte>(), false, true);
                 return callResult;
             }
@@ -2156,6 +2157,25 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
+                            break;
+                        }
+                    case Instruction.PUSH0:
+                        {
+                            if (spec.IncludePush0Instruction)
+                            {
+                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                stack.PushZero();
+                            }
+                            else
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
                             break;
                         }
                     case Instruction.PUSH1:

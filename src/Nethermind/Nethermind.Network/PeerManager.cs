@@ -108,7 +108,7 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount)
+            if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
                 // fire and forget - all the surrounding logic will be executed
@@ -344,6 +344,25 @@ namespace Nethermind.Network
             }
         }
 
+        private bool CanConnectToPeer(Peer peer)
+        {
+            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
+                return false;
+            }
+
+            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
+            if (delayed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
+                return false;
+            }
+
+            return true;
+        }
+
+
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupPeerConnection(Peer peer)
         {
@@ -541,11 +560,17 @@ namespace Nethermind.Network
             {
                 if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
                 candidate.IsAwaitingConnection = true;
+                _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
                 await _rlpxHost.ConnectAsync(candidate.Node);
                 return true;
             }
             catch (NetworkingException ex)
             {
+                if (ex.NetworkExceptionType == NetworkExceptionType.TargetUnreachable)
+                {
+                    _stats.ReportEvent(candidate.Node, NodeStatsEventType.ConnectionFailedTargetUnreachable);
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
                 return false;
             }

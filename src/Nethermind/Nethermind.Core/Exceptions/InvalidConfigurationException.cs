@@ -19,9 +19,9 @@ using System;
 
 namespace Nethermind.Core.Exceptions;
 
-public class InvalidConfigurationException: Exception, IExceptionWithExitCode
+public class InvalidConfigurationException : Exception, IExceptionWithExitCode
 {
-    public InvalidConfigurationException(string message, int exitCode): base(message)
+    public InvalidConfigurationException(string message, int exitCode) : base(message)
     {
         ExitCode = exitCode;
     }

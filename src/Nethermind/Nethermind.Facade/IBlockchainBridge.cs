@@ -54,6 +54,7 @@ namespace Nethermind.Facade
         FilterLog[] GetFilterLogs(int filterId);
 
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
+        IEnumerable<FilterLog> GetLogs(int filterId, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
 
     }

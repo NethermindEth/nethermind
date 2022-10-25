@@ -49,7 +49,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
 
         if (terminalTotalDifficulty == _ttdPlaceholderForCl)
         {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
+            if (_logger.IsTrace) _logger.Trace($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
         }
         if (beaconTransitionConfiguration.TerminalTotalDifficulty != terminalTotalDifficulty)
         {

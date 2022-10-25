@@ -16,28 +16,19 @@
 
 using System.Threading;
 using Nethermind.Core.Extensions;
-using Nethermind.HashLib;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Crypto
 {
     public static class Ripemd
     {
-        private static readonly ThreadLocal<IHash> _ripemd160 = new();
-
-        private static void InitIfNeeded()
-        {
-            if (!_ripemd160.IsValueCreated)
-            {
-                var ripemd = HashFactory.Crypto.CreateRIPEMD160();
-                ripemd.Initialize();
-                _ripemd160.Value = ripemd;
-            }
-        }
-
         public static byte[] Compute(byte[] input)
         {
-            InitIfNeeded();
-            return _ripemd160.Value.ComputeBytes(input).GetBytes();
+            var digest = new RipeMD160Digest();
+            digest.BlockUpdate(input, 0, input.Length);
+            var result = new byte[digest.GetDigestSize()];
+            digest.DoFinal(result, 0);
+            return result;
         }
 
         public static string ComputeString(byte[] input)

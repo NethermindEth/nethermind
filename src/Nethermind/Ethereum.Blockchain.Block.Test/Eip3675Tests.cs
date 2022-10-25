@@ -1,41 +1,40 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 
-using Nethermind.Crypto;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Ethereum.Blockchain.Block.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class Eip3675Tests : BlockchainTestBase
 {
-    [TestFixture]
-    public class Sha2Tests
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test)
     {
-        public const string Sha2OfEmptyString = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        await RunTest(test);
+    }
 
-        [Test]
-        public void Empty_byte_array()
-        {
-            string result = Sha2.ComputeString(new byte[] { });
-            Assert.AreEqual(Sha2OfEmptyString, result);
-        }
-
-        [Test]
-        public void Empty_string()
-        {
-            string result = Sha2.ComputeString(string.Empty);
-            Assert.AreEqual(Sha2OfEmptyString, result);
-        }
+    public static IEnumerable<BlockchainTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3675");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }

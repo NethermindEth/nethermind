@@ -110,7 +110,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _auraConfig,
                 gasLimitCalculator,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                _api.ConfigProvider.GetConfig<IMiningConfig>());
 
             return Task.FromResult(blockProducer);
         }

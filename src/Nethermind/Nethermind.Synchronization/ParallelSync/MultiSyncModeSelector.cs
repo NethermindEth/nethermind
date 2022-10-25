@@ -403,7 +403,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
 
             // Shared with full sync archive
-            bool desiredPeerKnown = AnyDesiredPeerKnown(best) ;
+            bool desiredPeerKnown = AnyDesiredPeerKnown(best);
 
             // Full sync specific
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;

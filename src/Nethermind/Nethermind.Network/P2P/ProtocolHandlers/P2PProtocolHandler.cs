@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -53,12 +53,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
     {
-        new(Protocol.Eth, 62),
-        new(Protocol.Eth, 63),
-        new(Protocol.Eth, 64),
-        new(Protocol.Eth, 65),
-        new(Protocol.Eth, 66),
-        // new Capability(Protocol.Les, 3)
+        new(Protocol.Eth, 66)
     };
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
@@ -175,7 +170,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                     break;
                 }
             default:
-                Logger.Error($"{Session.RemoteNodeId} Unhandled packet type: {msg.PacketType}");
+                if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} Unhandled packet type: {msg.PacketType}");
                 break;
         }
     }
