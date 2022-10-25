@@ -41,6 +41,7 @@ namespace Nethermind.Network.Config
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
         public string Bootnodes { get; set; } = string.Empty;
         public bool EnableUPnP { get; set; } = false;
+        public long SimulateSendLatencyMs { get; set; } = 0;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
     }
