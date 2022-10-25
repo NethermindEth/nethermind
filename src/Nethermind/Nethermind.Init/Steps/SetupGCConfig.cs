@@ -23,15 +23,16 @@ public class SetupGCConfig : IStep
     {
         if (_initConfig.GCMemoryPressureHintMb != 0)
         {
+            _logger.Info($"Specifying unmanaged memory pressure of {_initConfig.GCMemoryPressureHintMb} MB");
             GC.AddMemoryPressure(_initConfig.GCMemoryPressureHintMb * 1024);
         }
 
         if (_initConfig.TriggerGCIntervalSec != null)
         {
             // Not blocking to run in background
-    #pragma warning disable CS4014
+#pragma warning disable CS4014
             FunctionalTimer.RunEvery(TimeSpan.FromSeconds((double)_initConfig.TriggerGCIntervalSec!), cancellationToken, (token =>
-    #pragma warning restore CS4014
+#pragma warning restore CS4014
             {
                 GCMemoryInfo memoryInfo = GC.GetGCMemoryInfo();
 
