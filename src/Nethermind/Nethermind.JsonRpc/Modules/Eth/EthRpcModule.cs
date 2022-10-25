@@ -609,26 +609,32 @@ public partial class EthRpcModule : IEthRpcModule
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        int id = (int)filterId;
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        return _blockchainBridge.FilterExists(id)
-            ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
-            : ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+        try
+        {
+            int id = filterId <= int.MaxValue ? (int)filterId : -1;
+            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
+            if (id < 0 || !filterFound)
+            {
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            }
+            else
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            }
+        }
+        catch (ResourceNotFoundException exception)
+        {
+            cancellationTokenSource.Dispose();
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+        }
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
-        {
-            using (cancellationTokenSource)
-            {
-                foreach (FilterLog log in logs)
-                {
-                    yield return log;
-                }
-            }
-        }
-
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -748,5 +754,16 @@ public partial class EthRpcModule : IEthRpcModule
     private void RecoverTxSenderIfNeeded(Transaction transaction)
     {
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
+    }
+
+    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
+        {
+            foreach (FilterLog log in logs)
+            {
+                yield return log;
+            }
+        }
     }
 }

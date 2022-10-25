@@ -13,11 +13,11 @@ echo with v$1+$2
 echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
-dotnet publish -c release -r $LINUX --self-contained true -p:Version=$1 -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $LINUX_ARM64 -p:PublishSingleFile=true -p:Version=$1 -p:Commit=$2 -p:BuildTimestamp=$3 -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_ARM64_RELEASE
-dotnet publish -c release -r $OSX --self-contained true -p:Version=$1 -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:Version=$1 -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
-dotnet publish -c release -r $WIN10 --self-contained true -p:Version=$1 -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
+dotnet publish -c release -r $LINUX --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
+dotnet publish -c release -r $LINUX_ARM64 -p:PublishSingleFile=true -p:Commit=$2 -p:BuildTimestamp=$3 -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_ARM64_RELEASE
+dotnet publish -c release -r $OSX --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
+dotnet publish -c release -r $WIN10 --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive

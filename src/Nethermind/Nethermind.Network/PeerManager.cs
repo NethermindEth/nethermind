@@ -560,11 +560,17 @@ namespace Nethermind.Network
             {
                 if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
                 candidate.IsAwaitingConnection = true;
+                _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
                 await _rlpxHost.ConnectAsync(candidate.Node);
                 return true;
             }
             catch (NetworkingException ex)
             {
+                if (ex.NetworkExceptionType == NetworkExceptionType.TargetUnreachable)
+                {
+                    _stats.ReportEvent(candidate.Node, NodeStatsEventType.ConnectionFailedTargetUnreachable);
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
                 return false;
             }

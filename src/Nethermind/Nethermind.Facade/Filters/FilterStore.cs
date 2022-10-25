@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -55,6 +54,10 @@ namespace Nethermind.Blockchain.Filters
 
         public IEnumerable<T> GetFilters<T>() where T : FilterBase =>
             _filters.Select(f => f.Value).OfType<T>();
+
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+                ? filter as T
+                : null;
 
         public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
