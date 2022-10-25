@@ -68,9 +68,9 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
 
-        public T GetFilter<T>(int filterId) where T : FilterBase
+        public T? GetFilter<T>(int filterId) where T : FilterBase
         {
-            throw new InvalidOperationException($"Filter with ID {filterId} not found");
+            return null;
         }
 
         public event EventHandler<FilterEventArgs> FilterRemoved

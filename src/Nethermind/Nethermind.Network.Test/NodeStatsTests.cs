@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -85,21 +86,36 @@ namespace Nethermind.Network.Test
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
 
-        [Test]
-        public async Task FailedConnectionDelayTest()
+        [TestCase(NodeStatsEventType.Connecting, true)]
+        [TestCase(NodeStatsEventType.None, false)]
+        [TestCase(NodeStatsEventType.ConnectionFailedTargetUnreachable, true)]
+        [TestCase(NodeStatsEventType.ConnectionFailed, true)]
+        public void DisconnectDelayDueToNodeStatsEvent(NodeStatsEventType eventType, bool connectionDelayed)
         {
             _nodeStats = new NodeStatsLight(_node);
 
-            var isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result, "before failure");
+            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed, "before disconnect");
 
-            _nodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsTrue(isConnDelayed.Result, "just after failure");
-            Assert.AreEqual(NodeStatsEventType.ConnectionFailed, isConnDelayed.DelayReason);
-            await Task.Delay(125);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
-            Assert.IsFalse(isConnDelayed.Result, "125ms after failure");
+            _nodeStats.AddNodeStatsEvent(eventType);
+            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed();
+            isConnDelayed.Should().Be(connectionDelayed);
+        }
+
+        [TestCase(DisconnectType.Local, DisconnectReason.Breach1, false)]
+        [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, true)]
+        [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, true)]
+        public async Task DisconnectDelayDueToDisconnect(DisconnectType disconnectType, DisconnectReason reason, bool connectionDelayed)
+        {
+            _nodeStats = new NodeStatsLight(_node);
+
+            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed();
+            Assert.IsFalse(isConnDelayed, "before disconnect");
+
+            _nodeStats.AddNodeStatsDisconnectEvent(disconnectType, reason);
+            await Task.Delay(125); // Standard disconnect delay without specific handling
+            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed();
+            isConnDelayed.Should().Be(connectionDelayed);
         }
     }
 }

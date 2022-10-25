@@ -301,8 +301,15 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        public IEnumerable<FilterLog> GetLogs(int filterId, CancellationToken cancellationToken = default) =>
-            _logFinder.FindLogs(_filterStore.GetFilter<LogFilter>(filterId), cancellationToken);
+        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
+        {
+            LogFilter? filter;
+            filterLogs = null;
+            if ((filter = _filterStore.GetFilter<LogFilter>(filterId)) != null)
+                filterLogs = _logFinder.FindLogs(filter, cancellationToken);
+
+            return filter != null;
+        }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object? address = null, IEnumerable<object>? topics = null)
