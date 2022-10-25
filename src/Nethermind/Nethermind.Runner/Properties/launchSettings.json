@@ -167,7 +167,7 @@
     },
     "Shandong (Archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c shandong_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c shandong_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -277,13 +277,6 @@
     "Chiado": {
       "commandName": "Project",
       "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Shandong": {
-      "commandName": "Project",
-      "commandLineArgs": "-c shandong_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
