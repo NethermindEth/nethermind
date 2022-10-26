@@ -34,10 +34,5 @@ namespace Nethermind.Evm
         {
             return spec.IsEip3541Enabled && output.Length >= 1 && output[0] == InvalidStartingCodeByte;
         }
-
-        public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> output)
-        {
-            return spec.IsEip3541Enabled && output.Length >= 1 && output.StartsWith(InvalidStartingCodeByte);
-        }
     }
 }

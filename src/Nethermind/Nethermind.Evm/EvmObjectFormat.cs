@@ -71,8 +71,8 @@ namespace Nethermind.Evm
         private const byte EofFormatDiff = 0x00;
         private byte[] EofMagic => new byte[] { EofFormatByte, EofFormatDiff };
 
-        public bool HasEOFFormat(Span<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
-        public bool ExtractHeader(Span<byte> code, out EofHeader header)
+        public bool HasEOFFormat(ReadOnlySpan<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
+        public bool ExtractHeader(ReadOnlySpan<byte> code, out EofHeader header)
         {
             if (!HasEOFFormat(code))
             {
@@ -106,7 +106,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private bool HandleEOF1(Span<byte> code, ref EofHeader header, int codeLen, ref int i)
+        private bool HandleEOF1(ReadOnlySpan<byte> code, ref EofHeader header, int codeLen, ref int i)
         {
             bool continueParsing = true;
 
@@ -226,9 +226,9 @@ namespace Nethermind.Evm
             return true;
         }
 
-        public bool ValidateEofCode(Span<byte> code) => ExtractHeader(code, out _);
+        public bool ValidateEofCode(ReadOnlySpan<byte> code) => ExtractHeader(code, out _);
         public bool ValidateEofCode(byte[] code) => ExtractHeader(code, out _);
-        public bool ValidateInstructions(Span<byte> code, out EofHeader header)
+        public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header)
         {
             // check if code is EOF compliant
             if (ExtractHeader(code, out header))
