@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Blockchain;
@@ -144,21 +144,41 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            Rlp rlp = Rlp.Encode(
-                Rlp.Encode(ConsumedNodesCount),
-                Rlp.Encode(SavedStorageCount),
-                Rlp.Encode(SavedStateCount),
-                Rlp.Encode(SavedNodesCount),
-                Rlp.Encode(SavedAccounts),
-                Rlp.Encode(SavedCode),
-                Rlp.Encode(RequestedNodesCount),
-                Rlp.Encode(DbChecks),
-                Rlp.Encode(StateWasThere),
-                Rlp.Encode(StateWasNotThere),
-                Rlp.Encode(DataSize),
-                Rlp.Encode(SecondsInSync));
+            int contentLength = GetLength();
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode(ConsumedNodesCount);
+            stream.Encode(SavedStorageCount);
+            stream.Encode(SavedStateCount);
+            stream.Encode(SavedNodesCount);
+            stream.Encode(SavedAccounts);
+            stream.Encode(SavedCode);
+            stream.Encode(RequestedNodesCount);
+            stream.Encode(DbChecks);
+            stream.Encode(StateWasThere);
+            stream.Encode(StateWasNotThere);
+            stream.Encode(DataSize);
+            stream.Encode(SecondsInSync);
 
-            return rlp.Bytes;
+            return stream.Data;
+        }
+
+        private int GetLength()
+        {
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(ConsumedNodesCount);
+            contentLength += Rlp.LengthOf(SavedStorageCount);
+            contentLength += Rlp.LengthOf(SavedStateCount);
+            contentLength += Rlp.LengthOf(SavedNodesCount);
+            contentLength += Rlp.LengthOf(SavedAccounts);
+            contentLength += Rlp.LengthOf(SavedCode);
+            contentLength += Rlp.LengthOf(RequestedNodesCount);
+            contentLength += Rlp.LengthOf(DbChecks);
+            contentLength += Rlp.LengthOf(StateWasThere);
+            contentLength += Rlp.LengthOf(StateWasNotThere);
+            contentLength += Rlp.LengthOf(DataSize);
+            contentLength += Rlp.LengthOf(SecondsInSync);
+            return contentLength;
         }
     }
 }
