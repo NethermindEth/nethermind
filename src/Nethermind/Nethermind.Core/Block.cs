@@ -37,7 +37,7 @@ namespace Nethermind.Core
             BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
-            IEnumerable<Withdrawal>? withdrawals = null) // TODO Remove withdrawals default value
+            IEnumerable<Withdrawal>? withdrawals = null)
         {
             Header = blockHeader;
             Body = new BlockBody(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
@@ -61,7 +61,7 @@ namespace Nethermind.Core
 
         public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
-        public Withdrawal[] Withdrawals => Body.Withdrawals;
+        public Withdrawal[]? Withdrawals => Body.Withdrawals;
 
         public Keccak? Hash => Header.Hash; // do not add setter here
 

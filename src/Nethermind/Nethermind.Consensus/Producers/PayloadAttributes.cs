@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Producers
 
         public Address SuggestedFeeRecipient { get; set; }
 
-        public IList<Withdrawal> Withdrawals { get; set; }
+        public IList<Withdrawal>? Withdrawals { get; set; }
 
         /// <summary>
         /// GasLimit

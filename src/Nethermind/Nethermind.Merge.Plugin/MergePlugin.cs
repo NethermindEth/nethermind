@@ -350,6 +350,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _peerRefresher,
+                        _api.SpecProvider,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
                     new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),

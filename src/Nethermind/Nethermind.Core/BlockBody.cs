@@ -20,12 +20,11 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        // TODO Remove withdrawals default value
         public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null)
         {
             Transactions = transactions ?? Array.Empty<Transaction>();
             Uncles = uncles ?? Array.Empty<BlockHeader>();
-            Withdrawals = withdrawals ?? Array.Empty<Withdrawal>();
+            Withdrawals = withdrawals;
         }
 
         public BlockBody() : this(null, null, null) { }
@@ -34,7 +33,7 @@ namespace Nethermind.Core
 
         public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals);
 
-        public BlockBody WithChangedWithdrawals(Withdrawal[] withdrawals) => new(Transactions, Uncles, withdrawals);
+        public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals);
 
         public static BlockBody WithOneTransactionOnly(Transaction tx) => new(new[] { tx }, null, null);
 
@@ -42,10 +41,10 @@ namespace Nethermind.Core
 
         public BlockHeader[] Uncles { get; }
 
-        public Withdrawal[] Withdrawals { get; internal set; }
+        public Withdrawal[]? Withdrawals { get; internal set; }
 
         public static BlockBody Empty { get; } = new();
 
-        public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && Withdrawals.Length == 0;
+        public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
     }
 }

@@ -104,6 +104,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BeaconSync,
                     chain.BeaconPivot,
                     peerRefresher,
+                    chain.SpecProvider,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),

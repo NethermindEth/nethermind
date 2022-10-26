@@ -122,6 +122,26 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
 
+            var spec = _specProvider.GetSpec(block.Number);
+
+            if (spec.IsEip4895Enabled && request.Withdrawals is null)
+            {
+                var error = $"Withdrawals are null in block {request.BlockHash} with EIP-4895 activated.";
+                
+                if (_logger.IsInfo) _logger.Info($"Invalid: {error}");
+                
+                return NewPayloadV1Result.Invalid(lastValidHash, error);
+            }
+
+            if (!spec.IsEip4895Enabled && request.Withdrawals is not null)
+            {
+                var error = $"Withdrawals are not null in block {request.BlockHash} with EIP-4895 not activated.";
+
+                if (_logger.IsInfo) _logger.Info($"Invalid: {error}");
+
+                return NewPayloadV1Result.Invalid(lastValidHash, error);
+            }
+
             if (block.Header.Number <= _syncConfig.PivotNumberParsed)
             {
                 if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");

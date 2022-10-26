@@ -25,6 +25,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -32,6 +33,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -52,6 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
+        private readonly ISpecProvider _specProvider;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
@@ -64,6 +67,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IMergeSyncController mergeSyncController,
             IBeaconPivot beaconPivot,
             IPeerRefresher peerRefresher,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -76,6 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _mergeSyncController = mergeSyncController;
             _beaconPivot = beaconPivot;
             _peerRefresher = peerRefresher;
+            _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
         }
 
@@ -105,6 +110,28 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
                 }
                 return ForkchoiceUpdatedV1Result.Syncing;
+            }
+            else if (payloadAttributes is not null)
+            {
+                var spec = _specProvider.GetSpec(newHeadBlock.Number);
+
+                if (spec.IsEip4895Enabled && payloadAttributes.Withdrawals is null)
+                {
+                    var error = "Withdrawals are null with EIP-4895 activated.";
+                    
+                    if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
+                    
+                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                }
+
+                if (!spec.IsEip4895Enabled && payloadAttributes.Withdrawals is not null)
+                {
+                    var error = "Withdrawals are not null with EIP-4895 not activated.";
+                    
+                    if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
+
+                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                }
             }
 
             BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;

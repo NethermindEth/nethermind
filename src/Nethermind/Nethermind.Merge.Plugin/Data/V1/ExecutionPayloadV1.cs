@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// Gets or sets an RLP-encoded collection of <see cref="Withdrawal"/> as defined in
         /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
         /// </summary>
-        public IEnumerable<byte[]> Withdrawals { get; set; } = Enumerable.Empty<byte[]>();
+        public IEnumerable<byte[]>? Withdrawals { get; set; }
 
         public override string ToString() => $"{BlockNumber} ({BlockHash})";
 
@@ -130,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// Decodes the <see cref="Withdrawals"/> and returns a collection of <see cref="Withdrawal"/>.
         /// </summary>
         /// <returns>An RLP-decoded collection of <see cref="Withdrawal"/>.</returns>
-        public IEnumerable<Withdrawal> DecodedWithdrawals() => Withdrawals
+        public IEnumerable<Withdrawal>? DecodedWithdrawals() => Withdrawals?
             .Select(w => Rlp.Decode<Withdrawal>(w, RlpBehaviors.None));
     }
 }
