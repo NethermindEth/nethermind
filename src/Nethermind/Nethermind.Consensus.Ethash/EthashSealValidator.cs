@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.Ethash
             _ethash.HintRange(guid, start, end);
         }
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.Ethash
 
             ulong unixTimeSeconds = _timestamper.UnixTime.Seconds;
             bool blockTooFarIntoFuture = header.Timestamp > unixTimeSeconds + AllowedFutureBlockTimeSeconds;
-            if (blockTooFarIntoFuture)
+            if (!isUncle && blockTooFarIntoFuture)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect timestamp {header.Timestamp - unixTimeSeconds} seconds into the future");
                 return false;
