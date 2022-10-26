@@ -96,65 +96,8 @@ namespace Nethermind.Merge.AuRa
                 _dbProvider.AsReadOnly(false),
                 _blockTree.AsReadOnly());
 
-            (TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
-                = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _auraApi, constantContractsProcessingEnv);
-
-            DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
-                = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_auraApi, txPriorityContract, localDataSource);
-
-            ITxFilter txSourceFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                miningConfig,
-                _auraApi,
-                processingEnv,
-                minGasPricesContractDataStore,
-                _specProvider);
-
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
-                .WithCustomTxFilter(txSourceFilter)
-                .WithBaseFeeFilter(_specProvider)
-                .Build;
-
-            if (txPriorityContract != null || localDataSource != null)
-            {
-                _disposeStack.Push(minGasPricesContractDataStore!);
-
-                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
-                    new HashSetContractDataStoreCollection<Address>(),
-                    txPriorityContract?.SendersWhitelist ?? new EmptyDataContract<Address>(),
-                    _blockTree,
-                    _receiptStorage,
-                    logManager,
-                    localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
-
-                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
-                        txPriorityContract?.Priorities ?? new EmptyDataContract<TxPriorityContract.Destination>(),
-                        _blockTree,
-                        _receiptStorage,
-                        logManager,
-                        localDataSource?.GetPrioritiesLocalDataSource());
-
-                _disposeStack.Push(whitelistContractDataStore);
-                _disposeStack.Push(prioritiesContractDataStore);
-
-                return new TxPriorityTxSource(
-                    txPool,
-                    processingEnv.StateReader,
-                    logManager,
-                    txFilterPipeline,
-                    whitelistContractDataStore,
-                    prioritiesContractDataStore,
-                    _specProvider,
-                    transactionComparerProvider);
-            }
-
-            return new TxPoolTxSource(
-                txPool,
-                _specProvider,
-                transactionComparerProvider,
-                logManager,
-                txFilterPipeline);
+            return new StartBlockProducerAuRa(_auraApi)
+                .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
         }
     }
 }
