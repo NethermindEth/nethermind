@@ -21,7 +21,7 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
-    "networkID": "0x1469ca",
+    "networkID": "0x146A2E",
     "MergeForkIdTransition": "0x3e8",
     "eip150Transition": "0x0",
     "eip158Transition": "0x0",
@@ -67,7 +67,7 @@
     },
     "difficulty": "0x01",
     "author": "0x0000000000000000000000000000000000000000",
-    "timestamp": "0x63489D5B",
+    "timestamp": "0x63585F88",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "extraData": "",
     "gasLimit": "0x400000"
