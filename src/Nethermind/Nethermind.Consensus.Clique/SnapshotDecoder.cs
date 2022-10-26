@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.Clique
         }
 
         private (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,
-            RlpBehaviors rlpBehaviors=RlpBehaviors.None)
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int signersLength = GetSignersContentLength(item.Signers);
             int votesLength = GetVotesContentLength(item.Votes);

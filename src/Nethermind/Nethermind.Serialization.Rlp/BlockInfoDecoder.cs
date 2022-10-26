@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            int contentLength = GetLength(item, rlpBehaviors);
+            int contentLength = GetContentLength(item, rlpBehaviors);
 
             bool hasMetadata = item.Metadata != BlockMetadata.None;
             stream.StartSequence(contentLength);
@@ -87,26 +87,10 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-
-            bool hasMetadata = item.Metadata != BlockMetadata.None;
-
-            Rlp[] elements = new Rlp[hasMetadata ? 4 : 3];
-            elements[0] = Rlp.Encode(item.BlockHash);
-            elements[1] = Rlp.Encode(item.WasProcessed);
-            elements[2] = Rlp.Encode(item.TotalDifficulty);
-            if (hasMetadata)
-            {
-                elements[3] = Rlp.Encode((int)item.Metadata);
-            }
-
-            return Rlp.Encode(elements);
+            throw new NotImplementedException();
         }
 
-        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private int GetContentLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -125,6 +109,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return contentLength;
+        }
+
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
         public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

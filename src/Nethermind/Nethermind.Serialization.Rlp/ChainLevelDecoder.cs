@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }
 
-            int contentLength = GetLength(item, rlpBehaviors);
+            int contentLength = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.HasBlockOnMainChain);
             int infoLength = GetBlockInfoLength(item.BlockInfos);
@@ -119,33 +119,30 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-
-            for (int i = 0; i < item.BlockInfos.Length; i++)
-            {
-                if (item.BlockInfos[i] == null)
-                {
-                    throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
-                }
-            }
-
-            Rlp[] elements = new Rlp[2];
-            elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
-            elements[1] = Rlp.Encode(item.BlockInfos);
-            Rlp rlp = Rlp.Encode(elements);
-
-            return rlp;
+            throw new NotImplementedException();
         }
 
-        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
             contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
             return contentLength;
+        }
+
+        public int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
+        {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            int contLength = GetContentLength(item, rlpBehaviors);
+            return Rlp.LengthOfSequence(contLength);
         }
 
         private int GetBlockInfoLength(BlockInfo[] item)
