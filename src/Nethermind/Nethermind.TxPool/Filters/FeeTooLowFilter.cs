@@ -49,8 +49,7 @@ namespace Nethermind.TxPool.Filters
             state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
 
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            Account account = state.SenderAccount;
-            UInt256 balance = account.Balance;
+            UInt256 balance = state.SenderAccount.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != TxHandlingOptions.PersistentBroadcast;
 
