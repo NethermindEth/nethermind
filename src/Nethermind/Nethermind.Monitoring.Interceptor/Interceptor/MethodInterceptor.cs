@@ -30,7 +30,8 @@ public class OnGeneralMethodBoundaryAspect : MethodInterceptionAspect
             OnFailure(args);
             throw;
         }
-        finally {
+        finally
+        {
             args.Status |= MethodStatus.Completed;
             OnCompletion(args);
         }
@@ -54,7 +55,8 @@ public class OnGeneralMethodBoundaryAspect : MethodInterceptionAspect
             OnFailure(args);
             throw;
         }
-        finally {
+        finally
+        {
             args.Status |= MethodStatus.Completed;
             OnCompletion(args);
         }

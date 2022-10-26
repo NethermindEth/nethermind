@@ -69,7 +69,8 @@ public static partial class Metrics
 
             var classToEmitSourceCode = PartialMetrics(allAttributesToBeEmited);
             context.AddSource("Metrics.g.cs", SourceText.From(classToEmitSourceCode, Encoding.UTF8));
-        } catch { }
+        }
+        catch { }
     }
 
     public void Initialize(GeneratorInitializationContext context)

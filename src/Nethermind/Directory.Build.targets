@@ -1,9 +1,9 @@
 <Project>
 
-  <ItemGroup Label="MonitorPackagePart1" Condition="$(ProjectName.EndsWith('Test'))==false AND $(MicroMonitored)">
+  <ItemGroup Label="MonitorPackagePart1" Condition="($(ProjectName.EndsWith('Test'))==false) AND $(MicroMonitored)">
     <PackageReference Include="PostSharp" Version="6.10.15" />
   </ItemGroup>
-  <ItemGroup Label="MonitorPackagePart2" Condition="$(ProjectName.EndsWith('Test'))==false AND '$(TargetFramework)'!='netstandard2.1' AND '$(ProjectName)'!='Nethermind.Monitoring.Generator' AND '$(ProjectName)'!='Nethermind.Monitoring.Interceptor'">
+  <ItemGroup Label="MonitorPackagePart2" Condition="($(ProjectName.EndsWith('Test'))==false) AND '$(TargetFramework)'!='netstandard2.1' AND '$(ProjectName)'!='Nethermind.Monitoring.Generator' AND '$(ProjectName)'!='Nethermind.Monitoring.Interceptor'">
     <ProjectReference Include="..\Nethermind.Monitoring.Generator\Nethermind.Monitoring.Generator.csproj" OutputItemType="Analyzer"/>
     <ProjectReference Include="..\Nethermind.Monitoring.Interceptor\Nethermind.Monitoring.Interceptor.csproj"/>
   </ItemGroup>
