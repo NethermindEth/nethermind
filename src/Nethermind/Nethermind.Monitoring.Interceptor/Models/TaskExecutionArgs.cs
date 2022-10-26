@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using PostSharp.Aspects;
 [Flags] public enum TimeUnit { Temporal, Ticks }
-[Flags] public enum LogDestination { Debug, Console, Prometheus, File, None }
+[Flags] public enum LogDestination { Debug, Console, Prometheus, Logger, None }
 [Flags] public enum InterceptionMode { ExecutionTime, CallCount, Failures, MetadataLog, None }
 [Flags] public enum MethodStatus { Failed = 1, Succeeded = 2, Completed = 4, Aborted = 8, OnGoing = 16, Halted = 32 }
 

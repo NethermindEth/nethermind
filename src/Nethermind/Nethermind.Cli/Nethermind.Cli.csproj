@@ -9,7 +9,7 @@
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
         <LangVersion>latest</LangVersion>
-        <Nullable>enable</Nullable>
+        <Nullable>annotations</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 

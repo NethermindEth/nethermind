@@ -5,7 +5,7 @@
         <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
         <LangVersion>latest</LangVersion>
         <Deterministic>true</Deterministic>
-        <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+        <ProduceReferenceAssembly>$(!MicroMonitored)</ProduceReferenceAssembly>
         <Nullable>annotations</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>

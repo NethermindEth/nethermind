@@ -4,7 +4,7 @@
         <TargetFramework>net6.0</TargetFramework>
         <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
         <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
+        <Nullable>annotations</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

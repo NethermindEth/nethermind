@@ -62,11 +62,14 @@ public static partial class Metrics
 ";
     public void Execute(GeneratorExecutionContext context)
     {
-        var allFunctionsInCompilationUnit = GetMarkedFunctionBy(context.Compilation);
-        var allAttributesToBeEmited = GetTargetAttributesFrom(allFunctionsInCompilationUnit, context.Compilation);
+        try
+        {
+            var allFunctionsInCompilationUnit = GetMarkedFunctionBy(context.Compilation);
+            var allAttributesToBeEmited = GetTargetAttributesFrom(allFunctionsInCompilationUnit, context.Compilation);
 
-        var classToEmitSourceCode = PartialMetrics(allAttributesToBeEmited);
-        context.AddSource("Metrics.g.cs", SourceText.From(classToEmitSourceCode, Encoding.UTF8));
+            var classToEmitSourceCode = PartialMetrics(allAttributesToBeEmited);
+            context.AddSource("Metrics.g.cs", SourceText.From(classToEmitSourceCode, Encoding.UTF8));
+        } catch { }
     }
 
     public void Initialize(GeneratorInitializationContext context)
