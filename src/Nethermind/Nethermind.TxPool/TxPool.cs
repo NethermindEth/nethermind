@@ -279,10 +279,11 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
+            TxFilteringState state = new ();
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, state, handlingOptions);
                 if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
