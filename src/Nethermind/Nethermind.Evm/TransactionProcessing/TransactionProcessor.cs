@@ -385,7 +385,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                        if (!ByteCodeValidator.ValidateByteCode(substate.Output.Span, spec))
                         {
                             throw new InvalidCodeException();
                         }
