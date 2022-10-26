@@ -26,12 +26,4 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <ItemGroup Label="MonitorPackagePart1" Condition="$(MicroMonitored) == true AND $(ProduceReferenceAssembly) == false">
-    <PackageReference Include="PostSharp" Version="6.10.15" />
-  </ItemGroup>
-  <ItemGroup Label="MonitorPackagePart2" Condition="'$(TargetFramework)'!='netstandard2.1' AND '$(ProjectName)'!='Nethermind.Monitoring.Generator' AND '$(ProjectName)'!='Nethermind.Monitoring.Interceptor'">
-    <ProjectReference Include="..\Nethermind.Monitoring.Generator\Nethermind.Monitoring.Generator.csproj" OutputItemType="Analyzer"/>
-    <ProjectReference Include="..\Nethermind.Monitoring.Interceptor\Nethermind.Monitoring.Interceptor.csproj"/>
-  </ItemGroup>
-
 </Project>
