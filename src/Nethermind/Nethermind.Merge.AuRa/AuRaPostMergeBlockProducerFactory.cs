@@ -45,7 +45,8 @@ namespace Nethermind.Merge.AuRa
                 _sealEngine,
                 _timestamper,
                 _specProvider,
-                _logManager);
+                _logManager,
+                _miningConfig);
         }
     }
 }

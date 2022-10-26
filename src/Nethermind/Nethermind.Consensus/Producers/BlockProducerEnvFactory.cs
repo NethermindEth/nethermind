@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -33,18 +33,18 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
-        private readonly IDbProvider _dbProvider;
-        private readonly IBlockTree _blockTree;
-        private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockValidator _blockValidator;
-        private readonly IRewardCalculatorSource _rewardCalculatorSource;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IBlockPreprocessorStep _blockPreprocessorStep;
-        private readonly ITxPool _txPool;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly IMiningConfig _miningConfig;
-        private readonly ILogManager _logManager;
+        protected readonly IDbProvider _dbProvider;
+        protected readonly IBlockTree _blockTree;
+        protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
+        protected readonly ISpecProvider _specProvider;
+        protected readonly IBlockValidator _blockValidator;
+        protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+        protected readonly IReceiptStorage _receiptStorage;
+        protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
+        protected readonly ITxPool _txPool;
+        protected readonly ITransactionComparerProvider _transactionComparerProvider;
+        protected readonly IMiningConfig _miningConfig;
+        protected readonly ILogManager _logManager;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 

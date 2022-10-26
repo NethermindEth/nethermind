@@ -23,7 +23,8 @@ namespace Nethermind.Merge.AuRa
             ISealEngine sealEngine,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IMiningConfig miningConfig)
             : base(
                 txSource,
                 processor,
@@ -34,7 +35,8 @@ namespace Nethermind.Merge.AuRa
                 sealEngine,
                 timestamper,
                 specProvider,
-                logManager)
+                logManager,
+                miningConfig)
         {
         }
 

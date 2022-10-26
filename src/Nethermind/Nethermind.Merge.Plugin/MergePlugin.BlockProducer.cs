@@ -37,12 +37,10 @@ namespace Nethermind.Merge.Plugin
         protected IManualBlockProductionTrigger? _blockProductionTrigger = null;
         protected ManualTimestamper? _manualTimestamper;
 
-        protected virtual ITxSource? CreateTxSource(IStateProvider stateProvider) => null;
-
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _miningConfig, _api.LogManager);
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public virtual async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (MergeEnabled)
             {
@@ -76,8 +74,7 @@ namespace Nethermind.Merge.Plugin
                 _api.Sealer = _api.SealEngine;
                 _postMergeBlockProducer = CreateBlockProducerFactory().Create(
                     blockProducerEnv,
-                    _blockProductionTrigger,
-                    CreateTxSource(blockProducerEnv.ReadOnlyStateProvider)
+                    _blockProductionTrigger
                 );
 
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
