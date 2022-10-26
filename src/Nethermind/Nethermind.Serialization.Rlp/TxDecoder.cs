@@ -1,20 +1,21 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -140,7 +141,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
-        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext  decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -350,13 +351,29 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            EncodeTx(stream, item, rlpBehaviors);
+        }
+
+        public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+            bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        {
+            RlpStream rlpStream = new(GetTxLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
+            EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+            return new Rlp(rlpStream.Data);
+        }
+
+        private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+            bool forSigning = false,  bool isEip155Enabled = false, ulong chainId = 0)
+        {
             if (item is null)
             {
                 stream.WriteByte(Rlp.NullObjectByte);
                 return;
             }
 
-            int contentLength = GetContentLength(item, false);
+            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
+
+            int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId);
             int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
             if (item.Type != TxType.Legacy)
@@ -384,18 +401,30 @@ namespace Nethermind.Serialization.Rlp
                     break;
             }
 
-            // TODO: move it to a signature decoder
-            if (item.Signature is null)
+            if (forSigning)
             {
-                stream.Encode(0);
-                stream.Encode(Bytes.Empty);
-                stream.Encode(Bytes.Empty);
+                if (includeSigChainIdHack)
+                {
+                    stream.Encode(chainId);
+                    stream.Encode(Rlp.OfEmptyByteArray);
+                    stream.Encode(Rlp.OfEmptyByteArray);
+                }
             }
             else
             {
-                stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
-                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
+                // TODO: move it to a signature decoder
+                if (item.Signature is null)
+                {
+                    stream.Encode(0);
+                    stream.Encode(Bytes.Empty);
+                    stream.Encode(Bytes.Empty);
+                }
+                else
+                {
+                    stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
+                    stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
+                    stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
+                }
             }
         }
 
@@ -434,8 +463,9 @@ namespace Nethermind.Serialization.Rlp
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
 
-        private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
         {
+            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
             int contentLength = 0;
             switch (item.Type)
             {
@@ -452,7 +482,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (forSigning)
             {
-                if (isEip155Enabled && chainId != 0)
+                if (includeSigChainIdHack)
                 {
                     contentLength += Rlp.LengthOf(chainId);
                     contentLength += 1;
@@ -476,6 +506,21 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(T tx, RlpBehaviors rlpBehaviors)
         {
             int txContentLength = GetContentLength(tx, false);
+            int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
+
+            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
+            int result = tx.Type != TxType.Legacy
+                ? isForTxRoot
+                    ? (1 + txPayloadLength)
+                    : Rlp.LengthOfSequence(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
+                : txPayloadLength;
+            return result;
+        }
+
+        public int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false,
+            ulong chainId = 0)
+        {
+            int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId);
             int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
