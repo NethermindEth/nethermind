@@ -44,12 +44,10 @@ namespace Nethermind.Merge.AuRa
         {
             var block = base.PrepareEmptyBlock(parent, payloadAttributes);
 
-            // processing is only done to apply AuRa block rewards and rewrite posdao contracts
-            // TODO should we return null instead of empty block if we couldn't process?
             if (TrySetState(parent.StateRoot))
-                block = ProcessPreparedBlock(block, null) ?? block;
+                return ProcessPreparedBlock(block, null) ?? throw new System.Exception("Couldn't process empty block");
 
-            return block;
+            throw new System.Exception("Couldn't process empty block");
         }
     }
 }
