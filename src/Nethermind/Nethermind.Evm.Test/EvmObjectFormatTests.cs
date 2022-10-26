@@ -35,6 +35,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm.Test
 {
@@ -44,7 +49,7 @@ namespace Nethermind.Evm.Test
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
-        byte[] Classicalcode(byte[] bytecode, byte[] data = null)
+        static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
 
@@ -56,7 +61,7 @@ namespace Nethermind.Evm.Test
 
             return bytes;
         }
-        byte[] EofBytecode(byte[] bytecode, byte[] data = null)
+        static byte[] EofBytecode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? 10 + data.Length : 7) + bytecode.Length];
 
@@ -576,6 +581,78 @@ namespace Nethermind.Evm.Test
                 receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
                 receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
             }
+        }
+
+        public static IEnumerable<TestCase> Eip3540TxTestCases
+        {
+            get
+            {
+                byte[] salt = { 4, 5, 6 };
+                var standardCode   = new byte[] { 0x00};
+                var standardData   = new byte[] { 0xaa };
+                
+                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, int mode, int context)
+                {
+                    if ((mode & 2) == 2)
+                    {
+                        deployed = EofBytecode(deployed, deployedData);
+                    } else
+                    {
+                        deployed = Classicalcode(deployed, deployedData);
+                    }
+
+                    byte[] result = context switch
+                    {
+                        1 => Prepare.EvmCode.Create(deployed, UInt256.Zero).Done,
+                        2 => Prepare.EvmCode.Create2(deployed, salt, UInt256.Zero).Done,
+                        _ => Prepare.EvmCode
+                                .PUSHx(deployed)
+                                .MSTORE(0)
+                                .RETURN((UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .Done
+                    };
+
+                    if ((mode & 1) == 1)
+                    {
+                        result = EofBytecode(result);
+                    }
+                    return result;
+
+                }
+                for (int i = 0; i < 4; i++) // 00 01 10 11
+                {
+                    for(int j = 0; j < 3; j++)
+                    {
+                        yield return new TestCase
+                        {
+                            Code = EmitBytecode(standardCode, standardData, i, j),
+                            ResultIfEOF = (StatusCode.Success, j.ToString()),
+                            Description = $"EOF1 execution : Deploy {((i & 2) != 2 ? "NON-" : String.Empty)}EOF Bytecode with {((i & 1) != 1 ? "NON-" : String.Empty)}EOF container with {(i == 1 ? "CREATE" : i == 2 ? "CREATE2" : "Initcode")}"
+                        };
+                    }
+                }
+            }
+        }
+
+
+
+        [Test]
+        public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 200.Ether());
+
+            byte[] createContract = testcase.Code;
+
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
+
+            transaction.GasPrice = 100.GWei();
+            transaction.To = null;
+            transaction.Data = createContract;
+            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.Execute(transaction, block.Header, tracer);
+
+            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, testcase.Description);
         }
     }
 }
