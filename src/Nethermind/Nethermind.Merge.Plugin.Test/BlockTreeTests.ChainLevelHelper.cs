@@ -62,7 +62,8 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9, 10000000)
-            .AssertChainLevel(0, 9);
+            .AssertChainLevel(0, 9)
+            .AssertNotForceNewBeaconSync();
     }
 
     [Test]
@@ -116,6 +117,7 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 15)
             .InsertBeaconPivot(11)
+            .SetProcessDestination(11)
             .InsertBeaconHeaders(4, 6)
             .InsertBeaconHeaders(8, 10)
             .SuggestBlocksUsingChainLevels(20)
