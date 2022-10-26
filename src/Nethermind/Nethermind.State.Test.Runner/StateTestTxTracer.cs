@@ -25,6 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.State.Test.Runner
 {
