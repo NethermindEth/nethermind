@@ -8,6 +8,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         new()
         {
             Index = rlpStream.DecodeULong(),
+            ValidatorIndex = rlpStream.DecodeULong(),
             Recipient = rlpStream.DecodeAddress(),
             Amount = rlpStream.DecodeUInt256()
         };
@@ -16,6 +17,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         new()
         {
             Index = decoderContext.DecodeULong(),
+            ValidatorIndex = decoderContext.DecodeULong(),
             Recipient = decoderContext.DecodeAddress(),
             Amount = decoderContext.DecodeUInt256()
         };
@@ -23,6 +25,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
     public void Encode(RlpStream stream, Withdrawal item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.Encode(item.Index);
+        stream.Encode(item.ValidatorIndex);
         stream.Encode(item.Recipient);
         stream.Encode(item.Amount);
     }
@@ -37,5 +40,8 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
     }
 
     public int GetLength(Withdrawal item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.Index) + Rlp.LengthOfAddressRlp + Rlp.LengthOf(item.Amount);
+        Rlp.LengthOf(item.Index) +
+        Rlp.LengthOf(item.ValidatorIndex) +
+        Rlp.LengthOfAddressRlp +
+        Rlp.LengthOf(item.Amount);
 }

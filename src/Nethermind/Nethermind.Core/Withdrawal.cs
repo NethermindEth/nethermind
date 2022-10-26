@@ -23,11 +23,17 @@ public class Withdrawal
     /// </summary>
     public Address Recipient { get; set; } = Address.Zero;
 
+    /// <summary>
+    /// Gets or sets the validator index on the consensus layer the withdrawal corresponds to.
+    /// </summary>
+    public ulong ValidatorIndex { get; set; }
+
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => new StringBuilder()
-        .AppendLine($"{indentation}{nameof(Index)}:     {Index}")
-        .AppendLine($"{indentation}{nameof(Recipient)}: {Recipient}")
-        .AppendLine($"{indentation}{nameof(Amount)}:    {Amount}")
+        .AppendLine($"{indentation}{nameof(Index)}:          {Index}")
+        .AppendLine($"{indentation}{nameof(ValidatorIndex)}: {ValidatorIndex}")
+        .AppendLine($"{indentation}{nameof(Recipient)}:      {Recipient}")
+        .AppendLine($"{indentation}{nameof(Amount)}:         {Amount}")
         .ToString();
 }
