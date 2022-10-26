@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -141,7 +141,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
-        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext  decoderContext, RlpBehaviors rlpBehaviors)
+        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -363,7 +363,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-            bool forSigning = false,  bool isEip155Enabled = false, ulong chainId = 0)
+            bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         {
             if (item is null)
             {
