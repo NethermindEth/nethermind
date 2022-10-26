@@ -22,7 +22,7 @@
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
     "networkID": "0x146A2E",
-    "MergeForkIdTransition": "0x3e8",
+    "MergeForkIdTransition": "0x0",
     "eip150Transition": "0x0",
     "eip158Transition": "0x0",
     "eip160Transition": "0x0",
@@ -912,6 +912,7 @@
       "balance": "10000000000000000000000000"
     }
   },
-  "nodes": ["enode://1ddbf101b687051a9c2d7202580cf4687b7548736bd039b3be881ac29e6da9d5d626a389e4a03699be67c0f043d3abae923c3d1915808e94dd2904d840f5b7d9@46.101.126.45:30303"
+  "nodes": [
+    "enode://95b683a66aba396551bafff688644fc6dc1bada2de78491f89b268ebdcf3d88dfc9942a9f2833ecc3887d49dfb4e96851c2f5eb0adde41847cc356f15ac4ac67@178.128.206.76:30303"
   ]
 }
