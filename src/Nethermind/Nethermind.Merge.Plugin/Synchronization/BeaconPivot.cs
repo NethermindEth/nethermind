@@ -73,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public Keccak PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
         public BlockHeader? ProcessDestination { get; set; }
+        public bool ShouldForceStartNewSync { get; set; } = false;
 
         // We actually start beacon header sync from the pivot parent hash because hive test.... And because
         // we can I guess?
@@ -132,6 +133,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
+                ShouldForceStartNewSync = false;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
             }
         }
@@ -174,5 +176,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // as MergeBlockDownloader process higher block, making it somewhat like a lowest processed beacon block.
         // TODO: Check if we can just re-use pivot and move pivot forward
         BlockHeader? ProcessDestination { get; set; }
+        bool ShouldForceStartNewSync { get; set; }
     }
 }

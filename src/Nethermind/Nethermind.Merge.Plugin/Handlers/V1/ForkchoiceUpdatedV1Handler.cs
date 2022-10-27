@@ -126,6 +126,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
+                if (_beaconPivot.ShouldForceStartNewSync)
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info($"Force starting new sync.");
+
+                    StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
+
+                    return ForkchoiceUpdatedV1Result.Syncing;
+                }
+
                 if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
                     ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
 

@@ -31,7 +31,7 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Test1()
         {
-            StartCliqueNode("node1")
+            StartCliqueNode("basicnode1")
                 .Wait(3000)
                 .Kill();
 
