@@ -586,12 +586,13 @@ namespace Nethermind.Evm.Test
 
                 byte[] corruptBytecode(bool isEof, byte[] arg)
                 {
-                    if(isEof)
+                    if (isEof)
                     {
                         // corrupt EOF : wrong version
                         arg[2] = 0;
                         return arg;
-                    } else
+                    }
+                    else
                     {
                         // corrupt Legacy : starts with 0xef
                         var result = new List<byte>();
