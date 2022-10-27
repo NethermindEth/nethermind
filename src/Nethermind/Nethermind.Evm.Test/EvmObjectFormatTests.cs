@@ -147,6 +147,7 @@ namespace Nethermind.Evm.Test
 
         public class TestCase
         {
+            public int Index;
             public byte[] Code;
             public byte[] Data;
             public (byte Status, string error) ResultIfEOF;
@@ -587,48 +588,105 @@ namespace Nethermind.Evm.Test
         {
             get
             {
+                int idx = 0;
                 byte[] salt = { 4, 5, 6 };
-                var standardCode   = new byte[] { 0x00};
-                var standardData   = new byte[] { 0xaa };
-                
-                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, int mode, int context)
+                var standardCode = Prepare.EvmCode.ADD(2, 3).Done;
+                var standardData = new byte[] { 0xaa };
+
+                byte[] corruptBytecode(bool isEof, byte[] arg)
                 {
+                    if(isEof)
+                    {
+                        // corrupt EOF : wrong version
+                        arg[2] = 0;
+                        return arg;
+                    } else
+                    {
+                        // corrupt Legacy : starts with 0xef
+                        var result = new List<byte>();
+                        result.Add(0xEF);
+                        result.AddRange(arg);
+                        return result.ToArray();
+                    }
+                }
+
+                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, int mode, int context, int corrupt)
+                {
+                    // if initcode should be EOF
                     if ((mode & 2) == 2)
                     {
                         deployed = EofBytecode(deployed, deployedData);
-                    } else
+                    }
+                    // if initcode should be Legacy
+                    else
                     {
                         deployed = Classicalcode(deployed, deployedData);
                     }
 
+                    // if initcode should be corrupt
+                    if ((corrupt & 2) == 2)
+                    {
+                        deployed = corruptBytecode((mode & 2) == 2, deployed);
+                    }
+
+                    // wrap initcode in container
                     byte[] result = context switch
                     {
-                        1 => Prepare.EvmCode.Create(deployed, UInt256.Zero).Done,
-                        2 => Prepare.EvmCode.Create2(deployed, salt, UInt256.Zero).Done,
+                        1 => Prepare.EvmCode
+                                .MSTORE(0, deployed)
+                                .CREATEx(1, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .Done,
+                        2 => Prepare.EvmCode
+                                .MSTORE(0, deployed)
+                                .PUSHx(salt)
+                                .CREATEx(2, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .Done,
                         _ => Prepare.EvmCode
-                                .PUSHx(deployed)
-                                .MSTORE(0)
+                                .MSTORE(0, deployed)
                                 .RETURN((UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
-                                .Done
+                                .Done,
                     };
 
+                    // if container should be EOF
                     if ((mode & 1) == 1)
                     {
                         result = EofBytecode(result);
                     }
+                    // if initcode should be Legacy
+                    else
+                    {
+                        result = Classicalcode(result);
+                    }
+
+                    // if container should be corrupt
+                    if ((corrupt & 1) == 1)
+                    {
+                        result = corruptBytecode((mode & 1) == 1, result);
+                    }
+
                     return result;
 
                 }
                 for (int i = 0; i < 4; i++) // 00 01 10 11
                 {
-                    for(int j = 0; j < 3; j++)
+                    bool hasEofContainer = (i & 1) == 1;
+                    bool hasEofInnitcode = (i & 2) == 2;
+                    for (int j = 0; j < 3; j++)
                     {
-                        yield return new TestCase
+                        bool useCreate1 = j == 1;
+                        bool useCreate2 = j == 2;
+                        for (int k = 0; k < 4; k++) // 00 01 10 11
                         {
-                            Code = EmitBytecode(standardCode, standardData, i, j),
-                            ResultIfEOF = (StatusCode.Success, j.ToString()),
-                            Description = $"EOF1 execution : Deploy {((i & 2) != 2 ? "NON-" : String.Empty)}EOF Bytecode with {((i & 1) != 1 ? "NON-" : String.Empty)}EOF container with {(i == 1 ? "CREATE" : i == 2 ? "CREATE2" : "Initcode")}"
-                        };
+                            bool corruptContainer = (k & 1) == 1;
+                            bool corruptInnitcode = (k & 2) == 2;
+                            yield return new TestCase
+                            {
+                                Index = idx++,
+                                Code = EmitBytecode(standardCode, standardData, i, j, k),
+                                ResultIfEOF = (corruptContainer ? StatusCode.Failure : StatusCode.Success, null),
+                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? "NON-" : String.Empty)}EOF Bytecode with {(hasEofContainer ? "NON-" : String.Empty)}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? "" : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? "" : "Not")} Corrupted INITCODE"
+                            };
+                        }
                     }
                 }
             }
@@ -640,19 +698,18 @@ namespace Nethermind.Evm.Test
         public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
-
+            Address deployed = ContractAddress.From(TestItem.AddressA, 0);
             byte[] createContract = testcase.Code;
 
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
 
             transaction.GasPrice = 100.GWei();
-            transaction.To = null;
-            transaction.Data = createContract;
+
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, testcase.Description);
+            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
         }
     }
 }

@@ -100,7 +100,7 @@ namespace Nethermind.Evm
                 default:
                     if (LoggingEnabled)
                     {
-                        _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {code[i]}");
+                        _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {EOFVersion}");
                     }
                     header = null; return false;
             }
