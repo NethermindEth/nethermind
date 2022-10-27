@@ -88,42 +88,42 @@ namespace Nethermind.Consensus.Ethash
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            return ValidateExtraData()
-                   && ValidateDifficulty()
-                   && (isUncle || ValidateTimestamp());
+            return ValidateExtraData(header)
+                   && ValidateDifficulty(parent, header)
+                   && (isUncle || ValidateTimestamp(header));
 
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool ValidateExtraData()
+            bool ValidateExtraData(BlockHeader blockHeader)
             {
-                bool extraDataNotTooLong = header.ExtraData.Length <= 32;
+                bool extraDataNotTooLong = blockHeader.ExtraData.Length <= 32;
                 if (!extraDataNotTooLong && _logger.IsWarn)
                     _logger.Warn(
-                        $"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - extra data too long {blockHeader.ExtraData.Length}");
 
                 return extraDataNotTooLong;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool ValidateDifficulty()
+            bool ValidateDifficulty(BlockHeader parentHeader, BlockHeader blockHeader)
             {
-                UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
-                bool isDifficultyCorrect = difficulty == header.Difficulty;
+                UInt256 difficulty = _difficultyCalculator.Calculate(blockHeader, parentHeader);
+                bool isDifficultyCorrect = difficulty == blockHeader.Difficulty;
                 if (!isDifficultyCorrect && _logger.IsWarn)
                     _logger.Warn(
-                        $"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {header.Difficulty} instead of {difficulty}");
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {blockHeader.Difficulty} instead of {difficulty}");
 
                 return isDifficultyCorrect;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool ValidateTimestamp()
+            bool ValidateTimestamp(BlockHeader blockHeader)
             {
                 ulong unixTimeSeconds = _timestamper.UnixTime.Seconds;
-                bool blockTooFarIntoFuture = header.Timestamp > unixTimeSeconds + AllowedFutureBlockTimeSeconds;
+                bool blockTooFarIntoFuture = blockHeader.Timestamp > unixTimeSeconds + AllowedFutureBlockTimeSeconds;
                 if (blockTooFarIntoFuture && _logger.IsWarn)
                     _logger.Warn(
-                        $"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect timestamp {header.Timestamp - unixTimeSeconds} seconds into the future");
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - incorrect timestamp {blockHeader.Timestamp - unixTimeSeconds} seconds into the future");
 
                 return !blockTooFarIntoFuture;
             }
