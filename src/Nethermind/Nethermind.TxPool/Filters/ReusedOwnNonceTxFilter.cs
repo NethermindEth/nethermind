@@ -29,21 +29,17 @@ namespace Nethermind.TxPool.Filters
     internal class ReusedOwnNonceTxFilter : IIncomingTxFilter
     {
         private readonly object _locker = new();
-        private readonly IAccountStateProvider _accounts;
         private readonly ConcurrentDictionary<Address, TxPool.AddressNonces> _nonces;
         private readonly ILogger _logger;
 
-        public ReusedOwnNonceTxFilter(IAccountStateProvider accountStateProvider, ConcurrentDictionary<Address, TxPool.AddressNonces> nonces, ILogger logger)
+        public ReusedOwnNonceTxFilter(ConcurrentDictionary<Address, TxPool.AddressNonces> nonces, ILogger logger)
         {
-            _accounts = accountStateProvider;
             _nonces = nonces;
             _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
-
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             Account account = state.SenderAccount;
             UInt256 currentNonce = account.Nonce;

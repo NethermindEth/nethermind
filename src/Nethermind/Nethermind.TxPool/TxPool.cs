@@ -113,11 +113,11 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _accounts, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
+            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
+            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -279,7 +279,7 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
-            TxFilteringState state = new();
+            TxFilteringState state = new(tx, _accounts);
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];

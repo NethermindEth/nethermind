@@ -31,23 +31,19 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
-        private readonly IAccountStateProvider _accounts;
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogManager logManager)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, ILogManager logManager)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
-            _accounts = accountStateProvider;
             _txs = txs;
             _logger = logManager.GetClassLogger();
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
-
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             UInt256 balance = state.SenderAccount.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);

@@ -26,12 +26,10 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal class LowNonceFilter : IIncomingTxFilter
     {
-        private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public LowNonceFilter(IAccountStateProvider accountStateProvider, ILogger logger)
+        public LowNonceFilter(ILogger logger)
         {
-            _accounts = accountStateProvider;
             _logger = logger;
         }
 
@@ -41,8 +39,6 @@ namespace Nethermind.TxPool.Filters
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
             // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
             // This was modeled by OpenEthereum behavior.
-            state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
-
             Account account = state.SenderAccount;
             UInt256 currentNonce = account.Nonce;
             if (tx.Nonce < currentNonce)

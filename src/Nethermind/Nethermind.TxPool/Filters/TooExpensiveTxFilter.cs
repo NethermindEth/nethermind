@@ -31,22 +31,18 @@ namespace Nethermind.TxPool.Filters
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly TxDistinctSortedPool _txs;
-        private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public TooExpensiveTxFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public TooExpensiveTxFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
             _txs = txs;
-            _accounts = accountStateProvider;
             _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
-
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;

@@ -29,20 +29,16 @@ namespace Nethermind.TxPool.Filters
     internal class GapNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
-        private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public GapNonceFilter(IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public GapNonceFilter(TxDistinctSortedPool txs, ILogger logger)
         {
             _txs = txs;
-            _accounts = accountStateProvider;
             _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            state.SenderAccount ??= _accounts.GetAccount(tx.SenderAddress!);
-
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);
             bool isTxPoolFull = _txs.IsFull();
             UInt256 currentNonce = state.SenderAccount.Nonce;
