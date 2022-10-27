@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -54,6 +55,7 @@ namespace Nethermind.Synchronization
         protected readonly ILogManager _logManager;
         protected readonly ISyncReport _syncReport;
         protected readonly IPivot _pivot;
+        protected readonly IBlockProcessingQueue _blockProcessingQueue;
 
         protected CancellationTokenSource? _syncCancellation = new();
 
@@ -66,9 +68,9 @@ namespace Nethermind.Synchronization
         private StateSyncFeed? _stateSyncFeed;
         private SnapSyncFeed? _snapSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
-        private HeadersSyncFeed? _headersFeed;
-        private BodiesSyncFeed? _bodiesFeed;
-        private ReceiptsSyncFeed? _receiptsFeed;
+        private ISyncFeed<HeadersSyncBatch>? _headersFeed;
+        private ISyncFeed<BodiesSyncBatch?> _bodiesFeed;
+        private ISyncFeed<ReceiptsSyncBatch?> _receiptsFeed;
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -83,6 +85,7 @@ namespace Nethermind.Synchronization
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             ISyncReport syncReport,
+            IBlockProcessingQueue blockProcessingQueue,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -97,6 +100,7 @@ namespace Nethermind.Synchronization
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+            _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
         }
@@ -186,7 +190,8 @@ namespace Nethermind.Synchronization
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
 
-            _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+            _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager)
+                .ThrottleOnBlockProcessing(_blockProcessingQueue);
             HeadersSyncDispatcher headersDispatcher = new(_headersFeed!, _syncPeerPool, fastFactory, _logManager);
             Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
@@ -204,7 +209,15 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(
+                            _syncMode,
+                            _blockTree,
+                            _syncPeerPool,
+                            _syncConfig,
+                            _syncReport,
+                            _specProvider,
+                            _logManager)
+                        .ThrottleOnBlockProcessing(_blockProcessingQueue);
                     BodiesSyncDispatcher bodiesDispatcher = new(_bodiesFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
@@ -221,7 +234,16 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    _receiptsFeed = new ReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _receiptsFeed = new ReceiptsSyncFeed(
+                            _syncMode,
+                            _specProvider,
+                            _blockTree,
+                            _receiptStorage,
+                            _syncPeerPool,
+                            _syncConfig,
+                            _syncReport,
+                            _logManager)
+                        .ThrottleOnBlockProcessing(_blockProcessingQueue);
                     ReceiptsSyncDispatcher receiptsDispatcher = new(_receiptsFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {

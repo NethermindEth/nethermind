@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -323,7 +323,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
+        public async Task If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
@@ -336,7 +336,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
 
-            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            SyncResponseHandlingResult handlingResult = await _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
             _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, Arg.Any<string>());

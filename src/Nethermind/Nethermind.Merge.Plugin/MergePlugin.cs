@@ -455,6 +455,7 @@ namespace Nethermind.Merge.Plugin
                     _poSSwitcher,
                     _mergeConfig,
                     _invalidChainTracker,
+                    _api.BlockProcessingQueue,
                     _api.LogManager,
                     syncReport);
             }

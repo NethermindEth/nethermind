@@ -128,7 +128,8 @@ namespace Nethermind.Synchronization.FastBlocks
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(BodiesSyncBatch? batch,
+            PeerInfo peer = null)
         {
             batch?.MarkHandlingStart();
             try
@@ -136,13 +137,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch == null)
                 {
                     if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                    return SyncResponseHandlingResult.InternalError;
+                    return ValueTask.FromResult(SyncResponseHandlingResult.InternalError);
                 }
 
                 int added = InsertBodies(batch);
-                return added == 0
+                return ValueTask.FromResult(added == 0
                     ? SyncResponseHandlingResult.NoProgress
-                    : SyncResponseHandlingResult.OK;
+                    : SyncResponseHandlingResult.OK);
             }
             finally
             {

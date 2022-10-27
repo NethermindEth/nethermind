@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
-                                .ContinueWith(t =>
+                                .ContinueWith(async t =>
                             {
                                 if (t.IsFaulted)
                                 {
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                         return;
                                     }
 
-                                    SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
+                                    SyncResponseHandlingResult result = await Feed.HandleResponse(request, allocatedPeer);
                                     ReactToHandlingResult(request, result, allocatedPeer);
                                 }
                                 catch (ObjectDisposedException)
@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                            SyncResponseHandlingResult result = await Feed.HandleResponse(request);
                             ReactToHandlingResult(request, result, null);
                         }
                     }

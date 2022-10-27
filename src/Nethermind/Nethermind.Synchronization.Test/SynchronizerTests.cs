@@ -400,6 +400,7 @@ namespace Nethermind.Synchronization.Test
                         poSSwitcher,
                         mergeConfig,
                         invalidChainTracker,
+                        new EmptyBlockProcessingQueue(),
                         _logManager,
                         syncReport);
                 }
@@ -430,6 +431,7 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
+                        new EmptyBlockProcessingQueue(),
                         _logManager);
                 }
 

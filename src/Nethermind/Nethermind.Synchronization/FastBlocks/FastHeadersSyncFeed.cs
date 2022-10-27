@@ -267,12 +267,13 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(HeadersSyncBatch? batch,
+            PeerInfo peer = null)
         {
             if (batch == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                return SyncResponseHandlingResult.InternalError;
+                return ValueTask.FromResult(SyncResponseHandlingResult.InternalError);
             }
 
             if ((batch.Response?.Length ?? 0) == 0)
@@ -281,21 +282,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                return ValueTask.FromResult(batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress);
             }
 
             try
             {
                 if (batch.RequestSize == 0)
                 {
-                    return SyncResponseHandlingResult.OK; // 1
+                    return ValueTask.FromResult(SyncResponseHandlingResult.OK); // 1
                 }
 
                 lock (_handlerLock)
                 {
                     batch.MarkHandlingStart();
                     int added = InsertHeaders(batch);
-                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    return ValueTask.FromResult(added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK);
                 }
             }
             finally

@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -81,12 +81,12 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
+        public override ValueTask<SyncResponseHandlingResult> HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
         {
             if (batch == null)
             {
                 if (_logger.IsError) _logger.Error("Received empty batch as a response");
-                return SyncResponseHandlingResult.InternalError;
+                return ValueTask.FromResult(SyncResponseHandlingResult.InternalError);
             }
 
             AddRangeResult result = AddRangeResult.OK;
@@ -113,16 +113,16 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (peer == null)
                 {
-                    return SyncResponseHandlingResult.NotAssigned;
+                    return ValueTask.FromResult(SyncResponseHandlingResult.NotAssigned);
                 }
                 else
                 {
                     _logger.Trace($"SNAP - timeout {peer}");
-                    return SyncResponseHandlingResult.LesserQuality;
+                    return ValueTask.FromResult(SyncResponseHandlingResult.LesserQuality);
                 }
             }
 
-            return AnalyzeResponsePerPeer(result, peer);
+            return ValueTask.FromResult(AnalyzeResponsePerPeer(result, peer));
         }
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }

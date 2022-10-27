@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using Nethermind.Consensus.Processing;
-using Nethermind.Logging;
-using Nethermind.Synchronization.FastBlocks;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
+using System;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin.Synchronization;
+namespace Nethermind.Consensus.Processing;
 
-public class BeaconHeadersSyncDispatcher : HeadersSyncDispatcher
+public class EmptyBlockProcessingQueue : IBlockProcessingQueue
 {
-    public BeaconHeadersSyncDispatcher(
-        ISyncFeed<HeadersSyncBatch> syncFeed,
-        ISyncPeerPool syncPeerPool,
-        IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
-        ILogManager logManager)
-        : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+    public void Enqueue(Block block, ProcessingOptions processingOptions)
     {
+        BlockRemoved?.Invoke(this, new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
     }
+
+    public event EventHandler? ProcessingQueueEmpty;
+    public event EventHandler<BlockHashEventArgs>? BlockRemoved;
+    public int Count => 0;
+    public ValueTask Emptied() => default;
 }

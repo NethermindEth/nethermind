@@ -18,7 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -26,7 +25,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -69,6 +67,7 @@ namespace Nethermind.Consensus.Processing
         private const int MaxBlocksDuringFastSyncTransition = 8192;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private readonly Stopwatch _stopwatch = new();
+        private TaskCompletionSource? _emptiedQueueTaskCompletionSource;
 
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs> InvalidBlock;
 
@@ -274,6 +273,8 @@ namespace Nethermind.Consensus.Processing
 
             foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
+                _emptiedQueueTaskCompletionSource ??= new TaskCompletionSource();
+
                 try
                 {
                     if (blockRef.IsInDb || blockRef.Block == null)
@@ -323,6 +324,8 @@ namespace Nethermind.Consensus.Processing
             if (((IBlockProcessingQueue)this).IsEmpty)
             {
                 ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
+                _emptiedQueueTaskCompletionSource?.SetResult();
+                _emptiedQueueTaskCompletionSource = null;
             }
         }
 
@@ -330,6 +333,18 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<BlockHashEventArgs>? BlockRemoved;
 
         int IBlockProcessingQueue.Count => _queueCount;
+
+        public async ValueTask Emptied()
+        {
+            if (_emptiedQueueTaskCompletionSource is not null)
+            {
+                Task task = _emptiedQueueTaskCompletionSource.Task;
+                if (!task.IsCompleted)
+                {
+                    await task;
+                }
+            }
+        }
 
         public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {

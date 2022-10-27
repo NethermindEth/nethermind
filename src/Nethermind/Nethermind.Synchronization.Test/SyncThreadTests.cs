@@ -388,6 +388,7 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                new EmptyBlockProcessingQueue(),
                 logManager);
             SyncServer syncServer = new(
                 trieStore,
