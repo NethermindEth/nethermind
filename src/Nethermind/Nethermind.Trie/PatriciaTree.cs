@@ -10,7 +10,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -124,7 +123,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Commit(long blockNumber)
+        public void Commit(long blockNumber, bool skipRoot = false)
         {
             if (_currentCommit is null)
             {
@@ -139,7 +138,7 @@ namespace Nethermind.Trie
 
             if (RootRef is not null && RootRef.IsDirty)
             {
-                Commit(new NodeCommitInfo(RootRef));
+                Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
@@ -155,7 +154,7 @@ namespace Nethermind.Trie
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
-        private void Commit(NodeCommitInfo nodeCommitInfo)
+        private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (_currentCommit is null)
             {
@@ -268,7 +267,10 @@ namespace Nethermind.Trie
 
             if (node.FullRlp?.Length >= 32)
             {
-                _currentCommit.Enqueue(nodeCommitInfo);
+                if (!skipSelf)
+                {
+                    _currentCommit.Enqueue(nodeCommitInfo);
+                }
             }
             else
             {
@@ -466,7 +468,7 @@ namespace Nethermind.Trie
                                as a result of deleting one of the last two children */
                             /* case 1) - extension from branch
                                this is particularly interesting - we create an extension from
-                               the implicit path in the branch children positions (marked as P) 
+                               the implicit path in the branch children positions (marked as P)
                                P B B B B B B B B B B B B B B B
                                B X - - - - - - - - - - - - - -
                                case 2) - extended extension
