@@ -97,17 +97,17 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<byte[], List<(byte[] path, StateSyncItem syncItem)>> dict = new(Bytes.EqualityComparer);
+            Dictionary<byte[], List<(byte[] path, StateSyncItem syncItem)>> itemsGroupedByAccount = new(Bytes.EqualityComparer);
             List<(byte[] path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
                 if (item.AccountPathNibbles?.Length > 0)
                 {
-                    if (!dict.TryGetValue(item.AccountPathNibbles, out var storagePaths))
+                    if (!itemsGroupedByAccount.TryGetValue(item.AccountPathNibbles, out var storagePaths))
                     {
                         storagePaths = new List<(byte[], StateSyncItem)>();
-                        dict[item.AccountPathNibbles] = storagePaths;
+                        itemsGroupedByAccount[item.AccountPathNibbles] = storagePaths;
                     }
 
                     storagePaths.Add((item.PathNibbles, item));
@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            request.AccountAndStoragePaths = new PathGroup[accountTreePaths.Count + dict.Count];
+            request.AccountAndStoragePaths = new PathGroup[accountTreePaths.Count + itemsGroupedByAccount.Count];
 
             int requestedNodeIndex = 0;
             int accountPathIndex = 0;
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.StateSync
                 requestedNodeIndex++;
             }
 
-            foreach (var kvp in dict)
+            foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
                 group[0] = EncodePath(kvp.Key);

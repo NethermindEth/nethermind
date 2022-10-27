@@ -708,6 +708,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
+                        // Add nibbles to StateSyncItem.PathNibbles
                         Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
                         currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
                         trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
@@ -763,6 +764,8 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
+                            // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
+                            // and StateSyncItem.PathNibbles will start from null (storage root)
                             Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
                             currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
                             trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
