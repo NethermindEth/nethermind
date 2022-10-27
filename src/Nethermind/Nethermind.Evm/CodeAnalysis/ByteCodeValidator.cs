@@ -19,8 +19,8 @@ namespace Nethermind.Evm.CodeAnalysis
                 EofFormatChecker = new EvmObjectFormat(logger);
         }
 
-        public static bool HasEOFMagic(this Span<byte> code) => EofFormatChecker.HasEOFFormat(code);
-        public static bool ValidateByteCode(Span<byte> code, IReleaseSpec _spec, out EofHeader header)
+        public static bool HasEOFMagic(this ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
+        public static bool ValidateByteCode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
             if (_spec.IsEip3670Enabled && code.HasEOFMagic())
             {
@@ -34,21 +34,21 @@ namespace Nethermind.Evm.CodeAnalysis
             header = null;
             return !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
-        public static bool ValidateByteCode(this Span<byte> code, IReleaseSpec _spec)
+        public static bool ValidateByteCode(this ReadOnlySpan<byte> code, IReleaseSpec _spec)
                 => ValidateByteCode(code, _spec, out _);
 
-        public static bool IsEOFCode(Span<byte> machineCode, out EofHeader header)
+        public static bool IsEOFCode(ReadOnlySpan<byte> machineCode, out EofHeader header)
             => EofFormatChecker.ExtractHeader(machineCode, out header);
-        public static int CodeStartIndex(Span<byte> machineCode)
+        public static int CodeStartIndex(ReadOnlySpan<byte> machineCode)
             => IsEOFCode(machineCode, out var header)
                     ? header.CodeStartOffset
                     : 0;
-        public static int CodeEndIndex(Span<byte> machineCode)
+        public static int CodeEndIndex(ReadOnlySpan<byte> machineCode)
             => IsEOFCode(machineCode, out var header)
                     ? header.CodeEndOffset
                     : machineCode.Length;
 
-        public static int CodeSize(Span<byte> machineCode)
+        public static int CodeSize(ReadOnlySpan<byte> machineCode)
             => IsEOFCode(machineCode, out var header)
                     ? header.CodeSize
                     : machineCode.Length;

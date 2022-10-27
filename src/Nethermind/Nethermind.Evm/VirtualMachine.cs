@@ -121,7 +121,10 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            if (!(currentState.IsTopLevel && currentState.Env.Value == UInt256.Zero))
+                            {
+                                _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            }
                         }
 
                         callResult = ExecutePrecompile(currentState, spec);
@@ -2389,7 +2392,7 @@ namespace Nethermind.Evm
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
                             if (spec.IsEip3670Enabled
-                                && (initCode.HasEOFMagic() && !ByteCodeValidator.ValidateByteCode(initCode, spec)))
+                                && (ByteCodeValidator.HasEOFMagic(initCode) && !ByteCodeValidator.ValidateByteCode(initCode, spec)))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

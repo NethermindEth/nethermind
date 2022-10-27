@@ -375,6 +375,12 @@ public partial class BlockTreeTests
                 return this;
             }
 
+            public ScenarioBuilder SetProcessDestination(long num)
+            {
+                _beaconPivot.ProcessDestination = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None);
+                return this;
+            }
+
             public ScenarioBuilder ClearBeaconPivot()
             {
                 NotSyncedTreeBuilder.MetadataDb.Delete(MetadataDbKeys.BeaconSyncPivotNumber);
@@ -424,7 +430,7 @@ public partial class BlockTreeTests
                         }
 
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
-                        Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
+                        Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");
                     }
 
                     headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
@@ -631,6 +637,20 @@ public partial class BlockTreeTests
                     ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
                     blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock.BlockHash, $"Current block number: {i}");
                 }
+
+                return this;
+            }
+
+            public ScenarioBuilder AssertForceNewBeaconSync()
+            {
+                _beaconPivot.ShouldForceStartNewSync.Should().BeTrue();
+
+                return this;
+            }
+
+            public ScenarioBuilder AssertNotForceNewBeaconSync()
+            {
+                _beaconPivot.ShouldForceStartNewSync.Should().BeFalse();
 
                 return this;
             }
