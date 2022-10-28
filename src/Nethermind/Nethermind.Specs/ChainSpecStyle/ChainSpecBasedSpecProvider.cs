@@ -95,12 +95,14 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 if (propertyInfo.PropertyType == typeof(ulong))
                 {
-                    transitionTimestamps.Add((ulong)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters));
+                    ulong timestampTansition = (ulong)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
+                    if (timestampTansition > 0)
+                        transitionTimestamps.Add(timestampTansition);
                 }
                 else if (propertyInfo.PropertyType == typeof(ulong?))
                 {
                     var optionalTransition = (ulong?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition != null)
+                    if (optionalTransition != null && optionalTransition.Value > 0)
                     {
                         transitionTimestamps.Add(optionalTransition.Value);
                     }
@@ -119,13 +121,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                 )
                 .ToArray();
             _transitions = new (ForkActivation, ReleaseSpec Release)[transitionBlockNumbers.Count + transitionTimestamps.Count];
-
+            
             int index = 0;
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = new();
                 FillReleaseSpec(releaseStartBlock, 0ul, releaseSpec);
-                _transitions[index] = (releaseStartBlock, releaseSpec);
+                _transitions[index] = ((releaseStartBlock, 0ul), releaseSpec);
                 index++;
             }
 
