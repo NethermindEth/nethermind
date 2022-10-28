@@ -1,5 +1,6 @@
 using System.Text;
 using Nethermind.Consensus;
+using Nethermind.Core.Exceptions;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test;
@@ -8,8 +9,10 @@ namespace Nethermind.Mining.Test;
 public class MiningConfigTest
 {
     [TestCase]
+    [TestCase("")]
     [TestCase("1, 2, 3, 4, 5")]
     [TestCase("Other Extra data")]
+
     public void Test(string data = "Nethermind")
     {
         IMiningConfig config = new MiningConfig();
@@ -18,5 +21,25 @@ public class MiningConfigTest
 
         Assert.AreEqual(config.ExtraData, data);
         Assert.AreEqual(config.GetExtraDataBytes(), dataBytes);
+    }
+
+    [Test]
+    public void TestTooLongExtraData()
+    {
+        string data = "1234567890" +
+                      "1234567890" +
+                      "1234567890" +
+                      "1234567890";
+
+        IMiningConfig config = new MiningConfig();
+        string defaultData = config.ExtraData;
+        byte[] defaultDataBytes = Encoding.UTF8.GetBytes(defaultData);
+
+        byte[] dataBytes = Encoding.UTF8.GetBytes(data);
+        Assert.Greater(dataBytes.Length, 32);
+
+        Assert.Throws<InvalidConfigurationException>(() => config.ExtraData = data); //throw on update
+        Assert.AreEqual(config.ExtraData, defaultData); // Keep previous one
+        Assert.AreEqual(config.GetExtraDataBytes(), defaultDataBytes);
     }
 }
