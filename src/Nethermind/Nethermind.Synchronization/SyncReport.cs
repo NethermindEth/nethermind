@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using Microsoft.VisualBasic;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Reports
@@ -23,6 +26,11 @@ namespace Nethermind.Synchronization.Reports
     public class ProgressStage
     {
         public SyncMode SyncMode { get; set; }
+
+        public DateTime StartTime { get; set; }
+        public DateTime FinishTime { get; set; }
+        public TimeSpan Duration => FinishTime - StartTime;
+
         public long? Current { get; set; }
         public long? Total { get; set; }
         public double? Percent => Current / Total;
@@ -35,11 +43,11 @@ namespace Nethermind.Synchronization.Reports
     public static class ReportSink
     {
         public static List<SyncMode> CurrentStage { get; set; } = new();
-        public static List<ProgressStage> Progress { get; set; } = new();
+        public static ConcurrentDictionary<SyncMode, ProgressStage> Progress { get; set; } = new();
         public static SyncReportSymmary Snapshot => new SyncReportSymmary
         {
             CurrentStage = CurrentStage,
-            Progress = Progress
+            Progress = Progress.Values
         };
     }
 }

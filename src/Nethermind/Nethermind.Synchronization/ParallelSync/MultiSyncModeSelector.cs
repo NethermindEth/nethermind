@@ -127,6 +127,10 @@ namespace Nethermind.Synchronization.ParallelSync
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 ReportSink.CurrentStage.Add(args.Current);
+                ReportSink.CurrentStage.Remove(args.Previous);
+
+                ReportSink.Progress[args.Previous].FinishTime = DateTime.Now;
+
                 var stage = new ProgressStage
                 {
                     SyncMode = args.Current,
@@ -136,7 +140,17 @@ namespace Nethermind.Synchronization.ParallelSync
                     stage.Current = image.Block;
                     stage.Total = image.TargetBlock;
                 }
-                ReportSink.Progress.Add(stage);
+                ReportSink.Progress.AddOrUpdate(
+                    args.Current,
+                    (_) => {
+                        stage.StartTime = DateTime.UtcNow;
+                        return stage;
+                    },
+                    (_, old) =>
+                    {
+                        stage.StartTime = old.StartTime;
+                        return stage;
+                    });
             };
 
             _ = StartAsync(_cancellation.Token);
