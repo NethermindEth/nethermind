@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,18 +33,18 @@ namespace Nethermind.EvmPlayground
         [JsonProperty(PropertyName = "id", Order = 0)]
         public UInt256 Id { get; set; }
     }
-    
+
     public class JsonRpcResponse<T>
     {
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public const string JsonRpc = "2.0";
-        
+
         [JsonProperty(PropertyName = "result", Order = 2)]
         public T Result { get; set; }
-        
+
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public string Error { get; set; }
-        
+
         [JsonProperty(PropertyName = "id", Order = 0)]
         public UInt256 Id { get; set; }
     }

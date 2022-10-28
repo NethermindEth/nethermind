@@ -29,7 +29,7 @@ namespace Nethermind.State.Repositories
             _lockObject = lockObject;
             Monitor.Enter(_lockObject, ref _lockTaken);
         }
-        
+
         public void Dispose()
         {
             if (!Disposed)

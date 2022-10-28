@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
         public long Index { get; private set; }
-        
+
         public KeccaksIterator(Span<byte> data)
         {
             _decoderContext = new Rlp.ValueDecoderContext(data);

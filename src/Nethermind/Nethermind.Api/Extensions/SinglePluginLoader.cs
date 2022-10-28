@@ -32,11 +32,11 @@ namespace Nethermind.Api.Extensions
         private SinglePluginLoader() { }
 
         public static IPluginLoader Instance { get; } = new SinglePluginLoader<T>();
-        
+
         public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
-        
+
         public void Load(ILogManager logManager) { }
-        
+
         public void OrderPlugins(IPluginConfig pluginConfig) { }
     }
 }

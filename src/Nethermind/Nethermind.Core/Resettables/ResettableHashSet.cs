@@ -80,7 +80,7 @@ namespace Nethermind.Core.Resettables
             {
                 return;
             }
-            
+
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
@@ -92,7 +92,7 @@ namespace Nethermind.Core.Resettables
                 {
                     _currentCapacity *= _resetRatio;
                 }
-                
+
                 _wrapped.Clear();
             }
         }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.AuRa.Test.Contract
     public class TestContractBlockchain : TestBlockchain
     {
         public ChainSpec ChainSpec { get; set; }
-        
+
         protected TestContractBlockchain()
         {
             SealEngineType = Nethermind.Core.SealEngineType.AuRa;
@@ -50,8 +50,8 @@ namespace Nethermind.AuRa.Test.Contract
             }
 
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
-            TTest test = new() {ChainSpec = provider.ChainSpec};
-            return (TTest) await test.Build(provider.SpecProvider);
+            TTest test = new() { ChainSpec = provider.ChainSpec };
+            return (TTest)await test.Build(provider.SpecProvider);
         }
 
         protected override Block GetGenesisBlock() =>

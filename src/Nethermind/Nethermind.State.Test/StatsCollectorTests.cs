@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,17 +43,17 @@ namespace Nethermind.Store.Test
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
-            Keccak codeHash = stateProvider.UpdateCode(new byte[] {1, 2, 3});
+            Keccak codeHash = stateProvider.UpdateCode(new byte[] { 1, 2, 3 });
             stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, Istanbul.Instance);
-            
+
             stateProvider.CreateAccount(TestItem.AddressB, 1);
-            Keccak codeHash2 = stateProvider.UpdateCode(new byte[] {1, 2, 3, 4});
+            Keccak codeHash2 = stateProvider.UpdateCode(new byte[] { 1, 2, 3, 4 });
             stateProvider.UpdateCodeHash(TestItem.AddressB, codeHash2, Istanbul.Instance);
 
             for (int i = 0; i < 1000; i++)
             {
                 StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                storageProvider.Set(storageCell, new byte[] {(byte)i});    
+                storageProvider.Set(storageCell, new byte[] { (byte)i });
             }
 
             storageProvider.Commit();
@@ -74,19 +74,19 @@ namespace Nethermind.Store.Test
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
-            
+
             stateProvider.Accept(statsCollector, stateProvider.StateRoot, visitingOptions);
             var stats = statsCollector.Stats;
-            
+
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);
-            
+
             stats.NodesCount.Should().Be(1348);
-            
+
             stats.StateBranchCount.Should().Be(1);
             stats.StateExtensionCount.Should().Be(1);
             stats.AccountCount.Should().Be(2);
-            
+
             stats.StorageCount.Should().Be(1343);
             stats.StorageBranchCount.Should().Be(337);
             stats.StorageExtensionCount.Should().Be(12);

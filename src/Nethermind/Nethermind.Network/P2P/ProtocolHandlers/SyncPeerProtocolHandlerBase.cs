@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong) 2.MB();
+        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
@@ -96,7 +96,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return blocks;
         }
 
-        [Todo(Improve.Refactor, "Generic approach to requests")]
         protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -105,35 +104,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
             }
 
-            Request<GetBlockBodiesMessage, BlockBody[]> request = new(message);
-            _bodiesRequests.Send(request);
-
-            // Logger.Warn($"Sending bodies request of length {request.Message.BlockHashes.Count} to {this}");
-
-            Task<BlockBody[]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-            if (firstTask.IsCanceled)
-            {
-                // Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} expired with {this}");
-                token.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask == task)
-            {
-                // Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} received with size {request.ResponseSize} from {this}");
-                delayCancellation.Cancel();
-                long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, bytesPerMillisecond);
-
-                return task.Result;
-            }
-
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
+            return await SendRequestGeneric(
+                _bodiesRequests,
+                message,
+                TransferSpeedType.Bodies,
+                static (message) => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
+                token);
         }
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
@@ -165,31 +141,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
             }
 
-            Request<GetBlockHeadersMessage, BlockHeader[]> request = new(message);
-            _headersRequests.Send(request);
-
-            Task<BlockHeader[]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-            if (firstTask.IsCanceled)
-            {
-                token.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask == task)
-            {
-                delayCancellation.Cancel();
-                long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, bytesPerMillisecond);
-                return task.Result;
-            }
-
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, 0);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
+            return await SendRequestGeneric(
+                _headersRequests,
+                message,
+                TransferSpeedType.Headers,
+                static (message) => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
+                token);
         }
 
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Keccak? hash, CancellationToken token)
@@ -203,7 +160,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers.Length > 0 ? headers[0] : null;
         }
-        
+
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
@@ -235,7 +192,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void SendNewTransaction(Transaction tx)
         {
-            SendMessage(new[]{tx});
+            SendMessage(new[] { tx });
         }
 
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
@@ -250,26 +207,26 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     SendMessage(txsToSend);
                     txsToSend.Clear();
                 }
-                
+
                 if (tx.Hash is not null)
                 {
                     txsToSend.Add(tx);
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
-            
+
             if (txsToSend.Count > 0)
             {
                 SendMessage(txsToSend);
             }
         }
-        
+
         private void SendMessage(IList<Transaction> txsToSend)
         {
             TransactionsMessage msg = new(txsToSend);
             Send(msg);
         }
-        
+
         protected void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
             Metrics.Eth62GetBlockHeadersReceived++;
@@ -293,7 +250,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             //     // Session.DeliverMessage(packet);
             //     LazyInitializer.EnsureInitialized(ref _eth1920000HeaderMessage, () => Deserialize<BlockHeadersMessage>(Bytes.FromHexString("f90210f9020da0a218e2c611f21232d857e3c8cecdcdf1f65f25a4477f98f6f47e4063807f2308a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794bcdfc35b86bedf72f0cda046a3c16829a2ef41d1a0c5e389416116e3696cce82ec4533cce33efccb24ce245ae9546a4b8f0d5e9a75a07701df8e07169452554d14aadd7bfa256d4a1d0355c1d174ab373e3e2d0a3743a026cf9d9422e9dd95aedc7914db690b92bab6902f5221d62694a2fa5d065f534bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008638c3bf2616aa831d4c008347e7c08301482084578f7aa88d64616f2d686172642d666f726ba05b5acbf4bf305f948bd7be176047b20623e1417f75597341a059729165b9239788bede87201de42426")));
             //     Session.DeliverMessage(_eth1920000HeaderMessage);
-            //     
+            //
             //     if (Logger.IsTrace) Logger.Trace($"OUT hardcoded 1920000 BlockHeaders to {Node:c}");
             //     return;
             // }
@@ -319,7 +276,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BlockHeader[] headers =
                 startingHash == null
                     ? Array.Empty<BlockHeader>()
-                    : SyncServer.FindHeaders(startingHash, (int) msg.MaxHeaders, (int) msg.Skip, msg.Reverse == 1);
+                    : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
             headers = FixHeadersForGeth(headers);
 
@@ -355,13 +312,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
+                    Array.Resize(ref blocks, i + 1);
                     break;
                 }
             }
 
             return new BlockBodiesMessage(blocks);
         }
-        
+
         protected virtual void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
@@ -438,7 +396,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region Cleanup
 
         private int _isDisposed;
-        
+
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -493,7 +451,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             protocolHandler = null;
             return false;
         }
-        
+
         #endregion
     }
 }

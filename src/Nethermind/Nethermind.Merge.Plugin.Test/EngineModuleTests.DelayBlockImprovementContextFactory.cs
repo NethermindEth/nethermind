@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,33 +32,34 @@ public partial class EngineModuleTests
     {
         private readonly IManualBlockProductionTrigger _productionTrigger;
         private readonly TimeSpan _timeout;
-        private readonly int _delay;
+        private readonly TimeSpan _delay;
 
-        public DelayBlockImprovementContextFactory(IManualBlockProductionTrigger productionTrigger, TimeSpan timeout, int delay)
+        public DelayBlockImprovementContextFactory(IManualBlockProductionTrigger productionTrigger, TimeSpan timeout, TimeSpan delay)
         {
             _productionTrigger = productionTrigger;
             _timeout = timeout;
             _delay = delay;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes) =>
-            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay);
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
+            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
         private CancellationTokenSource? _cancellationTokenSource;
 
-        public DelayBlockImprovementContext(
-            Block currentBestBlock,
+        public DelayBlockImprovementContext(Block currentBestBlock,
             IManualBlockProductionTrigger blockProductionTrigger,
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
-            int delay)
+            TimeSpan delay,
+            DateTimeOffset startDateTime)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
             CurrentBestBlock = currentBestBlock;
+            StartDateTime = startDateTime;
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
 
@@ -66,7 +67,7 @@ public partial class EngineModuleTests
             IManualBlockProductionTrigger blockProductionTrigger,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
-            int delay,
+            TimeSpan delay,
             CancellationToken cancellationToken)
         {
             Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);
@@ -80,11 +81,13 @@ public partial class EngineModuleTests
         }
 
         public Task<Block?> ImprovementTask { get; }
-
         public Block? CurrentBestBlock { get; private set; }
+        public bool Disposed { get; private set; }
+        public DateTimeOffset StartDateTime { get; }
 
         public void Dispose()
         {
+            Disposed = true;
             CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
         }
     }

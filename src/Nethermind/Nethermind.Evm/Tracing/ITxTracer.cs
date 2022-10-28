@@ -192,13 +192,13 @@ namespace Nethermind.Evm.Tracing
         void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
         /// <summary>
-        ///
+        
         /// </summary>
         /// <param name="stackItem"></param>
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
         void ReportStackPush(byte stackItem)
         {
-            ReportStackPush(new[] {stackItem});
+            ReportStackPush(new[] { stackItem });
         }
 
         /// <summary>
@@ -211,8 +211,7 @@ namespace Nethermind.Evm.Tracing
             ReportStackPush(stackItem.ToArray().AsSpan());
         }
 
-        /// <summary>
-        ///
+        /// <summary>        
         /// </summary>
         /// <param name="stackItem"></param>
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
@@ -253,7 +252,7 @@ namespace Nethermind.Evm.Tracing
         {
             if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
             {
-                ReportMemoryChange((long) offset, data);
+                ReportMemoryChange((long)offset, data);
             }
         }
 
@@ -265,7 +264,7 @@ namespace Nethermind.Evm.Tracing
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
         void ReportMemoryChange(long offset, byte data)
         {
-            ReportMemoryChange(offset, new[] {data});
+            ReportMemoryChange(offset, new[] { data });
         }
 
         /// <summary>
@@ -279,8 +278,7 @@ namespace Nethermind.Evm.Tracing
             ReportMemoryChange(offset, data.ToArray());
         }
 
-        /// <summary>
-        ///
+        /// <summary>        
         /// </summary>
         /// <param name="offset"></param>
         /// <param name="data"></param>

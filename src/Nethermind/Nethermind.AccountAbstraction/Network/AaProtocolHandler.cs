@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Network
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _userOperationPools = userOperationPools ?? throw new ArgumentNullException(nameof(userOperationPools));
             _peerManager = peerManager;
-            
+
             IsPriority = _peerManager.NumberOfPriorityAaPeers > 0;
         }
 
@@ -62,7 +62,7 @@ namespace Nethermind.AccountAbstraction.Network
         public override byte ProtocolVersion => 0;
 
         public override string ProtocolCode => Protocol.AA;
-        
+
         public override int MessageIdSpaceSize => 4;
 
         public override string Name => "aa";

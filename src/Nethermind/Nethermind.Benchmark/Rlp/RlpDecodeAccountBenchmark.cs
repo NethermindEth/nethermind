@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,13 +41,13 @@ namespace Nethermind.Benchmarks.Rlp
         {
             _account = _scenarios[ScenarioIndex];
         }
-        
+
         [Benchmark]
         public Account Improved()
         {
             return Serialization.Rlp.Rlp.Decode<Account>(_account);
         }
-        
+
         [Benchmark]
         public Account Current()
         {

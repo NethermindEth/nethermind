@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-        
+
         static DataDeliveryReceiptDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             try
             {
                 rlpStream.ReadSequenceLength();
-                StatusCodes statusCode = (StatusCodes) rlpStream.DecodeInt();
+                StatusCodes statusCode = (StatusCodes)rlpStream.DecodeInt();
                 uint consumedUnits = rlpStream.DecodeUInt();
                 uint unpaidUnits = rlpStream.DecodeUInt();
                 Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
@@ -66,7 +66,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             return Serialization.Rlp.Rlp.Encode(
-                Serialization.Rlp.Rlp.Encode((int) item.StatusCode),
+                Serialization.Rlp.Rlp.Encode((int)item.StatusCode),
                 Serialization.Rlp.Rlp.Encode(item.ConsumedUnits),
                 Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
                 Serialization.Rlp.Rlp.Encode(item.Signature.V),

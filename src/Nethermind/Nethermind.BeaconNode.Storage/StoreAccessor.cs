@@ -32,7 +32,7 @@ namespace Nethermind.BeaconNode.Storage
             {
                 return await GetAncestorAsync(store, signedBlock.Message.ParentRoot, slot).ConfigureAwait(false);
             }
-            
+
             // Either root is the slot we want, so return it, or
             // root is older than queried slot, thus a skip slot. Return earliest root prior to slot
             return root;

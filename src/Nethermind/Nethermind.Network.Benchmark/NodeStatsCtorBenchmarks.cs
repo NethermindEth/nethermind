@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,19 +25,19 @@ namespace Nethermind.Network.Benchmarks
     public class NodeStatsCtorBenchmarks
     {
         private Node _node;
-        
+
         [GlobalSetup]
         public void Setup()
         {
             _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);
         }
-        
+
         [Benchmark]
         public void Improved()
         {
             throw new NotImplementedException();
         }
-        
+
         [Benchmark]
         public void Light()
         {

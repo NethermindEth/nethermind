@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Clique
             {
                 throw new Exception(string.Empty);
             }
-            
+
             Span<byte> signersData = blockHeader.ExtraData.AsSpan()
                 .Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);
             Address[] signers = new Address[signersData.Length / Address.ByteLength];

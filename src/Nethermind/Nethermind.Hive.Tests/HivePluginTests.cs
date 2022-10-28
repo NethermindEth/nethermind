@@ -27,14 +27,14 @@ namespace Nethermind.Hive.Tests
         {
             _ = new HivePlugin();
         }
-        
+
         [Test]
         public void Throws_on_null_api_in_init()
         {
             HivePlugin plugin = new();
             Assert.Throws<ArgumentNullException>(() => plugin.Init(null));
         }
-        
+
         [Test]
         public void Can_initialize()
         {

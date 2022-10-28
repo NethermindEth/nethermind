@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -26,7 +26,7 @@ namespace Ethereum.Test.Base
         public TestBlockHeaderJson[]? UncleHeaders { get; set; }
         public string? Rlp { get; set; }
         public LegacyTransactionJson[]? Transactions { get; set; }
-        
+
         [JsonProperty("expectExceptionALL")]
         public string? ExpectedException { get; set; }
     }

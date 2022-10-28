@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.UpdateMergeTransitionInfo(100, 20);
-            PoSSwitcher poSSwitcher = new(new MergeConfig() {TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000}, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000 }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
             Assert.AreEqual(2001, specProvider.MergeBlockNumber);
@@ -123,7 +123,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.UpdateMergeTransitionInfo(2001, expectedTtd);
-            PoSSwitcher poSSwitcher = new(new MergeConfig() {},  new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
             Assert.AreEqual(2001, specProvider.MergeBlockNumber);
@@ -243,7 +243,7 @@ namespace Nethermind.Merge.Plugin.Test
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
         {
             db ??= new MemDb();
-            MergeConfig? mergeConfig = new() {Enabled = true};
+            MergeConfig? mergeConfig = new() { };
             return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider ?? MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
     }

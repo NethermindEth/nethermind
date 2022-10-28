@@ -26,14 +26,14 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int BeaconBlockHeaderLength = Ssz.SlotLength + 3 * Ssz.RootLength;
-        
+
         private static BeaconBlockHeader DecodeBeaconBlockHeader(ReadOnlySpan<byte> span, ref int offset)
         {
             BeaconBlockHeader beaconBlockHeader = DecodeBeaconBlockHeader(span.Slice(offset, Ssz.BeaconBlockHeaderLength));
             offset += Ssz.BeaconBlockHeaderLength;
             return beaconBlockHeader;
         }
-        
+
         public static void Encode(Span<byte> span, BeaconBlockHeader container)
         {
             if (span.Length != Ssz.BeaconBlockHeaderLength) ThrowTargetLength<BeaconBlockHeader>(span.Length, Ssz.BeaconBlockHeaderLength);

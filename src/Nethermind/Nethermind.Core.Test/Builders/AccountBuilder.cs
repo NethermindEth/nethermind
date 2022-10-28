@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core.Test.Builders
 {
     public class AccountBuilder : BuilderBase<Account>
-    {   
+    {
         public AccountBuilder()
         {
             TestObjectInternal = Account.TotallyEmpty;
@@ -31,19 +31,19 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
             return this;
         }
-        
+
         public AccountBuilder WithNonce(UInt256 nonce)
         {
             TestObjectInternal = TestObjectInternal.WithChangedNonce(nonce);
             return this;
         }
-        
+
         public AccountBuilder WithCode(byte[] code)
         {
             TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Keccak.Compute(code));
             return this;
         }
-        
+
         public AccountBuilder WithStorageRoot(Keccak storageRoot)
         {
             TestObjectInternal = TestObjectInternal.WithChangedStorageRoot(storageRoot);

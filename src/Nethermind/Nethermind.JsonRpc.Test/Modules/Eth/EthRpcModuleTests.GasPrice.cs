@@ -40,12 +40,12 @@ public partial class EthRpcModuleTests
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
-        
-        string serialized = ctx.Test.TestEthRpc("eth_gasPrice");  
-        
+
+        string serialized = ctx.Test.TestEthRpc("eth_gasPrice");
+
         Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
     }
-    
+
     [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
     [TestCase(false, "0x2")] //Gas Prices: 0,1,1,2,2,3 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 2 (0x2)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
@@ -56,12 +56,12 @@ public partial class EthRpcModuleTests
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
-        
+
         string serialized = ctx.Test.TestEthRpc("eth_gasPrice");
-        
+
         Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
     }
-    
+
 
     private static Block[] GetThreeTestBlocks()
     {
@@ -79,8 +79,8 @@ public partial class EthRpcModuleTests
             Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
             Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
         ).TestObject;
-       
-        return new[]{firstBlock, secondBlock, thirdBlock};
+
+        return new[] { firstBlock, secondBlock, thirdBlock };
     }
 
     private static Block[] GetThreeTestBlocksWith1559Tx()
@@ -99,7 +99,7 @@ public partial class EthRpcModuleTests
             Build.A.Transaction.WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).WithType(TxType.EIP1559).TestObject, //Min(5, 1 + 3) = 4
             Build.A.Transaction.WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).WithType(TxType.EIP1559).TestObject  //Min(6, 2 + 3) = 5
         ).TestObject;
-       
-        return new[]{firstBlock, secondBlock, thirdBlock};
+
+        return new[] { firstBlock, secondBlock, thirdBlock };
     }
 }

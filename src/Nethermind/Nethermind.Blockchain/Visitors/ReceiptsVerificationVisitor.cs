@@ -47,9 +47,9 @@ namespace Nethermind.Blockchain.Visitors
 
         public bool PreventsAcceptingNewBlocks => false;
         public long StartLevelInclusive { get; }
-        
+
         public long EndLevelExclusive { get; }
-        
+
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             _currentLevel = chainLevelInfo;
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Visitors
                 _good++;
                 if (_logger.IsDebug) _logger.Debug($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {_good}, Bad {_bad}");
             }
-            
+
             return BlockVisitOutcome.None;
         }
 

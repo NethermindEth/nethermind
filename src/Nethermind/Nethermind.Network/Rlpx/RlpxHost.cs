@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -55,6 +55,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
+        private TimeSpan _sendLatency;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
@@ -62,7 +63,9 @@ namespace Nethermind.Network.Rlpx
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
-            ILogManager logManager)
+            ILogManager logManager,
+            TimeSpan sendLatency
+        )
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
@@ -78,7 +81,7 @@ namespace Nethermind.Network.Rlpx
             //     new[] { new ConsoleLoggerProvider(optionsMonitor) },
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
-            
+
             _group = new SingleThreadEventLoop();
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -88,6 +91,7 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
+            _sendLatency = sendLatency;
         }
 
         public async Task Init()
@@ -113,8 +117,8 @@ namespace Nethermind.Network.Rlpx
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
                         Session session = new(LocalPort, ch, _disconnectsAnalyzer, _logManager);
-                        session.RemoteHost = ((IPEndPoint) ch.RemoteAddress).Address.ToString();
-                        session.RemotePort = ((IPEndPoint) ch.RemoteAddress).Port;
+                        session.RemoteHost = ((IPEndPoint)ch.RemoteAddress).Address.ToString();
+                        session.RemotePort = ((IPEndPoint)ch.RemoteAddress).Port;
                         InitializeChannel(ch, session);
                     }));
 
@@ -126,11 +130,11 @@ namespace Nethermind.Network.Rlpx
                         if (aggregateException?.InnerException is SocketException socketException
                             && socketException.ErrorCode == 10048)
                         {
-                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");    
+                            if (_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");
                         }
                         else
                         {
-                            if(_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
+                            if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
                         }
 
                         return null;
@@ -211,10 +215,11 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group);
+            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
+
             if (session.Direction == ConnectionDirection.Out)
             {
                 pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
@@ -230,14 +235,14 @@ namespace Nethermind.Network.Rlpx
 
         private void SessionOnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (Session) sender;
+            ISession session = (Session)sender;
             session.Disconnected -= SessionOnPeerDisconnected;
             session.Dispose();
         }
 
         public async Task Shutdown()
         {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
+            //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)

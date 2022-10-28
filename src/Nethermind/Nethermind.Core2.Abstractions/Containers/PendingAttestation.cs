@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -55,7 +55,7 @@ namespace Nethermind.Core2.Containers
                 other.ProposerIndex);
             return clone;
         }
-        
+
         public bool Equals(PendingAttestation other)
         {
             if (!Equals(Data, other.Data) ||
@@ -88,7 +88,7 @@ namespace Nethermind.Core2.Containers
         {
             return HashCode.Combine(AggregationBits, Data, InclusionDelay, ProposerIndex);
         }
-        
+
         public override string ToString()
         {
             return $"C:{Data.Index} S:{Data.Slot} P:{ProposerIndex}";

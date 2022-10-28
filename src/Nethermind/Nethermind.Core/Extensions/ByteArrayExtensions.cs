@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Core.Extensions
             {
                 throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes.Length} and {otherBytes.Length}");
             }
-            
+
             byte[] result = new byte[bytes.Length];
             for (int i = 0; i < result.Length; i++)
             {
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Extensions
         {
             if (length == 1)
             {
-                return new[] {bytes[startIndex]};
+                return new[] { bytes[startIndex] };
             }
 
             byte[] slice = new byte[length];
@@ -68,7 +68,7 @@ namespace Nethermind.Core.Extensions
             Buffer.BlockCopy(bytes, startIndex, slice, 0, copiedFragmentLength);
             return slice;
         }
-        
+
         public static byte[] SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);

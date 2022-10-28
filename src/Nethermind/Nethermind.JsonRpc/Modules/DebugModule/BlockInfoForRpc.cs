@@ -31,11 +31,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         }
 
         public Keccak BlockHash { get; set; }
-        
+
         public UInt256 TotalDifficulty { get; set; }
-        
+
         public bool WasProcessed { get; set; }
-        
+
         public bool IsFinalized { get; set; }
     }
 }

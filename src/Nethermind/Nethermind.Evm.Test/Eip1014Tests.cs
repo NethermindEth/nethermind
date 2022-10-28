@@ -44,16 +44,16 @@ namespace Nethermind.Evm.Test
             byte[] code = Prepare.EvmCode
                 .FromCode("0x73095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d87313700")
                 .Done;
-            
+
             Execute(code);
         }
-        
+
         [Test]
         public void Test()
         {
-            byte[] salt = {4, 5, 6};
+            byte[] salt = { 4, 5, 6 };
 
-            byte[] deployedCode = {1, 2, 3};
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -78,8 +78,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_existing_account()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -109,8 +109,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_existing_account_with_storage()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -121,12 +121,12 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
-            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] {1, 2, 3, 4, 5});
+            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(Spec);
             TestState.CommitTree(0);
-            
+
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
@@ -150,8 +150,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_non_existing_account()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -209,7 +209,7 @@ namespace Nethermind.Evm.Test
 
             Address expectedAddress = new(resultHex);
             AssertEip1014(expectedAddress, deployedCode);
-//            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
+            //            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
         }
     }
 }

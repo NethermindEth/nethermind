@@ -48,16 +48,16 @@ namespace Nethermind.Init.Steps
             {
                 throw new StepDependencyException();
             }
-            
+
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis == null)
             {
-                Load();    
+                Load();
             }
-            
+
             ValidateGenesisHash(expectedGenesisHash);
-            
-            if(!_initConfig.ProcessingEnabled)
+
+            if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
                 await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
@@ -96,7 +96,7 @@ namespace Nethermind.Init.Steps
             _api.BlockTree.NewHeadBlock += GenesisProcessed;
             _api.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
-            
+
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
@@ -123,7 +123,7 @@ namespace Nethermind.Init.Steps
             {
                 if (_logger.IsDebug) _logger.Info($"Genesis hash :  {genesis.Hash}");
             }
-            
+
             ThisNodeInfo.AddInfo("Genesis hash :", $"{genesis.Hash}");
         }
     }

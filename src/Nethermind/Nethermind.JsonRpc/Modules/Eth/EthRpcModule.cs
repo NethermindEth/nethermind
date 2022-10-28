@@ -97,7 +97,7 @@ public partial class EthRpcModule : IEthRpcModule
         _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
         _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
         _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder)); ;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -106,13 +106,13 @@ public partial class EthRpcModule : IEthRpcModule
 
     public ResultWrapper<string> eth_protocolVersion()
     {
-        int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+        int highestVersion = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
         return ResultWrapper<string>.Success(highestVersion.ToHexString());
     }
 
     public ResultWrapper<SyncingResult> eth_syncing()
     {
-       return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
+        return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
     }
 
     public ResultWrapper<byte[]> eth_snapshot()
@@ -407,7 +407,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (block != null)
+        if (returnFullTransactionObjects && block != null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }
@@ -578,57 +578,63 @@ public partial class EthRpcModule : IEthRpcModule
         switch (filterType)
         {
             case FilterType.BlockFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             case FilterType.PendingTransactionFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                        .GetPendingTransactionFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                            .GetPendingTransactionFilterChanges(id))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             case FilterType.LogFilter:
-            {
-                return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(
-                        _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-            }
+                {
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(
+                            _blockchainBridge.GetLogFilterChanges(id).ToArray())
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                }
 
             default:
-            {
-                throw new NotSupportedException($"Filter type {filterType} is not supported");
-            }
+                {
+                    throw new NotSupportedException($"Filter type {filterType} is not supported");
+                }
         }
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        int id = (int)filterId;
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        return _blockchainBridge.FilterExists(id)
-            ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
-            : ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+        try
+        {
+            int id = filterId <= int.MaxValue ? (int)filterId : -1;
+            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
+            if (id < 0 || !filterFound)
+            {
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            }
+            else
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            }
+        }
+        catch (ResourceNotFoundException exception)
+        {
+            cancellationTokenSource.Dispose();
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+        }
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
-        {
-            using (cancellationTokenSource)
-            {
-                foreach (FilterLog log in logs)
-                {
-                    yield return log;
-                }
-            }
-        }
-
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -747,9 +753,17 @@ public partial class EthRpcModule : IEthRpcModule
 
     private void RecoverTxSenderIfNeeded(Transaction transaction)
     {
-        if (transaction.SenderAddress == null)
+        transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
+    }
+
+    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
         {
-            _blockchainBridge.RecoverTxSender(transaction);
+            foreach (FilterLog log in logs)
+            {
+                yield return log;
+            }
         }
     }
 }

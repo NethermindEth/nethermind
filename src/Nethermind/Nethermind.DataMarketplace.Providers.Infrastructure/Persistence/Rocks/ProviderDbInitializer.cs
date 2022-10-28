@@ -1,4 +1,4 @@
-﻿using Nethermind.Db;
+using Nethermind.Db;
 using System;
 using System.Threading.Tasks;
 

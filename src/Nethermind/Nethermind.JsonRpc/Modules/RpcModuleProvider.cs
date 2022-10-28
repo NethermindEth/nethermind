@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
-                if(_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
+                if (_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
         }
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules
             _modules.Add(moduleType);
 
             IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
-            ((List<JsonConverter>) Converters).AddRange(poolConverters);
+            ((List<JsonConverter>)Converters).AddRange(poolConverters);
 
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class RocksDbSettingsTests
     {
         [Test]
@@ -36,7 +37,7 @@ namespace Nethermind.Db.Test
             };
 
             RocksDbSettings settings2 = settings.Clone("Name2", "Path2");
-            settings2.Should().BeEquivalentTo(settings, 
+            settings2.Should().BeEquivalentTo(settings,
                 o => o.Excluding(s => s.DbName).Excluding(s => s.DbPath));
             settings2.DbName.Should().Be("Name2");
             settings2.DbPath.Should().Be("Path2");

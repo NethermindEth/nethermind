@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Json
             TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
-        
+
         [Test]
         public void Regression_0xa00000()
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Json
             UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(UInt256.Parse("10485760"), result);
         }
-        
+
         [Test]
         public void Can_read_0x0()
         {
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Json
             UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(UInt256.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_0()
         {
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Json
             UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(UInt256.Parse("0"), result);
         }
-        
+
         [Test]
         public void Can_read_1()
         {

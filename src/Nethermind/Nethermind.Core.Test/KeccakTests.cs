@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,20 +41,20 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = new byte[32];
             new Random(42).NextBytes(bytes);
-            
+
             string result = Keccak.Compute(bytes).ToString();
 
             KeccakHash keccakHash = KeccakHash.Create();
             keccakHash.Reset();
-            
+
             for (int i = 0; i < 1024 / 32; i += 32)
             {
                 keccakHash.Update(bytes, i, 32);
             }
-            
+
             Assert.AreEqual(result, keccakHash.Hash.ToHexString(true));
         }
-        
+
         [Test]
         public void Empty_byte_array()
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test
             string result = Keccak.Zero.ToString();
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result);
         }
-        
+
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", null, -1)]
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", -1)]
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test
             Keccak keccakB = b == null ? null : new Keccak(b);
             Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
         }
-        
+
         [Test]
         public void CompareSameInstance()
         {
@@ -114,7 +114,7 @@ namespace Nethermind.Core.Test
             {
                 byteArray[i] = (byte)(i % 256);
             }
-            
+
             Assert.AreEqual(Keccak.Compute(byteArray), Keccak.Compute(byteArray.AsSpan()));
         }
     }

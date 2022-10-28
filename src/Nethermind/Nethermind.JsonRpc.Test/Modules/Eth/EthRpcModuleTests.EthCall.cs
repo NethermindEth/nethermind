@@ -103,7 +103,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
-        transaction.Data = new byte[] {1, 2, 3};
+        transaction.Data = new byte[] { 1, 2, 3 };
 
         string serialized =
             ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
@@ -111,15 +111,15 @@ public partial class EthRpcModuleTests
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"StackUnderflow\"},\"id\":67}",
             serialized);
     }
-    
-    
+
+
     [Test]
     public async Task should_not_reject_transactions_with_deployed_code_when_eip3607_enabled()
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
         TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet, AllowTestChainOverride = false };
         using Context ctx = await Context.Create(specProvider);
-        
+
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
         ctx.Test.State.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakH, London.Instance);
@@ -253,7 +253,7 @@ public partial class EthRpcModuleTests
             "{\"jsonrpc\":\"2.0\",\"result\":\"0x000000000000000000000000000000000000000000000000000000002da282a8\",\"id\":67}",
             serialized);
     }
-    
+
     [Test]
     public async Task Eth_call_with_revert()
     {

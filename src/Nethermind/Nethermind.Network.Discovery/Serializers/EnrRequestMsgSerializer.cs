@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeria
             Rlp.Encode(msg.ExpirationTime)
         ).Bytes;
 
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, data);
+        byte[] serializedMsg = Serialize((byte)msg.MsgType, data);
         return serializedMsg;
     }
 
@@ -45,7 +45,7 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeria
         rlpStream.ReadSequenceLength();
         long expirationTime = rlpStream.DecodeLong();
 
-        EnrRequestMsg msg = new (results.FarPublicKey, expirationTime);
+        EnrRequestMsg msg = new(results.FarPublicKey, expirationTime);
         return msg;
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -163,7 +164,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
             _session.ClearReceivedCalls();
-            _handler.NotifyOfNewBlock(block, (SendBlockMode) 99);
+            _handler.NotifyOfNewBlock(block, (SendBlockMode)99);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
         }
 
@@ -174,7 +175,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.Throws<InvalidOperationException>(
                 () => _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock));
             _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
-            _handler.NotifyOfNewBlock(block, (SendBlockMode) 99);
+            _handler.NotifyOfNewBlock(block, (SendBlockMode)99);
         }
 
         [Test]
@@ -205,7 +206,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             packet.ReadByte();
 
             Assert.Throws<SubprotocolException>(
-                () => _handler.HandleMessage(new ZeroPacket(packet) {PacketType = Eth62MessageCode.GetBlockHeaders}));
+                () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth62MessageCode.GetBlockHeaders }));
         }
 
         [Test]
@@ -316,7 +317,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null, _handler)).Do(ci => throw new Exception());
             Assert.Throws<Exception>(
                 () => _handler.HandleMessage(
-                    new ZeroPacket(getBlockHeadersPacket) {PacketType = Eth62MessageCode.NewBlock}));
+                    new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
         }
 
         [Test]
@@ -343,10 +344,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            GetBlockBodiesMessage msg = new(new[] {Keccak.Zero, TestItem.KeccakA});
+            GetBlockBodiesMessage msg = new(new[] { Keccak.Zero, TestItem.KeccakA });
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+        }
+
+        [TestCase(5, 5)]
+        [TestCase(50, 20)]
+        public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)
+        {
+            List<Block> blocks = new List<Block>();
+            Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
+            for (int i = 0; i < availableBody; i++)
+            {
+                if (i == 0)
+                {
+                    blocks.Add(Build.A.Block.WithTransactions(transactions).TestObject);
+                }
+                else
+                {
+                    blocks.Add(Build.A.Block.WithTransactions(transactions).WithParent(blocks[^1]).TestObject);
+                }
+
+                _syncManager.Find(blocks[^1].Hash).Returns(blocks[^1]);
+            }
+
+            GetBlockBodiesMessage msg = new(blocks.Select(block => block.Hash).ToArray());
+
+            BlockBodiesMessage response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<BlockBodiesMessage>())).Do((call) => response = (BlockBodiesMessage)call[0]);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+
+            response.Should().NotBeNull();
+            response.Bodies.Length.Should().Be(expectedResponseSize);
+            foreach (BlockBody responseBody in response.Bodies)
+            {
+                responseBody.Should().NotBeNull();
+            }
         }
 
         [Test]
@@ -374,7 +411,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
         }
 
@@ -382,7 +419,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
             BlockBody[] bodies =
-                await ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
+                await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
 
             bodies.Should().HaveCount(0);
         }
@@ -401,7 +438,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3));
 
-            ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders);
         }
@@ -465,7 +502,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) {PacketType = (byte) messageCode});
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         [Test]
@@ -479,7 +516,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             getBlockHeadersPacket.ReadByte();
             Assert.Throws<SubprotocolException>(
                 () => _handler.HandleMessage(
-                    new ZeroPacket(getBlockHeadersPacket) {PacketType = Eth62MessageCode.NewBlock}));
+                    new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
         }
 
         private void HandleIncomingStatusMessage()
@@ -490,7 +527,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) {PacketType = 0});
+            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
     }
 }

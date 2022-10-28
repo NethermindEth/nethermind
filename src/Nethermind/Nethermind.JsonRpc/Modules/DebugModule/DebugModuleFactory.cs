@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             GethStyleTracer tracer = new(
                 chainProcessingEnv.ChainProcessor,
                 _receiptStorage,
-                _blockTree, 
+                _blockTree,
                 transactionProcessorAdapter);
 
             DebugBridge debugBridge = new(
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 
-        public static JsonConverter[] Converters = {new GethLikeTxTraceConverter()};
+        public static JsonConverter[] Converters = { new GethLikeTxTraceConverter() };
 
         public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }

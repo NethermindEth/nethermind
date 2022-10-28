@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test.Encoding
             var transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
-                transactions[i] = Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true).TestObject;
+                transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true).TestObject;
             }
 
             _scenarios = new[]
@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.AreEqual(encoded.Bytes.ToHexString(), encoded2.Bytes.ToHexString());
             }
         }
-        
+
         [TestCase("0xf90265f901fda00a7e4c1b7404e89fd6b1bc19148594f98b472a87ca152938b242343296da619da01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa01ac2883e8f3f17f58488c6933524298dec316fd596614832065748274a336391a07e2d13609f335a7caf015192b353ce5abec6d37a00726d862b9d287a98addb51a0a0e10907f175886de9bd8cd4ac2c21d1db4109a3a9fecf60f54015ee102803fdb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008302000001887fffffffffffffff830249f08203e800a00000000000000000000000000000000000000000000000000000000000000000880000000000000000f862f860800a830249f094100000000000000000000000000000000000000001801ba0f56f3b98c5ed3c38d0e4e1e3e499b6ba9bda60fcf0f6a811d7979fb5d81cec53a00be599284605e5223d1fc0a043f56e1a6a9ec2802406f664cbfea850323aeabfc0")]
         [Ignore("The test is useful for debugging hive - shouldn't be executed on CI")]
         public void Write_rlp_of_blocks_to_file(string rlp)
@@ -91,7 +91,7 @@ namespace Nethermind.Core.Test.Encoding
             // the test is useful for debugging hive
             File.WriteAllBytes("C:\\blocks\\00001.rlp", Bytes.FromHexString(rlp));
         }
-        
+
         [Test]
         public void Get_length_null()
         {

@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
 
             Span<byte> output = stackalloc byte[64];
             bool success = ShamatarLib.Bn256Mul(inputDataSpan, output);
-            
+
             (byte[], bool) result;
             if (success)
             {

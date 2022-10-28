@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Transactions
         {
             _txFilters = txFilters?.Where(f => f != null).ToArray() ?? Array.Empty<ITxFilter>();
         }
-        
+
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             for (int i = 0; i < _txFilters.Length; i++)

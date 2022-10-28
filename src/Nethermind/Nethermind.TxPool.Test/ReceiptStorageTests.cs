@@ -39,12 +39,12 @@ namespace Nethermind.TxPool.Test
         private IReceiptStorage _persistentStorage;
         private IReceiptFinder _receiptFinder;
         private IReceiptStorage _inMemoryStorage;
-        
+
         public ReceiptStorageTests(bool useEip2718)
         {
             _useEip2718 = useEip2718;
         }
-        
+
         [SetUp]
         public void Setup()
         {
@@ -59,15 +59,15 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_update_lowest_when_needed_in_memory()
             => TestAddAndCheckLowest(_inMemoryStorage, true);
-        
+
         [Test]
         public void should_update_lowest_when_needed_persistent()
             => TestAddAndCheckLowest(_persistentStorage, true);
-        
+
         [Test]
         public void should_not_update_lowest_when_not_needed_persistent()
             => TestAddAndCheckLowest(_persistentStorage, false);
-        
+
         [Test]
         public void should_not_update_lowest_when_not_needed_in_memory()
             => TestAddAndCheckLowest(_inMemoryStorage, false);
@@ -79,7 +79,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
             => TestAddAndGetReceipt(_persistentStorage, _receiptFinder);
-        
+
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
             => TestAddAndGetReceiptEip658(_persistentStorage);
@@ -91,7 +91,7 @@ namespace Nethermind.TxPool.Test
             TxReceipt[] receipts = _receiptFinder.Get(block);
             receipts.Should().BeEmpty();
         }
-        
+
         [Test]
         public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_hash()
         {
@@ -113,7 +113,7 @@ namespace Nethermind.TxPool.Test
 
             storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? 0 : null);
         }
-        
+
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
         {
             bool recoverSender = receiptFinder is not null;
@@ -157,7 +157,7 @@ namespace Nethermind.TxPool.Test
             => Build.A.Receipt.WithState(TestItem.KeccakB)
                 .WithTransactionHash(transaction.Hash)
                 .WithBlockHash(block.Hash).TestObject;
-        
+
         private Block GetBlock(Transaction transaction) =>
             Build.A.Block.WithNumber(0)
                 .WithTransactions(transaction)

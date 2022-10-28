@@ -30,7 +30,7 @@ namespace Nethermind.Analytics
     public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
     {
         private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
-        
+
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogManager _logManager;
 
@@ -51,7 +51,7 @@ namespace Nethermind.Analytics
         }
 
         public void RemoveClient(string id) => _clients.TryRemove(id, out _);
-        
+
         public async Task PublishAsync<T>(T data) where T : class
         {
             await SendAsync(new SocketsMessage("analytics", null, data));

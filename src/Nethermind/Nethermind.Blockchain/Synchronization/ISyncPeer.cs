@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
     }
-    
+
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
     {
         Node Node { get; }

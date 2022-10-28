@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
-            if (! await _semaphore.WaitAsync(_timeout))
+            if (!await _semaphore.WaitAsync(_timeout))
             {
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public void ReturnModule(T module)
         {
-            if(ReferenceEquals(module, _shared))
+            if (ReferenceEquals(module, _shared))
             {
                 return;
             }

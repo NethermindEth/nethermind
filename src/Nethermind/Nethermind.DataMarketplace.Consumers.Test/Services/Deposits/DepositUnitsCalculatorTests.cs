@@ -83,7 +83,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 GetConsumerSession(20),
                 GetConsumerSession(30)
             };
-            var expectedConsumedUnits = (uint) sessions.Sum(s => s.ConsumedUnits);
+            var expectedConsumedUnits = (uint)sessions.Sum(s => s.ConsumedUnits);
 
             _sessionRepository.BrowseAsync(Arg.Any<GetConsumerSessions>())
                 .Returns(PagedResult<ConsumerSession>.Create(sessions, 1, 1, 1, sessions.Count));
@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public async Task should_return_consumed_units_based_on_timestamp_for_confirmed_deposit_with_time_unit_type()
         {
             var deposit = GetDepositDetails(DataAssetUnitType.Time);
-            var expectedConsumedUnits = (uint) _timestamper.UnixTime.Seconds - DepositConfirmationTimestamp;
+            var expectedConsumedUnits = (uint)_timestamper.UnixTime.Seconds - DepositConfirmationTimestamp;
 
             var consumedUnits = await _calculator.GetConsumedAsync(deposit);
 
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             uint confirmationTimestamp = DepositConfirmationTimestamp)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(unitType), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1,1)}, confirmationTimestamp);
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, confirmationTimestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

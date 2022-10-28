@@ -50,7 +50,7 @@ namespace Nethermind.State
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
-        
+
         public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -107,7 +107,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when checking if empty");
             }
-            
+
             return account.IsEmpty;
         }
 
@@ -135,7 +135,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when accessing storage root");
             }
-            
+
             return account.StorageRoot;
         }
 
@@ -153,7 +153,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when updating code hash");
             }
-            
+
             if (account.CodeHash != codeHash)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
@@ -242,7 +242,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when updating storage hash");
             }
-            
+
             if (account.StorageRoot != storageRoot)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Update {address} S {account.StorageRoot} -> {storageRoot}");
@@ -259,7 +259,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             }
-            
+
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
@@ -273,7 +273,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
             }
-            
+
             Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
@@ -296,7 +296,7 @@ namespace Nethermind.State
             }
 
             Keccak codeHash = Keccak.Compute(code.Span);
-            
+
             _codeDb[codeHash.Bytes] = code.ToArray();
 
             return codeHash;
@@ -405,8 +405,8 @@ namespace Nethermind.State
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
         }
-        
-        
+
+
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
@@ -500,72 +500,72 @@ namespace Nethermind.State
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                    {
-                        break;
-                    }
+                        {
+                            break;
+                        }
                     case ChangeType.Touch:
                     case ChangeType.Update:
-                    {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, null);
-                            if (isTracing)
+                            if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
-                                trace[change.Address] = new ChangeTrace(null);
+                                if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                                SetState(change.Address, null);
+                                if (isTracing)
+                                {
+                                    trace[change.Address] = new ChangeTrace(null);
+                                }
                             }
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
+                            else
                             {
-                                trace[change.Address] = new ChangeTrace(change.Account);
+                                if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
+                                SetState(change.Address, change.Account);
+                                if (isTracing)
+                                {
+                                    trace[change.Address] = new ChangeTrace(change.Account);
+                                }
                             }
-                        }
 
-                        break;
-                    }
+                            break;
+                        }
                     case ChangeType.New:
-                    {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
+                            if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
-                                trace[change.Address] = new ChangeTrace(change.Account);
+                                if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                                SetState(change.Address, change.Account);
+                                if (isTracing)
+                                {
+                                    trace[change.Address] = new ChangeTrace(change.Account);
+                                }
                             }
-                        }
 
-                        break;
-                    }
+                            break;
+                        }
                     case ChangeType.Delete:
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
-                        bool wasItCreatedNow = false;
-                        while (_intraBlockCache[change.Address].Count > 0)
                         {
-                            int previousOne = _intraBlockCache[change.Address].Pop();
-                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                            if (wasItCreatedNow)
+                            if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
+                            bool wasItCreatedNow = false;
+                            while (_intraBlockCache[change.Address].Count > 0)
                             {
-                                break;
+                                int previousOne = _intraBlockCache[change.Address].Pop();
+                                wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                                if (wasItCreatedNow)
+                                {
+                                    break;
+                                }
                             }
-                        }
 
-                        if (!wasItCreatedNow)
-                        {
-                            SetState(change.Address, null);
-                            if (isTracing)
+                            if (!wasItCreatedNow)
                             {
-                                trace[change.Address] = new ChangeTrace(null);
+                                SetState(change.Address, null);
+                                if (isTracing)
+                                {
+                                    trace[change.Address] = new ChangeTrace(null);
+                                }
                             }
-                        }
 
-                        break;
-                    }
+                            break;
+                        }
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -806,9 +806,10 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             }
-            
+
             Account changedAccount = account.WithChangedNonce(nonce);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
-        }    }
+        }
+    }
 }

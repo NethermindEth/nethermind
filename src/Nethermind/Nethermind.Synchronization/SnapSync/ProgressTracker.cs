@@ -38,7 +38,6 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
-        public event EventHandler<EventArgs> SnapSyncFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -46,7 +45,7 @@ namespace Nethermind.Synchronization.SnapSync
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = new Pivot(blockTree, logManager);
-            
+
             //TODO: maybe better to move to a init method instead of the constructor
             GetSyncProgress();
         }
@@ -74,7 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
         public (SnapSyncBatch request, bool finished) GetNextRequest()
         {
             Interlocked.Increment(ref _reqCount);
-            
+
             var pivotHeader = _pivot.GetPivotHeader();
             var rootHash = pivotHeader.StateRoot;
             var blockNumber = pivotHeader.Number;
@@ -178,7 +177,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             LogRequest(NO_REQUEST);
-            
+
             return (null, IsSnapGetRangesFinished());
         }
 
@@ -220,7 +219,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, Keccak startingHash)
         {
-            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash});
+            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash });
         }
 
         public void ReportFullStorageRequestFinished(PathWithAccount[] storages = null)
@@ -275,12 +274,15 @@ namespace Nethermind.Synchronization.SnapSync
             if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
-                _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished. Healing (Phase 2) starting...");
+                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
                     MoreAccountsToRight = false;
+                }
+                else
+                {
+                    _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
                 }
             }
         }
@@ -290,8 +292,6 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
-            
-            SnapSyncFinished?.Invoke(this, EventArgs.Empty);
         }
 
         private void LogRequest(string reqType)

@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Producers
     public class DevBlockProducer : BlockProducerBase, IDisposable
     {
         private readonly IMiningConfig _miningConfig;
-        
+
         public DevBlockProducer(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
@@ -51,7 +51,8 @@ namespace Nethermind.Consensus.Producers
                 timestamper,
                 specProvider,
                 logManager,
-                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One))
+                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One),
+                miningConfig)
         {
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
@@ -66,12 +67,12 @@ namespace Nethermind.Consensus.Producers
                         $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
             }
         }
-        
+
         public void Dispose()
         {
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
         }
-        
+
         private class RandomizedDifficultyCalculator : IDifficultyCalculator
         {
             private readonly IMiningConfig _miningConfig;
@@ -83,7 +84,7 @@ namespace Nethermind.Consensus.Producers
                 _miningConfig = miningConfig;
                 _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
             }
-            
+
             public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
                 if (_miningConfig.RandomizedBlocks)

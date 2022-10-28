@@ -66,14 +66,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((FaucetResponse) obj);
+            return Equals((FaucetResponse)obj);
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                return ((int) Status * 397) ^ (LatestRequest != null ? LatestRequest.GetHashCode() : 0);
+                return ((int)Status * 397) ^ (LatestRequest != null ? LatestRequest.GetHashCode() : 0);
             }
         }
     }

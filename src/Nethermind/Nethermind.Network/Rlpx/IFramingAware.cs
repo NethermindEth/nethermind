@@ -21,7 +21,7 @@ namespace Nethermind.Network.Rlpx
     public interface IFramingAware : IChannelHandler
     {
         void DisableFraming();
-        
+
         int MaxFrameSize { get; }
     }
 }

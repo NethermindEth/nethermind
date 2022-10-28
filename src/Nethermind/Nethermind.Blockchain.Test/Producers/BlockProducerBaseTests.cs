@@ -39,8 +39,30 @@ namespace Nethermind.Blockchain.Test.Producers
     {
         private class ProducerUnderTest : BlockProducerBase
         {
-            public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProductionTrigger blockProductionTrigger, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper,  ILogManager logManager)
-                : base(txSource, processor, sealer, blockTree, blockProductionTrigger, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, logManager, new TimestampDifficultyCalculator())
+            public ProducerUnderTest(
+                ITxSource txSource,
+                IBlockchainProcessor processor,
+                ISealer sealer,
+                IBlockTree blockTree,
+                IBlockProductionTrigger blockProductionTrigger,
+                IStateProvider stateProvider,
+                IGasLimitCalculator gasLimitCalculator,
+                ITimestamper timestamper,
+                ILogManager logManager,
+                IMiningConfig miningConfig)
+                : base(
+                    txSource,
+                    processor,
+                    sealer,
+                    blockTree,
+                    blockProductionTrigger,
+                    stateProvider,
+                    gasLimitCalculator,
+                    timestamper,
+                    MainnetSpecProvider.Instance,
+                    logManager,
+                    new TimestampDifficultyCalculator(),
+                    miningConfig)
             {
             }
 
@@ -53,19 +75,20 @@ namespace Nethermind.Blockchain.Test.Producers
             public Block Prepare(BlockHeader header) => PrepareBlock(header);
 
             protected override bool IsRunning() => true;
-            
+
             private class TimestampDifficultyCalculator : IDifficultyCalculator
             {
                 public UInt256 Calculate(BlockHeader header, BlockHeader parent) => header.Timestamp;
             }
         }
-        
+
         [Test]
         public void Time_passing_does_not_break_the_block()
         {
             ITimestamper timestamper = new IncrementalTimestamper();
+            IMiningConfig miningConfig = new MiningConfig();
             ProducerUnderTest producerUnderTest = new(
-                EmptyTxSource.Instance, 
+                EmptyTxSource.Instance,
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
@@ -73,18 +96,22 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                miningConfig
+                );
 
             Block block = producerUnderTest.Prepare();
             block.Timestamp.Should().BeEquivalentTo(block.Difficulty);
         }
-        
+
         [Test]
         public void Parent_timestamp_is_used_consistently()
         {
             ITimestamper timestamper = new IncrementalTimestamper(DateTime.UnixEpoch, TimeSpan.FromSeconds(1));
+            IMiningConfig miningConfig = new MiningConfig();
+
             ProducerUnderTest producerUnderTest = new(
-                EmptyTxSource.Instance, 
+                EmptyTxSource.Instance,
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
@@ -92,7 +119,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                miningConfig);
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
             Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);

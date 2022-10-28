@@ -49,7 +49,7 @@ namespace Nethermind.Config.Test
         {
             Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.cfg"));
         }
-        
+
         [Test]
         public void Can_load_config_from_file()
         {
@@ -59,7 +59,7 @@ namespace Nethermind.Config.Test
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);
-          
+
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
 
             void CheckIfEnabled(string x)
@@ -71,7 +71,7 @@ namespace Nethermind.Config.Test
 
             Assert.AreEqual(4, networkConfig.Concurrency);
         }
-        
+
         [Test]
         public void Can_load_raw_value()
         {

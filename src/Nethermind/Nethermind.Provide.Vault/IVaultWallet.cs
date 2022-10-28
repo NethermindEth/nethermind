@@ -23,13 +23,13 @@ namespace Nethermind.Vault
     public interface IVaultWallet
     {
         Task<Address[]> GetAccounts();
-        
+
         Task<Address> CreateAccount();
-        
+
         Task DeleteAccount(Address address);
-        
+
         Task<Signature> Sign(Address address, Keccak message);
-        
+
         Task<bool> Verify(Address address, Keccak message, Signature signature);
     }
 }

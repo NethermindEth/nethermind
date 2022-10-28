@@ -62,17 +62,17 @@ public interface IDbConfig : IConfig
     uint BloomDbWriteBufferNumber { get; set; }
     ulong BloomDbBlockCacheSize { get; set; }
     bool BloomDbCacheIndexAndFilterBlocks { get; set; }
-    
+
     ulong WitnessDbWriteBufferSize { get; set; }
     uint WitnessDbWriteBufferNumber { get; set; }
     ulong WitnessDbBlockCacheSize { get; set; }
     bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
-    
+
     ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
     uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
     ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
     bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
-    
+
     ulong MetadataDbWriteBufferSize { get; set; }
     uint MetadataDbWriteBufferNumber { get; set; }
     ulong MetadataDbBlockCacheSize { get; set; }

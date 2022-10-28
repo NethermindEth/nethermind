@@ -56,14 +56,14 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
-            TrieStore trieStore = new (new MemDb(), LimboLogs.Instance);
+            TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             StateProvider stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new (trieStore, stateProvider, LimboLogs.Instance);
-            ChainLevelInfoRepository chainLevelInfoRepository = new (memDbProvider);
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
-            EthereumEcdsa ecdsa = new (1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
             _blockTree = new BlockTree(
@@ -73,26 +73,26 @@ namespace Nethermind.Blockchain.Test
                 bloomStorage,
                 new SyncConfig(),
                 LimboLogs.Instance);
-            TxPool.TxPool txPool = new (
+            TxPool.TxPool txPool = new(
                 ecdsa,
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new (_blockTree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 specProvider,
                 LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new (
+            TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
 
-            BlockProcessor blockProcessor = new (
+            BlockProcessor blockProcessor = new(
                 MainnetSpecProvider.Instance,
                 Always.Valid,
                 new RewardCalculator(specProvider),
@@ -120,8 +120,6 @@ namespace Nethermind.Blockchain.Test
         {
             List<Block> events = new();
 
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
-
             Block block0 = Build.A.Block.Genesis.WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
             Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
             Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;
@@ -132,11 +130,6 @@ namespace Nethermind.Blockchain.Test
             _blockTree.BlockAddedToMain += (_, args) =>
             {
                 events.Add(args.Block);
-
-                if (args.Block == block2B)
-                {
-                    resetEvent.Set();
-                }
             };
 
             _blockchainProcessor.Start();
@@ -148,9 +141,8 @@ namespace Nethermind.Blockchain.Test
             _blockTree.SuggestBlock(block1B);
             _blockTree.SuggestBlock(block2B);
 
-            resetEvent.WaitOne(2000);
+            Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
-            _blockTree.Head.Should().Be(block2B);
             events.Should().HaveCount(6);
             events[4].Hash.Should().Be(block1B.Hash);
             events[5].Hash.Should().Be(block2B.Hash);

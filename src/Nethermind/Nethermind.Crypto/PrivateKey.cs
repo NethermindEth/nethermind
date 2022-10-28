@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -63,7 +63,7 @@ namespace Nethermind.Crypto
 
         public PublicKey PublicKey =>
             _publicKey ?? LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
-        
+
         public CompressedPublicKey CompressedPublicKey =>
             _compressedPublicKey ?? LazyInitializer.EnsureInitialized(ref _compressedPublicKey, ComputeCompressedPublicKey);
 
@@ -91,7 +91,7 @@ namespace Nethermind.Crypto
                 return false;
             }
 
-            return Equals((PrivateKey) obj);
+            return Equals((PrivateKey)obj);
         }
 
         public override int GetHashCode()
@@ -103,7 +103,7 @@ namespace Nethermind.Crypto
         {
             return new(Proxy.GetPublicKey(KeyBytes, false));
         }
-        
+
         private CompressedPublicKey ComputeCompressedPublicKey()
         {
             return new(Proxy.GetPublicKey(KeyBytes, true));

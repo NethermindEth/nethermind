@@ -49,7 +49,7 @@ public class SubscriptionFactory : ISubscriptionFactory
         IReceiptMonitor receiptCanonicalityMonitor,
         IFilterStore? filterStore,
         IEthSyncingInfo ethSyncingInfo,
-        ISpecProvider specProvider, 
+        ISpecProvider specProvider,
         JsonSerializer jsonSerializer)
     {
         _jsonSerializer = jsonSerializer;
@@ -60,23 +60,24 @@ public class SubscriptionFactory : ISubscriptionFactory
         filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
         ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        
-        _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType> {
-            
+
+        _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType>
+        {
+
             //Register the standard subscription types in the dictionary.
-            [SubscriptionType.NewHeads] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) => 
+            [SubscriptionType.NewHeads] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
                 new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)),
-            
-            [SubscriptionType.Logs] = CreateSubscriptionType<Filter?>((jsonRpcDuplexClient, filter) => 
+
+            [SubscriptionType.Logs] = CreateSubscriptionType<Filter?>((jsonRpcDuplexClient, filter) =>
                 new LogsSubscription(jsonRpcDuplexClient, receiptCanonicalityMonitor, filterStore, blockTree, logManager, filter)),
-            
-            [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) => 
+
+            [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
                 new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager, args)),
-            
-            [SubscriptionType.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient => 
+
+            [SubscriptionType.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient =>
                 new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)),
-            
-            [SubscriptionType.Syncing] = CreateSubscriptionType(jsonRpcDuplexClient => 
+
+            [SubscriptionType.Syncing] = CreateSubscriptionType(jsonRpcDuplexClient =>
                 new SyncingSubscription(jsonRpcDuplexClient, blockTree, ethSyncingInfo, logManager))
         };
     }
@@ -86,7 +87,7 @@ public class SubscriptionFactory : ISubscriptionFactory
         if (_subscriptionConstructors.TryGetValue(subscriptionType, out CustomSubscriptionType customSubscription))
         {
             Type? paramType = customSubscription.ParamType;
-            
+
             IJsonRpcParam? param = null;
             bool thereIsParameter = paramType is not null;
             bool thereAreArgs = args is not null;
@@ -98,26 +99,26 @@ public class SubscriptionFactory : ISubscriptionFactory
                     param!.ReadJson(_jsonSerializer, args);
                 }
             }
-            
+
             return customSubscription.Constructor(jsonRpcDuplexClient, param);
         }
 
         throw new KeyNotFoundException($"{subscriptionType} is an invalid or unregistered subscription type");
     }
 
-    public void RegisterSubscriptionType<T>(string subscriptionType, Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate) 
+    public void RegisterSubscriptionType<T>(string subscriptionType, Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate)
         where T : IJsonRpcParam?, new() =>
         _subscriptionConstructors[subscriptionType] = CreateSubscriptionType(customSubscriptionDelegate);
-    
 
-    private static CustomSubscriptionType CreateSubscriptionType<T>(Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate) 
+
+    private static CustomSubscriptionType CreateSubscriptionType<T>(Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate)
         where T : IJsonRpcParam?, new() =>
         new(((client, args) => customSubscriptionDelegate(client, (T)args)), typeof(T));
 
     public void RegisterSubscriptionType(string subscriptionType, Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         _subscriptionConstructors[subscriptionType] = CreateSubscriptionType(customSubscriptionDelegate);
 
-    private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) => 
+    private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         new(((client, _) => customSubscriptionDelegate(client)));
 
     private struct CustomSubscriptionType

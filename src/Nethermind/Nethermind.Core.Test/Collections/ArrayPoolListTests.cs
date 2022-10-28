@@ -76,9 +76,9 @@ namespace Nethermind.Core.Test.Collections
             return list.Contains(item);
         }
 
-        [TestCase(0, new[] {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})]
-        [TestCase(4, new[] {0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})]
-        [TestCase(16, new[] {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1})]
+        [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
+        [TestCase(4, new[] { 0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
+        [TestCase(16, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 })]
         public void Insert_should_expand(int index, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -109,10 +109,10 @@ namespace Nethermind.Core.Test.Collections
         }
 
 
-        [TestCase(0, true, new[] {1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(7, true, new[] {0, 1, 2, 3, 4, 5, 6})]
-        [TestCase(8, false, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(-1, false, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
+        [TestCase(0, true, new[] { 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(7, true, new[] { 0, 1, 2, 3, 4, 5, 6 })]
+        [TestCase(8, false, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(-1, false, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
         public void Remove_should_remove(int item, bool removed, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -121,8 +121,8 @@ namespace Nethermind.Core.Test.Collections
             list.Should().BeEquivalentTo(expected);
         }
 
-        [TestCase(0, new[] {1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(7, new[] {0, 1, 2, 3, 4, 5, 6})]
+        [TestCase(0, new[] { 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(7, new[] { 0, 1, 2, 3, 4, 5, 6 })]
         public void RemoveAt_should_remove(int item, int[] expected)
         {
             ArrayPoolList<int> list = new(4);
@@ -131,8 +131,8 @@ namespace Nethermind.Core.Test.Collections
             list.Should().BeEquivalentTo(expected);
         }
 
-        [TestCase(8, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
-        [TestCase(-1, new[] {0, 1, 2, 3, 4, 5, 6, 7})]
+        [TestCase(8, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
+        [TestCase(-1, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
         public void RemoveAt_should_throw(int item, int[] expected)
         {
             ArrayPoolList<int> list = new(4);

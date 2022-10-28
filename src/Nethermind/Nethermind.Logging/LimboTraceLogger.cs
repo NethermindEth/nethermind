@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,12 +31,12 @@ namespace Nethermind.Logging
     public class LimboTraceLogger : ILogger
     {
         private static LimboTraceLogger _instance;
-        
+
         public static LimboTraceLogger Instance
         {
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboTraceLogger()); }
         }
-        
+
         public void Info(string text)
         {
         }

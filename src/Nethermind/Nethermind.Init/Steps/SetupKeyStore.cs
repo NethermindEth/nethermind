@@ -67,15 +67,15 @@ namespace Nethermind.Init.Steps
                     .UnlockAccounts();
 
                 BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
-                    .OrReadFromConsole($"Provide password for validator account { keyStoreConfig.BlockAuthorAccount}");
-                
+                    .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
+
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
                 ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
                 IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
                 IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
-                
+
                 get.LogManager.SetGlobalVariable("enode", enode.ToString());
             }, cancellationToken);
         }

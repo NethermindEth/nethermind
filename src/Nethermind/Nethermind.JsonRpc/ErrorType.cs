@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,47 +54,42 @@ namespace Nethermind.JsonRpc
         /// Requested resource not found
         /// </summary>
         public const int ResourceNotFound = -32001;
-        
+
         /// <summary>
         /// Requested resource not available
         /// </summary>
         public const int ResourceUnavailable = -32002;
-        
+
         /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = -32010;
-        
+
         /// <summary>
         /// Account locked
         /// </summary>
         public const int AccountLocked = -32020;
-        
+
         /// <summary>
         /// Method is not implemented
         /// </summary>
         public const int MethodNotSupported = -32004;
-        
+
         /// <summary>
         /// Request exceeds defined limit
         /// </summary>
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        /// Version of JSON-RPC protocol is not supported
-        /// </summary>
-        public const int RpcVersionNotSupported = -32015;
-        
-        /// <summary>
         /// 
         /// </summary>
         public const int ExecutionError = -32015;
-         
+
         /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int Timeout = -32016;
-        
+
         /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
@@ -104,6 +99,6 @@ namespace Nethermind.JsonRpc
         /// Unknown block error
         /// </summary>
         public const int UnknownBlockError = -39001;
-        
+
     }
 }

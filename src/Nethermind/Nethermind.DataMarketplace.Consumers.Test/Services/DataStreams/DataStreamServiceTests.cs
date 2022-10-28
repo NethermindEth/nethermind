@@ -67,19 +67,19 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataStreamService = new DataStreamService(_dataAssetService, _depositProvider, _providerService,
                 _sessionService, _wallet, _consumerNotifier, _sessionRepository, LimboLogs.Instance);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_for_missing_session()
         {
             var depositId = Keccak.Zero;
             var client = "test";
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
-            
+
         }
 
         [Test]
@@ -89,15 +89,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var client = "test";
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
             _providerService.Received(1).GetPeer(session.ProviderAddress);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_for_missing_deposit()
         {
@@ -106,16 +106,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
             _providerService.Received(1).GetPeer(session.ProviderAddress);
             await _depositProvider.Received(1).GetAsync(session.DepositId);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_for_locked_account()
         {
@@ -126,9 +126,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _sessionService.GetActive(depositId).Returns(session);
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             await _depositProvider.Received(1).GetAsync(session.DepositId);
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_for_missing_data_asset()
         {
@@ -148,9 +148,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
@@ -159,7 +159,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_fail_for_unavailable_data_asset()
         {
@@ -173,9 +173,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
@@ -185,7 +185,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
             _dataAssetService.Received(1).IsAvailable(dataAsset);
         }
-        
+
         [Test]
         public async Task disable_data_stream_should_succeed_for_existing_deposit_and_unlocked_account_and_available_data_asset()
         {
@@ -200,9 +200,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
             _dataAssetService.IsAvailable(dataAsset).Returns(true);
-            
+
             var result = await _dataStreamService.DisableDataStreamAsync(depositId, client);
-            
+
             result.Should().Be(depositId);
             _providerPeer.Received(1).SendDisableDataStream(depositId, client);
             _sessionService.Received(1).GetActive(depositId);
@@ -212,20 +212,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
             _dataAssetService.Received(1).IsAvailable(dataAsset);
         }
-        
+
         [Test]
         public async Task disable_data_streams_should_fail_for_missing_session()
         {
             var depositId = Keccak.Zero;
             var client = "test";
-            
+
             var result = await _dataStreamService.DisableDataStreamsAsync(depositId);
-            
+
             result.Should().BeNull();
             _sessionService.Received(1).GetActive(depositId);
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
         }
-        
+
         [Test]
         public async Task disable_data_streams_should_not_disable_any_streams_if_none_are_enabled()
         {
@@ -233,14 +233,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var client = "test";
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             var result = await _dataStreamService.DisableDataStreamsAsync(depositId);
-            
+
             result.Should().Be(depositId);
             _sessionService.Received(1).GetActive(depositId);
             _providerPeer.DidNotReceive().SendDisableDataStream(depositId, client);
         }
-        
+
         [Test]
         public async Task disable_data_streams_should_disable_all_enabled_streams()
         {
@@ -257,9 +257,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
             _dataAssetService.IsAvailable(dataAsset).Returns(true);
-            
+
             var result = await _dataStreamService.DisableDataStreamsAsync(depositId);
-            
+
             result.Should().Be(depositId);
             _sessionService.Received(2).GetActive(depositId);
             _providerPeer.Received(1).SendDisableDataStream(depositId, client);
@@ -271,9 +271,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var depositId = Keccak.Zero;
             var client = "test";
             var args = Array.Empty<string>();
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
@@ -287,15 +287,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var args = Array.Empty<string>();
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
             _providerService.Received(1).GetPeer(session.ProviderAddress);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_fail_for_missing_deposit()
         {
@@ -305,16 +305,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
             _providerService.Received(1).GetPeer(session.ProviderAddress);
             await _depositProvider.Received(1).GetAsync(session.DepositId);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_fail_for_locked_account()
         {
@@ -326,9 +326,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _sessionService.GetActive(depositId).Returns(session);
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
@@ -336,7 +336,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             await _depositProvider.Received(1).GetAsync(session.DepositId);
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_fail_for_missing_data_asset()
         {
@@ -349,9 +349,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _providerService.GetPeer(session.ProviderAddress).Returns(_providerPeer);
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
@@ -360,7 +360,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.Received(1).IsUnlocked(deposit.Consumer);
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_fail_for_unavailable_data_asset()
         {
@@ -375,9 +375,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _depositProvider.GetAsync(session.DepositId).Returns(deposit);
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().BeNull();
             _providerPeer.DidNotReceive().SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
@@ -387,7 +387,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
             _dataAssetService.Received(1).IsAvailable(dataAsset);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_succeed_for_existing_deposit_and_unlocked_account_and_available_data_asset()
         {
@@ -403,9 +403,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
             _dataAssetService.IsAvailable(dataAsset).Returns(true);
-            
+
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().Be(depositId);
             _providerPeer.Received(1).SendEnableDataStream(depositId, client, args);
             _sessionService.Received(1).GetActive(depositId);
@@ -415,7 +415,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
             _dataAssetService.Received(1).IsAvailable(dataAsset);
         }
-        
+
         [Test]
         public async Task enable_data_stream_should_also_disable_already_existing_stream_if_exists()
         {
@@ -431,10 +431,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _wallet.IsUnlocked(deposit.Consumer).Returns(true);
             _dataAssetService.GetDiscovered(deposit.DataAsset.Id).Returns(dataAsset);
             _dataAssetService.IsAvailable(dataAsset).Returns(true);
-            
+
             session.EnableStream(client, args);
             var result = await _dataStreamService.EnableDataStreamAsync(depositId, client, args);
-            
+
             result.Should().Be(depositId);
             _providerPeer.Received(1).SendDisableDataStream(depositId, client);
             _providerPeer.Received(1).SendEnableDataStream(depositId, client, args);
@@ -445,7 +445,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _dataAssetService.Received(1).GetDiscovered(deposit.DataAsset.Id);
             _dataAssetService.Received(1).IsAvailable(dataAsset);
         }
-        
+
         [Test]
         public async Task set_enabled_data_stream_should_fail_for_missing_session()
         {
@@ -453,14 +453,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var client = "test";
             var args = Array.Empty<string>();
             var session = GetConsumerSession();
-            
+
             await _dataStreamService.SetEnabledDataStreamAsync(depositId, client, args);
-            
+
             session.Clients.Should().BeEmpty();
             await _sessionRepository.DidNotReceive().UpdateAsync(session);
             await _consumerNotifier.DidNotReceive().SendDataStreamEnabledAsync(depositId, session.Id);
         }
-        
+
         [Test]
         public async Task set_enabled_data_stream_should_succeed_for_existing_session()
         {
@@ -469,14 +469,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var args = Array.Empty<string>();
             var session = GetConsumerSession();
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             await _dataStreamService.SetEnabledDataStreamAsync(depositId, client, args);
 
             session.Clients.Single().Should().Be(new SessionClient(client, true, args));
             await _sessionRepository.Received(1).UpdateAsync(session);
             await _consumerNotifier.Received(1).SendDataStreamEnabledAsync(depositId, session.Id);
         }
-        
+
         [Test]
         public async Task set_disabled_data_stream_should_fail_for_missing_session()
         {
@@ -484,14 +484,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             var client = "test";
             var args = Array.Empty<string>();
             var session = GetConsumerSession();
-            
+
             await _dataStreamService.SetDisabledDataStreamAsync(depositId, client);
-            
+
             session.Clients.Should().BeEmpty();
             await _sessionRepository.DidNotReceive().UpdateAsync(session);
             await _consumerNotifier.DidNotReceive().SendDataStreamDisabledAsync(depositId, session.Id);
         }
-        
+
         [Test]
         public async Task set_disabled_data_stream_should_succeed_for_existing_session()
         {
@@ -502,7 +502,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             session.EnableStream(client, args);
             var sessionClient = session.GetClient(client);
             _sessionService.GetActive(depositId).Returns(session);
-            
+
             await _dataStreamService.SetDisabledDataStreamAsync(depositId, client);
 
             sessionClient.StreamEnabled.Should().BeFalse();
@@ -519,7 +519,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, 1);
+                new[] { TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1) }, 1);
 
         private static DataAsset GetDataAsset()
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

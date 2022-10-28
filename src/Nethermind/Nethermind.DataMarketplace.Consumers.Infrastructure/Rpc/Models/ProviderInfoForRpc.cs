@@ -21,8 +21,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class ProviderInfoForRpc
     {
-        public string Name { get;  }
-        public Address Address { get;  }
+        public string Name { get; }
+        public Address Address { get; }
 
         public ProviderInfoForRpc(ProviderInfo provider)
         {

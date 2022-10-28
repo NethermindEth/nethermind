@@ -33,10 +33,10 @@ namespace Nethermind.Ssz.Benchmarks
             "202122232425262728292a2b2c2d2e2f");
 
         public static BlsSignature TestSig1 = new BlsSignature(new byte[BlsSignature.Length]);
-        
+
         private BeaconBlockHeader _header = BeaconBlockHeader.Zero;
         private byte[] _encoded = new byte[Ssz.BeaconBlockHeaderLength];
-        
+
         public SszBeaconBlockHeaderBenchmark()
         {
             new BeaconBlockHeader(
@@ -45,7 +45,7 @@ namespace Nethermind.Ssz.Benchmarks
                 new Root(Sha256.OfAnEmptySequenceRlp.AsSpan()),
                 new Root(Sha256.OfAnEmptySequenceRlp.AsSpan()));
         }
-        
+
         [Benchmark(Baseline = true)]
         public void Current()
         {

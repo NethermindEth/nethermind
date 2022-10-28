@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Core2.Configuration
         public int ShuffleRoundCount { get; set; }
 
         public ulong TargetCommitteeSize { get; set; }
-        
+
         public ulong HysteresisQuotient { get; set; }
         public ulong HysteresisDownwardMultiplier { get; set; }
         public ulong HysteresisUpwardMultiplier { get; set; }

@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return;
             }
-            
+
             _accountLocked = true;
         }
 
@@ -125,26 +125,26 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     Results = int.MaxValue
                 });
                 var depositReceipts = await _receiptRepository.BrowseAsync(depositId);
-                
+
                 var receipts = depositReceipts.OrderBy(r => r.Timestamp)
                     .ThenBy(r => r.Request.UnitsRange.To)
                     .ThenByDescending(r => r.Request.UnitsRange.From)
                     .ToArray();
 
-                uint consumedUnits = (uint) sessions.Items.Sum(s => s.ConsumedUnits);
-                uint graceUnits = (uint) sessions.Items.Sum(s => s.GraceUnits);
-                uint unpaidUnits = (uint) (sessions.Items.Sum(s => s.UnpaidUnits) -
+                uint consumedUnits = (uint)sessions.Items.Sum(s => s.ConsumedUnits);
+                uint graceUnits = (uint)sessions.Items.Sum(s => s.GraceUnits);
+                uint unpaidUnits = (uint)(sessions.Items.Sum(s => s.UnpaidUnits) -
                                            sessions.Items.Sum(s => s.SettledUnits));
 
                 ulong latestMergedReceiptTimestamp = receipts.LastOrDefault(r => r.IsMerged)?.Timestamp ?? 0;
 
-                uint unmergedUnits = (uint) receipts.Where(r => !r.IsClaimed && !r.IsMerged &&
+                uint unmergedUnits = (uint)receipts.Where(r => !r.IsClaimed && !r.IsMerged &&
                                                                 r.Timestamp >= latestMergedReceiptTimestamp)
                     .Sum(r => r.Request.UnitsRange.To - r.Request.UnitsRange.From + 1);
 
                 ulong latestClaimedReceiptTimestamp = receipts.LastOrDefault(r => r.IsClaimed)?.Timestamp ?? 0;
 
-                uint unclaimedUnits = (uint) receipts.Where(r => !r.IsClaimed && !r.IsMerged &&
+                uint unclaimedUnits = (uint)receipts.Where(r => !r.IsClaimed && !r.IsMerged &&
                                                                  r.Timestamp >= latestClaimedReceiptTimestamp)
                     .Sum(r => r.Request.UnitsRange.To - r.Request.UnitsRange.From + 1);
 
@@ -174,17 +174,17 @@ namespace Nethermind.DataMarketplace.Providers.Services
         }
 
         public async Task HandleConsumedUnitAsync(Keccak depositId)
-        {            
+        {
             IDepositNodesHandler? deposit = GetDepositNodesHandler(depositId);
             if (deposit == null)
             {
                 throw new InvalidDataException($"Cannot resolve deposit for deposit ID {depositId}");
             }
-            
+
             switch (deposit.UnitType)
             {
                 case DataAssetUnitType.Time:
-                    uint consumedUnits = (uint) (_timestamper.UnixTime.Seconds - deposit.VerificationTimestamp);
+                    uint consumedUnits = (uint)(_timestamper.UnixTime.Seconds - deposit.VerificationTimestamp);
                     uint paidUnits = deposit.ConsumedUnits - deposit.UnpaidUnits;
                     uint claimedUnits = deposit.ConsumedUnits - deposit.UnclaimedUnits;
                     uint mergedUnits = deposit.ConsumedUnits - deposit.UnmergedUnits;
@@ -210,14 +210,14 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     break;
             }
             if (_logger.IsTrace) _logger.Trace($"Units consumed: {deposit.ConsumedUnits}, unpaid: {deposit.UnpaidUnits}, unmerged: {deposit.UnmergedUnits}, unclaimed: {deposit.UnclaimedUnits}.");
-            
+
             if (!deposit.TryHandle())
             {
                 if (_logger.IsTrace) _logger.Trace($"Already handling consumed unit for deposit: '{deposit.DepositId}'.");
 
                 return;
             }
-            
+
             try
             {
                 await TryHandleDepositAsync(deposit);
@@ -251,7 +251,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return;
             }
-            
+
             if (!deposit.ConsumedAll)
             {
                 return;
@@ -275,8 +275,8 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     {
                         if (_logger.IsInfo) _logger.Info($"Session was not found for deposit: '{deposit.DepositId}', node: '{node.Peer.NodeId}'.");
                         continue;
-                    }                    
-                    
+                    }
+
                     if (_logger.IsInfo) _logger.Info($"Consumer: '{node.Peer.NodeId}', session: '{session.Id}' has {session.UnpaidUnits} unpaid units.");
                 }
                 await TryHandleDepositAsync(deposit, true);
@@ -295,14 +295,14 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"Cannot resolve deposit for deposit ID {depositId}");
             }
-            
+
             ProviderSession? currentSession = _sessionManager.GetSession(depositId, peer);
             if (currentSession is null)
             {
-                if(_logger.IsError) _logger.Error($"Cannot handle unpaid units due to missing session for deposit {depositId}");
+                if (_logger.IsError) _logger.Error($"Cannot handle unpaid units due to missing session for deposit {depositId}");
                 throw new InvalidDataException("Cannot handle unpaid units due to missing session for deposit {depositId}");
             }
-            
+
             if (currentSession.UnpaidUnits > 0)
             {
                 if (_logger.IsInfo) _logger.Info($"Consumer: '{peer.NodeId}', deposit: '{depositId}' has {currentSession.UnpaidUnits} unpaid units from current session.");
@@ -317,9 +317,9 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 deposit.AddUnpaidUnits(previousSession.UnpaidUnits);
                 await TryHandleReceiptAsync(currentSession, deposit.Consumer, peer, previousSession);
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Deposit: '{depositId}' has {deposit.UnpaidUnits} unpaid units, unmerged: {deposit.UnmergedUnits}, unclaimed: {deposit.UnclaimedUnits}.");
-            
+
             if (deposit.ConsumedAll || await _receiptsPolicies.CanMergeReceipts(deposit.UnmergedUnits, deposit.UnitPrice))
             {
                 await TryMergeReceiptsAsync(deposit);
@@ -339,13 +339,13 @@ namespace Nethermind.DataMarketplace.Providers.Services
             switch (deposit.UnitType)
             {
                 case DataAssetUnitType.Unit:
-                {
-                    return deposit.ConsumedUnits;
-                }
+                    {
+                        return deposit.ConsumedUnits;
+                    }
                 case DataAssetUnitType.Time:
-                {
-                    return (uint) _timestamper.UnixTime.Seconds - deposit.VerificationTimestamp;
-                }
+                    {
+                        return (uint)_timestamper.UnixTime.Seconds - deposit.VerificationTimestamp;
+                    }
                 default: return 0;
             }
         }
@@ -358,7 +358,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 return false;
             }
 
-            return !deposit.ConsumedAll && !deposit.IsExpired((uint) _timestamper.UnixTime.Seconds);
+            return !deposit.ConsumedAll && !deposit.IsExpired((uint)_timestamper.UnixTime.Seconds);
         }
 
         public bool TryIncreaseSentUnits(Keccak depositId) =>
@@ -373,29 +373,29 @@ namespace Nethermind.DataMarketplace.Providers.Services
         public void ChangeColdWalletAddress(Address address) => _paymentClaimProcessor.ChangeColdWalletAddress(address);
 
         public bool IsExpired(Keccak depositId)
-            => GetDepositNodesHandler(depositId)?.IsExpired((uint) _timestamper.UnixTime.Seconds) ?? false;
+            => GetDepositNodesHandler(depositId)?.IsExpired((uint)_timestamper.UnixTime.Seconds) ?? false;
 
         private async Task TryClaimPaymentAsync(IDepositNodesHandler deposit)
         {
             if (_accountLocked)
             {
                 if (_logger.IsWarn) _logger.Warn($"Account: '{_providerAddress}' is locked, can't claim a payment.");
-                
+
                 return;
             }
-            
+
             if (!deposit.Receipts.Any())
             {
                 return;
             }
-            
+
             if (deposit.HasClaimedAllUnits)
             {
                 if (_logger.IsInfo) _logger.Info($"Last payment was already claimed for deposit: '{deposit.DepositId}'.");
 
                 return;
             }
-            
+
             try
             {
                 var unclaimedUnits = GetUnclaimedUnits(deposit);
@@ -409,7 +409,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                         if (_logger.IsWarn) _logger.Warn($"Claiming a payment would cause loss (fee: {fee} wei >= profit: {profit} wei).");
                         return;
                     }
-                    
+
                     await ClaimPaymentAsync(deposit);
                 }
             }
@@ -427,9 +427,9 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
         private uint GetUnclaimedUnits(IDepositNodesHandler deposit)
         {
-            var latestReceiptUnitsRange = deposit.LatestReceipt?.IsClaimed == true 
+            var latestReceiptUnitsRange = deposit.LatestReceipt?.IsClaimed == true
                                             ? null
-                                            : deposit.LatestReceipt?.Request.UnitsRange; 
+                                            : deposit.LatestReceipt?.Request.UnitsRange;
 
             var unclaimedRange = deposit.LatestMergedReceipt?.IsClaimed == true
                 ? latestReceiptUnitsRange
@@ -444,7 +444,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             int nodesCount = _sessionManager.GetNodesCount(depositId);
             int nodesCounter = 0;
             foreach (ConsumerNode node in _sessionManager.GetConsumerNodes(depositId))
-            {               
+            {
                 nodesCounter++;
                 if (deposit.HasSentAllReceipts)
                 {
@@ -464,29 +464,29 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     if (_logger.IsInfo) _logger.Info($"Session was not found for deposit: '{depositId}', node: '{node.Peer.NodeId}'.");
                     continue;
                 }
-                
+
                 if (session.UnpaidUnits == 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Session: '{session.Id}' has no unpaid units.");
                     continue;
                 }
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Session: '{session.Id}' has {session.UnpaidUnits} unpaid units.");
                 if (!deposit.ConsumedAll && await _receiptsPolicies.CanRequestReceipts(session.UnpaidUnits * nodesCount, deposit.UnitPrice) == false)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Session: '{session.Id}' has too low unpaid units to be processed.");
                     continue;
                 }
-                              
+
                 if (_logger.IsInfo) _logger.Info($"Requesting receipt for deposit: '{depositId}' from node: '{node.Peer.NodeId}' ({nodesCounter}/{nodesCount}).");
                 DataDeliveryReceiptDetails? details = await TryHandleReceiptAsync(session, deposit.Consumer, node.Peer);
                 if (details is null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Couldn't request receipt for deposit: '{depositId}' from node: '{node.Peer.NodeId}'.");
-                    
+
                     continue;
                 }
-                
+
                 if (_logger.IsInfo) _logger.Info($"Successfully requested receipt for deposit: '{depositId}' from node: '{node.Peer.NodeId}'.");
             }
         }
@@ -500,8 +500,8 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 bool isSettlement = !(previousSession is null);
                 uint unpaidSessionUnits = previousSession?.UnpaidUnits ?? session.UnpaidUnits;
                 DataDeliveryReceiptRequest request = CreateRequest(depositId, session.Id, unpaidSessionUnits, isSettlement);
-                
-                return await TryHandleReceiptAsync(session, consumer, peer, request);  
+
+                return await TryHandleReceiptAsync(session, consumer, peer, request);
             }
             catch (Exception ex)
             {
@@ -520,12 +520,12 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"Cannot resolve deposit for deposit ID {depositId}");
             }
-            
+
             uint number = deposit.GetNextReceiptRequestNumber();
             uint latestReceiptRangeTo = deposit.LatestReceipt?.Request.UnitsRange.To ?? 0;
             uint rangeFrom = deposit.LatestReceipt is null ? 0 : latestReceiptRangeTo + 1;
             uint rangeTo = rangeFrom + unpaidSessionUnits - 1;
-            rangeTo = rangeTo >= deposit.PurchasedUnits ? (uint) deposit.PurchasedUnits - 1 : rangeTo;
+            rangeTo = rangeTo >= deposit.PurchasedUnits ? (uint)deposit.PurchasedUnits - 1 : rangeTo;
             UnitsRange unitsRange = new UnitsRange(rangeFrom, rangeTo);
             if (_logger.IsInfo) _logger.Info($"Created a receipt request for deposit: '{depositId}', session: '{sessionId}', range: [{unitsRange.From}, {unitsRange.To}].");
 
@@ -540,17 +540,17 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 if (_logger.IsInfo) _logger.Info($"Last receipt request for deposit: '{depositId}' was already sent.");
                 return;
             }
-            
+
             if (deposit.HasClaimedAllUnits)
             {
                 if (_logger.IsInfo) _logger.Info($"Last receipt request for deposit: '{depositId}' was already claimed.");
                 return;
             }
-            
+
             DataDeliveryReceiptDetails? latestReceipt = deposit.LatestMergedReceipt;
             if (latestReceipt?.Request.UnitsRange.To == deposit.PurchasedUnits)
             {
-                if (_logger.IsInfo)  _logger.Info($"Last receipt request for deposit: '{depositId}' was already merged.");
+                if (_logger.IsInfo) _logger.Info($"Last receipt request for deposit: '{depositId}' was already merged.");
                 return;
             }
 
@@ -559,27 +559,27 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 if (_logger.IsInfo) _logger.Info($"Trying to merge receipts for deposit: '{depositId}' with node: '{node.Peer.NodeId}'.");
                 try
-                {                    
+                {
                     ProviderSession? session = node.GetSession(depositId);
                     if (session is null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Session was not found for deposit: '{depositId}', node: '{node.Peer.NodeId}'.");
                         continue;
                     }
-                    
+
                     DataDeliveryReceiptRequest? request = CreateMergedRequest(deposit);
                     if (request is null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Merged receipt for deposit: '{depositId}' couldn't be created.");
                         return;
                     }
-                    
+
                     if (latestReceipt?.Request.UnitsRange.Equals(request.UnitsRange) == true)
                     {
                         if (_logger.IsInfo) _logger.Info($"Merged receipt request for deposit: '{depositId}' would be the same as a previous one (already sent).");
                         continue;
                     }
-                
+
                     uint previouslyMergedUnits = latestReceipt?.Request.UnitsRange.To + 1 ?? 0;
                     DataDeliveryReceiptDetails? receiptDetails = await TryHandleReceiptAsync(session, deposit.Consumer, node.Peer, request);
                     if (receiptDetails is null)
@@ -587,7 +587,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                         if (_logger.IsWarn) _logger.Warn($"Couldn't merge receipts for deposit: '{depositId}' with node: '{node.Peer.NodeId}'.");
                         continue;
                     }
-                
+
                     deposit.AddReceipt(receiptDetails);
                     UnitsRange range = receiptDetails.Request.UnitsRange;
                     uint mergedTo = range.To + 1;
@@ -595,7 +595,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                     {
                         return;
                     }
-                    
+
                     uint mergedUnits = mergedTo - previouslyMergedUnits;
                     mergedUnits = deposit.UnmergedUnits < mergedUnits ? deposit.UnmergedUnits : mergedUnits;
                     deposit.SubtractUnmergedUnits(mergedUnits);
@@ -616,7 +616,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 if (_logger.IsInfo) _logger.Info($"Last receipt request for deposit: '{deposit.DepositId}' was already claimed.");
                 return;
             }
-            
+
             var claimableReceipts = deposit.Receipts
                 .Where(r => !r.IsClaimed)
                 .OrderBy(r => r.Timestamp)
@@ -632,7 +632,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 if (_logger.IsWarn) _logger.Warn($"Cannot claim a payment for deposit: '{deposit.DepositId}' - claimable receipt was not found.");
                 return;
             }
-            
+
             if (latestClaimableReceipt.IsClaimed)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot claim a payment for deposit: '{deposit.DepositId}' - receipt was already claimed, timestamp: {latestClaimableReceipt.Timestamp}.");
@@ -644,7 +644,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"Unable to make a claim for the receipt with ID: {latestClaimableReceipt.Id} - receipt missing");
             }
-            
+
             receipt.Claim();
             await _receiptRepository.UpdateAsync(receipt);
             PaymentClaim? paymentClaim = await _paymentClaimProcessor.ProcessAsync(latestClaimableReceipt.Request,
@@ -653,7 +653,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"Unable to make a claim for the receipt with ID: {latestClaimableReceipt.Id} - claim processing failure");
             }
-            
+
             latestClaimableReceipt.Claim();
             deposit.AddReceipt(latestClaimableReceipt); // so the receipt become LatestReceipt 
             deposit.ClearReceipts();
@@ -693,7 +693,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
                 .OrderBy(r => r.Timestamp)
                 .ThenBy(r => r.Request.UnitsRange.To)
                 .ToList();
-            
+
             var paymentClaimExist = deposit.LatestPaymentClaim is { };
             uint rangeFrom;
 
@@ -718,12 +718,12 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 return null;
             }
-            
+
             if (!(latestMergedReceipt is null))
             {
                 mergeableReceipts.Insert(0, latestMergedReceipt);
             }
-            
+
             UnitsRange unitsRange = new UnitsRange(rangeFrom, rangeTo);
             var receiptsToMerge = mergeableReceipts.Select(r => new DataDeliveryReceiptToMerge(
                 r.Request.UnitsRange, r.Receipt.Signature)).OrderBy(r => r.UnitsRange.To).ToList();
@@ -744,7 +744,7 @@ namespace Nethermind.DataMarketplace.Providers.Services
             {
                 throw new InvalidDataException($"Cannot resolve deposit handle for deposit ID: {depositId}");
             }
-            
+
             try
             {
                 UnitsRange unitsRange = request.UnitsRange;
@@ -813,66 +813,66 @@ namespace Nethermind.DataMarketplace.Providers.Services
 
                         return (receipt, RequestReceiptStatus.Invalid);
                     case StatusCodes.InvalidReceiptRequestRange:
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claims {receipt.ConsumedUnits} consumed and {receipt.UnpaidUnits} unpaid units.");
-                        UnitsRange range = request.UnitsRange;
-                        uint requestedUnits = range.To - range.From + 1;
-                        if (requestedUnits <= receipt.UnpaidUnits)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claimed an invalid range  (while it was actually valid).");
+                            if (_logger.IsInfo) _logger.Info($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claims {receipt.ConsumedUnits} consumed and {receipt.UnpaidUnits} unpaid units.");
+                            UnitsRange range = request.UnitsRange;
+                            uint requestedUnits = range.To - range.From + 1;
+                            if (requestedUnits <= receipt.UnpaidUnits)
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claimed an invalid range  (while it was actually valid).");
 
+                                break;
+                            }
+
+                            uint graceUnits = requestedUnits - receipt.UnpaidUnits;
+                            uint totalGraceUnits = graceUnits + deposit.GraceUnits;
+                            bool hasReachedThreshold = await _receiptsPolicies.CanClaimPayment(totalGraceUnits, deposit.UnitPrice);
+                            if (hasReachedThreshold)
+                            {
+                                peer.SendGraceUnitsExceeded(depositId, deposit.ConsumedUnits, totalGraceUnits);
+                                if (_logger.IsWarn) _logger.Warn($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claimed too many unpaid units, grace units exceeded ({totalGraceUnits}).");
+
+                                return (receipt, RequestReceiptStatus.GraceUnitsExceeded);
+                            }
+
+                            if (_logger.IsInfo) _logger.Info($"Unpaid units difference is: {graceUnits} ({requestedUnits} - {receipt.UnpaidUnits}). Lowering units amount for deposit: '{depositId}'.");
+                            deposit.SubtractUnpaidUnits(graceUnits);
+                            deposit.SubtractUnmergedUnits(graceUnits);
+                            deposit.SubtractUnclaimedUnits(graceUnits);
+                            deposit.AddGraceUnits(graceUnits);
+                            session.SubtractUnpaidUnits(graceUnits);
+                            session.AddGraceUnits(graceUnits);
+                            if (range.To < graceUnits)
+                            {
+                                peer.SendGraceUnitsExceeded(depositId, deposit.ConsumedUnits, totalGraceUnits);
+                                if (_logger.IsWarn) _logger.Warn($"Cannot request a receipt for deposit: '{depositId}'  - grace units amount is greater than the receipt range ({graceUnits} > {range.To}).");
+
+                                return (receipt, RequestReceiptStatus.GraceUnitsExceeded);
+                            }
+
+                            uint updatedRangeTo = range.To - graceUnits;
+                            if (range.From > updatedRangeTo)
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"Invalid updated range [{range.From}, {updatedRangeTo}] for: '{depositId}' - receipt request will not be send.");
+
+                                return (receipt, RequestReceiptStatus.Invalid);
+                            }
+
+                            if (_logger.IsInfo) _logger.Info($"Grace units for deposit: '{depositId}' is: {deposit.GraceUnits} (added {graceUnits}).");
+                            UnitsRange updatedRange = new UnitsRange(range.From, updatedRangeTo);
+                            if (_logger.IsInfo) _logger.Info($"Updated range for deposit: '{depositId}' [{updatedRange.From}, {updatedRange.To}]. Requesting receipt once again.");
+                            request = request.WithRange(updatedRange, deposit.GetNextReceiptRequestNumber());
+                            isRetry = true;
+                            continue;
+                        }
+                    case StatusCodes.InvalidReceiptAddress:
+                        {
                             break;
                         }
-                        
-                        uint graceUnits = requestedUnits - receipt.UnpaidUnits;
-                        uint totalGraceUnits = graceUnits + deposit.GraceUnits;
-                        bool hasReachedThreshold = await _receiptsPolicies.CanClaimPayment(totalGraceUnits, deposit.UnitPrice);
-                        if (hasReachedThreshold)
-                        {
-                            peer.SendGraceUnitsExceeded(depositId, deposit.ConsumedUnits, totalGraceUnits);
-                            if (_logger.IsWarn) _logger.Warn($"Consumer for deposit: '{depositId}' from node: '{peer.NodeId}' claimed too many unpaid units, grace units exceeded ({totalGraceUnits}).");
-                            
-                            return (receipt, RequestReceiptStatus.GraceUnitsExceeded);
-                        }
-
-                        if (_logger.IsInfo) _logger.Info($"Unpaid units difference is: {graceUnits} ({requestedUnits} - {receipt.UnpaidUnits}). Lowering units amount for deposit: '{depositId}'.");
-                        deposit.SubtractUnpaidUnits(graceUnits);
-                        deposit.SubtractUnmergedUnits(graceUnits);
-                        deposit.SubtractUnclaimedUnits(graceUnits);
-                        deposit.AddGraceUnits(graceUnits);
-                        session.SubtractUnpaidUnits(graceUnits);
-                        session.AddGraceUnits(graceUnits);
-                        if (range.To < graceUnits)
-                        {
-                            peer.SendGraceUnitsExceeded(depositId, deposit.ConsumedUnits, totalGraceUnits);
-                            if (_logger.IsWarn) _logger.Warn($"Cannot request a receipt for deposit: '{depositId}'  - grace units amount is greater than the receipt range ({graceUnits} > {range.To}).");
-                            
-                            return (receipt, RequestReceiptStatus.GraceUnitsExceeded);
-                        }
-                        
-                        uint updatedRangeTo = range.To - graceUnits;
-                        if (range.From > updatedRangeTo)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Invalid updated range [{range.From}, {updatedRangeTo}] for: '{depositId}' - receipt request will not be send.");
-                            
-                            return (receipt, RequestReceiptStatus.Invalid);
-                        }
-                        
-                        if (_logger.IsInfo) _logger.Info($"Grace units for deposit: '{depositId}' is: {deposit.GraceUnits} (added {graceUnits}).");
-                        UnitsRange updatedRange = new UnitsRange(range.From, updatedRangeTo);
-                        if (_logger.IsInfo) _logger.Info($"Updated range for deposit: '{depositId}' [{updatedRange.From}, {updatedRange.To}]. Requesting receipt once again.");
-                        request = request.WithRange(updatedRange, deposit.GetNextReceiptRequestNumber());
-                        isRetry = true;
-                        continue;
-                    }
-                    case StatusCodes.InvalidReceiptAddress:
-                    {
-                        break;
-                    }
                     case StatusCodes.Error:
-                    {
-                        break;
-                    }
+                        {
+                            break;
+                        }
                 }
 
                 return (receipt, RequestReceiptStatus.Invalid);

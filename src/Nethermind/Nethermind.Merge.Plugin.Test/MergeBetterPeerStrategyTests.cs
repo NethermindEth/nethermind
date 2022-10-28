@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -30,12 +30,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class MergeBetterPeerStrategyTests
 {
-    [TestCase(7,2,6,4, -1)]
-    [TestCase(7,4,6,4, 0)]
-    [TestCase(6,4,7,2, 1)]
-    [TestCase(3,4,6,2, -1)]
-    [TestCase(3,2,3,4, 0)]
-    [TestCase(6,2,3,4, 1)]
+    [TestCase(7, 2, 6, 4, -1)]
+    [TestCase(7, 4, 6, 4, 0)]
+    [TestCase(6, 4, 7, 2, 1)]
+    [TestCase(3, 4, 6, 2, -1)]
+    [TestCase(3, 2, 3, 4, 0)]
+    [TestCase(6, 2, 3, 4, 1)]
     public void Compare_with_header_and_peer_return_expected_results(long totalDifficulty, long number, long peerTotalDifficulty, long peerNumber, int expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -48,12 +48,12 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(header, syncPeer));
     }
 
-    [TestCase(7,2,6,4, -1)]
-    [TestCase(7,4,6,4, 0)]
-    [TestCase(6,4,7,2, 1)]
-    [TestCase(3,4,6,2, -1)]
-    [TestCase(3,2,3,4, 0)]
-    [TestCase(6,2,3,4, 1)]
+    [TestCase(7, 2, 6, 4, -1)]
+    [TestCase(7, 4, 6, 4, 0)]
+    [TestCase(6, 4, 7, 2, 1)]
+    [TestCase(3, 4, 6, 2, -1)]
+    [TestCase(3, 2, 3, 4, 0)]
+    [TestCase(6, 2, 3, 4, 1)]
     public void Compare_with_value_and_peer_return_expected_results(long totalDifficulty, long number, long peerTotalDifficulty, long peerNumber, int expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -64,24 +64,24 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), syncPeer));
     }
 
-    [TestCase(7,2,6,4, -1)]
-    [TestCase(7,4,6,4, 0)]
-    [TestCase(6,4,7,2, 1)]
-    [TestCase(3,4,6,2, -1)]
-    [TestCase(3,2,3,4, 0)]
-    [TestCase(6,2,3,4, 1)]
+    [TestCase(7, 2, 6, 4, -1)]
+    [TestCase(7, 4, 6, 4, 0)]
+    [TestCase(6, 4, 7, 2, 1)]
+    [TestCase(3, 4, 6, 2, -1)]
+    [TestCase(3, 2, 3, 4, 0)]
+    [TestCase(6, 2, 3, 4, 1)]
     public void Compare_with_values_return_expected_results(long totalDifficulty, long number, long peerTotalDifficulty, long peerNumber, int expectedResult)
     {
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
         Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), ((UInt256)peerTotalDifficulty, peerNumber)));
     }
 
-    [TestCase(6,4,7,2, false)]
-    [TestCase(6,2,7,2, false)]
-    [TestCase(7,2,7,4, true)]
-    [TestCase(3,4,5,2, true)]
-    [TestCase(3,2,3,4, false)]
-    [TestCase(4,2,3,4, false)]
+    [TestCase(6, 4, 7, 2, false)]
+    [TestCase(6, 2, 7, 2, false)]
+    [TestCase(7, 2, 7, 4, true)]
+    [TestCase(3, 4, 5, 2, true)]
+    [TestCase(3, 2, 3, 4, false)]
+    [TestCase(4, 2, 3, 4, false)]
     public void IsBetterThanLocalChain_return_expected_results(long chainDifficulty, long bestFullBlock, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -92,12 +92,12 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestFullBlock)));
     }
 
-    [TestCase(6,4,7,2, false)]
-    [TestCase(6,2,7,2, false)]
-    [TestCase(3,4,5,2, true)]
-    [TestCase(3,2,3,4, true)]
-    [TestCase(4,2,3,4, false)]
-    [TestCase(3,4,3,2, false)]
+    [TestCase(6, 4, 7, 2, false)]
+    [TestCase(6, 2, 7, 2, false)]
+    [TestCase(3, 4, 5, 2, true)]
+    [TestCase(3, 2, 3, 4, true)]
+    [TestCase(4, 2, 3, 4, false)]
+    [TestCase(3, 4, 3, 2, false)]
     public void IsDesiredPeer_return_expected_results_pre_ttd(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -108,9 +108,10 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
     }
 
-    [TestCase(9, 7,4,7,10, true)]
-    [TestCase(9, 8,2,7,7, false)]
-    [TestCase(null, 9,4,5,99, false)]
+    [TestCase(9, 7, 4, 7, 10, true)]
+    [TestCase(9, 8, 2, 7, 7, false)]
+    [TestCase(null, 9, 4, 5, 99, false)]
+    [TestCase(3, 5, 1, 3, 4, true)]
     public void IsDesiredPeer_return_expected_results_post_ttd(long? pivotNumber, long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -121,10 +122,10 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
     }
 
-    [TestCase(null,true)]
-    [TestCase(4,true)]
-    [TestCase(5,false)]
-    [TestCase(6,false)]
+    [TestCase(null, true)]
+    [TestCase(4, true)]
+    [TestCase(5, false)]
+    [TestCase(6, false)]
     public void IsLowerThanTerminalTotalDifficulty_return_expected_results(long totalDifficulty, bool expectedResult)
     {
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();

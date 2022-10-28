@@ -40,7 +40,8 @@ namespace Ethereum.Test.Base
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-
+            network = network.Replace("Merge", "GrayGlacier");
+            network = network.Replace("London+3540+3670", "Shanghai");
             return network switch
             {
                 "Frontier" => Frontier.Instance,
@@ -56,7 +57,8 @@ namespace Ethereum.Test.Base
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
-                "Merge" => London.Instance,
+                "GrayGlacier" => GrayGlacier.Instance,
+                "Shanghai" => Shanghai.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -121,12 +123,12 @@ namespace Ethereum.Test.Base
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.ToAccessList();
-            
+
             if (transaction.AccessList.Data.Count != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
-            
+
             if (transactionJson.MaxFeePerGas != null)
                 transaction.Type = TxType.EIP1559;
 
@@ -175,7 +177,7 @@ namespace Ethereum.Test.Base
         {
             if (testJson.LoadFailure != null)
             {
-                return Enumerable.Repeat(new GeneralStateTest {Name = name, LoadFailure = testJson.LoadFailure}, 1);
+                return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
             }
 
             List<GeneralStateTest> blockchainTests = new();
@@ -224,7 +226,7 @@ namespace Ethereum.Test.Base
         {
             if (testJson.LoadFailure != null)
             {
-                return new BlockchainTest {Name = name, LoadFailure = testJson.LoadFailure};
+                return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
             }
 
             BlockchainTest test = new();

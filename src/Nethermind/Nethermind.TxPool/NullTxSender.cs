@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,9 +24,9 @@ namespace Nethermind.TxPool
     public class NullTxSender : ITxSender
     {
         public static ITxSender Instance { get; } = new NullTxSender();
-        
+
         public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             => new((tx.Hash, null));
-        
+
     }
 }

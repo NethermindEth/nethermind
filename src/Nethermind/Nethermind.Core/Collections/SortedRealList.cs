@@ -80,7 +80,7 @@ namespace Nethermind.Core.Collections
         // subsequently added to the sorted list.
         //
         public SortedRealList(IDictionary<TKey, TValue> dictionary, IComparer<TKey>? comparer) : base(dictionary, comparer) { }
-        
+
         public int IndexOf(KeyValuePair<TKey, TValue> item) => IndexOfKey(item.Key);
 
         public void Insert(int index, KeyValuePair<TKey, TValue> item) => this.TryAdd(item.Key, item.Value);

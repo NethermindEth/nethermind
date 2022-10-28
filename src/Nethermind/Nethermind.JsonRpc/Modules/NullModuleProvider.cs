@@ -27,9 +27,13 @@ namespace Nethermind.JsonRpc.Modules
         public static NullModuleProvider Instance = new();
         private static Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
 
-        private NullModuleProvider() { }
+        private NullModuleProvider()
+        {
+        }
 
-        public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule { }
+        public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
+        {
+        }
 
         public JsonSerializer Serializer { get; } = new();
 

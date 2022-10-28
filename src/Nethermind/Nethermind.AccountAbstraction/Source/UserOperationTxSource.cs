@@ -78,30 +78,30 @@ namespace Nethermind.AccountAbstraction.Source
             IList<Tuple<Address, UserOperation>> combinedUserOperations = new List<Tuple<Address, UserOperation>>();
             foreach (Address entryPoint in _userOperationPools.Keys)
             {
-                IEnumerable<UserOperation> entryPointUserOperations = 
+                IEnumerable<UserOperation> entryPointUserOperations =
                     _userOperationPools[entryPoint]
                     .GetUserOperations()
                     .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas);
 
-                foreach(UserOperation userOperation in entryPointUserOperations)
+                foreach (UserOperation userOperation in entryPointUserOperations)
                 {
                     combinedUserOperations.Add(Tuple.Create(entryPoint, userOperation));
                 }
             }
-            IList<Tuple<Address, UserOperation>> sortedUserOperations = 
+            IList<Tuple<Address, UserOperation>> sortedUserOperations =
                 combinedUserOperations.OrderByDescending(
-                op => 
+                op =>
                     CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas))
                 .ToList();
-            
+
             foreach (Tuple<Address, UserOperation> addressedUserOperation in sortedUserOperations)
             {
                 (Address entryPoint, UserOperation userOperation) = addressedUserOperation;
-                
+
                 ulong userOperationTotalGasLimit = (ulong)userOperation.CallGas +
                                                    (ulong)userOperation.PreVerificationGas +
                                                    (ulong)userOperation.VerificationGas;
-                
+
                 if (gasUsed + userOperationTotalGasLimit > (ulong)gasLimit) continue;
 
                 // no intersect of accessed addresses between ops
@@ -121,15 +121,15 @@ namespace Nethermind.AccountAbstraction.Source
                         if (_logger.IsDebug)
                         {
                             _logger.Debug(
-                                removeResult ? 
-                                "Removed UserOperation {userOperation.Hash} from Pool" 
+                                removeResult ?
+                                "Removed UserOperation {userOperation.Hash} from Pool"
                                 : "Failed to remove UserOperation {userOperation} from Pool");
                         }
                     }
 
                     continue;
                 }
-                
+
                 gasUsed += userOperationTotalGasLimit;
 
                 // add user operation with correct entryPoint
@@ -155,7 +155,7 @@ namespace Nethermind.AccountAbstraction.Source
             UInt256 initialNonce = _stateProvider.GetNonce(_signer.Address);
             UInt256 txsBuilt = 0;
             // build transaction for each entryPoint with ops to be included
-            foreach(KeyValuePair<Address, UserOperationTxBuilder> kv in _userOperationTxBuilders)
+            foreach (KeyValuePair<Address, UserOperationTxBuilder> kv in _userOperationTxBuilders)
             {
                 Address entryPoint = kv.Key;
                 IUserOperationTxBuilder txBuilder = kv.Value;
@@ -164,9 +164,9 @@ namespace Nethermind.AccountAbstraction.Source
                     userOperationsToIncludeByEntryPoint.TryGetValue(entryPoint, out IList<UserOperation>? userOperationsToInclude);
                 if (!foundUserOperations) continue;
 
-                long totalGasUsed = userOperationsToInclude!.Aggregate((long)0, 
-                    (sum, op) => 
-                        sum + 
+                long totalGasUsed = userOperationsToInclude!.Aggregate((long)0,
+                    (sum, op) =>
+                        sum +
                         (long)op.CallGas +
                         (long)op.PreVerificationGas +
                         (long)op.VerificationGas);
@@ -183,7 +183,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _logger.Debug($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
                 // TODO: Remove logging, just for testing
                 _logger.Info($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
-                
+
                 BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
                 FailedOp? failedOp = txBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
                 if (failedOp is not null)
@@ -197,14 +197,14 @@ namespace Nethermind.AccountAbstraction.Source
                     if (_logger.IsWarn) _logger.Warn($"AA Simulation error for entryPoint {entryPoint}: {callOutput.Error}");
                     continue;
                 }
-                
+
                 // construct tx with previously estimated gas limit
                 Transaction updatedUserOperationTransaction =
                     _userOperationTxBuilders[entryPoint].BuildTransactionFromUserOperations(
-                        userOperationsToInclude, 
-                        parent, 
+                        userOperationsToInclude,
+                        parent,
                         callOutput.GasSpent + 200000,
-                        initialNonce+txsBuilt,
+                        initialNonce + txsBuilt,
                         _specProvider.GetSpec(parent.Number + 1));
 
                 txsBuilt++;

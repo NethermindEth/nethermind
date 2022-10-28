@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
-        
+
         private DownloaderOptions BuildOptions()
         {
             DownloaderOptions options = DownloaderOptions.MoveToMain;
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public override bool IsMultiFeed => false;
-        
+
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
     }
 }

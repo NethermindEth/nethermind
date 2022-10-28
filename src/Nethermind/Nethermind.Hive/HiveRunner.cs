@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,6 +41,7 @@ namespace Nethermind.Hive
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
         private SemaphoreSlim _resetEvent;
+        private bool BlockSuggested;
 
         public HiveRunner(
             IBlockTree blockTree,
@@ -63,6 +64,7 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
+            _blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
             _blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -70,9 +72,16 @@ namespace Nethermind.Hive
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
+            _blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
             _blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
+        }
+
+        private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
+        {
+            BlockSuggested = true;
+            if (_logger.IsInfo) _logger.Info($"HIVE suggested {e.Block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
         }
 
         private void BlockProcessingFinished(object? sender, BlockHashEventArgs e)
@@ -85,23 +94,23 @@ namespace Nethermind.Hive
 
         private void ListEnvironmentVariables()
         {
-// # This script assumes the following environment variables:
-// #  - HIVE_BOOTNODE       enode URL of the remote bootstrap node
-// #  - HIVE_NETWORK_ID     network ID number to use for the eth protocol
-// #  - HIVE_CHAIN_ID     network ID number to use for the eth protocol
-// #  - HIVE_TESTNET        whether testnet nonces (2^20) are needed
-// #  - HIVE_NODETYPE       sync and pruning selector (archive, full, light)
-// #  - HIVE_FORK_HOMESTEAD block number of the DAO hard-fork transition
-// #  - HIVE_FORK_DAO_BLOCK block number of the DAO hard-fork transitionnsition
-// #  - HIVE_FORK_DAO_VOTE  whether the node support (or opposes) the DAO fork
-// #  - HIVE_FORK_TANGERINE block number of TangerineWhistle
-// #  - HIVE_FORK_SPURIOUS  block number of SpuriousDragon
-// #  - HIVE_FORK_BYZANTIUM block number for Byzantium transition
-// #  - HIVE_FORK_CONSTANTINOPLE block number for Constantinople transition
-// #  - HIVE_FORK_PETERSBURG  block number for ConstantinopleFix/PetersBurg transition
-// #  - HIVE_MINER          address to credit with mining rewards (single thread)
-// #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
-// #  - HIVE_SKIP_POW       If set, skip PoW verification during block import
+            // # This script assumes the following environment variables:
+            // #  - HIVE_BOOTNODE       enode URL of the remote bootstrap node
+            // #  - HIVE_NETWORK_ID     network ID number to use for the eth protocol
+            // #  - HIVE_CHAIN_ID     network ID number to use for the eth protocol
+            // #  - HIVE_TESTNET        whether testnet nonces (2^20) are needed
+            // #  - HIVE_NODETYPE       sync and pruning selector (archive, full, light)
+            // #  - HIVE_FORK_HOMESTEAD block number of the DAO hard-fork transition
+            // #  - HIVE_FORK_DAO_BLOCK block number of the DAO hard-fork transitionnsition
+            // #  - HIVE_FORK_DAO_VOTE  whether the node support (or opposes) the DAO fork
+            // #  - HIVE_FORK_TANGERINE block number of TangerineWhistle
+            // #  - HIVE_FORK_SPURIOUS  block number of SpuriousDragon
+            // #  - HIVE_FORK_BYZANTIUM block number for Byzantium transition
+            // #  - HIVE_FORK_CONSTANTINOPLE block number for Constantinople transition
+            // #  - HIVE_FORK_PETERSBURG  block number for ConstantinopleFix/PetersBurg transition
+            // #  - HIVE_MINER          address to credit with mining rewards (single thread)
+            // #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
+            // #  - HIVE_SKIP_POW       If set, skip PoW verification during block import
 
             string[] variableNames =
             {
@@ -207,25 +216,35 @@ namespace Nethermind.Hive
         {
             try
             {
+                // Start of block processing, setting flag BlockSuggested to default value: false
+                BlockSuggested = false;
+
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;
                 }
 
+                // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
+                // then event NewBestSuggestedBlock is invoked and block will be processed - we are not awaiting it here.
+                // Here, in HiveRunner, in method OnNewBestSuggestedBlock, flag BlockSuggested is set to true.
                 AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
-                    if (_logger.IsError)
-                        _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
+                    if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
                     return;
                 }
 
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-
-                await WaitForBlockProcessing(_resetEvent);
+                // If block was suggested, we need to wait for processing it.
+                if (BlockSuggested)
+                {
+                    await WaitForBlockProcessing(_resetEvent);
+                }
+                // Otherwise, block will be only added and not processed, so there is nothing to wait for.
+                else
+                {
+                    _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
+                }
             }
             catch (Exception e)
             {

@@ -23,13 +23,13 @@ namespace Nethermind.Crypto
     {
         private readonly ICryptoRandom _cryptoRandom;
         private readonly bool _disposeRandom = false;
-        
+
         public PrivateKeyGenerator()
         {
             _cryptoRandom = new CryptoRandom();
             _disposeRandom = true;
         }
-        
+
         public PrivateKeyGenerator(ICryptoRandom cryptoRandom)
         {
             _cryptoRandom = cryptoRandom;

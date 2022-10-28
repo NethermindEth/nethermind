@@ -35,9 +35,9 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task One_validator()
         {
-            StartCliqueMiner("val1")
+            StartCliqueMiner("cliqueval1a")
                 .Wait(5000)
-                .Kill("val1");
+                .Kill("cliqueval1a");
 
             await ScenarioCompletion;
         }
@@ -45,43 +45,43 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Two_validators()
         {
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
+            StartCliqueMiner("cliqueval1b")
+                .StartCliqueMiner("cliqueval2b")
                 .Wait(10000)
-                .Kill("val1")
-                .Kill("val2");
+                .Kill("cliqueval1b")
+                .Kill("cliqueval2b");
 
             await ScenarioCompletion;
         }
-        
+
         [Test]
         public async Task Clique_vote()
         {
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
-                .StartCliqueMiner("val3")
-                .StartCliqueMiner("val4")
-                .StartCliqueMiner("val5")
-                .StartCliqueMiner("val6")
-                .StartCliqueMiner("val7")
-                .StartCliqueNode("node1")
+            StartCliqueMiner("cliqueval1c")
+                .StartCliqueMiner("cliqueval2c")
+                .StartCliqueMiner("cliqueval3c")
+                .StartCliqueMiner("cliqueval4c")
+                .StartCliqueMiner("cliqueval5c")
+                .StartCliqueMiner("cliqueval6c")
+                .StartCliqueMiner("cliqueval7c")
+                .StartCliqueNode("cliquenode1c")
                 .SetContext(new CliqueContext(new CliqueState()))
                 .Wait(20000)
-                .SwitchNode("val1")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val2")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val5")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val7")
-                .Propose(Nodes["node1"].Address, true)
+                .SwitchNode("cliqueval1c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval2c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval5c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval7c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
                 .Wait(10000)
                 .LeaveContext()
                 .KillAll();
 
             await ScenarioCompletion;
         }
-        
+
         [Test]
         public async Task Clique_transaction_broadcast()
         {
@@ -95,7 +95,7 @@ namespace Nethermind.Overseer.Test
                 0,0,0,0,0,0,0,0,
                 0,0,0,0,0,0,0,3
             }).Address;
-            
+
             tx.To = new PrivateKey(new byte[32] {
                 0,0,0,0,0,0,0,0,
                 0,0,0,0,0,0,0,0,
@@ -103,9 +103,9 @@ namespace Nethermind.Overseer.Test
                 0,0,0,0,0,0,0,1
             }).Address;
 
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
-                .StartCliqueNode("node3")
+            StartCliqueMiner("cliqueval1d")
+                .StartCliqueMiner("cliqueval2d")
+                .StartCliqueNode("cliquenode3d")
                 .SetContext(new CliqueContext(new CliqueState()))
                 .Wait(5000)
                 .SendTransaction(tx)

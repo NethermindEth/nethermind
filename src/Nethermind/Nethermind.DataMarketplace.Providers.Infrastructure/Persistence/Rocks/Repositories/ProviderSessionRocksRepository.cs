@@ -37,8 +37,8 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
     {
         private readonly IDb _database;
         private readonly IRlpDecoder<ProviderSession> _rlpDecoder;
-        private  IRlpStreamDecoder<ProviderSession> RlpStreamDecoder => (IRlpStreamDecoder<ProviderSession>)_rlpDecoder;
-        private  IRlpObjectDecoder<ProviderSession> RlpObjectDecoder => (IRlpObjectDecoder<ProviderSession>)_rlpDecoder;
+        private IRlpStreamDecoder<ProviderSession> RlpStreamDecoder => (IRlpStreamDecoder<ProviderSession>)_rlpDecoder;
+        private IRlpObjectDecoder<ProviderSession> RlpObjectDecoder => (IRlpObjectDecoder<ProviderSession>)_rlpDecoder;
 
         public ProviderSessionRocksRepository(IDb database, IRlpNdmDecoder<ProviderSession> rlpDecoder)
         {
@@ -58,12 +58,12 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Persistence.Rocks.
                 case 1:
                     return Task.FromResult<ProviderSession?>(GetUniqueSession(session, sessions[0]));
                 default:
-                {
-                    var previousSessions = sessions.Take(2).ToArray();
+                    {
+                        var previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult<ProviderSession?>(GetUniqueSession(session, previousSessions[1]) ??
-                                                             GetUniqueSession(session, previousSessions[0]));
-                }
+                        return Task.FromResult<ProviderSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                                 GetUniqueSession(session, previousSessions[0]));
+                    }
             }
         }
 

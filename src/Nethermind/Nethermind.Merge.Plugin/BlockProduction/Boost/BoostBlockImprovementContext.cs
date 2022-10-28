@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,19 +36,20 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IStateReader _stateReader;
     private CancellationTokenSource? _cancellationTokenSource;
 
-    public BoostBlockImprovementContext(
-        Block currentBestBlock,
+    public BoostBlockImprovementContext(Block currentBestBlock,
         IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        DateTimeOffset startDateTime)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
+        StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
 
@@ -73,11 +74,13 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     }
 
     public Task<Block?> ImprovementTask { get; }
-
     public Block? CurrentBestBlock { get; private set; }
+    public bool Disposed { get; private set; }
+    public DateTimeOffset StartDateTime { get; }
 
     public void Dispose()
     {
+        Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
     }
 }

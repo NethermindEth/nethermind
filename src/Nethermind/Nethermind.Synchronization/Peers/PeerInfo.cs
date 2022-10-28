@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Peers
         public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
-        
+
         public Keccak HeadHash => SyncPeer.HeadHash;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Peers
         private void WakeUp(AllocationContexts allocationContexts)
         {
             SleepingContexts ^= allocationContexts;
-            
+
             foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {
                 if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
@@ -127,17 +127,17 @@ namespace Nethermind.Synchronization.Peers
                     _weaknesses[allocationIndex.Value] = 0;
                 }
             }
-            
+
             SleepingSince.TryRemove(allocationContexts, out _);
         }
-        
+
         // map from AllocationContexts single flag to index in array of _weaknesses
         private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
             FastEnum.GetValues<AllocationContexts>()
             .Where(c => c != AllocationContexts.All && c != AllocationContexts.None)
             .Select((a, i) => (a, i))
             .ToDictionary(v => v.a, v => v.i);
-        
+
         private readonly int[] _weaknesses = new int[AllocationIndexes.Count];
 
         public const int SleepThreshold = 2;
@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.Peers
         {
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.Witness) == AllocationContexts.Witness ? "W" : " ")}";
         }
-        
+
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
     }
 }

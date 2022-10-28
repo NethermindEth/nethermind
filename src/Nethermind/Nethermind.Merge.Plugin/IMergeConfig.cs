@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin
     {
         [ConfigItem(
             Description = "Defines whether the Merge plugin is enabled bundles are allowed.",
-            DefaultValue = "false")]
+            DefaultValue = "true")]
         bool Enabled { get; set; }
 
         [ConfigItem(Description = "Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.", DefaultValue = "null")]

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@ namespace Nethermind.Core.Caching
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(Keccak) == typeof(byte[])
-                ? new Dictionary<Keccak, LinkedListNode<LruCacheItem>>((IEqualityComparer<Keccak>) Bytes.EqualityComparer)
+                ? new Dictionary<Keccak, LinkedListNode<LruCacheItem>>((IEqualityComparer<Keccak>)Bytes.EqualityComparer)
                 : new Dictionary<Keccak, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
             _lruList = new LinkedList<LruCacheItem>();
         }
@@ -155,10 +155,10 @@ namespace Nethermind.Core.Caching
         private void Replace(Keccak key, byte[] value)
         {
             LinkedListNode<LruCacheItem>? node = _lruList.First;
-            
+
             // ReSharper disable once PossibleNullReferenceException
             MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node?.Value.Value.Length ?? 0);
-            
+
             _lruList.RemoveFirst();
             _cacheMap.Remove(node!.Value.Key);
 

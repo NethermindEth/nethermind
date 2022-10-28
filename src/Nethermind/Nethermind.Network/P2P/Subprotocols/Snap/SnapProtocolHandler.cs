@@ -49,6 +49,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override string ProtocolCode => Protocol.Snap;
         public override int MessageIdSpaceSize => 8;
 
+        private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
+
         private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
@@ -161,25 +163,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -239,7 +245,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             PathGroup[] groups = GetPathGroups(request);
 
-            GetTrieNodesMessage reqMsg = new ()
+            GetTrieNodesMessage reqMsg = new()
             {
                 RootHash = request.RootHash,
                 Paths = groups,
@@ -271,35 +277,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             where TIn : SnapMessageBase
             where TOut : SnapMessageBase
         {
-            Request<TIn, TOut> batch = new(msg);
-
-            requestQueue.Send(batch);
-
-            Task<TOut> task = batch.CompletionSource.Task;
-
-            using CancellationTokenSource delayCancellation = new();
-            using CancellationTokenSource compositeCancellation
-                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-            if (firstTask.IsCanceled)
-            {
-                token.ThrowIfCancellationRequested();
-            }
-
-            if (firstTask == task)
-            {
-                delayCancellation.Cancel();
-                long elapsed = batch.FinishMeasuringTime();
-                long bytesPerMillisecond = (long)((decimal)batch.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace)
-                    Logger.Trace($"{this} speed is {batch.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, bytesPerMillisecond);
-
-                return task.Result;
-            }
-
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(TIn)}");
+            return await SendRequestGeneric(
+                requestQueue,
+                msg,
+                TransferSpeedType.SnapRanges,
+                static (_) => $"{nameof(TIn)}",
+                token);
         }
 
         /// <summary>

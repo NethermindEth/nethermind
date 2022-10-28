@@ -27,7 +27,7 @@ namespace Nethermind.Config
     public class ConfigProvider : IConfigProvider
     {
         private readonly ConcurrentDictionary<Type, object> _instances = new();
-        
+
         private readonly List<IConfigSource> _configSource = new();
         private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
 
@@ -43,7 +43,7 @@ namespace Nethermind.Config
         public object GetConfig(Type configType)
         {
             if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
-                
+
             if (!_instances.ContainsKey(configType))
             {
                 if (!_implementations.ContainsKey(configType))
@@ -51,7 +51,7 @@ namespace Nethermind.Config
                     Initialize();
                 }
             }
-            
+
             return _instances[configType];
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Config
         {
             _configSource.Add(configSource);
         }
-        
+
         public void Initialize()
         {
             Type type = typeof(IConfig);
@@ -122,12 +122,12 @@ namespace Nethermind.Config
 
         public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
         {
-            if(_instances.Count == 0)
+            if (_instances.Count == 0)
             {
                 Initialize();
             }
 
-            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name, p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 
@@ -137,7 +137,7 @@ namespace Nethermind.Config
 
                 foreach (var conf in configs)
                 {
-                    if(!propertySet.Contains(GetKey(conf.Category ,conf.Name)))
+                    if (!propertySet.Contains(GetKey(conf.Category, conf.Name)))
                     {
                         incorrectSettings.Add((source, conf.Category, conf.Name));
                     }
@@ -158,11 +158,11 @@ namespace Nethermind.Config
 
             static string GetKey(string category, string name)
             {
-                if(string.IsNullOrEmpty(category))
+                if (string.IsNullOrEmpty(category))
                 {
                     category = nameof(NoCategoryConfig);
                 }
-                else if(!category.EndsWith("config", StringComparison.OrdinalIgnoreCase))
+                else if (!category.EndsWith("config", StringComparison.OrdinalIgnoreCase))
                 {
                     category += "Config";
                 }

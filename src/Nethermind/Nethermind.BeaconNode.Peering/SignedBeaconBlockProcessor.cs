@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Peering
             _dataDirectory = dataDirectory;
             _peerManager = peerManager;
 
-            _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
+            _jsonSerializerOptions = new JsonSerializerOptions { WriteIndented = true };
             _jsonSerializerOptions.ConfigureNethermindCore2();
             if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
             {
@@ -92,7 +92,7 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     string logDirectoryPath = GetLogDirectory();
                     string fileName = string.Format("signedblock{0:0000}_{1}{2}.json",
-                        (int) item.signedBeaconBlock.Message.Slot,
+                        (int)item.signedBeaconBlock.Message.Slot,
                         item.signedBeaconBlock.Signature.ToString().Substring(0, 10),
                         item.peerId == null ? "" : "_" + item.peerId);
                     string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);

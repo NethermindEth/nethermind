@@ -322,7 +322,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline (only where rewards needed)
         private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
         {
-            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger) reward.Value / (BigInteger) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
             if (!_stateProvider.AccountExists(reward.Address))
             {

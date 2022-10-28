@@ -29,7 +29,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
+        public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int)(index % array.Count)];
 
         /// <summary>
         /// Performs a binary search on the specified collection.
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Collections
         /// <param name="comparer">The comparer that is used to compare the value
         /// with the list items.</param>
         /// <returns></returns>
-        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value,  IComparer<TItem> comparer) => list.BinarySearch(value, comparer.Compare);
+        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value, IComparer<TItem> comparer) => list.BinarySearch(value, comparer.Compare);
 
         public static bool TryGetSearchedItem<TComparable>(this IList<TComparable> list, in TComparable activation, out TComparable? item) where TComparable : IComparable<TComparable> =>
             list.TryGetSearchedItem(activation, (b, c) => b.CompareTo(c), out item);

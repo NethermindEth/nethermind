@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,13 +22,13 @@ namespace Nethermind.KeyStore
     {
         [JsonProperty(PropertyName = "version", Order = 0)]
         public int Version { get; set; }
-        
+
         [JsonProperty(PropertyName = "id", Order = 1)]
         public string Id { get; set; }
-        
+
         [JsonProperty(PropertyName = "address", Order = 2)]
         public string Address { get; set; }
-        
+
         [JsonProperty(PropertyName = "crypto", Order = 3)]
         public Crypto Crypto { get; set; }
     }

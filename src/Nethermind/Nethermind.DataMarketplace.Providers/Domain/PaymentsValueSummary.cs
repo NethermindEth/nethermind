@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Providers.Domain
             Pending = pending;
             Income = income;
         }
-        
+
         public static PaymentsValueSummary Empty => new PaymentsValueSummary();
     }
 }

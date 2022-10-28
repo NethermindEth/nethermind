@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {Clique.DifficultyNoTurn}");
                 return false;
             }
-            
+
             bool isEpochTransition = IsEpochTransition(header.Number);
             // Checkpoint blocks need to enforce zero beneficiary
             if (isEpochTransition && header.Beneficiary != Address.Zero)
@@ -146,7 +146,7 @@ namespace Nethermind.Consensus.Clique
 
         private bool IsEpochTransition(long number)
         {
-            return (ulong) number % _cliqueConfig.Epoch == 0;
+            return (ulong)number % _cliqueConfig.Epoch == 0;
         }
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)

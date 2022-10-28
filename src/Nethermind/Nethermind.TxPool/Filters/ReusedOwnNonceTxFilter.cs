@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,13 +39,13 @@ namespace Nethermind.TxPool.Filters
             _nonces = nonces;
             _logger = logger;
         }
-            
+
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 currentNonce = account.Nonce;
-            
+
             if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
             {
                 if (_logger.IsTrace)
@@ -55,7 +55,7 @@ namespace Nethermind.TxPool.Filters
 
             return AcceptTxResult.Accepted;
         }
-        
+
         /// <summary>
         /// Nonce manager needed
         /// </summary>

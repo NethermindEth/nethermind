@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public DictionaryContractDataStore(
             IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
-            IBlockTree blockTree, 
+            IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager)
             : this(CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager))
@@ -42,37 +42,37 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public DictionaryContractDataStore(
             IDictionaryContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
-            IBlockTree blockTree, 
+            IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource)
-            : this(localDataSource == null 
-                ? CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager) 
+            : this(localDataSource == null
+                ? CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager)
                 : CreateContractDataStoreWithLocalData(collection, dataContract, blockTree, receiptFinder, logManager, localDataSource))
         {
         }
-        
+
         private static ContractDataStore<T> CreateContractDataStore(
-            IDictionaryContractDataStoreCollection<T> collection, 
-            IDataContract<T> dataContract, 
-            IBlockTree blockTree, 
+            IDictionaryContractDataStoreCollection<T> collection,
+            IDataContract<T> dataContract,
+            IBlockTree blockTree,
             IReceiptFinder receiptFinder,
-            ILogManager logManager) => 
+            ILogManager logManager) =>
             new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
 
         private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
-            IDictionaryContractDataStoreCollection<T> collection, 
-            IDataContract<T> dataContract, 
-            IBlockTree blockTree, 
+            IDictionaryContractDataStoreCollection<T> collection,
+            IDataContract<T> dataContract,
+            IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager,
-            ILocalDataSource<IEnumerable<T>> localDataSource) => 
+            ILocalDataSource<IEnumerable<T>> localDataSource) =>
             new ContractDataStoreWithLocalData<T>(
-                collection, 
-                dataContract ?? new EmptyDataContract<T>(), 
+                collection,
+                dataContract ?? new EmptyDataContract<T>(),
                 blockTree,
-                receiptFinder, 
-                logManager, 
+                receiptFinder,
+                logManager,
                 localDataSource);
 
         private DictionaryContractDataStore(ContractDataStore<T> contractDataStore)

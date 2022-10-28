@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -22,7 +22,7 @@ namespace Nethermind.State.Test.Runner
 {
     public class StateTestTxTrace
     {
-//        public Stack<Dictionary<string, string>> StorageByDepth { get; } = new Stack<Dictionary<string, string>>();
+        //        public Stack<Dictionary<string, string>> StorageByDepth { get; } = new Stack<Dictionary<string, string>>();
 
         public StateTestTxTrace()
         {
@@ -30,11 +30,11 @@ namespace Nethermind.State.Test.Runner
             Result = new StateTestTxTraceResult();
             State = new StateTestTxTraceState();
         }
-        
+
         public StateTestTxTraceState State { get; set; }
-        
+
         public StateTestTxTraceResult Result { get; set; }
-        
+
         public List<StateTestTxTraceEntry> Entries { get; set; }
     }
 }

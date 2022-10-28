@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Pruning
         {
             _snapshotInterval = snapshotInterval;
         }
-        
+
         public bool ShouldPersist(long blockNumber)
         {
             return blockNumber % _snapshotInterval == 0;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Nethermind.Core.Test.Json
     {
         [TestCase(null)]
         [TestCase(new byte[0])]
-        [TestCase(new byte[] {1})]
+        [TestCase(new byte[] { 1 })]
         public void Empty_value(byte[] values)
         {
             TestConverter(

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public static class TxGasPriceSenderConstants
     {
-        public static  UInt256 DefaultGasPrice = 20_000_000ul;
+        public static UInt256 DefaultGasPrice = 20_000_000ul;
 
         public const uint DefaultPercentMultiplier = 110;
     }

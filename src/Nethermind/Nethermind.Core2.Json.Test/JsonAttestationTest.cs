@@ -40,7 +40,7 @@ namespace Nethermind.Core2.Json.Test
             options.ConfigureNethermindCore2();
             Attestation attestation = new Attestation(
                 new BitArray(new[] {
-                    true, false, false, false, false, true, false, false, 
+                    true, false, false, false, false, true, false, false,
                     true, true, false}),
                 new AttestationData(
                     new Slot(2 * 8 + 5),
@@ -49,32 +49,32 @@ namespace Nethermind.Core2.Json.Test
                     new Checkpoint(
                         new Epoch(1),
                         new Root(Enumerable.Repeat((byte)0x34, 32).ToArray())
-                        ), 
+                        ),
                     new Checkpoint(
                         new Epoch(2),
                         new Root(Enumerable.Repeat((byte)0x56, 32).ToArray())
                         )
                     ),
-                new BlsSignature(Enumerable.Repeat((byte) 0xef, 96).ToArray()));
+                new BlsSignature(Enumerable.Repeat((byte)0xef, 96).ToArray()));
 
             // Act - serialize to string
             await using MemoryStream memoryStream = new MemoryStream();
             await JsonSerializer.SerializeAsync(memoryStream, attestation, options);
             string jsonString = Encoding.UTF8.GetString(memoryStream.ToArray());
-            
+
             // Assert
-            
+
             // Spec 0.10.1 has json to hex values, of format byte
             // If converted bits to bytes, e.g. little ending, then would not communicate length.
             // Convert bit 0 => 0x00, 1 => 0x01, and byte sequence of 0x00 and 0x01.
-            
+
             jsonString.ShouldBe("{\"aggregation_bits\":\"0x0100000000010000010100\",\"data\":{" +
                                 "\"beacon_block_root\":\"0x1212121212121212121212121212121212121212121212121212121212121212\",\"index\":2,\"slot\":21," +
                                 "\"source\":{\"epoch\":1,\"root\":\"0x3434343434343434343434343434343434343434343434343434343434343434\"}," +
                                 "\"target\":{\"epoch\":2,\"root\":\"0x5656565656565656565656565656565656565656565656565656565656565656\"}" +
                                 "},\"signature\":\"0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\"}");
         }
-        
+
         [Test]
         public async Task Attestation_Deserialize()
         {
@@ -90,7 +90,7 @@ namespace Nethermind.Core2.Json.Test
             // Act - deserialize from string
             await using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
             Attestation attestation = await JsonSerializer.DeserializeAsync<Attestation>(memoryStream, options);
-            
+
             attestation.Data.Slot.ShouldBe(new Slot(21));
             attestation.Data.Target.Epoch.ShouldBe(new Epoch(2));
             attestation.Data.Target.Root.AsSpan()[31].ShouldBe((byte)0x56);

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Security;
@@ -43,7 +44,7 @@ namespace Nethermind.KeyStore.Test
         {
             _config = new KeyStoreConfig();
             _config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
-            
+
             _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
@@ -68,7 +69,7 @@ namespace Nethermind.KeyStore.Test
 
         [Test]
         public void Test2Test()
-        {           
+        {
             var testModel = _testsModel.Test2;
             RunTest(testModel);
         }
@@ -86,7 +87,7 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
-        
+
         [Test]
         public void MyCryptoTest()
         {
@@ -111,6 +112,14 @@ namespace Nethermind.KeyStore.Test
                 Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
 
             }
+            catch (Exception e)
+            {
+                Assert.Fail(
+                    "Exception during test execution." + "\n" +
+                    "Message: " + e.Message + "\n" +
+                    "Source: " + e.Source + "\n" +
+                    "InnerException: " + e.InnerException);
+            }
             finally
             {
                 _store.DeleteKey(address);
@@ -124,7 +133,7 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
             public KeyStoreTestModel MyCrypto { get; set; }
-            
+
             public KeyStoreTestModel Sealer0 { get; set; }
         }
 
@@ -134,8 +143,8 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreItem KeyData { get; set; }
             public string Password { get; set; }
             public string Priv { get; set; }
-            
+
             public string Address { get; set; }
         }
-    } 
+    }
 }

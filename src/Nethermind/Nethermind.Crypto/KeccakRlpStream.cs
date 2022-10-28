@@ -30,7 +30,7 @@ namespace Nethermind.Crypto
         {
             return new Keccak(_keccakHash.Hash);
         }
-        
+
         public KeccakRlpStream()
         {
             KeccakHash keccakHash = KeccakHash.Create();
@@ -49,7 +49,7 @@ namespace Nethermind.Crypto
 
         protected override void WriteZero(int length)
         {
-            Span<byte> zeros = stackalloc byte[length]; 
+            Span<byte> zeros = stackalloc byte[length];
             Write(zeros);
         }
 

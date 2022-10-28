@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -86,7 +86,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
             Session.DeliverMessage(message);
         }
 
@@ -126,7 +126,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void ReportIn(string messageInfo)
         {
-            if(Logger.IsTrace)
+            if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
@@ -135,7 +135,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void Dispose();
 
-        public abstract byte ProtocolVersion { get;}
+        public abstract byte ProtocolVersion { get; }
 
         public abstract string ProtocolCode { get; }
 

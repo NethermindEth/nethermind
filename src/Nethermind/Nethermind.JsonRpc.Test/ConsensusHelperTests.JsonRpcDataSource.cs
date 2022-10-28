@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,13 +38,13 @@ namespace Nethermind.JsonRpc.Test
                 _serializer = serializer;
                 _httpClient = new HttpClient();
             }
-            
+
             protected async Task<string> SendRequest(JsonRpcRequest request)
             {
                 using HttpRequestMessage message = new(HttpMethod.Post, _uri)
                 {
                     Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
-                    
+
                 };
                 using HttpResponseMessage result = await _httpClient.SendAsync(message);
                 string content = await result.Content.ReadAsStringAsync();
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test
             }
 
             public abstract Task<string> GetJsonData();
-            
+
             public class JsonRpcRequestWithParams : JsonRpcRequest
             {
                 [JsonProperty(Required = Required.Default)]

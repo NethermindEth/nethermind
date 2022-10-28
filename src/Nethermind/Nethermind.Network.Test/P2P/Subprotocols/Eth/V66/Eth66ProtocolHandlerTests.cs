@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Collections.Generic;
 using System.Net;
@@ -33,6 +33,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -98,13 +99,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 LimboLogs.Instance);
             _handler.Init();
         }
-        
+
         [TearDown]
         public void TearDown()
         {
             _handler.Dispose();
         }
-        
+
         [Test]
         public void Metadata_correct()
         {
@@ -117,7 +118,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.HeadHash.Should().BeNull();
             _handler.HeadNumber.Should().Be(0);
         }
-        
+
         [Test]
         public void Can_handle_get_block_headers()
         {
@@ -127,107 +128,131 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
         }
-        
+
         [Test]
         public void Can_handle_block_headers()
         {
             var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
-        
-            ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+
+            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>())).Do(callInfo =>
+            {
+                Eth66Message<GetBlockHeadersMessage> message = (Eth66Message<GetBlockHeadersMessage>)callInfo[0];
+                msg66.RequestId = message.RequestId;
+            });
+
+            ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
         }
-        
+
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            var msg62 = new GetBlockBodiesMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg62 = new GetBlockBodiesMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
         }
-        
+
         [Test]
         public void Can_handle_block_bodies()
         {
             var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
 
+            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockBodiesMessage>>())).Do(callInfo =>
+            {
+                Eth66Message<GetBlockBodiesMessage> message = (Eth66Message<GetBlockBodiesMessage>)callInfo[0];
+                msg66.RequestId = message.RequestId;
+            });
+
             HandleIncomingStatusMessage();
-            ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
         }
-        
+
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            var msg65 = new GetPooledTransactionsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
         }
-        
+
         [Test]
         public void Can_handle_pooled_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            var msg65 = new PooledTransactionsMessage(new[] {tx});
+            var msg65 = new PooledTransactionsMessage(new[] { tx });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
         }
-        
+
         [Test]
         public void Can_handle_get_node_data()
         {
-            var msg63 = new GetNodeDataMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
         }
-        
+
         [Test]
         public void Can_handle_node_data()
         {
             var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
+            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>())).Do(callInfo =>
+            {
+                Eth66Message<GetNodeDataMessage> message = (Eth66Message<GetNodeDataMessage>)callInfo[0];
+                msg66.RequestId = message.RequestId;
+            });
+
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetNodeData(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
+            ((ISyncPeer)_handler).GetNodeData(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
         }
-        
+
         [Test]
         public void Can_handle_get_receipts()
         {
-            var msg63 = new GetReceiptsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
         }
-        
+
         [Test]
         public void Can_handle_receipts()
         {
             var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
+            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetReceiptsMessage>>())).Do(callInfo =>
+            {
+                Eth66Message<GetReceiptsMessage> message = (Eth66Message<GetReceiptsMessage>)callInfo[0];
+                msg66.RequestId = message.RequestId;
+            });
+
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetReceipts(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
+            ((ISyncPeer)_handler).GetReceipts(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
         }
-        
+
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) {PacketType = (byte) messageCode});
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
         private void HandleIncomingStatusMessage()
         {
@@ -237,7 +262,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) {PacketType = 0});
+            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
     }
 }

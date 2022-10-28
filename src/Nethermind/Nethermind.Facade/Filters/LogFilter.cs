@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Filters
         public TopicsFilter TopicsFilter { get; }
         public BlockParameter FromBlock { get; }
         public BlockParameter ToBlock { get; }
-        
+
         public LogFilter(int id, BlockParameter fromBlock, BlockParameter toBlock,
             AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)
         {
@@ -42,6 +42,6 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Matches(ref BloomStructRef bloom) => AddressFilter.Matches(ref bloom) && TopicsFilter.Matches(ref bloom);
 
-        public bool Accepts(ref LogEntryStructRef logEntry) => AddressFilter.Accepts(ref logEntry.LoggersAddress) && TopicsFilter.Accepts(ref logEntry); 
+        public bool Accepts(ref LogEntryStructRef logEntry) => AddressFilter.Accepts(ref logEntry.LoggersAddress) && TopicsFilter.Accepts(ref logEntry);
     }
 }

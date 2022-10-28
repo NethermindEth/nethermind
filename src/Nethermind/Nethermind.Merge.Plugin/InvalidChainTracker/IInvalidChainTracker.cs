@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public interface IInvalidChainTracker: IDisposable
+public interface IInvalidChainTracker : IDisposable
 {
     /// <summary>
     /// Suggest that these hash are child parent of each other. Used to determine if a hash is on an invalid chain

@@ -239,7 +239,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                Node node = new (networkNode);
+                Node node = new(networkNode);
                 Peer peer = GetOrAdd(node);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != networkNode.Reputation)

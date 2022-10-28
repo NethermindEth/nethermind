@@ -66,6 +66,7 @@ namespace Nethermind.Consensus.Producers
         private DateTime _lastProducedBlockDateTime;
         private const int BlockProductionTimeout = 1000;
         protected ILogger Logger { get; }
+        protected readonly IMiningConfig MiningConfig;
 
         protected BlockProducerBase(
             ITxSource? txSource,
@@ -78,7 +79,8 @@ namespace Nethermind.Consensus.Producers
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
             ILogManager? logManager,
-            IDifficultyCalculator? difficultyCalculator)
+            IDifficultyCalculator? difficultyCalculator,
+            IMiningConfig? miningConfig)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
@@ -91,6 +93,7 @@ namespace Nethermind.Consensus.Producers
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            MiningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
@@ -129,7 +132,7 @@ namespace Nethermind.Consensus.Producers
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
-            
+
             Block? block = null;
             if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
             {
@@ -246,7 +249,7 @@ namespace Nethermind.Consensus.Producers
                 StateProvider.Accept(visitor, stateRoot);
                 return visitor.HasRoot;
             }
-            
+
             if (parentStateRoot is not null && HasState(parentStateRoot))
             {
                 StateProvider.StateRoot = parentStateRoot;
@@ -255,7 +258,7 @@ namespace Nethermind.Consensus.Producers
 
             return false;
         }
-        
+
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
@@ -272,7 +275,7 @@ namespace Nethermind.Consensus.Producers
 
             return true;
         }
-        
+
         private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
         {
             long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
@@ -288,20 +291,20 @@ namespace Nethermind.Consensus.Producers
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,
-                UInt256.Zero, 
+                UInt256.Zero,
                 parent.Number + 1,
                 payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                GetExtraData())
+                MiningConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao
             };
-            
+
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
             header.Difficulty = difficulty;
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
-            
+
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
             return header;
@@ -314,8 +317,5 @@ namespace Nethermind.Consensus.Producers
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
         }
-
-        // TODO: why is this here if the implementations are actually filling it differently?
-        private static byte[] GetExtraData() => Encoding.UTF8.GetBytes("Nethermind");
     }
 }

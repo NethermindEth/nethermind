@@ -35,13 +35,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.Address.Should().Be(Address.Zero);
             signer.CanSign.Should().BeTrue();
         }
-        
+
         [Test]
         public async Task Test_signing()
         {
             NullSigner signer = NullSigner.Instance;
             await signer.Sign((Transaction)null);
-            signer.Sign((Keccak) null).Bytes.Should().HaveCount(64);
+            signer.Sign((Keccak)null).Bytes.Should().HaveCount(64);
         }
     }
 }

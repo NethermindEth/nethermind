@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2022 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -34,9 +34,9 @@ namespace Ethereum.VM.Test
             string[] directories =
                 Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
-                .Where(d =>d.StartsWith("vm"))
+                .Where(d => d.StartsWith("vm"))
                 .ToArray();
-            
+
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
             foreach (string directory in directories)
@@ -48,7 +48,7 @@ namespace Ethereum.VM.Test
                     {
                         continue;
                     }
-                    
+
                     missingCategories.Add(directory + " expected " + expectedTypeName);
                 }
             }
@@ -72,7 +72,7 @@ namespace Ethereum.VM.Test
                 }
                 else
                 {
-                    expectedTypeName += "s";    
+                    expectedTypeName += "s";
                 }
             }
 

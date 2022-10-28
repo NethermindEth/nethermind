@@ -38,14 +38,14 @@ namespace Nethermind.Init.Steps
             Update();
             return Task.CompletedTask;
         }
-        
+
         private void Update()
         {
             if (_api.ChainSpec == null)
             {
                 return;
             }
-            
+
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             if (discoveryConfig.Bootnodes != string.Empty)
             {

@@ -22,38 +22,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checking out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Unshallow fetching
         run: git fetch --unshallow
       - name: Settings
         id: settings
         run: |
-          echo ::set-output name=TAG::${{ github.event.inputs.tag }}
-          echo ::set-output name=TAG_FROM_REPO::$(git describe --tags --always | cut -d- -f1)
-          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
-          echo ::set-output name=docker_image::${{ github.event.inputs.repo }}
-          echo ::set-output name=dockerfile::${{ github.event.inputs.dockerfile }}
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
+          echo "TAG_FROM_REPO=$(git describe --tags --always | cut -d- -f1)" >> $GITHUB_OUTPUT
       - name: Setting up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
       - name: Setting up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
       - name: Logging to Docker Hub
         if: success()
-        env:
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
-        if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
+        if: github.event.inputs.tag == steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f ${{ steps.settings.outputs.dockerfile }} --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ github.event.inputs.repo }}:latest" -t "${{ github.event.inputs.repo }}:${{ github.event.inputs.tag }}" -f ${{ github.event.inputs.dockerfile }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
+          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
       - name: Building & Pushing image to docker registry  (patch)
-        if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
+        if: github.event.inputs.tag != steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f ${{ steps.settings.outputs.dockerfile }} --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ github.event.inputs.repo }}:${{ github.event.inputs.tag }}" -f ${{ github.event.inputs.dockerfile }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
       - name: Clearing
         if: always()
         run: |
-          rm -f ${HOME}/.docker/config.json
+          rm -f $HOME/.docker/config.json

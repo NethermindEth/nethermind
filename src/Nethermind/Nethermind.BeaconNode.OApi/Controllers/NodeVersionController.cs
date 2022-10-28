@@ -56,7 +56,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
                 return Ok(apiResponse.Content);
             }
 
-            return Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode);
+            return Problem("Beacon node internal error.", statusCode: (int)apiResponse.StatusCode);
         }
     }
 }

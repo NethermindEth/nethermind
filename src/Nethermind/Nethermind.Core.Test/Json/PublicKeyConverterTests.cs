@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Json
         {
             TestConverter(null, (key, publicKey) => key == publicKey, new PublicKeyConverter());
         }
-        
+
         [Test]
         public void Zero_handling()
         {

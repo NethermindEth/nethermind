@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Tracing
         /// <remarks>Depends on <see cref="IsTracingRewards"/></remarks>
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
 
-        /// <summary>
+        
         /// Starts a trace for new block.
         /// </summary>
         /// <param name="block">Block to be traced.</param>

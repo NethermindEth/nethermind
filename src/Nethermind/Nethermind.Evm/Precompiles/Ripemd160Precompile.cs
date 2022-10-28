@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,13 +27,13 @@ namespace Nethermind.Evm.Precompiles
         public static readonly IPrecompile Instance = new Ripemd160Precompile();
 
         // missing in .NET Core
-//        private static RIPEMD160 _ripemd;
+        //        private static RIPEMD160 _ripemd;
 
         private Ripemd160Precompile()
         {
             // missing in .NET Core
-//            _ripemd = RIPEMD160.Create();
-//            _ripemd.Initialize();
+            //            _ripemd = RIPEMD160.Create();
+            //            _ripemd.Initialize();
         }
 
         public Address Address { get; } = Address.FromNumber(3);
@@ -51,9 +51,7 @@ namespace Nethermind.Evm.Precompiles
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Ripemd160Precompile++;
-            
-            // missing in .NET Core
-//            return _ripemd.ComputeHash(inputData).PadLeft(32);
+
             return (Ripemd.Compute(inputData.ToArray()).PadLeft(32), true);
         }
     }

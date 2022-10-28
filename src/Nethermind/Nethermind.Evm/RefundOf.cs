@@ -33,7 +33,7 @@ namespace Nethermind.Evm
         {
             return eip3529Enabled ? SClearAfter3529 : SClearBefore3529;
         }
-        
+
         public static long Destroy(bool eip3529Enabled)
         {
             return eip3529Enabled ? DestroyAfter3529 : DestroyBefore3529;

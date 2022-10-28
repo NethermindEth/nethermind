@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -91,7 +91,7 @@ namespace Nethermind.Core2.Containers
         public void SetWithdrawableEpoch(Epoch withdrawableEpoch) => WithdrawableEpoch = withdrawableEpoch;
 
         public void SetExitEpoch(Epoch exitEpoch) => ExitEpoch = exitEpoch;
-        
+
         public bool Equals(Validator other)
         {
             return PublicKey.Equals(other.PublicKey) &&
@@ -108,7 +108,7 @@ namespace Nethermind.Core2.Containers
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((Validator) obj);
+            return obj.GetType() == GetType() && Equals((Validator)obj);
         }
 
         public override int GetHashCode()

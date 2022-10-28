@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-        
+
         static DataAssetRuleDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataAssetRule)] = new DataAssetRuleDecoder();
@@ -40,7 +40,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             {
                 return null;
             }
-            
+
             UInt256 value = rlpStream.DecodeUInt256();
             return new DataAssetRule(value);
         }

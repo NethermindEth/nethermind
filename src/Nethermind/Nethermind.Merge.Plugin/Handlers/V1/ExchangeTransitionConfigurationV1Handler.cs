@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
 
         if (terminalTotalDifficulty == _ttdPlaceholderForCl)
         {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
+            if (_logger.IsTrace) _logger.Trace($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind. If TTD has already been announced you should set it in your Nethermind and Consensus Client configuration.");
         }
         if (beaconTransitionConfiguration.TerminalTotalDifficulty != terminalTotalDifficulty)
         {

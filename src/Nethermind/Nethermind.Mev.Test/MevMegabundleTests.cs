@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,54 +45,62 @@ namespace Nethermind.Mev.Test
 
                 BundleTransaction tx = BuildTransaction(TestItem.PrivateKeyB);
                 BundleTransaction revertingTx = BuildTransaction(TestItem.PrivateKeyA, true);
-                MevMegabundle megabundle = new(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, null, UInt256.One,
+                MevMegabundle megabundle = new(1, new[] { revertingTx, tx }, new[] { revertingTx.Hash! }, null, UInt256.One,
                     UInt256.One);
                 Signature relaySignature = ecdsa.Sign(TestItem.PrivateKeyA, megabundle.Hash);
                 megabundle.RelaySignature = relaySignature;
-                
+
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {BuildTransaction(TestItem.PrivateKeyA), tx}, new[] {revertingTx.Hash!},
+                    new MevMegabundle(1, new[] { BuildTransaction(TestItem.PrivateKeyA), tx }, new[] { revertingTx.Hash! },
                         relaySignature, UInt256.One, UInt256.One))
                 {
-                    ExpectedResult = true, TestName = "reverting tx don't matter"
+                    ExpectedResult = true,
+                    TestName = "reverting tx don't matter"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, relaySignature: relaySignature,
+                    new MevMegabundle(1, new[] { revertingTx, tx }, relaySignature: relaySignature,
                         minTimestamp: UInt256.One, maxTimestamp: UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "reverting tx hashes matters"
+                    ExpectedResult = false,
+                    TestName = "reverting tx hashes matters"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, relaySignature, UInt256.One))
+                    new MevMegabundle(1, new[] { revertingTx, tx }, new[] { revertingTx.Hash! }, relaySignature, UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "max timestamp matters"
+                    ExpectedResult = false,
+                    TestName = "max timestamp matters"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, relaySignature, maxTimestamp: UInt256.One))
+                    new MevMegabundle(1, new[] { revertingTx, tx }, new[] { revertingTx.Hash! }, relaySignature, maxTimestamp: UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "min timestamp matters"
+                    ExpectedResult = false,
+                    TestName = "min timestamp matters"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, minTimestamp: UInt256.One, maxTimestamp: UInt256.One))
+                    new MevMegabundle(1, new[] { revertingTx, tx }, new[] { revertingTx.Hash! }, minTimestamp: UInt256.One, maxTimestamp: UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "relay signature matters"
+                    ExpectedResult = false,
+                    TestName = "relay signature matters"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {tx, revertingTx}, new[] {revertingTx.Hash!}, relaySignature, UInt256.One, UInt256.One))
+                    new MevMegabundle(1, new[] { tx, revertingTx }, new[] { revertingTx.Hash! }, relaySignature, UInt256.One, UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "transaction order matters"
+                    ExpectedResult = false,
+                    TestName = "transaction order matters"
                 };
                 yield return new TestCaseData(megabundle,
-                    new MevMegabundle(2, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, relaySignature, UInt256.One, UInt256.One))
+                    new MevMegabundle(2, new[] { revertingTx, tx }, new[] { revertingTx.Hash! }, relaySignature, UInt256.One, UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "block number matters"
+                    ExpectedResult = false,
+                    TestName = "block number matters"
                 };
-                
+
                 BundleTransaction tx3 = BuildTransaction(TestItem.PrivateKeyC);
                 BundleTransaction tx4 = BuildTransaction(TestItem.PrivateKeyD);
-                yield return new TestCaseData(megabundle, new MevMegabundle(2, new[] {tx3, tx4}, new[] {revertingTx.Hash!}, relaySignature, UInt256.One, UInt256.One))
+                yield return new TestCaseData(megabundle, new MevMegabundle(2, new[] { tx3, tx4 }, new[] { revertingTx.Hash! }, relaySignature, UInt256.One, UInt256.One))
                 {
-                    ExpectedResult = false, TestName = "transactions matter"
+                    ExpectedResult = false,
+                    TestName = "transactions matter"
                 };
             }
         }

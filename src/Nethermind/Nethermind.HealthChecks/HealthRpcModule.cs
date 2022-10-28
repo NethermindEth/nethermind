@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ namespace Nethermind.HealthChecks
         {
             CheckHealthResult checkHealthResult = _nodeHealthService.CheckHealth();
             string[] messages = checkHealthResult.Messages.Select(x => x.Message).ToArray();
-            NodeStatusResult result = new() {Healthy = checkHealthResult.Healthy, Messages = messages};
+            NodeStatusResult result = new() { Healthy = checkHealthResult.Healthy, Messages = messages };
             return ResultWrapper<NodeStatusResult>.Success(result);
         }
     }

@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
-        
+
         private readonly ILogger _logger;
         private readonly ILogManager _logManager;
 
@@ -169,7 +169,7 @@ namespace Nethermind.Network.P2P
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
-            
+
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)
@@ -200,7 +200,7 @@ namespace Nethermind.Network.P2P
                 return;
             }
 
-            zeroPacket.PacketType = (byte) messageId;
+            zeroPacket.PacketType = (byte)messageId;
             IProtocolHandler protocolHandler = _protocols[protocol];
             if (protocolHandler is IZeroProtocolHandler zeroProtocolHandler)
             {
@@ -237,7 +237,7 @@ namespace Nethermind.Network.P2P
         public void ReceiveMessage(Packet packet)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, packet.Data.Length);
-            
+
             lock (_sessionStateLock)
             {
                 if (State < SessionState.Initialized)
@@ -379,6 +379,12 @@ namespace Nethermind.Network.P2P
                 }
             }
 
+            if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
+            {
+                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
+                return;
+            }
+
             lock (_sessionStateLock)
             {
                 if (IsClosing)
@@ -387,12 +393,6 @@ namespace Nethermind.Network.P2P
                 }
 
                 State = SessionState.DisconnectingProtocols;
-            }
-            
-            if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
-            {
-                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
-                return;
             }
 
             if (_logger.IsTrace) _logger.Trace($"{this} disconnecting protocols");
@@ -429,7 +429,7 @@ namespace Nethermind.Network.P2P
             private set
             {
                 _state = value;
-                BestStateReached = (SessionState) Math.Min((int) SessionState.Initialized, (int) value);
+                BestStateReached = (SessionState)Math.Min((int)SessionState.Initialized, (int)value);
             }
         }
 
@@ -453,7 +453,7 @@ namespace Nethermind.Network.P2P
             {
                 _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
             }
-            
+
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
@@ -463,7 +463,7 @@ namespace Nethermind.Network.P2P
             {
                 // TooManyPeers is a benign disconnect that we should not be worried about - many peers are running at their limit
                 // also any disconnects before the handshake and init do not have to be logged as they are most likely just rejecting any connections
-                if ( _logger.IsTrace && HasAgreedCapability(new Capability(Protocol.Eth, 66)) && IsNetworkIdMatched)
+                if (_logger.IsTrace && HasAgreedCapability(new Capability(Protocol.Eth, 66)) && IsNetworkIdMatched)
                 {
                     if (_logger.IsError)
                         _logger.Error(
@@ -638,7 +638,7 @@ namespace Nethermind.Network.P2P
         }
 
         private bool _isTracked = false;
-        
+
         public void StartTrackingSession()
         {
             _isTracked = true;

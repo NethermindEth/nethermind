@@ -49,14 +49,14 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             const int expectedInputLength = 4 * BlsParams.LenFp;
             if (inputData.Length != expectedInputLength)
             {
-                return (Array.Empty<byte>(), false); 
+                return (Array.Empty<byte>(), false);
             }
-            
+
             // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
             // inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            
+
             Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
             bool success = ShamatarLib.BlsG1Add(inputData.Span, output);
             if (success)

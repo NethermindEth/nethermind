@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -53,21 +52,25 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        public IEnumerable<T> GetFilters<T>() where T : FilterBase => 
+        public IEnumerable<T> GetFilters<T>() where T : FilterBase =>
             _filters.Select(f => f.Value).OfType<T>();
 
-        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) => 
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+                ? filter as T
+                : null;
+
+        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
 
-        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) => 
+        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) =>
             new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object? address = null, IEnumerable<object?>? topics = null, bool setId = true) =>
-            new(GetFilterId(setId), 
-                fromBlock, 
-                toBlock, 
-                GetAddress(address), 
+            new(GetFilterId(setId),
+                fromBlock,
+                toBlock,
+                GetAddress(address),
                 GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
@@ -140,7 +143,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else
             {
-                return AnyTopic.Instance; 
+                return AnyTopic.Instance;
             }
         }
 
@@ -148,19 +151,19 @@ namespace Nethermind.Blockchain.Filters
         {
             if (address is null)
             {
-                return AddressFilter.AnyAddress; 
+                return AddressFilter.AnyAddress;
             }
 
             if (address is string s)
             {
                 return new AddressFilter(new Address(s));
             }
-            
+
             if (address is IEnumerable<string> e)
             {
                 return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
             }
-            
+
             throw new InvalidDataException("Invalid address filter format");
         }
 
@@ -200,12 +203,12 @@ namespace Nethermind.Blockchain.Filters
                 };
             }
         }
-        
+
         private class FilterTopic
         {
             public Keccak? Topic { get; set; }
             public Keccak[]? Topics { get; set; }
-        
+
         }
     }
 }

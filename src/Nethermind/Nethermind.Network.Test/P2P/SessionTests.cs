@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -308,6 +308,23 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             session.InitiateDisconnect(DisconnectReason.Other);
             Assert.True(wasCalled);
+            Assert.True(session.IsClosing);
+        }
+
+        [Test]
+        public void Do_not_disconnects_after_initiating_disconnect_on_static_node()
+        {
+            bool wasCalled = false;
+            Node node = new Node(TestItem.PublicKeyA, "127.0.0.1", 8545);
+            node.IsStatic = true;
+            Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.Disconnecting += (s, e) => wasCalled = true;
+
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
+            Assert.False(wasCalled);
+            Assert.False(session.IsClosing);
         }
 
         [Test]
@@ -430,10 +447,11 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        [NonParallelizable]
         public void Can_deliver_messages()
         {
             Metrics.P2PBytesSent = 0;
-            
+
             Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
@@ -511,7 +529,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_receive_messages()
         {
             Metrics.P2PBytesReceived = 0;
-            
+
             Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);

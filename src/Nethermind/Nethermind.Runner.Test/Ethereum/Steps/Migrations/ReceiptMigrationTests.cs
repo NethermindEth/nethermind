@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -49,12 +49,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             int chainLength = 10;
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            InMemoryReceiptStorage inMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            InMemoryReceiptStorage outMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            NethermindApi context = new() 
+            InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue };
+            NethermindApi context = new()
             {
-                ConfigProvider = configProvider, 
-                EthereumJsonSerializer = new EthereumJsonSerializer(), 
+                ConfigProvider = configProvider,
+                EthereumJsonSerializer = new EthereumJsonSerializer(),
                 LogManager = LimboLogs.Instance,
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                         Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
                     });
             }
-            
+
             ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
             context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
@@ -91,13 +91,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 migration.Run();
             }
 
-            
+
             guard.WaitOne(TimeSpan.FromSeconds(1));
             int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
-        
+
         private class TestReceiptStorage : IReceiptStorage
         {
             private readonly IReceiptStorage _inStorage;
@@ -108,7 +108,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 _inStorage = inStorage;
                 _outStorage = outStorage;
             }
-            
+
             public Keccak FindBlockHash(Keccak txHash) => _inStorage.FindBlockHash(txHash);
 
             public TxReceipt[] Get(Block block) => _inStorage.Get(block);
@@ -130,7 +130,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 get => _outStorage.MigratedBlockNumber;
                 set => _outStorage.MigratedBlockNumber = value;
             }
-            
+
             public bool HasBlock(Keccak hash)
             {
                 return _outStorage.HasBlock(hash);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ namespace Nethermind.Core.Collections
     public class StackList<T> : List<T>
     {
         public T Peek() => this[^1];
-        
+
         public bool TryPeek(out T? item)
         {
             if (Count > 0)
@@ -40,10 +40,10 @@ namespace Nethermind.Core.Collections
         public T Pop()
         {
             T value = this[^1];
-            RemoveAt(Count -1);
+            RemoveAt(Count - 1);
             return value;
         }
-        
+
         public bool TryPop(out T? item)
         {
             if (Count > 0)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -76,7 +76,7 @@ namespace Nethermind.Wallet
             {
                 return false;
             }
-            
+
             if (_unlockedAccounts.ContainsKey(address)) return true;
 
             (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
@@ -99,7 +99,7 @@ namespace Nethermind.Wallet
         }
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
-        
+
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
         {
             PrivateKey key;
@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
-        
+
         public Signature Sign(Keccak message, Address address)
         {
             PrivateKey key;

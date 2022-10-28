@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             IBlockProductionTrigger blockProductionTrigger,
             ITxSource? txSource = null)
         {
-                
+
             return new PostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
@@ -65,7 +65,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 _sealEngine,
                 _timestamper,
                 _specProvider,
-                _logManager);
+                _logManager,
+                _miningConfig);
         }
     }
 }

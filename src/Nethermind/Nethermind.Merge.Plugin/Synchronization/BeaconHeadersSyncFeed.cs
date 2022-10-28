@@ -43,6 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     private bool _chainMerged;
+
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
@@ -100,7 +101,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber) {
+        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+        {
             startNumber = lowestInserted.Number - 1;
             _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
             _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
@@ -177,7 +179,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         // Found existing block in the block tree
-        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+        if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
             if (_logger.IsTrace)

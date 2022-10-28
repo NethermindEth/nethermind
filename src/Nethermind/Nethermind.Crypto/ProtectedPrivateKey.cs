@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,11 +29,11 @@ namespace Nethermind.Crypto
         }
 
         protected override PrivateKey CreateUnprotected(byte[] data) => new(data);
-        
+
         public PublicKey PublicKey { get; }
-        
+
         public CompressedPublicKey CompressedPublicKey { get; }
-        
+
         public Address Address => PublicKey.Address;
     }
 }

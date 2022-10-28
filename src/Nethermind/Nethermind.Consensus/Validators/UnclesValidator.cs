@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Validators
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
-        
+
         public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
             if (uncles.Length > 2)
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Validators
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
                     return false;
                 }
-                
+
                 if (!IsKin(header, uncle, 6))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle just pretending to be uncle");
@@ -74,13 +74,13 @@ namespace Nethermind.Consensus.Validators
                     {
                         break;
                     }
-                    
+
                     if (ancestor.Uncles.Any(o => o.Hash == uncle.Hash))
                     {
                         _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncles has already been included by an ancestor");
                         return false;
                     }
-                    
+
                     ancestor = _blockTree.FindBlock(ancestor.Header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 }
             }
@@ -99,12 +99,12 @@ namespace Nethermind.Consensus.Validators
             {
                 return IsKin(header, uncle, (int)header.Number);
             }
-            
+
             if (uncle.Number < header.Number - relationshipLevel)
             {
                 return false;
             }
-            
+
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (parent == null)
             {
@@ -120,7 +120,7 @@ namespace Nethermind.Consensus.Validators
             {
                 return true;
             }
-            
+
             return IsKin(parent, uncle, relationshipLevel - 1);
         }
     }

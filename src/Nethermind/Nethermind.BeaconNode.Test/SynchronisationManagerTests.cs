@@ -44,23 +44,23 @@ namespace Nethermind.BeaconNode.Test
             INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
             testServiceCollection.AddSingleton<INetworkPeering>(mockNetworkPeering);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
-            
+
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
-            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
+
             // Act
             PeeringStatus peeringStatus = new PeeringStatus(
-                new ForkVersion(new byte[4] {0, 0, 0, 0}),
-                new Root(Enumerable.Repeat((byte) 0x34, 32).ToArray()),
+                new ForkVersion(new byte[4] { 0, 0, 0, 0 }),
+                new Root(Enumerable.Repeat((byte)0x34, 32).ToArray()),
                 Epoch.One,
-                new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x56, 32).ToArray()),
                 new Slot(2));
             ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
-            
+
             // Assert
             await mockNetworkPeering.Received(1)
                 .RequestBlocksAsync("peer", Arg.Any<Root>(), Arg.Any<Slot>(), Arg.Any<Slot>());
@@ -75,13 +75,13 @@ namespace Nethermind.BeaconNode.Test
             INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
             testServiceCollection.AddSingleton<INetworkPeering>(mockNetworkPeering);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
-            
+
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
-            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
+
             // Move forward time
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ulong targetTime = 2 * 6; // slot 2
@@ -96,23 +96,23 @@ namespace Nethermind.BeaconNode.Test
                     await forkChoice.OnBlockAsync(store, signedBlock);
                 }
             }
-            
+
             // Act
             PeeringStatus peeringStatus = new PeeringStatus(
-                new ForkVersion(new byte[4] {0, 0, 0, 0}),
+                new ForkVersion(new byte[4] { 0, 0, 0, 0 }),
                 Root.Zero,
                 Epoch.Zero,
-                new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x56, 32).ToArray()),
                 new Slot(1));
             ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
-            
+
             // Assert
             await mockNetworkPeering.DidNotReceive()
                 .RequestBlocksAsync("peer", Arg.Any<Root>(), Arg.Any<Slot>(), Arg.Any<Slot>());
             await mockNetworkPeering.DidNotReceive().DisconnectPeerAsync("peer");
         }
-        
+
         [TestMethod]
         public async Task ShouldDisconnectStatusWrongFork()
         {
@@ -121,23 +121,23 @@ namespace Nethermind.BeaconNode.Test
             INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
             testServiceCollection.AddSingleton<INetworkPeering>(mockNetworkPeering);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
-            
+
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
-            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
-            
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);
+
             // Act
             PeeringStatus peeringStatus = new PeeringStatus(
-                new ForkVersion(new byte[4] {1, 2, 3, 4}),
+                new ForkVersion(new byte[4] { 1, 2, 3, 4 }),
                 Root.Zero,
                 Epoch.Zero,
-                new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x56, 32).ToArray()),
                 Slot.Zero);
             ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
-            
+
             // Assert
             await mockNetworkPeering.Received(1).DisconnectPeerAsync("peer");
             await mockNetworkPeering.DidNotReceive()

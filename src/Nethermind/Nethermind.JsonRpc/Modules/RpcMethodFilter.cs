@@ -24,7 +24,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Nethermind.Logging;
 
-[assembly:InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules
     {
         private readonly ILogger _logger;
         private readonly HashSet<string> _filters = new();
-        
+
         private readonly ConcurrentDictionary<string, bool> _methodsCache
             = new();
 
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules
 
             _logger = logger;
         }
-        
+
         public bool AcceptMethod(string methodName)
         {
             if (!_methodsCache.ContainsKey(methodName))
@@ -68,15 +68,15 @@ namespace Nethermind.JsonRpc.Modules
             {
                 if (Regex.IsMatch(methodName.ToLowerInvariant(), filter, RegexOptions.IgnoreCase))
                 {
-                    if(_logger.IsDebug)
+                    if (_logger.IsDebug)
                         _logger.Debug($"{methodName} will be accepted by the JSON RPC filter because of {filter}.");
-                    return true;    
+                    return true;
                 }
             }
 
-            if(_logger.IsDebug)
+            if (_logger.IsDebug)
                 _logger.Debug($"{methodName} will not be accepted by the JSON RPC filter (no match).");
-            
+
             return false;
         }
     }

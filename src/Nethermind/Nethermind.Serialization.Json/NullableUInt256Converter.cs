@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Json
     public class NullableUInt256Converter : JsonConverter<UInt256?>
     {
         private UInt256Converter _uInt256Converter;
-        
+
         public NullableUInt256Converter()
             : this(NumberConversion.Hex)
         {
@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Json
                 writer.WriteNull();
                 return;
             }
-            
+
             _uInt256Converter.WriteJson(writer, value.Value, serializer);
         }
 
@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Json
             {
                 return null;
             }
-            
+
             return _uInt256Converter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
         }
     }

@@ -214,6 +214,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfTheNodeDoesNotFinishStateSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+                            SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
+                            return "fully syncing";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 {
                     _syncProgressSetups.Add(
@@ -367,17 +384,20 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedReceipts)
+                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedReceipts, bool snapRangesFinished = false, long? bestHeader = null)
                 {
                     _syncProgressSetups.Add(
                         () =>
                         {
-                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            bestHeader ??= ChainHead.Number - MultiSyncModeSelector.FastSyncLag;
+                            SyncProgressResolver.FindBestHeader().Returns(bestHeader.Value);
+
                             SyncProgressResolver.FindBestFullBlock().Returns(0);
                             SyncProgressResolver.FindBestFullState().Returns(0);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            SyncProgressResolver.IsSnapGetRangesFinished().Returns(snapRangesFinished);
                             return "just after fast blocks and fast sync";
                         }
                     );
@@ -517,6 +537,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenHeaderIsFarFromHead()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - 1000);
+                            return "header is far from the HEAD";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder AndAPeerWithGenesisOnlyIsKnown()
                 {
                     AddPeeringSetup("genesis network", AddPeer(ValidGenesis));
@@ -598,15 +630,15 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder ThenInAnySyncConfiguration()
                 {
                     WhenFullArchiveSyncIsConfigured();
-                    WhenFastSyncWithFastBlocksIsConfigured();
-                    WhenFastSyncWithoutFastBlocksIsConfigured();
+                    When_FastSync_NoSnapSync_FastBlocks_Configured();
+                    When_FastSync_NoSnapSync_WithoutFastBlocks_Configured();
                     return this;
                 }
 
                 public ScenarioBuilder ThenInAnyFastSyncConfiguration()
                 {
-                    WhenFastSyncWithFastBlocksIsConfigured();
-                    WhenFastSyncWithoutFastBlocksIsConfigured();
+                    When_FastSync_NoSnapSync_FastBlocks_Configured();
+                    When_FastSync_NoSnapSync_WithoutFastBlocks_Configured();
                     return this;
                 }
 
@@ -648,24 +680,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenFastSyncWithFastBlocksIsConfigured()
+                public ScenarioBuilder When_FastSync_NoSnapSync_FastBlocks_Configured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
                         SyncConfig.FastBlocks = true;
+                        SyncConfig.SnapSync = false;
                         return "fast sync with fast blocks";
                     });
 
                     return this;
                 }
 
-                public ScenarioBuilder WhenFastSyncWithoutFastBlocksIsConfigured()
+                public ScenarioBuilder When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
                         SyncConfig.FastBlocks = false;
+                        SyncConfig.SnapSync = false;
                         return "fast sync without fast blocks";
                     });
 
@@ -680,6 +714,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         SyncConfig.SnapSync = true;
                         SyncConfig.FastBlocks = true;
                         return "snap sync with fast blocks";
+                    });
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenFastSyncWithFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.FastBlocks = true;
+                        return "fast sync with fast blocks";
                     });
 
                     return this;
@@ -721,6 +767,22 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     {
                         BeaconSyncStrategy.ShouldBeInBeaconModeControl().Returns(true);
                     }
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenBeaconProcessDestinationWithinFastSyncLag()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                            BeaconSyncStrategy.GetTargetBlockHeight().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.IsFastBlocksHeadersFinished().Returns(true);
+                            return "beacon process destination with fast sync lag";
+                        }
+                    );
 
                     return this;
                 }
