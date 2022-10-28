@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -38,7 +39,7 @@ namespace Nethermind.Core.Specs
         /// It affects all post-merge logic, for example, difficulty opcode, post-merge block rewards.
         /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
         /// </summary>
-        long? MergeBlockNumber { get; }
+        ForkActivation? MergeBlockNumber { get; }
 
         UInt256? TerminalTotalDifficulty { get; }
 
@@ -61,13 +62,15 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
-        long[] TransitionBlocks { get; }
+        ForkActivation[] TransitionBlocks { get; }
 
         /// <summary>
         /// Resolves a spec for the given block number.
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        IReleaseSpec GetSpec(long blockNumber);
+        IReleaseSpec GetSpec(ForkActivation forkActivation);
+
+        IReleaseSpec GetSpec(long blockNumber, ulong timestamp) => GetSpec((blockNumber, timestamp));
     }
 }

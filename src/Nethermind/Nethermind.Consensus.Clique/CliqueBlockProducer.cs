@@ -358,7 +358,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsInfo)
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-        UInt256 timestamp = _timestamper.UnixTime.Seconds;
+        ulong timestamp = _timestamper.UnixTime.Seconds;
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
         BlockHeader header = new(
@@ -432,7 +432,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
         if (header.Timestamp < _timestamper.UnixTime.Seconds)
         {
-            header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
+            header.Timestamp = _timestamper.UnixTime.Seconds;
         }
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
