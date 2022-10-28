@@ -34,9 +34,9 @@ public class InvalidHeaderSealInterceptor : ISealValidator
         _logger = logManager.GetClassLogger(typeof(InvalidHeaderInterceptor));
     }
 
-    public bool ValidateParams(BlockHeader parent, BlockHeader header)
+    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
-        bool result = _baseValidator.ValidateParams(parent, header);
+        bool result = _baseValidator.ValidateParams(parent, header, isUncle);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a header with bad seal param {header}");

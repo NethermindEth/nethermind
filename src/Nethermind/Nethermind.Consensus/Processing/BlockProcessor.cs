@@ -231,7 +231,7 @@ namespace Nethermind.Consensus.Processing
             IBlockTracer blockTracer,
             ProcessingOptions options)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);

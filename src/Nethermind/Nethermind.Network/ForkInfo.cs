@@ -28,7 +28,7 @@ namespace Nethermind.Network
         public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
             uint crc = 0;
-            long[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
             byte[] blockNumberBytes = new byte[8];
             crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
@@ -38,7 +38,7 @@ namespace Nethermind.Network
                     break;
                 }
 
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i]);
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i].BlockNumber);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
             }
 
@@ -58,7 +58,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                long transition = specProvider.TransitionBlocks[i];
+                long transition = specProvider.TransitionBlocks[i].BlockNumber;
                 if (transition > headNumber)
                 {
                     next = transition;

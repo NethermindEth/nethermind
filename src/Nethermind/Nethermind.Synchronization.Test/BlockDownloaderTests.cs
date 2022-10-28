@@ -438,7 +438,7 @@ namespace Nethermind.Synchronization.Test
 
         private class SlowSealValidator : ISealValidator
         {
-            public bool ValidateParams(BlockHeader parent, BlockHeader header)
+            public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
             {
                 Thread.Sleep(1000);
                 return true;

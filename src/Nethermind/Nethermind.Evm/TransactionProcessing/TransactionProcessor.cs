@@ -141,7 +141,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+            bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = (executionOptions & ExecutionOptions.Restore) == ExecutionOptions.Restore;
@@ -153,7 +154,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
 
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
                 spec = new SystemTransactionReleaseSpec(spec);
@@ -202,6 +202,13 @@ namespace Nethermind.Evm.TransactionProcessing
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "nonce overflow");
                     return;
                 }
+            }
+
+            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            {
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                return;
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
