@@ -119,6 +119,15 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
+                            if (header.CodeSize == 0)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
+                                }
+                                header = null; return false;
+                            }
+
                             continueParsing = false;
                             break;
                         }
@@ -215,7 +224,7 @@ namespace Nethermind.Evm
             }
             var contractBody = code[i..];
             var calculatedCodeLen = (int)header.CodeSize + (int)header.DataSize;
-            if (calculatedCodeLen != contractBody.Length)
+            if (header.CodeSize == 0 || contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
             {
                 if (LoggingEnabled)
                 {
