@@ -39,6 +39,7 @@ namespace Nethermind.HealthChecks
         private IInitConfig _initConfig;
 
         private ClHealthLogger _clHealthLogger;
+        private FreeDiskSpaceChecker _freeDiskSpaceChecker;
 
         private const int ClUnavailableReportMessageDelay = 5;
 
@@ -47,6 +48,10 @@ namespace Nethermind.HealthChecks
             if (_clHealthLogger is not null)
             {
                 await _clHealthLogger.DisposeAsync();
+            }
+            if (_freeDiskSpaceChecker is not null)
+            {
+                await _freeDiskSpaceChecker.DisposeAsync();
             }
         }
 
@@ -132,6 +137,12 @@ namespace Nethermind.HealthChecks
             {
                 _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);
+            }
+
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
+            {
+                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api);
+                _freeDiskSpaceChecker.StartAsync(default);
             }
 
             return Task.CompletedTask;

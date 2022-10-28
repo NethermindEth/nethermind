@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
@@ -40,6 +41,7 @@ namespace Nethermind.HealthChecks
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockProducer _blockProducer;
         private readonly IHealthChecksConfig _healthChecksConfig;
+        private readonly IInitConfig _initConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly INethermindApi _api;
@@ -58,6 +60,7 @@ namespace Nethermind.HealthChecks
             _syncServer = syncServer;
             _isMining = isMining;
             _healthChecksConfig = healthChecksConfig;
+            _initConfig = api.Config<IInitConfig>();
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
@@ -119,6 +122,18 @@ namespace Nethermind.HealthChecks
                     bool processing = IsProcessingBlocks(messages);
                     bool producing = IsProducingBlocks(messages);
                     healthy = peers && processing && producing;
+                }
+            }
+
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
+            {
+                DriveInfo di = new(_initConfig.BaseDbPath);
+                double freeSpacePcnt = (double)di.AvailableFreeSpace / di.TotalSize * 100;
+                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                {
+                    double freeSpaceGB = (double)di.AvailableFreeSpace / FreeDiskSpaceChecker.BytesToGB;
+                    AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
+                    healthy &= false;
                 }
             }
 
@@ -230,6 +245,11 @@ namespace Nethermind.HealthChecks
         private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
         {
             messages.Add(("Fully synced", $"The node is now fully synced with a network"));
+        }
+
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, double freeSpaceGB, double freeSpacePcnt)
+        {
+            messages.Add(("Low free disk space", $"The node is running out of free disk space - only {freeSpaceGB:0.00} GB ({freeSpacePcnt:0.00}%) left"));
         }
     }
 }
