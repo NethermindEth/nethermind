@@ -121,7 +121,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 )
                 .ToArray();
             _transitions = new (ForkActivation, ReleaseSpec Release)[transitionBlockNumbers.Count + transitionTimestamps.Count];
-            
+
             int index = 0;
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
