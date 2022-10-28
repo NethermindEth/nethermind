@@ -1,3 +1,20 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+//
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+//
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
+
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
@@ -19,19 +36,18 @@ namespace Nethermind.Merge.AuRa
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
-        private IAuRaMergeConfig? _auraMergeConfig;
 
-        public override bool MergeEnabled => _auraMergeConfig!.Enabled;
+        public override bool MergeEnabled => ShouldBeEnabled(_api);
 
         public override async Task Init(INethermindApi nethermindApi)
         {
-            _auraMergeConfig = nethermindApi.Config<IAuRaMergeConfig>();
-            if (_auraMergeConfig.Enabled)
+            _api = nethermindApi;
+            _mergeConfig = nethermindApi.Config<IMergeConfig>();
+            if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)nethermindApi;
                 _auraApi.PoSSwitcher = _poSSwitcher;
-                _mergeConfig.Enabled = false; // set MergePlugin as disabled
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
@@ -62,6 +78,12 @@ namespace Nethermind.Merge.AuRa
                 .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
         }
 
-        public bool ShouldRunSteps(INethermindApi api) => api.Config<IAuRaMergeConfig>().Enabled;
+        private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
+
+        public bool ShouldRunSteps(INethermindApi api)
+        {
+            _mergeConfig = api.Config<IMergeConfig>();
+            return ShouldBeEnabled(api);
+        }
     }
 }

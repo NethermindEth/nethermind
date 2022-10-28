@@ -52,8 +52,6 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.Ripemd160Precompile++;
 
-            // missing in .NET Core
-            //            return _ripemd.ComputeHash(inputData).PadLeft(32);
             return (Ripemd.Compute(inputData.ToArray()).PadLeft(32), true);
         }
     }

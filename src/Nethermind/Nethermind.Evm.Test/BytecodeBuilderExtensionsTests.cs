@@ -29,7 +29,6 @@ using Nethermind.Core.Test;
 using FluentAssertions.Execution;
 using System.Reflection;
 using System.Linq;
-using static Nethermind.HashLib.HashFactory.Crypto;
 using System.Reflection.Emit;
 using Nethermind.Int256;
 using System.Reflection.Metadata;

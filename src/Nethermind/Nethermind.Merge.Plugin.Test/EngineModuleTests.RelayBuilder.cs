@@ -46,7 +46,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
         boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
@@ -102,7 +102,7 @@ public partial class EngineModuleTests
     [Parallelizable(ParallelScope.None)]
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IJsonSerializer serializer = chain.JsonSerializer;
 
@@ -203,7 +203,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBlockImprovementContextFactory improvementContextFactory;
         if (relay)
