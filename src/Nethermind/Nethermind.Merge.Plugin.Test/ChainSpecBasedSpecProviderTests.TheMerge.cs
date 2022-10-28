@@ -39,7 +39,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(terminalBlockNumber + 1, provider.MergeBlockNumber);
+        Assert.AreEqual(terminalBlockNumber + 1, provider.MergeBlockNumber?.BlockNumber);
         Assert.AreEqual(0, provider.TransitionBlocks.Length); // merge block number shouldn't affect transition blocks
     }
 
@@ -51,7 +51,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(101, provider.MergeBlockNumber);
+        Assert.AreEqual(101, provider.MergeBlockNumber?.BlockNumber);
         Assert.AreEqual((UInt256)10, chainSpec.TerminalTotalDifficulty);
         Assert.AreEqual(72, chainSpec.MergeForkIdBlockNumber);
 
@@ -83,9 +83,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(expectedTerminalPoWBlock + 1, provider.MergeBlockNumber);
+        Assert.AreEqual(expectedTerminalPoWBlock + 1, provider.MergeBlockNumber?.BlockNumber);
 
         provider.UpdateMergeTransitionInfo(newMergeBlock);
-        Assert.AreEqual(newMergeBlock, provider.MergeBlockNumber);
+        Assert.AreEqual(newMergeBlock, provider.MergeBlockNumber?.BlockNumber);
     }
 }

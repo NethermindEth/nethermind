@@ -29,7 +29,8 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip3651Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         [Test]
         public void Access_beneficiary_address_after_eip_3651()
@@ -53,7 +54,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Op(Instruction.POP)
                 .Done;
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(BlockNumber, 100000, code, timestamp: Timestamp - 1);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2605);
         }
