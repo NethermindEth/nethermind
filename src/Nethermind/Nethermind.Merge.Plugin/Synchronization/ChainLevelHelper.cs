@@ -52,6 +52,17 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
+    private void OnMissingBeaconHeader(long blockNumber)
+    {
+        if (_beaconPivot.ProcessDestination?.Number > blockNumber)
+        {
+            // For some reason, this block number is missing when it should not.
+            // anyway, lets just restart the whole sync.
+            if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
+            _beaconPivot.ShouldForceStartNewSync = true;
+        }
+    }
+
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
         long? startingPoint = GetStartingPoint();
@@ -74,6 +85,7 @@ public class ChainLevelHelper : IChainLevelHelper
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
             if (level == null || beaconMainChainBlock == null)
             {
+                OnMissingBeaconHeader(startingPoint.Value);
                 if (_logger.IsTrace)
                     _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
@@ -84,6 +96,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
             if (newHeader == null)
             {
+                OnMissingBeaconHeader(startingPoint.Value);
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {startingPoint} not found");
                 break;
             }
@@ -180,7 +193,11 @@ public class ChainLevelHelper : IChainLevelHelper
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
-        if (beaconMainChainBlock == null) return null;
+        if (beaconMainChainBlock == null)
+        {
+            OnMissingBeaconHeader(startingPoint);
+            return null;
+        }
 
         if (!beaconMainChainBlock.IsBeaconInfo)
         {
@@ -201,6 +218,7 @@ public class ChainLevelHelper : IChainLevelHelper
             BlockInfo? parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
             if (parentBlockInfo == null)
             {
+                OnMissingBeaconHeader(header.Number);
                 return null;
             }
 

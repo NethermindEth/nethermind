@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec((state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp));
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -119,7 +119,10 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            if (!(currentState.IsTopLevel && currentState.Env.Value == UInt256.Zero))
+                            {
+                                _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            }
                         }
 
                         callResult = ExecutePrecompile(currentState, spec);

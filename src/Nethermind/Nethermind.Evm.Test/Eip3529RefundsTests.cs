@@ -39,17 +39,6 @@ namespace Nethermind.Evm.Test
     // Vitalik Buterin, Martin Swende, "EIP-3529: Reduction in refunds [DRAFT]," Ethereum Improvement Proposals, no. 3529, April 2021. [Online serial]. Available: https://eips.ethereum.org/EIPS/eip-3529.
     public class Eip3529Tests : VirtualMachineTestsBase
     {
-        const long LondonTestBlockNumber = 5;
-        protected override ISpecProvider SpecProvider
-        {
-            get
-            {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= LondonTestBlockNumber)).Returns(London.Instance);
-                specProvider.GetSpec(Arg.Is<long>(x => x < LondonTestBlockNumber)).Returns(Berlin.Instance);
-                return specProvider;
-            }
-        }
 
         [TestCase("0x60006000556000600055", 212, 0, 0)]
         [TestCase("0x60006000556001600055", 20112, 0, 0)]
@@ -102,7 +91,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-            long blockNumber = eip3529Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
+            long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
             transaction.GasPrice = 20.GWei();
@@ -185,7 +174,7 @@ namespace Nethermind.Evm.Test
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             int gasUsedByTx3 = 37767;
 
-            long blockNumber = eip3529Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
+            long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

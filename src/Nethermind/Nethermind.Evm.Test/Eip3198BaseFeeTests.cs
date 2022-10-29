@@ -31,17 +31,6 @@ namespace Nethermind.Evm.Test
 {
     public class Eip3198BaseFeeTests : VirtualMachineTestsBase
     {
-        const long LondonTestBlockNumber = 5;
-        protected override ISpecProvider SpecProvider
-        {
-            get
-            {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= LondonTestBlockNumber)).Returns(London.Instance);
-                specProvider.GetSpec(Arg.Is<long>(x => x < LondonTestBlockNumber)).Returns(Berlin.Instance);
-                return specProvider;
-            }
-        }
 
         [TestCase(true, 0, true)]
         [TestCase(true, 100, true)]
@@ -62,7 +51,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            long blockNumber = eip3198Enabled ? LondonTestBlockNumber : LondonTestBlockNumber - 1;
+            long blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
             block.Header.BaseFeePerGas = (UInt256)baseFee;
             if (send1559Tx)

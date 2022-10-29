@@ -65,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(101, specProvider.MergeBlockNumber);
+            Assert.AreEqual(101, specProvider.MergeBlockNumber?.BlockNumber);
         }
 
         [TestCase(5000000)]
@@ -113,7 +113,7 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000 }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(2001, specProvider.MergeBlockNumber);
+            Assert.AreEqual(2001, specProvider.MergeBlockNumber?.BlockNumber);
         }
 
         [Test]
@@ -126,7 +126,7 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(new MergeConfig() { }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(2001, specProvider.MergeBlockNumber);
+            Assert.AreEqual(2001, specProvider.MergeBlockNumber?.BlockNumber);
         }
 
         [TestCase(5000000)]
@@ -228,7 +228,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
-            Assert.AreEqual(terminalBlock + 1, specProvider.MergeBlockNumber);
+            Assert.AreEqual(terminalBlock + 1, specProvider.MergeBlockNumber?.BlockNumber);
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
 
             TestSpecProvider newSpecProvider = new(London.Instance);
@@ -236,7 +236,7 @@ namespace Nethermind.Merge.Plugin.Test
             // we're using the same MemDb for a new switcher
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(blockTree, metadataDb, newSpecProvider);
 
-            Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber);
+            Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber?.BlockNumber);
             Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalBlock());
         }
 

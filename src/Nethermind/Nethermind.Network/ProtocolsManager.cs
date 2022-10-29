@@ -267,7 +267,7 @@ namespace Nethermind.Network
                             return dict;
                         });
 
-                        if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
