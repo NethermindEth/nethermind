@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -42,12 +43,13 @@ namespace Nethermind.Synchronization.Reports
     } 
     public static class ReportSink
     {
-        public static List<SyncMode> CurrentStage { get; set; } = new();
+        public static ConcurrentDictionary<SyncMode, bool> CurrentStage { get; set; } = new();
         public static ConcurrentDictionary<SyncMode, ProgressStage> Progress { get; set; } = new();
         public static SyncReportSymmary Snapshot => new SyncReportSymmary
         {
-            CurrentStage = CurrentStage,
-            Progress = Progress.Values
+            CurrentStage =  CurrentStage.Where(kvp => kvp.Value)
+                                        .Select(kvp => kvp.Key),
+            Progress     =  Progress.Values
         };
     }
 }

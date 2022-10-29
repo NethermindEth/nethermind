@@ -16,8 +16,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -126,10 +126,16 @@ namespace Nethermind.Synchronization.ParallelSync
                 // bottom project ? 
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
-                ReportSink.CurrentStage.Add(args.Current);
-                ReportSink.CurrentStage.Remove(args.Previous);
+                ReportSink.CurrentStage.TryAdd(args.Current, true);
+                ReportSink.CurrentStage.TryUpdate(args.Previous, false, true);
 
-                ReportSink.Progress[args.Previous].FinishTime = DateTime.Now;
+                if(ReportSink.Progress.TryGetValue(args.Previous, out var oldStage))
+                {
+                    lock(oldStage)
+                    {
+                        oldStage.FinishTime = DateTime.UtcNow;
+                    }
+                }
 
                 var stage = new ProgressStage
                 {
@@ -140,6 +146,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     stage.Current = image.Block;
                     stage.Total = image.TargetBlock;
                 }
+
                 ReportSink.Progress.AddOrUpdate(
                     args.Current,
                     (_) => {
