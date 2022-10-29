@@ -176,12 +176,12 @@ namespace Nethermind.TxPool.Collections
         /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue? value, [MaybeNullWhen(false)] out ICollection<TValue>? bucket) =>
+        public bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket) =>
             TryRemove(key, false, out value, out bucket);
 
-        private bool TryRemove(TKey key, bool evicted, out TValue? value, out ICollection<TValue>? bucket)
+        private bool TryRemove(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value))
+            if (_cacheMap.TryGetValue(key, out value) && value != null)
             {
                 if (Remove(key, value))
                 {
@@ -219,7 +219,7 @@ namespace Nethermind.TxPool.Collections
         protected abstract TKey GetKey(TValue value);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue? value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key, [NotNullWhen(true)] out TValue? value) => TryRemove(key, out value, out _);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
