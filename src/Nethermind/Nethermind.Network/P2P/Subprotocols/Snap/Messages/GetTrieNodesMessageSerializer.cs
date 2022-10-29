@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
-            PathGroup defaultValue = new PathGroup() {Group = Array.Empty<byte[]>()};
+            PathGroup defaultValue = new PathGroup() { Group = Array.Empty<byte[]>() };
             message.Paths = stream.DecodeArray(DecodeGroup, defaultElement: defaultValue);
 
             message.Bytes = stream.DecodeLong();

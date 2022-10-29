@@ -23,12 +23,12 @@ public class SnapServerTest
         IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
         dbProviderServer.RegisterDb(DbNames.State, new MemDb());
 
-        TrieStore store = new (dbProviderServer.StateDb, LimboLogs.Instance);
-        StateTree tree = new (store, LimboLogs.Instance);
+        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
+        StateTree tree = new(store, LimboLogs.Instance);
 
         TestItem.Tree.FillStateTreeWithTestAccounts(tree);
 
-        SnapServer server = new (dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider(DbModeHint.Mem);
         var stateDb = new MemDb();
@@ -54,12 +54,12 @@ public class SnapServerTest
         IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
         dbProviderServer.RegisterDb(DbNames.State, new MemDb());
 
-        TrieStore store = new (dbProviderServer.StateDb, LimboLogs.Instance);
-        StateTree tree = new (store, LimboLogs.Instance);
+        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
+        StateTree tree = new(store, LimboLogs.Instance);
 
         TestItem.Tree.FillStateTreeWithTestAccounts(tree);
 
-        SnapServer server = new (dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider(DbModeHint.Mem);
         var stateDb = new MemDb();
@@ -107,7 +107,7 @@ public class SnapServerTest
         SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
         (PathWithStorageSlot[][] storageSlots, byte[][]? proofs) =
-            server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] {TestItem.Tree.AccountsWithPaths[0]},
+            server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
                 Keccak.Zero, Keccak.MaxValue, 10);
 
         AddRangeResult result = snapProvider.AddStorageRange(1, null, InputStorageTree.RootHash, Keccak.Zero,
@@ -122,8 +122,8 @@ public class SnapServerTest
         MemDb dbServer = new MemDb();
         IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
         dbProviderServer.RegisterDb(DbNames.State, dbServer);
-        TrieStore store = new (dbProviderServer.StateDb, LimboLogs.Instance);
-        StateTree stateTree = new (store, LimboLogs.Instance);
+        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
+        StateTree stateTree = new(store, LimboLogs.Instance);
 
         // generate Remote Tree
         for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
@@ -133,23 +133,23 @@ public class SnapServerTest
         stateTree.Commit(0);
 
         List<PathWithAccount> accountWithStorage = new();
-        for (int i = 1000; i < 10000; i+=1000)
+        for (int i = 1000; i < 10000; i += 1000)
         {
-            StorageTree storageTree = new (store, LimboLogs.Instance);
+            StorageTree storageTree = new(store, LimboLogs.Instance);
             Address address = TestItem.GetRandomAddress();
-            for (int j = 0; j < i; j+=1)
+            for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes);
             }
             storageTree.Commit(1);
             var account = TestItem.GenerateRandomAccount().WithChangedStorageRoot(storageTree.RootHash);
             stateTree.Set(address, account);
-            accountWithStorage.Add( new PathWithAccount(){Path = Keccak.Compute(address.Bytes), Account = account});
+            accountWithStorage.Add(new PathWithAccount() { Path = Keccak.Compute(address.Bytes), Account = account });
         }
         stateTree.Commit(1);
         Console.WriteLine(dbServer.Keys.Count);
 
-        SnapServer server = new (dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
 
         PathWithAccount[] accounts;
         // size of one PathWithAccount ranges from 39 -> 72

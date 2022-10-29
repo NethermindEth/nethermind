@@ -33,7 +33,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class SnapServer: ISnapServer
+public class SnapServer : ISnapServer
 {
     private readonly ITrieStore _store;
     private readonly IDbProvider _dbProvider;
@@ -58,11 +58,11 @@ public class SnapServer: ISnapServer
     }
 
 
-    public byte[][]?  GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
+    public byte[][]? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
     {
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
-        List<byte[]> response = new ();
+        List<byte[]> response = new();
         StateTree tree = new(_store, _logManager);
 
         for (int reqi = 0; reqi < pathLength; reqi++)
@@ -87,7 +87,7 @@ public class SnapServer: ISnapServer
                     {
                         break;
                     }
-                    StorageTree sTree = new (_store, storageRoot, _logManager);
+                    StorageTree sTree = new(_store, storageRoot, _logManager);
 
                     for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                     {
@@ -104,7 +104,7 @@ public class SnapServer: ISnapServer
     public byte[][] GetByteCodes(Keccak[] requestedHashes, long byteLimit)
     {
         long currentByteCount = 0;
-        List<byte[]> response = new ();
+        List<byte[]> response = new();
 
         if (byteLimit > HardResponseByteLimit)
         {
@@ -136,7 +136,7 @@ public class SnapServer: ISnapServer
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
     {
-        (Dictionary<byte[], byte[]>? requiredNodes, long  _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
+        (Dictionary<byte[], byte[]>? requiredNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
             limitHash ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, isStorage: false);
         StateTree tree = new(_store, _logManager);
 
@@ -157,7 +157,7 @@ public class SnapServer: ISnapServer
     {
         long responseSize = 0;
         StateTree tree = new(_store, _logManager);
-        List <PathWithStorageSlot[]> responseNodes = new();
+        List<PathWithStorageSlot[]> responseNodes = new();
         for (int i = 0; i < accounts.Length; i++)
         {
             if (responseSize > byteLimit)
@@ -174,7 +174,7 @@ public class SnapServer: ISnapServer
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
             limitHash = limitHash == null ? Keccak.MaxValue : limitHash;
 
-            (Dictionary<byte[], byte[]>? requiredNodes, long  innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
+            (Dictionary<byte[], byte[]>? requiredNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(storageRoot,
                 startingHash, limitHash, byteLimit - responseSize, HardResponseByteLimit - responseSize, true);
 
             PathWithStorageSlot[] nodes = new PathWithStorageSlot[requiredNodes.Count];
@@ -196,12 +196,12 @@ public class SnapServer: ISnapServer
     }
 
     private (Dictionary<byte[], byte[]>?, long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,
-        long byteLimit, long hardByteLimit, bool isStorage=false)
+        long byteLimit, long hardByteLimit, bool isStorage = false)
     {
         PatriciaTree tree = new(_store, _logManager);
 
         RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
-        VisitingOptions opt = new() {ExpectAccounts = false, KeepTrackOfAbsolutePath = true};
+        VisitingOptions opt = new() { ExpectAccounts = false, KeepTrackOfAbsolutePath = true };
         tree.Accept(visitor, rootHash, opt);
         (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
 
@@ -216,7 +216,7 @@ public class SnapServer: ISnapServer
 
     private byte[][] GenerateRangeProof(PatriciaTree tree, Keccak start, Keccak end, Keccak rootHash)
     {
-        VisitingOptions opt = new() {ExpectAccounts = false};
+        VisitingOptions opt = new() { ExpectAccounts = false };
         ProofCollector accountProofCollector = new(start.Bytes);
         tree.Accept(accountProofCollector, rootHash, opt);
         byte[][]? firstProof = accountProofCollector.BuildResult();

@@ -113,7 +113,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                rlpStream.Encode(account.StorageRoot?? Keccak.EmptyTreeHash);
+                rlpStream.Encode(account.StorageRoot ?? Keccak.EmptyTreeHash);
             }
 
             if (_slimFormat && !account.HasCode)
@@ -122,7 +122,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                rlpStream.Encode(account.CodeHash?? Keccak.OfAnEmptyString);
+                rlpStream.Encode(account.CodeHash ?? Keccak.OfAnEmptyString);
             }
         }
 

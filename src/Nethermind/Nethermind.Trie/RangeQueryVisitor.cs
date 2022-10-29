@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
 
-public class RangeQueryVisitor: ITreeVisitor
+public class RangeQueryVisitor : ITreeVisitor
 {
 
     private readonly byte[] _startHash;
@@ -47,7 +47,7 @@ public class RangeQueryVisitor: ITreeVisitor
 
     private readonly AccountDecoder _decoder = new(true);
 
-    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit=-1, long hardByteLimit = 200000, int nodeLimit = 10000)
+    public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit = -1, long hardByteLimit = 200000, int nodeLimit = 10000)
     {
 
         if (startHash.SequenceEqual(Keccak.Zero.Bytes))
@@ -152,16 +152,16 @@ public class RangeQueryVisitor: ITreeVisitor
                     // if path < _startHash[:path.Count] - return and check for the next node.
                     return;
                 case 0:
-                {
-                    // this is a important case - here the path == _startHash[:path.Count]
-                    // the index of child should be _startHash[path.Count]
-                    byte index = _startHash[path.Count];
-                    for (int i = index; i < TrieNode.BranchesCount; i++)
                     {
-                        _nodeToVisitFilter.Add(node.GetChildHash(i));
+                        // this is a important case - here the path == _startHash[:path.Count]
+                        // the index of child should be _startHash[path.Count]
+                        byte index = _startHash[path.Count];
+                        for (int i = index; i < TrieNode.BranchesCount; i++)
+                        {
+                            _nodeToVisitFilter.Add(node.GetChildHash(i));
+                        }
+                        return;
                     }
-                    return;
-                }
                 case -1:
                     // if path > _startHash[:path.Count] -> found the first element after the start range.
                     // continue visiting and collecting next nodes and set _checkStartRange = false

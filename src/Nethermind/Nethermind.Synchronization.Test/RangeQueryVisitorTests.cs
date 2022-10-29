@@ -61,7 +61,7 @@ public class RangeQueryVisitorTests
         int k = 0;
         foreach (KeyValuePair<byte[], byte[]> pair in nodes)
         {
-            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k+2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
+            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k + 2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
             k += 1;
         }
     }
@@ -85,7 +85,7 @@ public class RangeQueryVisitorTests
         int k = 0;
         foreach (KeyValuePair<byte[], byte[]> pair in nodes)
         {
-            pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k+0].SlotRlpValue);
+            pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k + 0].SlotRlpValue);
             k += 1;
         }
     }

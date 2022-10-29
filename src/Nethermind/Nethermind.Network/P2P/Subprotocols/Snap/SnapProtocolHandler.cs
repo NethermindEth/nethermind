@@ -248,7 +248,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             AccountRange? accountRange = getAccountRangeMessage.AccountRange;
             (PathWithAccount[]? ranges, byte[][]? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
                 accountRange.LimitHash, getAccountRangeMessage.ResponseBytes);
-            AccountRangeMessage? response = new() {Proofs = proofs, PathsWithAccounts = ranges};
+            AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
             return response;
         }
         protected StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage)
@@ -256,7 +256,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
             (PathWithStorageSlot[][]? ranges, byte[][]? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes);
-            StorageRangeMessage? response = new() {Proofs = proofs, Slots = ranges};
+            StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
         }
         protected ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage)

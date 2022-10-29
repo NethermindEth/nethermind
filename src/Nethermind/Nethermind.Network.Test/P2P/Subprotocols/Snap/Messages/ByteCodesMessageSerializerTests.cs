@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void DecodeEncodeDecodeEmpty()
         {
-            byte[] data = {202, 136, 23, 106, 21, 106, 229, 131, 72, 176, 192};
+            byte[] data = { 202, 136, 23, 106, 21, 106, 229, 131, 72, 176, 192 };
             ByteCodesMessageSerializer serializer = new();
             ByteCodesMessage decode = serializer.Deserialize(data);
             byte[] messageEncode = serializer.Serialize(decode);

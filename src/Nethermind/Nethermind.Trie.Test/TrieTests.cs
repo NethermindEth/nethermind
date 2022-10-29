@@ -221,7 +221,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
 
             byte[] emptyByte = { };
-            byte[] emptyByteCompactEncoded = {0};
+            byte[] emptyByteCompactEncoded = { 0 };
 
             checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
             checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
