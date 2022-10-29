@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -83,7 +84,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.CodesRequest is not null)
                 {
-                    Task<byte[][]> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
+                    Task<IList<byte[]>> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
 
                     await task.ContinueWith(
                         (t, state) =>
@@ -103,7 +104,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.AccountsToRefreshRequest is not null)
                 {
-                    Task<byte[][]> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+                    Task<IList<byte[]>> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
 
                     await task.ContinueWith(
                         (t, state) =>

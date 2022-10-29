@@ -20,9 +20,9 @@ namespace Nethermind.Synchronization.SnapSync
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
         AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null);
 
-        void AddCodes(Keccak[] requestedHashes, byte[][] codes);
+        void AddCodes(Keccak[] requestedHashes, IList<byte[]> codes);
 
-        void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response);
+        void RefreshAccounts(AccountsToRefreshRequest request, IList<byte[]> response);
 
         void RetryRequest(SnapSyncBatch batch);
 

@@ -58,11 +58,11 @@ public class SnapServer : ISnapServer
     }
 
 
-    public byte[][]? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
+    public List<byte[]>? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash)
     {
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
-        List<byte[]> response = new();
+        List<byte[]> response = new(pathLength);
         StateTree tree = new(_store, _logManager);
 
         for (int reqi = 0; reqi < pathLength; reqi++)
@@ -98,13 +98,13 @@ public class SnapServer : ISnapServer
             }
         }
 
-        return response.ToArray();
+        return response;
     }
 
-    public byte[][] GetByteCodes(Keccak[] requestedHashes, long byteLimit)
+    public List<byte[]> GetByteCodes(Keccak[] requestedHashes, long byteLimit)
     {
         long currentByteCount = 0;
-        List<byte[]> response = new();
+        List<byte[]> response = new(requestedHashes.Length);
 
         if (byteLimit > HardResponseByteLimit)
         {
@@ -131,7 +131,7 @@ public class SnapServer : ISnapServer
             currentByteCount += code.Length;
         }
 
-        return response.ToArray();
+        return response;
     }
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash, long byteLimit)
@@ -148,6 +148,7 @@ public class SnapServer : ISnapServer
             index += 1;
         }
 
+
         if (nodes.Length == 0) return (nodes, Array.Empty<byte[]>());
         byte[][]? proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, rootHash);
         return (nodes, proofs);
@@ -157,18 +158,18 @@ public class SnapServer : ISnapServer
     {
         long responseSize = 0;
         StateTree tree = new(_store, _logManager);
-        List<PathWithStorageSlot[]> responseNodes = new();
-        for (int i = 0; i < accounts.Length; i++)
+        List<Account> accountList = new(accounts.Length);
+        accountList.AddRange(accounts.Select(t => GetAccountByPath(tree, rootHash, t.Path.Bytes)).TakeWhile(accountNeth => accountNeth is not null));
+
+        PathWithStorageSlot[][] responseNodes = new PathWithStorageSlot[accountList.Count][];
+        for (int i = 0; i < accountList.Count; i++)
         {
             if (responseSize > byteLimit)
             {
                 break;
             }
-            Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
-            if (accountNeth is null)
-            {
-                return (responseNodes.ToArray(), null);
-            }
+
+            Account accountNeth = accountList[i];
             Keccak? storageRoot = accountNeth.StorageRoot;
 
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
@@ -184,15 +185,15 @@ public class SnapServer : ISnapServer
                 nodes[index] = result;
                 index += 1;
             }
-            responseNodes.Add(nodes);
+            responseNodes[i] = nodes;
             if (stopped || startingHash != Keccak.Zero)
             {
                 byte[][]? proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, storageRoot);
-                return (responseNodes.ToArray(), proofs);
+                return (responseNodes, proofs);
             }
             responseSize += innerResponseSize;
         }
-        return (responseNodes.ToArray(), null);
+        return (responseNodes, null);
     }
 
     private (Dictionary<byte[], byte[]>?, long, bool) GetNodesFromTrieVisitor(Keccak rootHash, Keccak startingHash, Keccak limitHash,

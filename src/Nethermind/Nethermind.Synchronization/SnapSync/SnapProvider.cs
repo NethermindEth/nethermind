@@ -182,9 +182,9 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IList<byte[]> response)
         {
-            int respLength = response.Length;
+            int respLength = response.Count;
 
             for (int reqi = 0; reqi < request.Paths.Length; reqi++)
             {
@@ -244,11 +244,11 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
+        public void AddCodes(Keccak[] requestedHashes, IList<byte[]> codes)
         {
             HashSet<Keccak> set = requestedHashes.ToHashSet();
 
-            for (int i = 0; i < codes.Length; i++)
+            for (int i = 0; i < codes.Count; i++)
             {
                 byte[] code = codes[i];
                 Keccak codeHash = Keccak.Compute(code);
@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
 
             _progressTracker.ReportCodeRequestFinished(set);
         }

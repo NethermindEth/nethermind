@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -22,14 +23,13 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapServer
 {
-    public byte[][]? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash);
-    public byte[][] GetByteCodes(Keccak[] requestedHashes, long byteLimit);
+    public List<byte[]>? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash);
+    public List<byte[]> GetByteCodes(Keccak[] requestedHashes, long byteLimit);
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash,
         long byteLimit);
 
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts,
         Keccak? startingHash, Keccak? limitHash, long byteLimit);
-
 
 }

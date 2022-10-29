@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -297,7 +298,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
+        public async Task<IList<byte[]>> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
         {
             var request = new GetByteCodesMessage()
             {
@@ -313,19 +314,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Codes;
         }
 
-        public async Task<byte[][]> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        public async Task<IList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
             PathGroup[] groups = GetPathGroups(request);
 
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<byte[][]> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        public async Task<IList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<byte[][]> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
+        private async Task<IList<byte[]>> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
         {
             GetTrieNodesMessage reqMsg = new()
             {
