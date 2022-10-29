@@ -30,7 +30,10 @@ namespace Nethermind.Trie
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
         public bool KeepTrackOfAbsolutePath { get; init; }
-        public List<byte> AbsolutePathNibbles = new();
+
+        private List<byte>? _absolutePathNibbles;
+        public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??
+                                                 LazyInitializer.EnsureInitialized(ref _absolutePathNibbles, () => new List<byte>());
 
         public int MaxDegreeOfParallelism
         {

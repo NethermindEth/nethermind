@@ -18,6 +18,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -38,7 +39,12 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
     private long _currentBytesCount = 0;
     private readonly Dictionary<byte[], byte[]> _collectedNodes = new();
-    private readonly HashSet<Keccak> _nodeToVisitFilter = new();
+
+    private HashSet<Keccak>? _nodeToVisitFilterInstance;
+
+    private HashSet<Keccak> NodeToVisitFilter => _nodeToVisitFilterInstance ??
+                                                  LazyInitializer.EnsureInitialized(ref _nodeToVisitFilterInstance,
+                                                      () => new HashSet<Keccak>());
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -122,7 +128,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     public bool ShouldVisit(Keccak nextNode)
     {
         // if still looking for node just after the startHash, then only visit node that are present in _nodeToVisitFilter
-        return _checkStartRange ? _nodeToVisitFilter.Contains(nextNode) : _shouldVisit;
+        return _checkStartRange ? NodeToVisitFilter.Contains(nextNode) : _shouldVisit;
     }
 
     public (Dictionary<byte[], byte[]>, long) GetNodesAndSize()
@@ -144,7 +150,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         if (_checkStartRange)
         {
-            _nodeToVisitFilter.Remove(node.Keccak);
+            NodeToVisitFilter.Remove(node.Keccak);
 
             int compRes = ComparePath(path, _startHash);
             switch (compRes)
@@ -159,7 +165,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
                         byte index = _startHash[path.Count];
                         for (int i = index; i < TrieNode.BranchesCount; i++)
                         {
-                            _nodeToVisitFilter.Add(node.GetChildHash(i));
+                            NodeToVisitFilter.Add(node.GetChildHash(i));
                         }
                         return;
                     }
@@ -183,7 +189,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         if (_checkStartRange)
         {
-            _nodeToVisitFilter.Remove(node.Keccak);
+            NodeToVisitFilter.Remove(node.Keccak);
             int compRes = ComparePath(path, _startHash);
             switch (compRes)
             {
@@ -193,7 +199,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
                 case 0:
                     // this is a important case - here the path == _startHash[:path.Count]
                     // the child should be visited
-                    _nodeToVisitFilter.Add(node.GetChildHash(0));
+                    NodeToVisitFilter.Add(node.GetChildHash(0));
                     return;
                 case -1:
                     // if path > _startHash[:path.Count] -> found the first element after the start range.
@@ -214,7 +220,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         if (_checkStartRange)
         {
-            _nodeToVisitFilter.Remove(node.Keccak);
+            NodeToVisitFilter.Remove(node.Keccak);
 
             int compRes = ComparePath(path, _startHash);
             if (compRes == 1)
