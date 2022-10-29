@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
-            _logger.Info($"Starting the SNAP data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
 
             return true;
         }
@@ -296,14 +296,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogRequest(string reqType)
         {
-            if (_reqCount % 10 == 0)
+            if (_reqCount % 100 == 0)
             {
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
             }
 
-            if (_reqCount % 10 == 0)
+            if (_logger.IsTrace || _reqCount % 1000 == 0)
             {
                 _logger.Info(
                     $"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
