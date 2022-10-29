@@ -465,8 +465,8 @@ namespace Nethermind.TxPool
                 if (hasBeenRemoved && transaction is not null)
                 {
                     Address? address = transaction.SenderAddress;
-                    
-                    if (address != null &&_nonces.TryGetValue(address, out AddressNonces? addressNonces))
+
+                    if (address != null && _nonces.TryGetValue(address, out AddressNonces? addressNonces))
                     {
                         addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)

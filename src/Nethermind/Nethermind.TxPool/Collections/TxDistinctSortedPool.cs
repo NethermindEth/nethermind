@@ -72,7 +72,7 @@ namespace Nethermind.TxPool.Collections
             for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
                 if (_transactionsToRemove[i].Hash is Keccak hash)
-                TryRemove(hash);
+                    TryRemove(hash);
             }
         }
     }

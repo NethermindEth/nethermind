@@ -195,7 +195,7 @@ namespace Nethermind.TxPool.Collections
                             if (bucket.Count == 0)
                             {
                                 _buckets.Remove(groupMapping);
-                                if(last is not null)
+                                if (last is not null)
                                     _worstSortedValues.Remove(last);
                             }
                             else
@@ -277,7 +277,7 @@ namespace Nethermind.TxPool.Collections
         public bool TryInsert(TKey? key, TValue value, out TValue? removed)
         {
             if (key is null)
-            { 
+            {
                 removed = default;
                 return false;
             }
