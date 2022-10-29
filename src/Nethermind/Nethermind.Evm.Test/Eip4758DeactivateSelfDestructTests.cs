@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
     public class Eip4758DeactivateSelfDestructTests : VirtualMachineTestsBase
     {
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, false)]
-        [TestCase(MainnetSpecProvider.ShanghaiBlockNumber, 0ul, true)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, true)]
         public void Load_self_destruct(long blockNumber, ulong timestamp, bool deactivated)
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
@@ -79,7 +79,9 @@ namespace Nethermind.Evm.Test
             Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithValue(99.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber)
+                .WithTimestamp(timestamp)
+                .WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(initTx, block.Header, initTracer);
