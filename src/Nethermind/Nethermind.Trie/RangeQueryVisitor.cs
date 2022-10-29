@@ -35,7 +35,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     private readonly bool _checkEndRange = true;
 
     private readonly bool _isAccountVisitor;
-    private bool _shouldVisit = true;
+    private bool _shouldContinueTraversing = true;
 
     private long _currentBytesCount = 0;
     private readonly Dictionary<byte[], byte[]> _collectedNodes = new();
@@ -67,7 +67,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
             Nibbles.BytesToNibbleBytes(startHash, _startHash);
         }
 
-        if (Bytes.AreEqual(startHash, Keccak.MaxValue.Bytes))
+        if (Bytes.AreEqual(limitHash, Keccak.MaxValue.Bytes))
         {
             _checkEndRange = false;
         }
@@ -128,7 +128,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     public bool ShouldVisit(Keccak nextNode)
     {
         // if still looking for node just after the startHash, then only visit node that are present in _nodeToVisitFilter
-        return _checkStartRange ? NodeToVisitFilter.Contains(nextNode) : _shouldVisit;
+        return _checkStartRange ? NodeToVisitFilter.Contains(nextNode) : _shouldContinueTraversing;
     }
 
     public (Dictionary<byte[], byte[]>, long) GetNodesAndSize()
@@ -179,7 +179,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         bool shouldVisitNode = ShouldVisit(path);
         if (shouldVisitNode) return;
-        _shouldVisit = false;
+        _shouldContinueTraversing = false;
 
     }
 
@@ -211,7 +211,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         bool shouldVisitNode = ShouldVisit(trieVisitContext.AbsolutePathNibbles);
         if (shouldVisitNode) return;
-        _shouldVisit = false;
+        _shouldContinueTraversing = false;
     }
 
     public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
@@ -236,7 +236,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
         bool shouldVisitNode = ShouldVisit(trieVisitContext.AbsolutePathNibbles);
         if (!shouldVisitNode)
         {
-            _shouldVisit = false;
+            _shouldContinueTraversing = false;
             return;
         }
 
