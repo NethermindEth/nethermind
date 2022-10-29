@@ -113,7 +113,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                rlpStream.Encode(account.StorageRoot ?? Keccak.EmptyTreeHash);
+                rlpStream.Encode(account.StorageRoot);
             }
 
             if (_slimFormat && !account.HasCode)
@@ -122,7 +122,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                rlpStream.Encode(account.CodeHash ?? Keccak.OfAnEmptyString);
+                rlpStream.Encode(account.CodeHash);
             }
         }
 
@@ -187,7 +187,7 @@ namespace Nethermind.Serialization.Rlp
         private Keccak DecodeStorageRoot(RlpStream rlpStream)
         {
             Keccak storageRoot = null;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
@@ -203,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
         private Keccak DecodeCodeHash(RlpStream rlpStream)
         {
             Keccak codeHash = null;
-            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            if (rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
