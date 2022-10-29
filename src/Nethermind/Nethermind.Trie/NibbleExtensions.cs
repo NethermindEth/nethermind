@@ -115,11 +115,11 @@ namespace Nethermind.Trie
             {
                 return compactPath;
             }
-            byte[] array = null;
+            int nibblesCount = compactPath.Length * 2 + 1;
+            byte[] array = ArrayPool<byte>.Shared.Rent(nibblesCount);
             try
             {
-                int nibblesCount = compactPath.Length * 2 + 1;
-                Span<byte> nibbles = array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Span<byte> nibbles = array.Slice(0, nibblesCount);
                 BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
                 nibbles[^1] = 16;
 
@@ -133,12 +133,12 @@ namespace Nethermind.Trie
             }
             catch (Exception)
             {
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                ArrayPool<byte>.Shared.Return(array);
                 throw;
             }
             finally
             {
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                ArrayPool<byte>.Shared.Return(array);
             }
         }
 
