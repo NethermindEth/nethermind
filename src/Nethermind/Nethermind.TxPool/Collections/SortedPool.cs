@@ -261,9 +261,9 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetValue(TKey key, out TValue? value)
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
-            return _cacheMap.TryGetValue(key, out value);
+            return _cacheMap.TryGetValue(key, out value) && value != null;
         }
 
         /// <summary>
