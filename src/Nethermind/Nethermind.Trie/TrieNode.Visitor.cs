@@ -78,14 +78,9 @@ namespace Nethermind.Trie
                             // single threaded route
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                if (trieVisitContext.KeepTrackOfAbsolutePath)
+                                using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    visitContext.AbsolutePathNibbles.Add((byte)i);
-                                }
-                                VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
-                                if (trieVisitContext.KeepTrackOfAbsolutePath)
-                                {
-                                    visitContext.AbsolutePathNibbles.RemoveAt(visitContext.AbsolutePathNibbles.Count - 1);
+                                    VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
                                 }
                             }
                         }
@@ -148,73 +143,62 @@ namespace Nethermind.Trie
 
                 case NodeType.Extension:
                     {
-                        if (trieVisitContext.KeepTrackOfAbsolutePath)
+                        using (trieVisitContext.AbsolutePathNext(Path!))
                         {
-                            trieVisitContext.AbsolutePathNibbles.AddRange(Path!);
-                        }
-                        visitor.VisitExtension(this, trieVisitContext);
-                        TrieNode child = GetChild(nodeResolver, 0);
-                        if (child == null)
-                        {
-                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
-                        }
+                            visitor.VisitExtension(this, trieVisitContext);
+                            TrieNode child = GetChild(nodeResolver, 0);
+                            if (child == null)
+                            {
+                                throw new InvalidDataException($"Child of an extension {Key} should not be null.");
+                            }
 
-                        child.ResolveKey(nodeResolver, false);
-                        if (visitor.ShouldVisit(child.Keccak!))
-                        {
-                            trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
-                            child.Accept(visitor, nodeResolver, trieVisitContext);
-                            trieVisitContext.Level--;
+                            child.ResolveKey(nodeResolver, false);
+                            if (visitor.ShouldVisit(child.Keccak!))
+                            {
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+                                child.Accept(visitor, nodeResolver, trieVisitContext);
+                                trieVisitContext.Level--;
+                            }
                         }
-                        if (trieVisitContext.KeepTrackOfAbsolutePath)
-                        {
-                            trieVisitContext.AbsolutePathNibbles.RemoveRange(trieVisitContext.AbsolutePathNibbles.Count - Path.Length, Path.Length);
-                        }
-
                         break;
                     }
 
                 case NodeType.Leaf:
                     {
-                        if (trieVisitContext.KeepTrackOfAbsolutePath)
+                        using (trieVisitContext.AbsolutePathNext(Path!))
                         {
-                            trieVisitContext.AbsolutePathNibbles.AddRange(Path!);
-                        }
-                        visitor.VisitLeaf(this, trieVisitContext, Value);
-                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
-                        {
-                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                            if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                            visitor.VisitLeaf(this, trieVisitContext, Value);
+                            if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                             {
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
-                                visitor.VisitCode(account.CodeHash, trieVisitContext);
-                                trieVisitContext.Level--;
-                            }
-
-                            if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
-                            {
-                                trieVisitContext.IsStorage = true;
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
-
-                                if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                                if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                                 {
-                                    storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
-                                }
-                                else
-                                {
-                                    visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                    trieVisitContext.Level++;
+                                    trieVisitContext.BranchChildIndex = null;
+                                    visitor.VisitCode(account.CodeHash, trieVisitContext);
+                                    trieVisitContext.Level--;
                                 }
 
-                                trieVisitContext.Level--;
-                                trieVisitContext.IsStorage = false;
+                                if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
+                                {
+                                    trieVisitContext.IsStorage = true;
+                                    trieVisitContext.Level++;
+                                    trieVisitContext.BranchChildIndex = null;
+
+                                    if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                    {
+                                        storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                    }
+                                    else
+                                    {
+                                        visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                    }
+
+                                    trieVisitContext.Level--;
+                                    trieVisitContext.IsStorage = false;
+                                }
                             }
-                        }
-                        if (trieVisitContext.KeepTrackOfAbsolutePath)
-                        {
-                            trieVisitContext.AbsolutePathNibbles.RemoveRange(trieVisitContext.AbsolutePathNibbles.Count - Path.Length, Path.Length);
                         }
 
                         break;

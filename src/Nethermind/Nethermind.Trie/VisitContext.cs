@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Trie
@@ -32,13 +33,25 @@ namespace Nethermind.Trie
         public bool KeepTrackOfAbsolutePath { get; init; }
 
         private List<byte>? _absolutePathNibbles;
+
         public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??
-                                                 LazyInitializer.EnsureInitialized(ref _absolutePathNibbles, () => new List<byte>());
+                                                 LazyInitializer.EnsureInitialized(ref _absolutePathNibbles,
+                                                     () => new List<byte>());
 
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
             internal init => _maxDegreeOfParallelism = value == 0 ? Environment.ProcessorCount : value;
+        }
+
+        public AbsolutePathStruct AbsolutePathNext(byte[] path)
+        {
+            return !KeepTrackOfAbsolutePath ? new AbsolutePathStruct(null, path) : new AbsolutePathStruct(AbsolutePathNibbles, path);
+        }
+
+        public AbsolutePathStruct AbsolutePathNext(byte path)
+        {
+            return !KeepTrackOfAbsolutePath ? new AbsolutePathStruct(null, path) : new AbsolutePathStruct(AbsolutePathNibbles, path);
         }
 
         public SemaphoreSlim Semaphore
@@ -47,7 +60,9 @@ namespace Nethermind.Trie
             {
                 if (_semaphore is null)
                 {
-                    if (MaxDegreeOfParallelism == 1) throw new InvalidOperationException("Can not create semaphore for single threaded trie visitor.");
+                    if (MaxDegreeOfParallelism == 1)
+                        throw new InvalidOperationException(
+                            "Can not create semaphore for single threaded trie visitor.");
                     _semaphore = new SemaphoreSlim(MaxDegreeOfParallelism, MaxDegreeOfParallelism);
                 }
 
@@ -60,6 +75,32 @@ namespace Nethermind.Trie
         public void Dispose()
         {
             _semaphore?.Dispose();
+        }
+    }
+
+    public readonly ref struct AbsolutePathStruct
+    {
+        public AbsolutePathStruct(List<byte>? absolutePath, byte[]? path)
+        {
+            _absolutePath = absolutePath;
+            _pathLength = path!.Length;
+            _absolutePath?.AddRange(path!);
+        }
+
+        public AbsolutePathStruct(List<byte>? absolutePath, byte path)
+        {
+            _absolutePath = absolutePath;
+            _pathLength = 1;
+            _absolutePath?.Add(path);
+        }
+
+        private readonly List<byte>? _absolutePath;
+        private readonly int _pathLength;
+
+        public void Dispose()
+        {
+            if (_pathLength > 0)
+                _absolutePath?.RemoveRange(_absolutePath.Count - _pathLength, _pathLength);
         }
     }
 }
