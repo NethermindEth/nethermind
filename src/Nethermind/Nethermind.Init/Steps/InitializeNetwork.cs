@@ -112,17 +112,13 @@ public class InitializeNetwork : IStep
         }
 
         Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
+        CanonicalHashTrie cht = new(_api.DbProvider!.ChtDb);
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
         if (_syncConfig.SnapServe)
         {
             _api.SnapServer = new SnapServer(_api.DbProvider, _api.LogManager);
-        }
-        else
-        {
-            _api.SnapServer = null;
         }
 
 
@@ -230,7 +226,7 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
-        if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager, _syncConfig.SnapServe);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
