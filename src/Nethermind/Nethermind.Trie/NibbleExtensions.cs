@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
@@ -90,6 +91,17 @@ namespace Nethermind.Trie
         public static byte[] ToBytes(byte[] nibbles)
         {
             byte[] bytes = new byte[nibbles.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] ToBytes(List<byte> nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Count / 2];
             for (int i = 0; i < bytes.Length; i++)
             {
                 bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);

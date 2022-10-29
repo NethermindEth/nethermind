@@ -234,7 +234,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
             return;
         }
 
-        CollectNode(path.ToArray(), node.Value);
+        CollectNode(path, node.Value);
     }
 
     public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
@@ -247,7 +247,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
         return accountRlp is null ? null : _decoder.Encode(_decoder.Decode(new RlpStream(accountRlp))).Bytes;
     }
 
-    private void CollectNode(byte[] path, byte[]? value)
+    private void CollectNode(List<byte> path, byte[]? value)
     {
         byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(value) : value;
         _collectedNodes[Nibbles.ToBytes(path)] = nodeValue;
