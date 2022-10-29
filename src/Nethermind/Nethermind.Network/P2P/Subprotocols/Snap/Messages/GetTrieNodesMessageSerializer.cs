@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathGroup DecodeGroup(RlpStream stream)
         {
             PathGroup group = new PathGroup();
-            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: new byte[] {});
+            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: Array.Empty<byte>());
 
             return group;
         }
