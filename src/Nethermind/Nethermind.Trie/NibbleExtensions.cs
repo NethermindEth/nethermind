@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
@@ -102,20 +103,31 @@ namespace Nethermind.Trie
             {
                 return compactPath;
             }
-
-            byte[] nibbles = new byte[compactPath.Length * 2 + 1];
-            Span<byte> nibbleSpan = nibbles;
-            BytesToNibbleBytes(compactPath, nibbleSpan.Slice(0, 2 * compactPath.Length));
-            nibbles[^1] = 16;
-
-            if (nibbleSpan[0] < 2)
+            byte[] array = null;
+            try
             {
-                nibbleSpan = nibbleSpan[..(nibbles.Length - 1)];
+                int nibblesCount = compactPath.Length * 2 + 1;
+                Span<byte> nibbles = array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+                nibbles[^1] = 16;
+
+                if (nibbles[0] < 2)
+                {
+                    nibbles = nibbles[..^1];
+                }
+
+                int chop = 2 - (nibbles[0] & 1);
+                return nibbles[chop..].ToArray();
             }
-
-            int chop = 2 - (nibbleSpan[0] & 1);
-            return nibbleSpan[chop..].ToArray();
-
+            catch (Exception)
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                throw;
+            }
+            finally
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+            }
         }
 
         public static byte[] ToCompactHexEncoding(byte[] nibbles)

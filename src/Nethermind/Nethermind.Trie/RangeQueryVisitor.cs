@@ -16,14 +16,15 @@
 //
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
 
-public class RangeQueryVisitor : ITreeVisitor
+public class RangeQueryVisitor : ITreeVisitor, IDisposable
 {
 
     private readonly byte[] _startHash;
@@ -50,23 +51,23 @@ public class RangeQueryVisitor : ITreeVisitor
     public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit = -1, long hardByteLimit = 200000, int nodeLimit = 10000)
     {
 
-        if (startHash.SequenceEqual(Keccak.Zero.Bytes))
+        if (Bytes.AreEqual(startHash, Keccak.Zero.Bytes))
         {
             _checkStartRange = false;
         }
         else
         {
-            _startHash = new byte[64];
+            _startHash = ArrayPool<byte>.Shared.Rent(64);
             Nibbles.BytesToNibbleBytes(startHash, _startHash);
         }
 
-        if (startHash.SequenceEqual(Keccak.MaxValue.Bytes))
+        if (Bytes.AreEqual(startHash, Keccak.MaxValue.Bytes))
         {
             _checkEndRange = false;
         }
         else
         {
-            _limitHash = new byte[64];
+            _limitHash = ArrayPool<byte>.Shared.Rent(64);
             Nibbles.BytesToNibbleBytes(limitHash, _limitHash);
         }
 
@@ -139,7 +140,7 @@ public class RangeQueryVisitor : ITreeVisitor
 
     public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
     {
-        List<byte>? path = trieVisitContext.AbsolutePathNibbles;
+        List<byte> path = trieVisitContext.AbsolutePathNibbles;
 
         if (_checkStartRange)
         {
@@ -251,5 +252,11 @@ public class RangeQueryVisitor : ITreeVisitor
         byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(value) : value;
         _collectedNodes[Nibbles.ToBytes(path)] = nodeValue;
         _currentBytesCount += 32 + nodeValue!.Length;
+    }
+
+    public void Dispose()
+    {
+        if (_startHash != null) ArrayPool<byte>.Shared.Return(_startHash);
+        if (_limitHash != null) ArrayPool<byte>.Shared.Return(_limitHash);
     }
 }

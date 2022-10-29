@@ -106,7 +106,7 @@ namespace Nethermind.Trie
                                         childContext.AbsolutePathNibbles.Add((byte)i);
                                     }
                                     VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
-                                    // no need to remove the element from AbsolutePathNibbles as the childContext is cleaned
+                                    // no need to remove the element from AbsolutePathNibbles as the childContext is not used in another branch
                                 }
                                 finally
                                 {

@@ -123,7 +123,7 @@ public class SnapServer : ISnapServer
             // TODO: handle empty code in the DB itself?
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                response.Add(new byte[] { });
+                response.Add(Array.Empty<byte>());
             }
             byte[]? code = _dbProvider.CodeDb.Get(codeHash);
             if (code is null) continue;
@@ -199,13 +199,24 @@ public class SnapServer : ISnapServer
         long byteLimit, long hardByteLimit, bool isStorage = false)
     {
         PatriciaTree tree = new(_store, _logManager);
-
-        RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
-        VisitingOptions opt = new() { ExpectAccounts = false, KeepTrackOfAbsolutePath = true };
-        tree.Accept(visitor, rootHash, opt);
-        (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-
-        return (requiredNodes, responseSize, visitor._isStoppedDueToHardLimit);
+        RangeQueryVisitor visitor = null;
+        try
+        {
+            visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
+            VisitingOptions opt = new() { ExpectAccounts = false, KeepTrackOfAbsolutePath = true };
+            tree.Accept(visitor, rootHash, opt);
+            (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
+            return (requiredNodes, responseSize, visitor._isStoppedDueToHardLimit);
+        }
+        catch (Exception)
+        {
+            visitor?.Dispose();
+            throw;
+        }
+        finally
+        {
+            visitor?.Dispose();
+        }
     }
 
     private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)

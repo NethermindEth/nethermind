@@ -64,6 +64,7 @@ public class RangeQueryVisitorTests
             Rlp.Encode(TestItem.Tree.AccountsWithPaths[k + 2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
             k += 1;
         }
+        visitor.Dispose();
     }
 
     [Test]
@@ -88,5 +89,6 @@ public class RangeQueryVisitorTests
             pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k + 0].SlotRlpValue);
             k += 1;
         }
+        visitor.Dispose();
     }
 }

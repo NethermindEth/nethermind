@@ -311,21 +311,25 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
+            byte[] array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[] array = null;
                 Span<byte> nibbles = rawKey.Length <= 64
                     ? stackalloc byte[nibblesCount]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
                 return result;
             }
             catch (TrieException e)
             {
-                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+                throw new TrieException(
+                    $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+            finally
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -337,7 +341,7 @@ namespace Nethermind.Trie
                 int nibblesCount = nibbles.Length;
                 byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
                     isNodeRead: true);
-                return result ?? new byte[] { };
+                return result ?? Array.Empty<byte>();
             }
             catch (TrieException e)
             {
@@ -349,21 +353,26 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? GetNodeByKey(Span<byte> rawKey, Keccak? rootHash = null)
         {
+            byte[] array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[] array = null;
                 Span<byte> nibbles = rawKey.Length <= 64
                     ? stackalloc byte[nibblesCount]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash, isNodeRead: true);
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
-                return result ?? new byte[] { };
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                return result ?? Array.Empty<byte>();
             }
             catch (TrieException e)
             {
-                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+                throw new TrieException(
+                    $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+            finally
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
