@@ -161,7 +161,7 @@ namespace Nethermind.TxPool
             {
                 while (await _headBlocksChannel.Reader.WaitToReadAsync())
                 {
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs args))
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
                         try
                         {
@@ -209,7 +209,7 @@ namespace Nethermind.TxPool
 
             for (int i = 0; i < transactionsInBlock; i++)
             {
-                Keccak txHash = blockTransactions[i].Hash;
+                Keccak? txHash = blockTransactions[i].Hash;
 
                 if (!IsKnown(txHash!))
                 {
@@ -413,7 +413,7 @@ namespace Nethermind.TxPool
                 Account? account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
-                Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                Transaction? tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
                 bool shouldBeDumped = false;
 
                 if (tx is null)
@@ -461,11 +461,12 @@ namespace Nethermind.TxPool
             bool hasBeenRemoved;
             lock (_locker)
             {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction transaction);
-                if (hasBeenRemoved)
+                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
+                if (hasBeenRemoved && transaction is not null)
                 {
-                    Address address = transaction.SenderAddress;
-                    if (_nonces.TryGetValue(address!, out AddressNonces addressNonces))
+                    Address? address = transaction.SenderAddress;
+                    
+                    if (address != null &&_nonces.TryGetValue(address, out AddressNonces? addressNonces))
                     {
                         addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
@@ -485,7 +486,7 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             lock (_locker)
             {
@@ -563,7 +564,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
+        public bool IsKnown(Keccak? hash) => hash != null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

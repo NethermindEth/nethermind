@@ -37,7 +37,8 @@ namespace Nethermind.TxPool
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {
-                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                if (tx.SenderAddress != null)
+                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
                 txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             }
 

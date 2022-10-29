@@ -41,6 +41,8 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (tx.SenderAddress == null)
+                return AcceptTxResult.Invalid;
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);
             bool isTxPoolFull = _txs.IsFull();
             UInt256 currentNonce = _accounts.GetAccount(tx.SenderAddress!).Nonce;
