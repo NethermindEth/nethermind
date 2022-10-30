@@ -139,8 +139,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 var stage = new ProgressStage
                 {
-                    SyncMode = args.Current,
+                    SyncMode = args.Current.ToString(),
                 };
+
                 if (peerDifficulty is not null && peerBlock is not null) {
                     Snapshot image = TakeSnapshot((UInt256)peerDifficulty, (long)peerBlock, inBeaconControl);
                     stage.Current = image.Block;

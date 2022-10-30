@@ -26,8 +26,7 @@ namespace Nethermind.Synchronization.Reports
 {
     public class ProgressStage
     {
-        public SyncMode SyncMode { get; set; }
-
+        public string SyncMode { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime FinishTime { get; set; }
         public TimeSpan Duration => FinishTime - StartTime;
@@ -38,7 +37,7 @@ namespace Nethermind.Synchronization.Reports
     }
     public class SyncReportSymmary
     {
-        public IEnumerable<SyncMode> CurrentStage { get; set; }
+        public IEnumerable<string> CurrentStage { get; set; }
         public IEnumerable<ProgressStage> Progress { get; set; }
     } 
     public static class ReportSink
@@ -48,7 +47,7 @@ namespace Nethermind.Synchronization.Reports
         public static SyncReportSymmary Snapshot => new SyncReportSymmary
         {
             CurrentStage =  CurrentStage.Where(kvp => kvp.Value)
-                                        .Select(kvp => kvp.Key),
+                                        .Select(kvp => kvp.Key.ToString()),
             Progress     =  Progress.Values
         };
     }
