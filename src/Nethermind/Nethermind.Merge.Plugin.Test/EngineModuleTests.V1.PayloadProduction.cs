@@ -247,7 +247,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Retry(3)]
-    public async Task Clean_up_payloads_shall_be_called()
+    public async Task clean_up_payloads_shall_be_called()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
