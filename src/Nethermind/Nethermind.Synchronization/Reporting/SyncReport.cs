@@ -332,6 +332,7 @@ namespace Nethermind.Synchronization.Reporting
         {
             var stage = new ProgressStage
             {
+                SyncMode = mode.ToString(),
                 Current = current,
                 Total = target,
             };

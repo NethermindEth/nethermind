@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Reporting
 
         public long? Current { get; set; }
         public long? Total { get; set; }
-        public double? Percent => Current / Total;
+        public double? Percent => (double)Current / Total;
     }
     public class SyncReportSymmary
     {
