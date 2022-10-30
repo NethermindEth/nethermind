@@ -247,6 +247,45 @@ public partial class EngineModuleTests
 
     [Test]
     [Retry(3)]
+    public async Task Clean_up_payloads_shall_be_called()
+    {
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 10 * delay;
+        PayloadPreparationService pps = new(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
+        chain.PayloadPreparationService = pps;
+
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak startingHead = chain.BlockTree.HeadHash;
+        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        Keccak random = Keccak.Zero;
+        Address feeRecipient = Address.Zero;
+
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
+
+        await Task.Delay(timePerSlot / 2);
+
+        await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+
+        //Test payloads cleanup
+        pps.GetPayloadsSnapshot().Length.Should().BeGreaterThan(0);
+        await Task.Delay(timePerSlot * PayloadPreparationService.SlotsPerOldPayloadCleanup);
+        pps.GetPayloadsSnapshot().Length.Should().Be(0);
+    }
+
+
+    [Test]
+    [Retry(3)]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };

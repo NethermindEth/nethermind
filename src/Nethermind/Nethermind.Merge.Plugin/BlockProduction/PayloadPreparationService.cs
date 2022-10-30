@@ -39,6 +39,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     /// </summary>
     public class PayloadPreparationService : IPayloadPreparationService
     {
+        /// <summary>
+        /// A time measurement device (independent of system time)
+        /// </summary>
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ILogger _logger;
@@ -62,10 +67,16 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private readonly TimeSpan _cleanupOldPayloadDelay;
         private readonly TimeSpan _timePerSlot;
-        private readonly Stopwatch _stopwatch;
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+
+        //Get all Payloads as a Snapshot Array (thread safe)
+        internal KeyValuePair<string, IBlockImprovementContext>[] GetPayloadsSnapshot()
+        {
+            return _payloadStorage.ToArray();
+        }
+
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
             IBlockImprovementContextFactory blockImprovementContextFactory,
@@ -86,7 +97,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();
-            _stopwatch = Stopwatch.StartNew();
             _logger = logManager.GetClassLogger();
         }
 
