@@ -346,7 +346,6 @@ namespace Nethermind.Synchronization.Reporting
                 (_, old) =>
                 {
                     stage.StartTime = old.StartTime;
-                    stage.CurrentTime = DateTime.UtcNow;
                     return stage;
             });
         }

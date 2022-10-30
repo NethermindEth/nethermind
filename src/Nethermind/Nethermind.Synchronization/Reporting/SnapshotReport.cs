@@ -28,10 +28,9 @@ namespace Nethermind.Synchronization.Reporting
     {
         public string SyncMode { get; set; }
         public DateTime StartTime { get; set; }
-        public DateTime CurrentTime { get; set; }
         public DateTime? FinishTime { get; set; }
         public TimeSpan Duration => FinishTime is null
-                                        ? CurrentTime - StartTime
+                                        ? DateTime.UtcNow - StartTime
                                         : FinishTime.Value - StartTime;
         public long? Current { get; set; }
         public long? Total { get; set; }

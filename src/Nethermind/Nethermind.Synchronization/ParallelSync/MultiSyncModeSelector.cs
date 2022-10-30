@@ -123,7 +123,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 ReportSink.CurrentStage = args.Current;
 
-                if(ReportSink.Progress.TryGetValue(args.Previous, out var oldStage))
+                if(ReportSink.Progress.TryGetValue(args.Previous & ~args.Current, out var oldStage))
                 {
                     lock (oldStage)
                     {
