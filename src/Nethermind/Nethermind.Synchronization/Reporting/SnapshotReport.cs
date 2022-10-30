@@ -22,7 +22,7 @@ using System.ComponentModel;
 using Microsoft.VisualBasic;
 using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.Reports
+namespace Nethermind.Synchronization.Reporting
 {
     public class ProgressStage
     {
@@ -37,18 +37,17 @@ namespace Nethermind.Synchronization.Reports
     }
     public class SyncReportSymmary
     {
-        public IEnumerable<string> CurrentStage { get; set; }
+        public string CurrentStage { get; set; }
         public IEnumerable<ProgressStage> Progress { get; set; }
-    } 
+    }
     public static class ReportSink
     {
-        public static ConcurrentDictionary<SyncMode, bool> CurrentStage { get; set; } = new();
+        public static SyncMode CurrentStage { get; set; } = new();
         public static ConcurrentDictionary<SyncMode, ProgressStage> Progress { get; set; } = new();
         public static SyncReportSymmary Snapshot => new SyncReportSymmary
         {
-            CurrentStage =  CurrentStage.Where(kvp => kvp.Value)
-                                        .Select(kvp => kvp.Key.ToString()),
-            Progress     =  Progress.Values
+            CurrentStage = CurrentStage.ToString(),
+            Progress = Progress.Values
         };
     }
 }

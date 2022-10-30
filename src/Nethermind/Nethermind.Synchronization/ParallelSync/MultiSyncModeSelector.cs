@@ -26,7 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reports;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -121,44 +121,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
             Changed += (src, args) =>
             {
-                // var Config = _configurationProvider.GetConfig<JsonRpc>.EnabledModules.Contains("Debug");
-                // circular dependency if this project references JsonRPC project (should Config Files be moved to one
-                // bottom project ? 
-                bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
-                (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
-                ReportSink.CurrentStage.TryAdd(args.Current, true);
-                ReportSink.CurrentStage.TryUpdate(args.Previous, false, true);
+                ReportSink.CurrentStage = args.Current;
 
                 if(ReportSink.Progress.TryGetValue(args.Previous, out var oldStage))
                 {
-                    lock(oldStage)
+                    lock (oldStage)
                     {
                         oldStage.FinishTime = DateTime.UtcNow;
                     }
                 }
-
-                var stage = new ProgressStage
-                {
-                    SyncMode = args.Current.ToString(),
-                };
-
-                if (peerDifficulty is not null && peerBlock is not null) {
-                    Snapshot image = TakeSnapshot((UInt256)peerDifficulty, (long)peerBlock, inBeaconControl);
-                    stage.Current = image.Block;
-                    stage.Total = image.TargetBlock;
-                }
-
-                ReportSink.Progress.AddOrUpdate(
-                    args.Current,
-                    (_) => {
-                        stage.StartTime = DateTime.UtcNow;
-                        return stage;
-                    },
-                    (_, old) =>
-                    {
-                        stage.StartTime = old.StartTime;
-                        return stage;
-                    });
             };
 
             _ = StartAsync(_cancellation.Token);

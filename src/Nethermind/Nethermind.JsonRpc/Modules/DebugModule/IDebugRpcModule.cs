@@ -19,7 +19,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Synchronization.Reports;
+using Nethermind.Synchronization.Reporting;
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     [RpcModule(ModuleType.Debug)]

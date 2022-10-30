@@ -28,7 +28,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Synchronization.Reports;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
