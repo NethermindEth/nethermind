@@ -43,6 +43,14 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
+            // check if peer supports snap sync
+            if ((contexts & AllocationContexts.Snap) != 0)
+            {
+                // TODO: Remove when Nethermind implements performant snap server
+                // we dont want to use Nethermind clients right now to request snap data
+                return peerInfo.SyncPeer.ClientType != NodeClientType.Nethermind;
+            }
+
             return true;
         }
 
