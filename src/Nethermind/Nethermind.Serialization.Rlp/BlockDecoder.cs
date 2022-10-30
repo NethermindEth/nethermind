@@ -64,23 +64,27 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.Check(unclesCheck);
 
-            int withdrawalsSequenceLength = rlpStream.ReadSequenceLength();
-            int withdrawalsCheck = rlpStream.Position + withdrawalsSequenceLength;
-            List<Withdrawal> withdrawals = new();
+            List<Withdrawal> withdrawals = null;
 
-            while (rlpStream.Position < withdrawalsCheck)
+            if (rlpStream.IsSequenceNext())
             {
-                withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                int withdrawalsCheck = rlpStream.Position + rlpStream.ReadSequenceLength();
+                withdrawals = new();
+
+                while (rlpStream.Position < withdrawalsCheck)
+                {
+                    withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                }
+
+                rlpStream.Check(withdrawalsCheck);
             }
-
-            rlpStream.Check(withdrawalsCheck);
-
+            
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(blockCheck);
             }
 
-            return new Block(header, transactions, uncleHeaders, withdrawals);
+            return new(header, transactions, uncleHeaders, withdrawals);
         }
 
         private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
@@ -169,23 +173,27 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.Check(unclesCheck);
 
-            int withdrawalsSequenceLength = decoderContext.ReadSequenceLength();
-            int withdrawalsCheck = decoderContext.Position + withdrawalsSequenceLength;
-            List<Withdrawal> withdrawals = new();
-
-            while (decoderContext.Position < withdrawalsCheck)
+            List<Withdrawal> withdrawals = null;
+            
+            if (decoderContext.IsSequenceNext())
             {
-                withdrawals.Add(Rlp.Decode<Withdrawal>(ref decoderContext));
-            }
+                int withdrawalsCheck = decoderContext.Position + decoderContext.ReadSequenceLength();
+                withdrawals = new();
 
-            decoderContext.Check(withdrawalsCheck);
+                while (decoderContext.Position < withdrawalsCheck)
+                {
+                    withdrawals.Add(Rlp.Decode<Withdrawal>(ref decoderContext));
+                }
+
+                decoderContext.Check(withdrawalsCheck);
+            }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 decoderContext.Check(blockCheck);
             }
 
-            return new Block(header, transactions, uncleHeaders, withdrawals);
+            return new(header, transactions, uncleHeaders, withdrawals);
         }
 
         public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -197,7 +205,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new(rlpStream.Data);
         }
 
         public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
