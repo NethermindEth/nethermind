@@ -84,5 +84,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "false", Description = "Enable automatic port forwarding via UPnP")]
         bool EnableUPnP { get; set; }
+
+        [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
+        long SimulateSendLatencyMs { get; set; }
     }
 }

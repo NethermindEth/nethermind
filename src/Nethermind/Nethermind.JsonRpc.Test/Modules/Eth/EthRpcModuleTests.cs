@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using MathNet.Numerics.LinearAlgebra.Solvers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -152,7 +151,7 @@ public partial class EthRpcModuleTests
         {
             specProvider = Substitute.For<ISpecProvider>();
             ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         }
         using Context ctx = await Context.Create();
         Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
@@ -172,7 +171,7 @@ public partial class EthRpcModuleTests
         {
             specProvider = Substitute.For<ISpecProvider>();
             ReleaseSpec releaseSpec = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         }
 
         using Context ctx = await Context.Create();
@@ -276,6 +275,47 @@ public partial class EthRpcModuleTests
         string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x166781de9c5f3328b7fc59c32e1dd1ec892021d95578258004ee221863a817a0\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
+    }
+
+    [Test]
+    public async Task Eth_get_filter_changes_with_log_filter()
+    {
+        byte[] logCreateCode = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.LOG0)
+                .Done;
+
+        Transaction createCodeTx = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(1).WithGasPrice(2)
+            .WithCode(logCreateCode)
+            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
+
+        Keccak? blockHash = Keccak.Zero;
+        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+        {
+            blockHash = e.Block.Hash;
+            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+        }
+        test.BlockTree.BlockAddedToMain += handleNewBlock;
+
+        var newFilterResp = RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", "{\"fromBlock\":\"latest\"}");
+        string getFilterLogsSerialized1 = test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+
+        //expect empty - no changes so far
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}", getFilterLogsSerialized1);
+
+        await test.AddBlock(createCodeTx);
+
+        //expect new transaction logs
+        string getFilterLogsSerialized2 = test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"blockHash\":\"0x2eb166ba88c43f96f980a573aebcee792fda4d34ad4c353dfd3d08cdf80adfae\",\"blockNumber\":\"0x4\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[],\"transactionHash\":\"0x8c9c109bff7969c8aed8e51ab4ea35c6f835a0c3266bc5c5721821a38cbf5445\",\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}", getFilterLogsSerialized2);
+
+        //expect empty - previous call cleans logs
+        string getFilterLogsSerialized3 = test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}", getFilterLogsSerialized3);
     }
 
     [Test]
@@ -390,8 +430,12 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogs(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new[] { new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD }) });
-        bridge.FilterExists(1).Returns(true);
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+            .Returns(x =>
+            {
+                x[1] = new[] { new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD }) };
+                return true;
+            });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
@@ -404,12 +448,63 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.FilterExists(5).Returns(false);
+        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+                .Returns(x => { x[1] = null; return false; });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = ctx.Test.TestEthRpc("eth_getFilterLogs", "0x05");
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Filter with id: '5' does not exist.\"},\"id\":67}", serialized);
+    }
+
+    [Test]
+    public async Task Eth_get_filter_logs_filterId_overflow()
+    {
+        using Context ctx = await Context.Create();
+
+        UInt256 filterId = int.MaxValue + (UInt256)10;
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        string serialized = ctx.Test.TestEthRpc("eth_getFilterLogs", $"0x{filterId.ToString("X")}");
+
+        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Filter with id: '{filterId}' does not exist.\"}},\"id\":67}}", serialized);
+    }
+
+    [Test]
+    public async Task Eth_get_logs_get_filter_logs_same_result()
+    {
+        byte[] logCreateCode = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.LOG0)
+                .Done;
+
+        Transaction createCodeTx = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(1).WithGasPrice(2)
+            .WithCode(logCreateCode)
+            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
+
+        Keccak? blockHash = Keccak.Zero;
+        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+        {
+            blockHash = e.Block.Hash;
+            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+        }
+        test.BlockTree.BlockAddedToMain += handleNewBlock;
+
+        await test.AddBlock(createCodeTx);
+
+        string getLogsSerialized = test.TestEthRpc("eth_getLogs", $"{{\"fromBlock\":\"{blockHash}\"}}");
+
+        var newFilterResp = RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
+
+        Assert.IsTrue(newFilterResp != null && newFilterResp is JsonRpcSuccessResponse);
+
+        string getFilterLogsSerialized = test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+
+        Assert.AreEqual(getLogsSerialized, getFilterLogsSerialized);
     }
 
     [TestCase("{}", "{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}")]

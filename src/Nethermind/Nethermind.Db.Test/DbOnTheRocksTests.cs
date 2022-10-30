@@ -30,6 +30,7 @@ using NUnit.Framework;
 namespace Nethermind.Db.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class DbOnTheRocksTests
     {
         [Test]

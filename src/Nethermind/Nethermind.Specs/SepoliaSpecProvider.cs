@@ -16,6 +16,7 @@
 //
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -24,7 +25,7 @@ namespace Nethermind.Specs;
 
 public class SepoliaSpecProvider : ISpecProvider
 {
-    private long? _theMergeBlock = null;
+    private ForkActivation? _theMergeBlock = null;
     private UInt256? _terminalTotalDifficulty = 17000000000000000;
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -35,18 +36,18 @@ public class SepoliaSpecProvider : ISpecProvider
             _terminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public long? MergeBlockNumber => _theMergeBlock;
+    public ForkActivation? MergeBlockNumber => _theMergeBlock;
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-    public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => London.Instance;
 
     public long? DaoBlockNumber => null;
 
 
     public ulong ChainId => Core.ChainId.Rinkeby;
 
-    public long[] TransitionBlocks { get; } = { 1735371 };
+    public ForkActivation[] TransitionBlocks { get; } = { 1735371 };
 
     private SepoliaSpecProvider() { }
 
