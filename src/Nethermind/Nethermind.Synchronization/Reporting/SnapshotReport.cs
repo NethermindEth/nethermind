@@ -28,12 +28,14 @@ namespace Nethermind.Synchronization.Reporting
     {
         public string SyncMode { get; set; }
         public DateTime StartTime { get; set; }
-        public DateTime FinishTime { get; set; }
-        public TimeSpan Duration => FinishTime - StartTime;
-
+        public DateTime CurrentTime { get; set; }
+        public DateTime? FinishTime { get; set; }
+        public TimeSpan Duration => FinishTime is null
+                                        ? CurrentTime - StartTime
+                                        : FinishTime.Value - StartTime;
         public long? Current { get; set; }
         public long? Total { get; set; }
-        public double? Percent => (double)Current / Total;
+        public double? Progress => 100 * (double)Current / Total;
     }
     public class SyncReportSymmary
     {
