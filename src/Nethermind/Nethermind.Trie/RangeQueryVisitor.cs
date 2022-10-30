@@ -29,10 +29,10 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 {
 
     private readonly byte[] _startHash;
-    private bool _checkStartRange = true;
+    private bool _findFirstNodeInRange = true;
 
     private readonly byte[] _limitHash;
-    private readonly bool _checkEndRange = true;
+    private readonly bool _comparePathWithLimitHash = true;
 
     private readonly bool _isAccountVisitor;
     private bool _shouldContinueTraversing = true;
@@ -59,7 +59,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         if (Bytes.AreEqual(startHash, Keccak.Zero.Bytes))
         {
-            _checkStartRange = false;
+            _findFirstNodeInRange = false;
         }
         else
         {
@@ -69,7 +69,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
 
         if (Bytes.AreEqual(limitHash, Keccak.MaxValue.Bytes))
         {
-            _checkEndRange = false;
+            _comparePathWithLimitHash = false;
         }
         else
         {
@@ -120,7 +120,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
             return false;
         }
 
-        if (!_checkEndRange) return true;
+        if (!_comparePathWithLimitHash) return true;
         int compResult = ComparePath(path, _limitHash);
         return compResult != -1;
     }
@@ -128,7 +128,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     public bool ShouldVisit(Keccak nextNode)
     {
         // if still looking for node just after the startHash, then only visit node that are present in _nodeToVisitFilter
-        return _checkStartRange ? NodeToVisitFilter.Contains(nextNode) : _shouldContinueTraversing;
+        return _findFirstNodeInRange ? NodeToVisitFilter.Contains(nextNode) : _shouldContinueTraversing;
     }
 
     public (Dictionary<byte[], byte[]>, long) GetNodesAndSize()
@@ -148,7 +148,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     {
         List<byte> path = trieVisitContext.AbsolutePathNibbles;
 
-        if (_checkStartRange)
+        if (_findFirstNodeInRange)
         {
             NodeToVisitFilter.Remove(node.Keccak);
 
@@ -171,8 +171,8 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
                     }
                 case -1:
                     // if path > _startHash[:path.Count] -> found the first element after the start range.
-                    // continue visiting and collecting next nodes and set _checkStartRange = false
-                    _checkStartRange = false;
+                    // continue visiting and collecting next nodes and set _findFirstNodeInRange = false
+                    _findFirstNodeInRange = false;
                     break;
             }
         }
@@ -187,7 +187,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     {
         List<byte>? path = trieVisitContext.AbsolutePathNibbles;
 
-        if (_checkStartRange)
+        if (_findFirstNodeInRange)
         {
             NodeToVisitFilter.Remove(node.Keccak);
             int compRes = ComparePath(path, _startHash);
@@ -203,8 +203,8 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
                     return;
                 case -1:
                     // if path > _startHash[:path.Count] -> found the first element after the start range.
-                    // continue visiting and collecting next nodes and set _checkStartRange = false
-                    _checkStartRange = false;
+                    // continue visiting and collecting next nodes and set _findFirstNodeInRange = false
+                    _findFirstNodeInRange = false;
                     break;
             }
         }
@@ -218,7 +218,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     {
         List<byte>? path = trieVisitContext.AbsolutePathNibbles;
 
-        if (_checkStartRange)
+        if (_findFirstNodeInRange)
         {
             NodeToVisitFilter.Remove(node.Keccak);
 
@@ -230,7 +230,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
             }
             // if path >= _startHash[:path.Count] -> found the first element after the start range.
             // continue to _collect this node and all the other nodes till _limitHash
-            _checkStartRange = false;
+            _findFirstNodeInRange = false;
         }
 
         bool shouldVisitNode = ShouldVisit(trieVisitContext.AbsolutePathNibbles);
