@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             stream.Encode(message.RequestId);
 
-            if (message.Slots == null || message.Slots.Length == 0)
+            if (message.Slots == null || message.Slots.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 stream.StartSequence(allSlotsLength);
 
-                for (int i = 0; i < message.Slots.Length; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     stream.StartSequence(accountSlotsLengths[i]);
 
@@ -109,15 +109,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Length];
+            int[] accountSlotsLengths = new int[message.Slots.Count];
 
-            if (message.Slots == null || message.Slots.Length == 0)
+            if (message.Slots == null || message.Slots.Count == 0)
             {
                 allSlotsLength = 1;
             }
             else
             {
-                for (var i = 0; i < message.Slots.Length; i++)
+                for (var i = 0; i < message.Slots.Count; i++)
                 {
                     int accountSlotsLength = 0;
 

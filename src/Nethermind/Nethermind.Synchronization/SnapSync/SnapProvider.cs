@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result;
 
-            if (response.PathAndAccounts.Length == 0 && response.Proofs.Length == 0)
+            if (response.PathAndAccounts.Count == 0 && response.Proofs.Length == 0)
             {
                 _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Length);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                 }
             }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, IList<PathWithAccount> accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
 
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _progressTracker.EnqueueCodeHashes(codeHashes);
 
-                _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
+                _progressTracker.NextAccountPath = accounts[^1].Path;
                 _progressTracker.MoreAccountsToRight = moreChildrenToRight;
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result = AddRangeResult.OK;
 
-            if (response.PathsAndSlots.Length == 0 && response.Proofs.Length == 0)
+            if (response.PathsAndSlots.Count == 0 && response.Proofs.Length == 0)
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
 
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.SnapSync
                 int slotCount = 0;
 
                 int requestLength = request.Accounts.Length;
-                int responseLength = response.PathsAndSlots.Length;
+                int responseLength = response.PathsAndSlots.Count;
 
                 for (int i = 0; i < responseLength; i++)
                 {

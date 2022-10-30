@@ -154,22 +154,25 @@ public class SnapServer : ISnapServer
         return (nodes, proofs);
     }
 
-    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
+    public (List<PathWithStorageSlot[]>, byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts, Keccak? startingHash, Keccak? limitHash, long byteLimit)
     {
         long responseSize = 0;
         StateTree tree = new(_store, _logManager);
-        List<Account> accountList = new(accounts.Length);
-        accountList.AddRange(accounts.Select(t => GetAccountByPath(tree, rootHash, t.Path.Bytes)).TakeWhile(accountNeth => accountNeth is not null));
 
-        PathWithStorageSlot[][] responseNodes = new PathWithStorageSlot[accountList.Count][];
-        for (int i = 0; i < accountList.Count; i++)
+        List<PathWithStorageSlot[]> responseNodes = new(accounts.Length);
+        for (int i = 0; i < accounts.Length; i++)
         {
             if (responseSize > byteLimit)
             {
                 break;
             }
 
-            Account accountNeth = accountList[i];
+            Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes);
+            if (accountNeth is null)
+            {
+                return (responseNodes, null);
+            }
+
             Keccak? storageRoot = accountNeth.StorageRoot;
 
             startingHash = startingHash == null ? Keccak.Zero : startingHash;
@@ -185,7 +188,7 @@ public class SnapServer : ISnapServer
                 nodes[index] = result;
                 index += 1;
             }
-            responseNodes[i] = nodes;
+            responseNodes.Add(nodes);
             if (stopped || startingHash != Keccak.Zero)
             {
                 byte[][]? proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, storageRoot);

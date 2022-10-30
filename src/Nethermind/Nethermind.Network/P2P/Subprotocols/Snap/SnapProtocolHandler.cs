@@ -255,7 +255,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         protected StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage)
         {
             StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
-            (PathWithStorageSlot[][]? ranges, byte[][]? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+            (List<PathWithStorageSlot[]>? ranges, byte[][]? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes);
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;

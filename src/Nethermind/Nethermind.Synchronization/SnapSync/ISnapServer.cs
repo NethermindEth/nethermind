@@ -29,7 +29,7 @@ public interface ISnapServer
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash,
         long byteLimit);
 
-    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts,
+    public (List<PathWithStorageSlot[]>, byte[][]?) GetStorageRanges(Keccak rootHash, PathWithAccount[] accounts,
         Keccak? startingHash, Keccak? limitHash, long byteLimit);
 
 }

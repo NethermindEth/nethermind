@@ -106,7 +106,7 @@ public class SnapServerTest
         ProgressTracker progressTracker = new(null, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
-        (PathWithStorageSlot[][] storageSlots, byte[][]? proofs) =
+        (List<PathWithStorageSlot[]> storageSlots, byte[][]? proofs) =
             server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
                 Keccak.Zero, Keccak.MaxValue, 10);
 
@@ -175,27 +175,27 @@ public class SnapServerTest
 
 
         var accountWithStorageArray = accountWithStorage.ToArray();
-        PathWithStorageSlot[][] slots;
+        List<PathWithStorageSlot[]> slots;
         byte[][]? proofs;
 
         // the byteLimit is 10 but still returns the complete storage tree if the storageTree<hardByteLimit or numberOfNodes<10000
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 10);
-        slots.Length.Should().Be(1);
+        slots.Count.Should().Be(1);
         slots[0].Length.Should().Be(1000);
         proofs.Should().BeNull();
 
         // only returns one storage tree due to low byte limit
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 10);
-        slots.Length.Should().Be(1);
+        slots.Count.Should().Be(1);
         slots[0].Length.Should().Be(1000);
         proofs.Should().BeNull();
 
         // only returns one storage tree due to low byte limit
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 100000);
-        slots.Length.Should().Be(2);
+        slots.Count.Should().Be(2);
         slots[0].Length.Should().Be(1000);
         slots[1].Length.Should().Be(2000);
         proofs.Should().BeNull();
@@ -204,7 +204,7 @@ public class SnapServerTest
         // incomplete tree will be returned as the hard limit is 2000000
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, Keccak.Zero, Keccak.MaxValue, 3000000);
-        slots.Length.Should().Be(8);
+        slots.Count.Should().Be(8);
         slots[^1].Length.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
     }

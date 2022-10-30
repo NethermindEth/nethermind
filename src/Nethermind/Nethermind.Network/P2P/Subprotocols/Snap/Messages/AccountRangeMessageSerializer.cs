@@ -37,14 +37,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.StartSequence(contentLength);
 
             stream.Encode(message.RequestId);
-            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Length == 0)
+            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Count == 0)
             {
                 stream.EncodeNullObject();
             }
             else
             {
                 stream.StartSequence(pwasLength);
-                for (int i = 0; i < message.PathsWithAccounts.Length; i++)
+                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
                 {
                     PathWithAccount pwa = message.PathsWithAccounts[i];
 
@@ -99,14 +99,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int pwasLength = 0;
-            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Length == 0)
+            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Count == 0)
             {
                 pwasLength = 1;
                 contentLength += 1;
             }
             else
             {
-                for (int i = 0; i < message.PathsWithAccounts.Length; i++)
+                for (int i = 0; i < message.PathsWithAccounts.Count; i++)
                 {
                     PathWithAccount pwa = message.PathsWithAccounts[i];
                     int itemLength = Rlp.LengthOf(pwa.Path);
