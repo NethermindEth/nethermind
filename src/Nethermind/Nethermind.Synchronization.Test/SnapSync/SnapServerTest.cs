@@ -20,19 +20,19 @@ public class SnapServerTest
     [Test]
     public void TestGetAccountRange()
     {
-        IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
-        dbProviderServer.RegisterDb(DbNames.State, new MemDb());
+        MemDb stateDbServer = new();
+        MemDb codeDbServer = new();
+        TrieStore store = new(stateDbServer, LimboLogs.Instance);
 
-        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
 
         TestItem.Tree.FillStateTreeWithTestAccounts(tree);
 
-        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider(DbModeHint.Mem);
-        var stateDb = new MemDb();
-        dbProviderClient.RegisterDb(DbNames.State, stateDb);
+        var stateDbClient = new MemDb();
+        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
 
         ProgressTracker progressTracker = new(null, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
@@ -44,26 +44,26 @@ public class SnapServerTest
             accounts, proofs);
 
         Assert.AreEqual(AddRangeResult.OK, result);
-        Assert.AreEqual(11, stateDb.Keys.Count);
+        Assert.AreEqual(11, stateDbClient.Keys.Count);
         Assert.IsTrue(dbProviderClient.StateDb.KeyExists(tree.RootHash));
     }
 
     [Test]
     public void TestGetAccountRangeMultiple()
     {
-        IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
-        dbProviderServer.RegisterDb(DbNames.State, new MemDb());
+        MemDb stateDbServer = new();
+        MemDb codeDbServer = new();
+        TrieStore store = new(stateDbServer, LimboLogs.Instance);
 
-        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
 
         TestItem.Tree.FillStateTreeWithTestAccounts(tree);
 
-        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider(DbModeHint.Mem);
-        var stateDb = new MemDb();
-        dbProviderClient.RegisterDb(DbNames.State, stateDb);
+        MemDb stateDbClient = new();
+        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
 
         ProgressTracker progressTracker = new(null, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
@@ -84,20 +84,20 @@ public class SnapServerTest
             }
         }
         Assert.IsTrue(dbProviderClient.StateDb.KeyExists(tree.RootHash));
-        Assert.AreEqual(11, stateDb.Keys.Count);
+        Assert.AreEqual(11, stateDbClient.Keys.Count);
     }
 
     [Test]
     public void TestGetStorageRange()
     {
-        IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
-        dbProviderServer.RegisterDb(DbNames.State, new MemDb());
-        dbProviderServer.RegisterDb(DbNames.Code, new MemDb());
 
-        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TrieStore store = new(stateDb, LimboLogs.Instance);
+
         (StateTree InputStateTree, StorageTree InputStorageTree) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider(DbModeHint.Mem);
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -119,10 +119,10 @@ public class SnapServerTest
     [Test]
     public void TestWithHugeTree()
     {
-        MemDb dbServer = new MemDb();
-        IDbProvider dbProviderServer = new DbProvider(DbModeHint.Mem);
-        dbProviderServer.RegisterDb(DbNames.State, dbServer);
-        TrieStore store = new(dbProviderServer.StateDb, LimboLogs.Instance);
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TrieStore store = new(stateDb, LimboLogs.Instance);
+
         StateTree stateTree = new(store, LimboLogs.Instance);
 
         // generate Remote Tree
@@ -147,9 +147,9 @@ public class SnapServerTest
             accountWithStorage.Add(new PathWithAccount() { Path = Keccak.Compute(address.Bytes), Account = account });
         }
         stateTree.Commit(1);
-        Console.WriteLine(dbServer.Keys.Count);
+        Console.WriteLine(stateDb.Keys.Count);
 
-        SnapServer server = new(dbProviderServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
         PathWithAccount[] accounts;
         // size of one PathWithAccount ranges from 39 -> 72

@@ -118,7 +118,7 @@ public class InitializeNetwork : IStep
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
         if (_syncConfig.SnapServe)
         {
-            _api.SnapServer = new SnapServer(_api.DbProvider, _api.LogManager);
+            _api.SnapServer = new SnapServer(_api.ReadOnlyTrieStore!, _api.DbProvider.CodeDb, _api.LogManager);
         }
 
 

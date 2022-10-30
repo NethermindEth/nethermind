@@ -35,8 +35,8 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public class SnapServer : ISnapServer
 {
-    private readonly ITrieStore _store;
-    private readonly IDbProvider _dbProvider;
+    private readonly IReadOnlyTrieStore _store;
+    private readonly IReadOnlyKeyValueStore _codeDb;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -45,14 +45,10 @@ public class SnapServer : ISnapServer
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 10000;
 
-
-    public SnapServer(IDbProvider dbProvider, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
     {
-        _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-        _store = new TrieStore(
-            _dbProvider.StateDb,
-            logManager);
-
+        _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+        _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
     }
@@ -125,7 +121,7 @@ public class SnapServer : ISnapServer
             {
                 response.Add(Array.Empty<byte>());
             }
-            byte[]? code = _dbProvider.CodeDb.Get(codeHash);
+            byte[]? code = _codeDb[codeHash.Bytes];
             if (code is null) continue;
             response.Add(code);
             currentByteCount += code.Length;
