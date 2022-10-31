@@ -125,6 +125,6 @@ namespace Nethermind.Core.Extensions
             return leadingZeros;
         }
 
-        public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.IsEmpty || span.Length == 0;
+        public static bool IsNullOrEmpty<T>(this in Span<T> span) => span == null || span.Length == 0;
     }
 }

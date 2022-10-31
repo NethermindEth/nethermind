@@ -298,7 +298,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
             bool isSignatureOk = true;
             string signatureError = null;
-            if (vBytes.IsEmpty || rBytes.IsEmpty || sBytes.IsEmpty)
+            if (vBytes == null || rBytes == null || sBytes == null)
             {
                 isSignatureOk = false;
                 signatureError = "VRS null when decoding Transaction";
