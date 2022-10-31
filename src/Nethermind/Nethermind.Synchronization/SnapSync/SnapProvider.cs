@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathAndAccounts.Count == 0 && response.Proofs.Length == 0)
             {
-                _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
                 result = AddRangeResult.ExpiredRootHash;
             }
@@ -87,11 +87,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
             }
             else if (result == AddRangeResult.DifferentRootHash)
             {
-                _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
             return result;
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathsAndSlots.Count == 0 && response.Proofs.Length == 0)
             {
-                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
 
                 _progressTracker.ReportStorageRangeRequestFinished(request);
 
@@ -168,13 +168,13 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
             else if (result == AddRangeResult.DifferentRootHash)
             {
-                _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                if (_logger.IsTrace) _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
                     if (nodeData.Length == 0)
                     {
                         RetryAccountRefresh(requestedPath);
-                        _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
+                        if (_logger.IsTrace) _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
                         continue;
                     }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.SnapSync
                     catch (Exception exc)
                     {
                         RetryAccountRefresh(requestedPath);
-                        _logger.Warn($"SNAP - {exc.Message}:{requestedPath.PathAndAccount.Path}:{Bytes.ToHexString(nodeData)}");
+                        if (_logger.IsWarn) _logger.Warn($"SNAP - {exc.Message}:{requestedPath.PathAndAccount.Path}:{Bytes.ToHexString(nodeData)}");
                     }
                 }
                 else
