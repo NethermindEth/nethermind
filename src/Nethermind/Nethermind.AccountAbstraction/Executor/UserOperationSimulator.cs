@@ -209,7 +209,7 @@ namespace Nethermind.AccountAbstraction.Executor
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 transactionProcessor,
                 header,
-                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                Math.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
@@ -228,7 +228,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private (bool Success, string Error) TryCallAndRestore(
             ITransactionProcessor transactionProcessor,
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
@@ -247,7 +247,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private void CallAndRestore(
             ITransactionProcessor transactionProcessor,
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
