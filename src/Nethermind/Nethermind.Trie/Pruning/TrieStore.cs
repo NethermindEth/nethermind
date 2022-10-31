@@ -401,6 +401,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         lock (_dirtyNodes)
                         {
+                            using var locker = ConcurrentDictionaryLock<Keccak, TrieNode>.Acquire(_dirtyNodes.AllNodes);
                             while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                             {
                                 PruneCache();
