@@ -30,18 +30,18 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Org.BouncyCastle.Asn1.Cms;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1
+namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
     /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
     /// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>.
     /// </summary>
-    public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
+    public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedV1Handler
     {
         private readonly IBlockTree _blockTree;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPeerRefresher _peerRefresher;
         private readonly ISpecProvider _specProvider;
 
-        public ForkchoiceUpdatedV1Handler(
+        public ForkchoiceUpdatedHandler(
             IBlockTree blockTree,
             IManualBlockFinalizationManager manualBlockFinalizationManager,
             IPoSSwitcher poSSwitcher,

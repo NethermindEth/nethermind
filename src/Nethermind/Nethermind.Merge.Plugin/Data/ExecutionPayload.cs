@@ -25,17 +25,17 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Data
 {
     /// <summary>
     /// A data object representing a block as being sent from the execution layer to the consensus layer.
     ///
     /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#executionpayloadv1"/>
     /// </summary>
-    public class ExecutionPayloadV1
+    public class ExecutionPayload
     {
         // constructor needed for tests
-        public ExecutionPayloadV1()
+        public ExecutionPayload()
         {
             BlockHash = Keccak.Zero;
             ParentHash = Keccak.Zero;
@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             ExtraData = Array.Empty<byte>();
         }
 
-        public ExecutionPayloadV1(Block block)
+        public ExecutionPayload(Block block)
         {
             BlockHash = block.Hash!;
             ParentHash = block.ParentHash!;

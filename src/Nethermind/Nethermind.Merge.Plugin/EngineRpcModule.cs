@@ -24,15 +24,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IAsyncHandler<byte[], ExecutionPayloadV1?> _getPayloadHandlerV1;
-        private readonly IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1> _newPayloadV1Handler;
+        private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1;
+        private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
@@ -42,8 +41,8 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IAsyncHandler<byte[], ExecutionPayloadV1?> getPayloadHandlerV1,
-            IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1> newPayloadV1Handler,
+            IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
+            IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
@@ -61,11 +60,11 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 
-        public Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
+        public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
 
-        public Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV2(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
+        public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV2(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
 
-        public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
+        public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         {
             if (executionPayload.Withdrawals != null)
             {
@@ -79,7 +78,7 @@ namespace Nethermind.Merge.Plugin
             return await NewPayload(executionPayload, nameof(engine_newPayloadV1));
         }
 
-        public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayloadV1 executionPayload) =>
+        public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload) =>
             NewPayload(executionPayload, nameof(engine_newPayloadV2));
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
@@ -128,7 +127,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayloadV1 executionPayload, string methodName)
+        private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, string methodName)
         {
             if (await _locker.WaitAsync(_timeout))
             {
