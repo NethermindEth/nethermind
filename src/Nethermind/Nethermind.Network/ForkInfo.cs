@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Buffers.Binary;
+using System.Linq;
 using Force.Crc32;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -28,7 +29,8 @@ namespace Nethermind.Network
         public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
             uint crc = 0;
-            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionBlocks = specProvider
+                .TransitionBlocks.DistinctBy(fa => fa.BlockNumber).ToArray();
             byte[] blockNumberBytes = new byte[8];
             crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
@@ -49,16 +51,19 @@ namespace Nethermind.Network
 
         public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
+
             byte[] forkHash = CalculateForkHash(specProvider, headNumber, genesisHash);
             long next = 0;
-            for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
+            ForkActivation[] transitionBlocks = specProvider
+                .TransitionBlocks.DistinctBy(fa => fa.BlockNumber).ToArray();
+            for (int i = 0; i < transitionBlocks.Length; i++)
             {
-                if (specProvider.TransitionBlocks[i] >= ImpossibleBlockNumberWithSpaceForImpossibleForks)
+                long transition = transitionBlocks[i].BlockNumber;
+                if (transition >= ImpossibleBlockNumberWithSpaceForImpossibleForks)
                 {
                     continue;
                 }
 
-                long transition = specProvider.TransitionBlocks[i].BlockNumber;
                 if (transition > headNumber)
                 {
                     next = transition;
