@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            Signer signer = new(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
+            Signer signer = new(TestChainIds.ChainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
             _address = signer.Address;
 
             _auRaSealer = new AuRaSealer(

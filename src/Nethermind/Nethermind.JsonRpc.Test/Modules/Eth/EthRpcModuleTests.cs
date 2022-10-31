@@ -274,7 +274,7 @@ public partial class EthRpcModuleTests
                 .Done;
 
         Transaction createCodeTx = Build.A.Transaction
-            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(1).WithGasPrice(2)
+            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(TestChainIds.ChainId).WithGasPrice(2)
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
@@ -467,7 +467,7 @@ public partial class EthRpcModuleTests
                 .Done;
 
         Transaction createCodeTx = Build.A.Transaction
-            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(1).WithGasPrice(2)
+            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(TestChainIds.ChainId).WithGasPrice(2)
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
@@ -885,7 +885,7 @@ public partial class EthRpcModuleTests
 
         await ctx.Test.AddFunds(new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether());
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
-            .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+            .SignedAndResolved().WithChainId(TestChainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
@@ -921,7 +921,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithLondonEnabled();
         await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether()));
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
-            .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
+            .SignedAndResolved().WithChainId(TestChainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
             .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
         await ctx.Test.AddBlock(tx);
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
@@ -935,7 +935,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithLondonEnabled();
         await ctx.Test.AddFundsAfterLondon((new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether()));
         Transaction tx = Build.A.Transaction.WithData(new byte[] { 0, 1 })
-            .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
+            .SignedAndResolved().WithChainId(TestChainIds.ChainId).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
             .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
         await ctx.Test.AddBlock(tx);
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionByHash", tx.Hash!.ToString());
@@ -959,7 +959,7 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-        Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
+        Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestChainIds.ChainId, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
         string serialized = ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
@@ -1126,17 +1126,20 @@ public partial class EthRpcModuleTests
         public static async Task<Context> CreateWithLondonEnabled()
         {
             OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
-            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet };
+            TestSpecProvider specProvider = new(releaseSpec);
             return await Create(specProvider);
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge blockchainBridge = null) =>
-            new()
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge blockchainBridge = null)
+        {
+
+            var res = new Context()
             {
                 Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(specProvider),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
             };
-
+            return res;
+        }
         public void Dispose()
         {
             Test?.Dispose();

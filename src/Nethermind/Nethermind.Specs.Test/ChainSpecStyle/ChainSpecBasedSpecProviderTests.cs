@@ -240,9 +240,10 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         [Test]
         public void Chain_id_is_set_correctly()
         {
-            ChainSpec chainSpec = new() { Parameters = new ChainParameters(), ChainId = 5 };
+            ChainSpec chainSpec = new() { Parameters = new ChainParameters(), NetworkId = 2, ChainId = 5 };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
+            Assert.AreEqual(2, provider.NetworkId);
             Assert.AreEqual(5, provider.ChainId);
         }
 

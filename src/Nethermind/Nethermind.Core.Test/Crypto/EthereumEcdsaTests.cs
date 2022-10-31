@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test.Crypto
         public static IEnumerable<(string, Transaction)> TestCaseSources()
         {
             yield return ("legacy", Build.A.Transaction.SignedAndResolved().TestObject);
-            yield return ("access list", Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).SignedAndResolved().TestObject);
+            yield return ("access list", Build.A.Transaction.WithChainId(TestChainIds.ChainId).WithType(TxType.AccessList).SignedAndResolved().TestObject);
         }
 
         [TestCaseSource(nameof(TestCaseSources))]

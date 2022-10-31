@@ -121,7 +121,7 @@ namespace Nethermind.Mev
                     TracerFactory,
                     getFromApi.SpecProvider!,
                     getFromApi.EngineSigner,
-                    getFromApi.ChainSpec!.ChainId);
+                    getFromApi.ChainSpec!.NetworkId);
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 

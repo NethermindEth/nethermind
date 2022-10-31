@@ -35,8 +35,15 @@ namespace Nethermind.Specs
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
-        public ulong ChainId { get; set; }
+
+        public ulong? networkId;
+        public ulong NetworkId { get { return networkId ?? TestChainIds.NetworkId; } set { networkId = value; } }
+
+        public ulong? chainId;
+        public ulong ChainId { get { return chainId ?? TestChainIds.ChainId; } set { chainId = value; } }
+
         public ForkActivation[] TransitionBlocks { get; set; } = new ForkActivation[] { 0 };
+
         public bool AllowTestChainOverride { get; set; } = true;
 
         private TestSpecProvider() { }

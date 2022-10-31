@@ -40,9 +40,9 @@ namespace Nethermind.AccountAbstraction.Data
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
 
-        public void CalculateRequestId(Address entryPointAddress, ulong chainId)
+        public void CalculateRequestId(Address entryPointAddress, ulong networkId)
         {
-            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
+            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, networkId));
         }
 
         public UserOperationAbi Abi => new()

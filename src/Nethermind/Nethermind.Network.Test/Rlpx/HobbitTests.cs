@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test.Rlpx
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
-            message.ChainId = 5;
+            message.NetworkId = 5;
 
             StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);

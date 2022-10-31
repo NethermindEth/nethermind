@@ -48,9 +48,9 @@ namespace Nethermind.Core
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
 
-        public static string GetChainName(ulong chainId)
+        public static string GetChainName(ulong networkId)
         {
-            return chainId switch
+            return networkId switch
             {
                 Olympic => "Olympic",
                 Mainnet => "Mainnet",
@@ -69,8 +69,14 @@ namespace Nethermind.Core
                 PoaCore => "PoaCore",
                 Volta => "Volta",
                 Sepolia => "Sepolia",
-                _ => chainId.ToString()
+                _ => networkId.ToString()
             };
         }
+    }
+
+    public static class TestChainIds
+    {
+        public const int NetworkId = 1;
+        public const int ChainId = 1;
     }
 }

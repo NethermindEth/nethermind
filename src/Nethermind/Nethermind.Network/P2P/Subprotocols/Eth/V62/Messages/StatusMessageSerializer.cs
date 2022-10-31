@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             byteBuffer.EnsureWritable(totalLength);
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.ProtocolVersion);
-            rlpStream.Encode(message.ChainId);
+            rlpStream.Encode(message.NetworkId);
             rlpStream.Encode(message.TotalDifficulty);
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);
@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
-                Rlp.LengthOf(message.ChainId) +
+                Rlp.LengthOf(message.NetworkId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
                 Rlp.LengthOf(message.BestHash) +
                 Rlp.LengthOf(message.GenesisHash) +
@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             StatusMessage statusMessage = new();
             rlpStream.ReadSequenceLength();
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
-            statusMessage.ChainId = rlpStream.DecodeUInt256();
+            statusMessage.NetworkId = rlpStream.DecodeUInt256();
             statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
             statusMessage.BestHash = rlpStream.DecodeKeccak();
             statusMessage.GenesisHash = rlpStream.DecodeKeccak();

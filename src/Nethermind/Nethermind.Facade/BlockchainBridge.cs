@@ -282,7 +282,7 @@ namespace Nethermind.Facade
             return _processingEnv.StateReader.GetNonce(stateRoot, address);
         }
 
-        public ulong GetNetworkId() => _processingEnv.BlockTree.ChainId;
+        public ulong GetNetworkId() => _processingEnv.BlockTree.NetworkId;
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);

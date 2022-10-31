@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain
             _wrapped = wrapped;
         }
 
+        public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;

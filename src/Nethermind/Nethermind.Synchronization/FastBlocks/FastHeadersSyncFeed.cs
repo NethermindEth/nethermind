@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _lowestRequestedHeaderNumber = startNumber + 1;
 
-            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+            _historicalOverrides.TryGetValue(_blockTree.NetworkId, out _expectedDifficultyOverride);
         }
 
         protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;

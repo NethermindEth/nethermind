@@ -52,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly Channel<BlockReplacementEventArgs> _headBlocksReplacementChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
         private readonly Channel<BlockEventArgs> _headBlockChannel = Channel.CreateUnbounded<BlockEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private readonly ulong _chainId;
+        private readonly ulong _networkId;
 
         private UInt256 _currentBaseFee;
 
@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Source
             IUserOperationSimulator userOperationSimulator,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationBroadcaster userOperationBroadcaster,
-            ulong chainId
+            ulong networkId
             )
         {
             _blockTree = blockTree;
@@ -86,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationBroadcaster = userOperationBroadcaster;
             _userOperationSimulator = userOperationSimulator;
-            _chainId = chainId;
+            _networkId = networkId;
 
             // topic hash emitted by a successful user operation
             _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
@@ -260,7 +260,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
-            userOperation.CalculateRequestId(_entryPointAddress, _chainId);
+            userOperation.CalculateRequestId(_entryPointAddress, _networkId);
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} received");
 

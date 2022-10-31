@@ -311,7 +311,7 @@ namespace Nethermind.Network
                 SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
                 _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 {
-                    ChainId = typedArgs.ChainId,
+                    NetworkId = typedArgs.NetworkId,
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
                     ProtocolVersion = typedArgs.ProtocolVersion,
