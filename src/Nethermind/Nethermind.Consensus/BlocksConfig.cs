@@ -31,9 +31,6 @@ namespace Nethermind.Consensus
         private byte[] _extraDataBytes = Encoding.UTF8.GetBytes("Nethermind");
         private string _extraDataString = "Nethermind";
 
-
-        //public bool MiningEnabled { get; set; }
-
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
 
@@ -61,7 +58,6 @@ namespace Nethermind.Consensus
                 _extraDataBytes = bytes;
             }
         }
-
 
         public byte[] GetExtraDataBytes()
         {

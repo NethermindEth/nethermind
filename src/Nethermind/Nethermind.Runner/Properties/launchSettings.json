@@ -37,7 +37,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --Mining.ExtraData=\"sex\" --Blocks.ExtraData=\"sexxx\" --JsonRpc.Enabled true",
+      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
