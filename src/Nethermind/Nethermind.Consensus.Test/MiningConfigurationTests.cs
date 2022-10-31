@@ -57,7 +57,7 @@ public class MiningConfigurationTests
 
         string testValueB = "Test 000";
         miningConfig.ExtraData = testValueB;
-            
+
         Assert.Throws<InvalidConfigurationException>(() => MigrateConfigs.MigrateBlocksConfig(blocksConfig, miningConfig.BlocksConfig));
     }
 }
