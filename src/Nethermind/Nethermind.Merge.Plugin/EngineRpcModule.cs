@@ -63,6 +63,8 @@ namespace Nethermind.Merge.Plugin
 
         public Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
 
+        public Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV2(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
+
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
         {
             if (executionPayload.Withdrawals != null)
