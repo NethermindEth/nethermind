@@ -298,7 +298,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<IList<byte[]>> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
+        public async Task<IReadOnlyList<byte[]>> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
         {
             var request = new GetByteCodesMessage()
             {
@@ -314,7 +314,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Codes;
         }
 
-        public async Task<IList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        public async Task<IReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
             PathGroup[] groups = GetPathGroups(request);
 

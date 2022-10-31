@@ -30,9 +30,9 @@ namespace Nethermind.Synchronization.SnapSync
         public SlotsAndProofs? StorageRangeResponse { get; set; }
 
         public Keccak[]? CodesRequest { get; set; }
-        public IList<byte[]>? CodesResponse { get; set; }
+        public IReadOnlyList<byte[]>? CodesResponse { get; set; }
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
-        public IList<byte[]>? AccountsToRefreshResponse { get; set; }
+        public IReadOnlyList<byte[]>? AccountsToRefreshResponse { get; set; }
     }
 }

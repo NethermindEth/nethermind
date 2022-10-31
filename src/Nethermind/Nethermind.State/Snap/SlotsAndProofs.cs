@@ -8,7 +8,7 @@ namespace Nethermind.State.Snap
 {
     public class SlotsAndProofs
     {
-        public IList<PathWithStorageSlot[]> PathsAndSlots { get; set; }
+        public IReadOnlyList<PathWithStorageSlot[]> PathsAndSlots { get; set; }
         public byte[][] Proofs { get; set; }
     }
 }

@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.CodesRequest is not null)
                 {
-                    Task<IList<byte[]>> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
+                    Task<IReadOnlyList<byte[]>> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
 
                     await task.ContinueWith(
                         (t, state) =>
@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.AccountsToRefreshRequest is not null)
                 {
-                    Task<IList<byte[]>> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+                    Task<IReadOnlyList<byte[]>> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
 
                     await task.ContinueWith(
                         (t, state) =>

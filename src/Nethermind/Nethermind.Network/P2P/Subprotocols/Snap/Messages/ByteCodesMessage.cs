@@ -35,6 +35,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public override int PacketType => SnapMessageCode.ByteCodes;
 
-        public IList<byte[]> Codes { get; }
+        public IReadOnlyList<byte[]> Codes { get; }
     }
 }

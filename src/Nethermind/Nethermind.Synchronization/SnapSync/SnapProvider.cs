@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, IList<PathWithAccount> accounts, byte[][] proofs = null)
+        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, IReadOnlyList<PathWithAccount> accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
 
@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, IList<byte[]> response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IReadOnlyList<byte[]> response)
         {
             int respLength = response.Count;
 
@@ -244,7 +244,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(Keccak[] requestedHashes, IList<byte[]> codes)
+        public void AddCodes(Keccak[] requestedHashes, IReadOnlyList<byte[]> codes)
         {
             HashSet<Keccak> set = requestedHashes.ToHashSet();
 

@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.SnapSync
         private static object _syncCommit = new();
 
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
-            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, IList<PathWithAccount> accounts, byte[][] proofs = null)
+            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, IReadOnlyList<PathWithAccount> accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
