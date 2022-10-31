@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -241,7 +241,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -272,7 +272,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3855Enabled { get; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the 
+        /// Gets or sets a value indicating whether the
         /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
         /// validator withdrawals are enabled.
         /// </summary>
@@ -292,7 +292,9 @@ namespace Nethermind.Core.Specs
 
         public long Eip1559TransitionBlock { get; }
 
-        // STATE related 
+        public ulong WithdrawalTimestamp { get; }
+
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
