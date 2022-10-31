@@ -47,14 +47,14 @@ public class RangeQueryVisitorTests
         var startHash = (new Keccak("0000000000000000000000000000000000000000000000000000000001113456")).Bytes;
         var limitHash = (new Keccak("0000000000000000000000000000000000000000000000000000000001123458")).Bytes;
 
-        RangeQueryVisitor visitor = new(startHash, limitHash, false);
+        using RangeQueryVisitor visitor = new(startHash, limitHash, false);
         VisitingOptions opt = new()
         {
             ExpectAccounts = false,
             KeepTrackOfAbsolutePath = true
         };
         _inputTree.Accept(visitor, _inputTree.RootHash, opt);
-        (var nodes, long _) = visitor.GetNodesAndSize();
+        (Dictionary<byte[], byte[]> nodes, long _) = visitor.GetNodesAndSize();
 
         Assert.AreEqual(nodes.Count, 4);
 
@@ -64,7 +64,6 @@ public class RangeQueryVisitorTests
             Rlp.Encode(TestItem.Tree.AccountsWithPaths[k + 2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
             k += 1;
         }
-        visitor.Dispose();
     }
 
     [Test]
@@ -73,7 +72,7 @@ public class RangeQueryVisitorTests
         TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
         (StateTree inputStateTree, StorageTree inputStorageTree) = TestItem.Tree.GetTrees(store);
 
-        RangeQueryVisitor visitor = new(Keccak.Zero.Bytes, Keccak.MaxValue.Bytes, false);
+        using RangeQueryVisitor visitor = new(Keccak.Zero.Bytes, Keccak.MaxValue.Bytes, false);
         VisitingOptions opt = new()
         {
             ExpectAccounts = false,
@@ -89,6 +88,5 @@ public class RangeQueryVisitorTests
             pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k + 0].SlotRlpValue);
             k += 1;
         }
-        visitor.Dispose();
     }
 }

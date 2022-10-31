@@ -131,11 +131,6 @@ namespace Nethermind.Trie
                 int chop = 2 - (nibbles[0] & 1);
                 return nibbles[chop..].ToArray();
             }
-            catch (Exception)
-            {
-                ArrayPool<byte>.Shared.Return(array);
-                throw;
-            }
             finally
             {
                 ArrayPool<byte>.Shared.Return(array);

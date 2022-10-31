@@ -199,24 +199,12 @@ public class SnapServer : ISnapServer
         long byteLimit, long hardByteLimit, bool isStorage = false)
     {
         PatriciaTree tree = new(_store, _logManager);
-        RangeQueryVisitor visitor = null;
-        try
-        {
-            visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
-            VisitingOptions opt = new() { ExpectAccounts = false, KeepTrackOfAbsolutePath = true };
-            tree.Accept(visitor, rootHash, opt);
-            (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-            return (requiredNodes, responseSize, visitor._isStoppedDueToHardLimit);
-        }
-        catch (Exception)
-        {
-            visitor?.Dispose();
-            throw;
-        }
-        finally
-        {
-            visitor?.Dispose();
-        }
+        using RangeQueryVisitor visitor = new(startingHash.Bytes, limitHash.Bytes, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit);
+        VisitingOptions opt = new() { ExpectAccounts = false, KeepTrackOfAbsolutePath = true };
+        tree.Accept(visitor, rootHash, opt);
+        (Dictionary<byte[], byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
+        return (requiredNodes, responseSize, visitor._isStoppedDueToHardLimit);
+
     }
 
     private Account? GetAccountByPath(StateTree tree, Keccak rootHash, byte[] accountPath)
