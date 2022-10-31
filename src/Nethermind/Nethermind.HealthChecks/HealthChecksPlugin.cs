@@ -141,7 +141,7 @@ namespace Nethermind.HealthChecks
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {
-                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api);
+                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api.MessageBus, _initConfig, _healthChecksConfig, _logger);
                 _freeDiskSpaceChecker.StartAsync(default);
             }
 

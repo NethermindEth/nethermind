@@ -44,12 +44,12 @@ namespace Nethermind.HealthChecks
         private Task _timerTask;
         public static readonly int BytesToGB = 1024 << 20;
 
-        public FreeDiskSpaceChecker(INethermindApi api)
+        public FreeDiskSpaceChecker(ISimpleMessageBus messageBus, IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger)
         {
-            _messageBus = api.MessageBus;
-            _healthChecksConfig = api.Config<IHealthChecksConfig>();
-            _initConfig = api.Config<IInitConfig>();
-            _logger = api.LogManager.GetClassLogger();
+            _messageBus = messageBus;
+            _healthChecksConfig = healthChecksConfig;
+            _initConfig = initConfig;
+            _logger = logger;
 
             _timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
         }
