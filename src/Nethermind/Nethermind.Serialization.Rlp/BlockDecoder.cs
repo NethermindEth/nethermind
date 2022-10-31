@@ -134,12 +134,9 @@ namespace Nethermind.Serialization.Rlp
         private int GetWithdrawalsLength(Block item, RlpBehaviors rlpBehaviors)
         {
             int withdrawalLength = 0;
-            if (item.Withdrawals != null)
+            for (int i = 0, count = item.Withdrawals?.Length ?? 0; i < count; i++)
             {
-                for (int i = 0; i < item.Transactions.Length; i++)
-                {
-                    withdrawalLength += _withdrawalDecoder.GetLength(item.Withdrawals[i], rlpBehaviors);
-                }
+                withdrawalLength += _withdrawalDecoder.GetLength(item.Withdrawals[i], rlpBehaviors);
             }
 
             return withdrawalLength;
