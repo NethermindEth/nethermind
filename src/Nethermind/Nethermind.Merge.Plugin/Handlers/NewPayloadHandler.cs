@@ -32,19 +32,19 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1
+namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
     /// Verifies the payload according to the execution environment rule set (EIP-3675) and returns the <see cref="PayloadStatusV1"/> of the verification and the hash of the last valid block.
     ///
     /// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1"/>
     /// </summary>
-    public class NewPayloadV1Handler : IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1>
+    public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ProcessingOptions _defaultProcessingOptions;
         private readonly TimeSpan _timeout;
 
-        public NewPayloadV1Handler(
+        public NewPayloadHandler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
             IInitConfig initConfig,
@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
         }
 
-        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
+        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
         {
             string requestStr = $"a new payload: {request}";
             if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
@@ -420,7 +420,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return isValid;
         }
 
-        private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayloadV1 request, string? validationMessage) =>
+        private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayload request, string? validationMessage) =>
             new()
             {
                 Status = PayloadStatus.Invalid,

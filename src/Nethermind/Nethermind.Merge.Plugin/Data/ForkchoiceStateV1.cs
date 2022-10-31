@@ -17,7 +17,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Data
 {
     /// <summary>
     /// Arguments to engine_ForkChoiceUpdate

@@ -13,7 +13,6 @@
 //
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
 
 using System;
 using System.Collections;
@@ -33,7 +32,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,10 +52,10 @@ public partial class EngineModuleTests
         PayloadAttributes payload = new() { Timestamp = Timestamper.UnixTime.Seconds, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
-        ResultWrapper<ExecutionPayloadV1?> responseFirst = await rpc.engine_getPayloadV1(payloadId);
+        ResultWrapper<ExecutionPayload?> responseFirst = await rpc.engine_getPayloadV1(payloadId);
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Success);
-        ResultWrapper<ExecutionPayloadV1?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
+        ResultWrapper<ExecutionPayload?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
         responseSecond.Should().NotBeNull();
         responseSecond.Result.ResultType.Should().Be(ResultType.Success);
         responseSecond.Data!.BlockHash!.Should().Be(responseFirst.Data!.BlockHash!);
@@ -88,7 +87,7 @@ public partial class EngineModuleTests
 
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
@@ -113,7 +112,7 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
 
         await blockImprovementLock.WaitAsync(10000);
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
@@ -167,7 +166,7 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         return getPayloadResult.Transactions.Length;
     }
@@ -182,7 +181,7 @@ public partial class EngineModuleTests
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
-        ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
+        ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
         getPayloadResult.ParentHash.Should().Be(startingHead);
 
 
@@ -211,7 +210,7 @@ public partial class EngineModuleTests
             .PayloadId!;
 
         byte[] requestedPayloadId = Bytes.FromHexString("0x45bd36a8143d860d");
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
 
         response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
@@ -316,7 +315,7 @@ public partial class EngineModuleTests
 
         await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c =>
@@ -369,7 +368,7 @@ public partial class EngineModuleTests
         await blockImprovementStartsLock.WaitAsync(100); // started improving block
         improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();

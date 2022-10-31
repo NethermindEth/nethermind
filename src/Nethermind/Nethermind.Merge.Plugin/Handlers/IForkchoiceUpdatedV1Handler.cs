@@ -18,7 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
