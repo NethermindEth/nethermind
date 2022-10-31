@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -24,17 +25,17 @@ namespace Nethermind.Specs.Test
 {
     public class CustomSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
-        private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
+        private ForkActivation? _theMergeBlock = null;
+        private (ForkActivation forkActivation, IReleaseSpec Release)[] _transitions;
 
         public ulong ChainId { get; }
-        public long[] TransitionBlocks { get; }
+        public ForkActivation[] TransitionBlocks { get; }
 
-        public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions) : this(0, transitions)
+        public CustomSpecProvider(params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
         }
 
-        public CustomSpecProvider(ulong chainId, params (long BlockNumber, IReleaseSpec Release)[] transitions)
+        public CustomSpecProvider(ulong chainId, params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions)
         {
             ChainId = chainId;
 
@@ -43,10 +44,10 @@ namespace Nethermind.Specs.Test
                 throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
             }
 
-            _transitions = transitions.OrderBy(r => r.BlockNumber).ToArray();
-            TransitionBlocks = _transitions.Select(t => t.BlockNumber).ToArray();
+            _transitions = transitions.OrderBy(r => r.forkActivation).ToArray();
+            TransitionBlocks = _transitions.Select(t => t.forkActivation).ToArray();
 
-            if (transitions[0].BlockNumber != 0L)
+            if (transitions[0].forkActivation.BlockNumber != 0L)
             {
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }
@@ -60,7 +61,7 @@ namespace Nethermind.Specs.Test
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
 #pragma warning disable CS8602
@@ -69,12 +70,12 @@ namespace Nethermind.Specs.Test
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec GetSpec(ForkActivation forkActivation)
         {
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
             {
-                if (blockNumber >= _transitions[i].BlockNumber)
+                if (forkActivation >= _transitions[i].forkActivation)
                 {
                     spec = _transitions[i].Release;
                 }
@@ -91,8 +92,8 @@ namespace Nethermind.Specs.Test
         {
             get
             {
-                (long blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
-                return daoRelease != null ? blockNumber : (long?)null;
+                (ForkActivation forkActivation, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
+                return daoRelease != null ? forkActivation.BlockNumber : null;
             }
         }
 

@@ -88,7 +88,7 @@ namespace Nethermind.Core
 
         public long GasUsed => Header.GasUsed; // do not add setter here
 
-        public UInt256 Timestamp => Header.Timestamp; // do not add setter here
+        public ulong Timestamp => Header.Timestamp; // do not add setter here
 
         public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 

@@ -43,5 +43,6 @@ namespace Nethermind.Network.Config
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
+        public long SimulateSendLatencyMs { get; set; } = 0;
     }
 }
