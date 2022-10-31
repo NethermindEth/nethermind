@@ -37,6 +37,7 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
+        private IAvailableSpaceGetter _availableSpaceGetter => new AvailableSpaceGetter();
 
         private ClHealthLogger _clHealthLogger;
         private FreeDiskSpaceChecker _freeDiskSpaceChecker;
@@ -124,7 +125,7 @@ namespace Nethermind.HealthChecks
         {
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, _initConfig.IsMining);
+                _api.EthSyncingInfo!, _api, _availableSpaceGetter, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
             {
@@ -141,7 +142,7 @@ namespace Nethermind.HealthChecks
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {
-                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api.MessageBus, _initConfig, _healthChecksConfig, _logger);
+                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api.MessageBus, _initConfig, _healthChecksConfig, _logger, _availableSpaceGetter);
                 _freeDiskSpaceChecker.StartAsync(default);
             }
 

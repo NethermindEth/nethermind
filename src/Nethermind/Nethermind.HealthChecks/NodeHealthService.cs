@@ -45,6 +45,7 @@ namespace Nethermind.HealthChecks
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly INethermindApi _api;
+        private readonly IAvailableSpaceGetter _availableSpaceGetter;
         private readonly bool _isMining;
 
         public NodeHealthService(
@@ -55,6 +56,7 @@ namespace Nethermind.HealthChecks
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
             INethermindApi api,
+            IAvailableSpaceGetter availableSpaceGetter,
             bool isMining)
         {
             _syncServer = syncServer;
@@ -66,6 +68,7 @@ namespace Nethermind.HealthChecks
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
             _api = api;
+            _availableSpaceGetter = availableSpaceGetter;
         }
 
         public CheckHealthResult CheckHealth()
@@ -127,11 +130,10 @@ namespace Nethermind.HealthChecks
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
             {
-                DriveInfo di = new(_initConfig.BaseDbPath);
-                double freeSpacePcnt = (double)di.AvailableFreeSpace / di.TotalSize * 100;
+                (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace(_initConfig.BaseDbPath);
                 if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
-                    double freeSpaceGB = (double)di.AvailableFreeSpace / FreeDiskSpaceChecker.BytesToGB;
+                    double freeSpaceGB = (double)freeSpace / FreeDiskSpaceChecker.BytesToGB;
                     AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
                     healthy &= false;
                 }
@@ -249,7 +251,7 @@ namespace Nethermind.HealthChecks
 
         private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, double freeSpaceGB, double freeSpacePcnt)
         {
-            messages.Add(("Low free disk space", $"The node is running out of free disk space - only {freeSpaceGB:0.00} GB ({freeSpacePcnt:0.00}%) left"));
+            messages.Add(("Low free disk space", $"The node is running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left"));
         }
     }
 }

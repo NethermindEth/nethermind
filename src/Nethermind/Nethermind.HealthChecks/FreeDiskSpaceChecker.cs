@@ -34,24 +34,27 @@ namespace Nethermind.HealthChecks
         public long AvailableDiskSpce { get; init; }
     }
 
-    internal class FreeDiskSpaceChecker : IHostedService, IAsyncDisposable
+    public class FreeDiskSpaceChecker : IHostedService, IAsyncDisposable
     {
         private readonly ISimpleMessageBus _messageBus;
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
+        private readonly IAvailableSpaceGetter _availableSpaceGetter;
         private readonly PeriodicTimer _timer;
         private Task _timerTask;
         public static readonly int BytesToGB = 1024 << 20;
+        private static readonly int CheckPeriodMinutes = 5;
 
-        public FreeDiskSpaceChecker(ISimpleMessageBus messageBus, IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger)
+        public FreeDiskSpaceChecker(ISimpleMessageBus messageBus, IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter)
         {
             _messageBus = messageBus;
             _healthChecksConfig = healthChecksConfig;
             _initConfig = initConfig;
             _logger = logger;
+            _availableSpaceGetter = availableSpaceGetter;
 
-            _timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+            _timer = new PeriodicTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
         }
 
         private async Task CheckDiskSpace(CancellationToken cancellationToken)
@@ -60,21 +63,20 @@ namespace Nethermind.HealthChecks
             {
                 while (await _timer.WaitForNextTickAsync(cancellationToken))
                 {
-                    DriveInfo di = new(_initConfig.BaseDbPath);
-                    double freeSpacePcnt = (double)di.AvailableFreeSpace / di.TotalSize * 100;
+                    (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace(_initConfig.BaseDbPath);
                     if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
                     {
                         if (_logger.IsError)
                             _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
-                        await _messageBus.Publish(new LowDiskSpaceMessage(di.AvailableFreeSpace));
+                        await _messageBus.Publish(new LowDiskSpaceMessage(freeSpace));
                         _timer.Dispose();
                         break;
                     }
                     if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                     {
-                        double freeSpaceGB = (double)di.AvailableFreeSpace / BytesToGB;
+                        double freeSpaceGB = (double)freeSpace / BytesToGB;
                         if (_logger.IsWarn)
-                            _logger.Warn($"Running out of free disk space - only {freeSpaceGB:0.00} GB ({freeSpacePcnt:0.00}%) left!");
+                            _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
                     }
                 }
             }
