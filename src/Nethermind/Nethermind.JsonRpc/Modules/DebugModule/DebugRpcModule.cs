@@ -274,7 +274,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<bool>.Success(true);
         }
 
-        public Task<ResultWrapper<SyncReportSymmary>> debug_getSynsStage()
+        public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
         {
             return ResultWrapper<SyncReportSymmary>.Success(ReportSink.Snapshot);
         }

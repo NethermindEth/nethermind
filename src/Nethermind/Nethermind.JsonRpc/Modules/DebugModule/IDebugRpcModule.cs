@@ -100,6 +100,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
 
         [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
-        Task<ResultWrapper<SyncReportSymmary>> debug_getSynsStage();
+        Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
     }
 }
