@@ -45,6 +45,6 @@ public interface IMiningConfig : IConfig
         DefaultValue = "Nethermind")]
     string ExtraData { get; set; }
 
-    [ConfigItem(HiddenFromDocs = true)]
+    [ConfigItem(HiddenFromDocs = true, DisabledForCli = true, DefaultValue = "null")]
     IBlocksConfig? BlocksConfig { get; }
 }
