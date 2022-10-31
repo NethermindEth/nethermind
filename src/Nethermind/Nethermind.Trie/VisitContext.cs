@@ -34,9 +34,7 @@ namespace Nethermind.Trie
 
         private List<byte>? _absolutePathNibbles;
 
-        public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??
-                                                 LazyInitializer.EnsureInitialized(ref _absolutePathNibbles,
-                                                     () => new List<byte>());
+        public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??= new List<byte>();
 
         public int MaxDegreeOfParallelism
         {
@@ -46,12 +44,12 @@ namespace Nethermind.Trie
 
         public AbsolutePathStruct AbsolutePathNext(byte[] path)
         {
-            return !KeepTrackOfAbsolutePath ? new AbsolutePathStruct(null, path) : new AbsolutePathStruct(AbsolutePathNibbles, path);
+            return new AbsolutePathStruct(!KeepTrackOfAbsolutePath ? null : AbsolutePathNibbles, path);
         }
 
         public AbsolutePathStruct AbsolutePathNext(byte path)
         {
-            return !KeepTrackOfAbsolutePath ? new AbsolutePathStruct(null, path) : new AbsolutePathStruct(AbsolutePathNibbles, path);
+            return new AbsolutePathStruct(!KeepTrackOfAbsolutePath ? null : AbsolutePathNibbles, path);
         }
 
         public SemaphoreSlim Semaphore
