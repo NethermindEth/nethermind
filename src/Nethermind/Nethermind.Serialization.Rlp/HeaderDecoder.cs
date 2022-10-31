@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -27,6 +27,7 @@ namespace Nethermind.Serialization.Rlp
         // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
         // but then RLP would have to be passed into so many places
         public static long Eip1559TransitionBlock = long.MaxValue;
+        public static ulong WithdrawalTimestamp = ulong.MaxValue;
 
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -88,7 +89,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (blockHeader.Timestamp >= WithdrawalTimestamp)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             }
@@ -161,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (blockHeader.Timestamp >= WithdrawalTimestamp)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
             }
@@ -218,7 +219,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.WithdrawalsRoot != null)
+            if (header.Timestamp >= WithdrawalTimestamp)
             {
                 rlpStream.Encode(header.WithdrawalsRoot);
             }
@@ -260,7 +261,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null ? 0 : Rlp.LengthOf(item.WithdrawalsRoot));
+                                + (item.Timestamp < WithdrawalTimestamp ? 0 : Rlp.LengthOf(item.WithdrawalsRoot));
 
             if (notForSealing)
             {

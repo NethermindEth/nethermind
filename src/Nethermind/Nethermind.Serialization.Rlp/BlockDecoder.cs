@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -66,7 +66,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal> withdrawals = null;
 
-            if (rlpStream.IsSequenceNext())
+            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
             {
                 int withdrawalsCheck = rlpStream.Position + rlpStream.ReadSequenceLength();
                 withdrawals = new();
@@ -78,7 +78,7 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.Check(withdrawalsCheck);
             }
-            
+
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(blockCheck);
@@ -97,10 +97,14 @@ namespace Nethermind.Serialization.Rlp
             int unclesLength = GetUnclesLength(item, rlpBehaviors);
             contentLength += Rlp.LengthOfSequence(unclesLength);
 
-            int? withdrawalsLength = GetWithdrawalsLength(item, rlpBehaviors);
+            int? withdrawalsLength = null;
+            if (item.Header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            {
+                withdrawalsLength = GetWithdrawalsLength(item, rlpBehaviors);
 
-            if (withdrawalsLength.HasValue)
-                contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
+                if (withdrawalsLength.HasValue)
+                    contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
+            }
 
             return (contentLength, txLength, unclesLength, withdrawalsLength);
         }
@@ -127,8 +131,19 @@ namespace Nethermind.Serialization.Rlp
             return txLength;
         }
 
-        private int? GetWithdrawalsLength(Block item, RlpBehaviors rlpBehaviors) =>
-            item.Withdrawals?.Sum(w => _withdrawalDecoder.GetLength(w, rlpBehaviors));
+        private int GetWithdrawalsLength(Block item, RlpBehaviors rlpBehaviors)
+        {
+            int withdrawalLength = 0;
+            if (item.Withdrawals != null)
+            {
+                for (int i = 0; i < item.Transactions.Length; i++)
+                {
+                    withdrawalLength += _withdrawalDecoder.GetLength(item.Withdrawals[i], rlpBehaviors);
+                }
+            }
+
+            return withdrawalLength;
+        }
 
         public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
         {
@@ -174,8 +189,8 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Check(unclesCheck);
 
             List<Withdrawal> withdrawals = null;
-            
-            if (decoderContext.IsSequenceNext())
+
+            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
             {
                 int withdrawalsCheck = decoderContext.Position + decoderContext.ReadSequenceLength();
                 withdrawals = new();
@@ -234,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
             if (withdrawalsLength.HasValue)
             {
                 stream.StartSequence(withdrawalsLength.Value);
-                
+
                 for (int i = 0; i < item.Withdrawals.Length; i++)
                 {
                     stream.Encode(item.Withdrawals[i]);
