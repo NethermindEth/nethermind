@@ -118,16 +118,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (spec.IsEip4895Enabled && payloadAttributes.Withdrawals is null)
                 {
                     var error = "Withdrawals are null with EIP-4895 activated.";
-                    
+
                     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
-                    
+
                     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                 }
 
                 if (!spec.IsEip4895Enabled && payloadAttributes.Withdrawals is not null)
                 {
                     var error = "Withdrawals are not null with EIP-4895 not activated.";
-                    
+
                     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
 
                     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
