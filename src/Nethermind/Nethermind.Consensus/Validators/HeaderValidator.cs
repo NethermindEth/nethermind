@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.Validators
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");

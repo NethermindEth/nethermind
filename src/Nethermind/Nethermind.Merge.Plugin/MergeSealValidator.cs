@@ -34,8 +34,8 @@ public class MergeSealValidator : ISealValidator
         _poSSwitcher = poSSwitcher;
         _preMergeSealValidator = preMergeSealValidator;
     }
-    public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
-        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header);
+    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
+        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header, isUncle);
 
     public bool ValidateSeal(BlockHeader header, bool force)
     {
