@@ -138,5 +138,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
         public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
+        public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
     }
 }
