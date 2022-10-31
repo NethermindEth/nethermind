@@ -495,7 +495,9 @@ public class InitializeNetwork : IStep
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
-            _api.LogManager);
+            _api.LogManager,
+            TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs)
+        );
 
         await _api.RlpxPeer.Init();
 

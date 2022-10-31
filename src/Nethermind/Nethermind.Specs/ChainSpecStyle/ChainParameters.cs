@@ -120,6 +120,14 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public long? Eip1153Transition { get; set; }
+        /// <summary>
+        /// this feild will indicate the timestamp at which this EIP1153 will be enabled.
+        /// </summary>
+        public ulong? Eip1153TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
+        /// </summary>
+        public ulong? Eip3651TransitionTimestamp { get; set; }
     }
 }
