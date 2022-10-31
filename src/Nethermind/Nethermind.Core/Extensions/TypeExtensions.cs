@@ -23,7 +23,7 @@ namespace Nethermind.Core.Extensions
 
                 interfaces.RemoveAll(i => baseInterfaces.Contains(i));
 
-                if (interfaces.Contains(interfaceType) && interfaces.Count() == 1)
+                if (interfaces.Contains(interfaceType))
                 {
                     return implementation;
                 }

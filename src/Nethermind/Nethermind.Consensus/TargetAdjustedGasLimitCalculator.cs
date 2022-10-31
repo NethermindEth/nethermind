@@ -24,12 +24,12 @@ namespace Nethermind.Consensus
     public class TargetAdjustedGasLimitCalculator : IGasLimitCalculator
     {
         private readonly ISpecProvider _specProvider;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
 
-        public TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IMiningConfig? miningConfig)
+        public TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IBlocksConfig? miningConfig)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
 
         public long GetGasLimit(BlockHeader parentHeader)
@@ -37,7 +37,7 @@ namespace Nethermind.Consensus
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
+            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
             if (targetGasLimit != null)

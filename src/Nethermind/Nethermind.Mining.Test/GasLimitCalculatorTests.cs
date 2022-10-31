@@ -34,11 +34,11 @@ namespace Nethermind.Mining.Test
         [TestCase(3000000, 2000000, 2997072)]
         public void Test(long current, long target, long expected)
         {
-            MiningConfig miningConfig = new();
-            miningConfig.TargetBlockGasLimit = target;
+            BlocksConfig blocksConfig = new();
+            blocksConfig.TargetBlockGasLimit = target;
 
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(
-                MainnetSpecProvider.Instance, miningConfig);
+                MainnetSpecProvider.Instance, blocksConfig);
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
             targetAdjustedGasLimitCalculator.GetGasLimit(header).Should().Be(expected);

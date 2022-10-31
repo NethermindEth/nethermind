@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                new MiningConfig(),
+                new BlocksConfig(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            IMiningConfig miningConfig = new MiningConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
             TestBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance,
-                miningConfig);
+                blocksConfig);
             await AssertIsProducingBlocks(blockProducer);
         }
 
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            IMiningConfig miningConfig = new MiningConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
             MinedBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance,
-                miningConfig);
+                blocksConfig);
             await AssertIsProducingBlocks(blockProducer);
         }
 
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 Substitute.For<ISpecProvider>(),
                 LimboLogs.Instance,
-                Substitute.For<IMiningConfig>());
+                Substitute.For<IBlocksConfig>());
             await AssertIsProducingBlocks(blockProducer);
         }
 

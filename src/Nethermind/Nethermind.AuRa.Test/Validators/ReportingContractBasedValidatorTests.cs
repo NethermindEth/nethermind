@@ -228,7 +228,7 @@ namespace Nethermind.AuRa.Test.Validators
                     PosdaoTransition,
                     TxSender,
                     txPool,
-                    new MiningConfig(),
+                    new BlocksConfig(),
                     stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     specProvider,

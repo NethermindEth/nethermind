@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Transactions
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
             ISpecProvider? specProvider,
-            IMiningConfig? miningConfig = null)
+            IBlocksConfig? miningConfig = null)
         {
             if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
 

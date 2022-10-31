@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly ISpecProvider _specProvider;
         private readonly ISealEngine _sealEngine;
         private readonly ITimestamper _timestamper;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly ILogManager _logManager;
         private readonly IGasLimitCalculator? _gasLimitCalculator;
 
@@ -37,14 +37,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ISpecProvider specProvider,
             ISealEngine sealEngine,
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager,
             IGasLimitCalculator? gasLimitCalculator = null)
         {
             _specProvider = specProvider;
             _sealEngine = sealEngine;
             _timestamper = timestamper;
-            _miningConfig = miningConfig;
+            _blocksConfig = blocksConfig;
             _logManager = logManager;
             _gasLimitCalculator = gasLimitCalculator;
         }
@@ -61,12 +61,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 producerEnv.BlockTree,
                 blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
-                _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _miningConfig),
+                _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _blocksConfig),
                 _sealEngine,
                 _timestamper,
                 _specProvider,
                 _logManager,
-                _miningConfig);
+                _blocksConfig);
         }
     }
 }

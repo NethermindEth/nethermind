@@ -148,7 +148,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.FinalizationManager,
                     new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)),
                     _api.TxPool,
-                    NethermindApi.Config<IMiningConfig>(),
+                    NethermindApi.Config<IBlocksConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
@@ -183,7 +183,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>()),
+                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IBlocksConfig>()),
                     _api.LogManager);
 
                 return gasLimitCalculator;
@@ -274,7 +274,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             var minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
             ITxFilter txPoolFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                NethermindApi.Config<IMiningConfig>(),
+                NethermindApi.Config<IBlocksConfig>(),
                 _api,
                 txPoolReadOnlyTransactionProcessorSource,
                 minGasPricesContractDataStore,

@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IMiningConfig? miningConfig)
+            IBlocksConfig? miningConfig)
             : base(
                 txSource,
                 processor,
@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         // TODO: this seems to me that it should be done in the Eth2 seal engine?
         private void AmendHeader(BlockHeader blockHeader)
         {
-            blockHeader.ExtraData = MiningConfig.GetExtraDataBytes();
+            blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
         }
     }

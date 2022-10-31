@@ -51,7 +51,9 @@ namespace Nethermind.Consensus.Ethash
             EthashDifficultyCalculator difficultyCalculator = new(getFromApi.SpecProvider);
             Ethash ethash = new(getFromApi.LogManager);
 
-            setInApi.Sealer = getFromApi.Config<IMiningConfig>().Enabled
+            bool miningEnabled = getFromApi.Config<IMiningConfig>()
+                .Enabled;
+            setInApi.Sealer = miningEnabled
                 ? new EthashSealer(ethash, getFromApi.EngineSigner, getFromApi.LogManager)
                 : NullSealEngine.Instance;
             setInApi.SealValidator = new EthashSealValidator(getFromApi.LogManager, difficultyCalculator, getFromApi.CryptoRandom, ethash, _nethermindApi.Timestamper);

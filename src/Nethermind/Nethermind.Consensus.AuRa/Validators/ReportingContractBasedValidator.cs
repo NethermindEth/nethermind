@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             long posdaoTransition,
             ITxSender txSender,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             IReadOnlyStateProvider stateProvider,
             Cache cache,
             ISpecProvider specProvider,

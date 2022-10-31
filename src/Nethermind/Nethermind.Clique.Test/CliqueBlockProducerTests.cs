@@ -186,7 +186,7 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
+                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
                     MainnetSpecProvider.Instance,
                     _cliqueConfig,
                     nodeLogManager);

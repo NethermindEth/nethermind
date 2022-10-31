@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Producers
 {
     public class DevBlockProducer : BlockProducerBase, IDisposable
     {
-        private readonly IMiningConfig _miningConfig;
+        private new readonly IBlocksConfig _blocksConfig;
 
         public DevBlockProducer(
             ITxSource? txSource,
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Producers
             IBlockProductionTrigger? trigger,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
-            IMiningConfig? miningConfig,
+            IBlocksConfig? blockConfig,
             ILogManager logManager)
             : base(
                 txSource,
@@ -51,16 +51,16 @@ namespace Nethermind.Consensus.Producers
                 timestamper,
                 specProvider,
                 logManager,
-                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One),
-                miningConfig)
+                new RandomizedDifficultyCalculator(blockConfig!, ConstantDifficulty.One),
+                blockConfig)
         {
-            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = blockConfig ?? throw new ArgumentNullException(nameof(blockConfig));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_miningConfig.RandomizedBlocks)
+            if (_blocksConfig.RandomizedBlocks)
             {
                 if (Logger.IsInfo)
                     Logger.Info(
@@ -75,19 +75,19 @@ namespace Nethermind.Consensus.Producers
 
         private class RandomizedDifficultyCalculator : IDifficultyCalculator
         {
-            private readonly IMiningConfig _miningConfig;
+            private readonly IBlocksConfig _blocksConfig;
             private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
             private readonly Random _random = new();
 
-            public RandomizedDifficultyCalculator(IMiningConfig miningConfig, IDifficultyCalculator fallbackDifficultyCalculator)
+            public RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator)
             {
-                _miningConfig = miningConfig;
+                _blocksConfig = blocksConfig;
                 _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
             }
 
             public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
-                if (_miningConfig.RandomizedBlocks)
+                if (_blocksConfig.RandomizedBlocks)
                 {
                     UInt256 change = new((ulong)(_random.Next(100) + 50));
                     return UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);

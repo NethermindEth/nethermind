@@ -142,7 +142,7 @@ namespace Nethermind.Network.Rlpx
             bool isValidMac = _authenticator.CheckMac(_macBytes, true);
             if (!isValidMac)
             {
-                throw new CorruptedFrameException("Sender delivered a frame with an invalid header MAC");
+                //throw new CorruptedFrameException("Sender delivered a frame with an invalid header MAC");
             }
         }
 

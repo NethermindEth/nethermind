@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization.Test
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
-                new MiningConfig(),
+                new BlocksConfig(),
                 logManager);
 
             ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);

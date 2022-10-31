@@ -88,7 +88,9 @@ namespace Nethermind.Config
 
                 if (directImplementation != null)
                 {
-                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
+                    Categories.Add(@interface.Name.Substring(1),
+                        Activator.CreateInstance(directImplementation));
+
                     _implementations[@interface] = directImplementation;
 
                     object config = Activator.CreateInstance(_implementations[@interface]);
@@ -127,7 +129,11 @@ namespace Nethermind.Config
                 Initialize();
             }
 
-            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name, p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values
+                .SelectMany(i => i.GetType()
+                    .GetProperties()
+                    .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 

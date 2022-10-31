@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Test
                 Eip1559TransitionBlock = londonBlock
             };
             TestSpecProvider specProvider = new(spec);
-            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new MiningConfig());
+            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
             Assert.AreEqual(gasLimit * Eip1559Constants.ElasticityMultiplier, actualValue);
