@@ -59,48 +59,51 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<ExecutionStatusResult> engine_executionStatus()
-        {
-            return _executionStatusHandler.Handle();
-        }
+        public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 
-        public async Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId)
-        {
-            return await (_getPayloadHandlerV1.HandleAsync(payloadId));
-        }
+        public Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
 
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
         {
-            if (await _locker.WaitAsync(_timeout))
+            if (executionPayload.Withdrawals != null)
             {
-                Stopwatch watch = Stopwatch.StartNew();
-                try
-                {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsError) _logger.Error($"{nameof(engine_newPayloadV1)} threw an unexpected exception. {exception}");
-                    return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} threw an unexpected exception. {exception}");
-                }
-                finally
-                {
-                    watch.Stop();
-                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
-                    _locker.Release();
-                }
+                var error = $"Withdrawals not supported in {nameof(engine_newPayloadV1)}";
+
+                if (_logger.IsWarn) _logger.Warn(error);
+
+                return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
             }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newPayloadV1)} timeout.");
-                return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.", ErrorCodes.Timeout);
-            }
+
+            return await NewPayload(executionPayload, nameof(engine_newPayloadV1));
         }
 
         public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayloadV1 executionPayload) =>
-            engine_newPayloadV1(executionPayload);
+            NewPayload(executionPayload, nameof(engine_newPayloadV2));
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        {
+            if (payloadAttributes?.Withdrawals != null)
+            {
+                var error = $"Withdrawals not supported in {nameof(engine_forkchoiceUpdatedV1)}";
+                
+                if (_logger.IsWarn) _logger.Warn(error);
+
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
+            }
+            
+            return await ForkchoiceUpdated(forkchoiceState, payloadAttributes, nameof(engine_forkchoiceUpdatedV1));
+        }
+
+        public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null) =>
+            ForkchoiceUpdated(forkchoiceState, payloadAttributes, nameof(engine_forkchoiceUpdatedV2));
+
+        public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes) =>
+            _executionPayloadBodiesHandler.HandleAsync(blockHashes);
+
+        public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
+            TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
+
+        private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, string methodName)
         {
             if (await _locker.WaitAsync(_timeout))
             {
@@ -118,23 +121,37 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdatedV1)} timeout.");
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.", ErrorCodes.Timeout);
+                if (_logger.IsWarn) _logger.Warn($"{methodName} timed out");
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Timed out", ErrorCodes.Timeout);
             }
         }
 
-        public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null) =>
-            engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
-
-        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
+        private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayloadV1 executionPayload, string methodName)
         {
-            return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
-        }
-
-        public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
-            TransitionConfigurationV1 beaconTransitionConfiguration)
-        {
-            return _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
+            if (await _locker.WaitAsync(_timeout))
+            {
+                Stopwatch watch = Stopwatch.StartNew();
+                try
+                {
+                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsError) _logger.Error($"{methodName} failed: {exception}");
+                    return ResultWrapper<PayloadStatusV1>.Fail(exception.Message);
+                }
+                finally
+                {
+                    watch.Stop();
+                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{methodName} timed out");
+                return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
+            }
         }
     }
 }
