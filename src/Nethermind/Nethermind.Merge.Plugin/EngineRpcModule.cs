@@ -87,12 +87,12 @@ namespace Nethermind.Merge.Plugin
             if (payloadAttributes?.Withdrawals != null)
             {
                 var error = $"Withdrawals not supported in {nameof(engine_forkchoiceUpdatedV1)}";
-                
+
                 if (_logger.IsWarn) _logger.Warn(error);
 
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
             }
-            
+
             return await ForkchoiceUpdated(forkchoiceState, payloadAttributes, nameof(engine_forkchoiceUpdatedV1));
         }
 
