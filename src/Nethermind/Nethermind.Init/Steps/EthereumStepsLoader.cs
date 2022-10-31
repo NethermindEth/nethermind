@@ -54,7 +54,7 @@ namespace Nethermind.Init.Steps
                 .Select(s => new StepInfo(s, GetStepBaseType(s)))
                 .GroupBy(s => s.StepBaseType)
                 .Select(g => SelectImplementation(g.ToArray(), apiType))
-                .Where(s => s != null)
+                .Where(s => s is not null)
                 .Select(s => s!);
         }
 
@@ -89,7 +89,7 @@ namespace Nethermind.Init.Steps
 
         private static Type GetStepBaseType(Type type)
         {
-            while (type.BaseType != null && IsStepType(type.BaseType))
+            while (type.BaseType is not null && IsStepType(type.BaseType))
             {
                 type = type.BaseType;
             }

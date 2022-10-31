@@ -240,7 +240,7 @@ public class InvalidChainTrackerTest
     {
         Keccak? lastValidHash;
         _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeTrue();
-        if (expectedLsatValidHash != null)
+        if (expectedLsatValidHash is not null)
         {
             lastValidHash.Should().BeEquivalentTo(expectedLsatValidHash);
         }

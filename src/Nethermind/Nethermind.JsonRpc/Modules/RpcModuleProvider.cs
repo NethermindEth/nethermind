@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Modules
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
                 return ModuleResolution.EndpointDisabled;
 
-            if (context.Url != null)
+            if (context.Url is not null)
                 return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;

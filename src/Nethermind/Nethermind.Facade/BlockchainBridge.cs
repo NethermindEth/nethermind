@@ -94,7 +94,7 @@ namespace Nethermind.Facade
         public (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash != null)
+            if (blockHash is not null)
             {
                 Block? block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
@@ -244,7 +244,7 @@ namespace Nethermind.Facade
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress == null)
+            if (transaction.SenderAddress is null)
             {
                 transaction.SenderAddress = Address.SystemUser;
             }
@@ -305,10 +305,10 @@ namespace Nethermind.Facade
         {
             LogFilter? filter;
             filterLogs = null;
-            if ((filter = _filterStore.GetFilter<LogFilter>(filterId)) != null)
+            if ((filter = _filterStore.GetFilter<LogFilter>(filterId)) is not null)
                 filterLogs = _logFinder.FindLogs(filter, cancellationToken);
 
-            return filter != null;
+            return filter is not null;
         }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,

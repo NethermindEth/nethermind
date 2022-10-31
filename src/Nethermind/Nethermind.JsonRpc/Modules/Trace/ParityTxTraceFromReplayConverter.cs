@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteProperty("output", value.Output, serializer);
             writer.WritePropertyName("stateDiff");
 
-            if (value.StateChanges != null)
+            if (value.StateChanges is not null)
             {
                 writer.WriteStartObject();
                 foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(sc => sc.Key, AddressComparer.Instance)) writer.WriteProperty(address.ToString(), stateChange, serializer);
@@ -48,13 +48,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("trace");
 
             writer.WriteStartArray();
-            if (value.Action != null)
+            if (value.Action is not null)
             {
                 WriteJson(writer, value.Action, serializer);
             }
             writer.WriteEndArray();
 
-            if (value.TransactionHash != null)
+            if (value.TransactionHash is not null)
             {
                 writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
             }

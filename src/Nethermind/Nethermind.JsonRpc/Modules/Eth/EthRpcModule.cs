@@ -407,7 +407,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (returnFullTransactionObjects && block != null)
+        if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }

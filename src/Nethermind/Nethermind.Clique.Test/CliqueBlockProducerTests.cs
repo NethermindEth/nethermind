@@ -428,7 +428,7 @@ namespace Nethermind.Clique.Test
             public Block GetBlock(PrivateKey privateKey, long number)
             {
                 Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
-                if (block == null)
+                if (block is null)
                 {
                     throw new InvalidOperationException($"Cannot find block {number}");
                 }

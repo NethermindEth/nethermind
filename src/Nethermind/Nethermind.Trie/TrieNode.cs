@@ -873,7 +873,7 @@ namespace Nethermind.Trie
                     {
                         throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
                     }
-                    else if (childNode.Keccak != null) // if not by value node
+                    else if (childNode.Keccak is not null) // if not by value node
                     {
                         _data![i] = childNode.Keccak;
                     }

@@ -114,7 +114,7 @@ public class JsonRpcService : IJsonRpcService
         string methodName = rpcRequest.Method.Trim();
 
         (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo != null
+        return result.MethodInfo is not null
             ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
@@ -367,12 +367,12 @@ public class JsonRpcService : IJsonRpcService
         Type parameterType = parameterInfo.ParameterType;
         if (parameterType.IsValueType)
         {
-            return Nullable.GetUnderlyingType(parameterType) != null;
+            return Nullable.GetUnderlyingType(parameterType) is not null;
         }
 
         CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
             .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-        if (nullableAttribute != null)
+        if (nullableAttribute is not null)
         {
             CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
             if (attributeArgument.ArgumentType == typeof(byte))

@@ -476,7 +476,7 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_dependencies)
                 {
                     isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
-                    if (dependentItem != null)
+                    if (dependentItem is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
                         AddDependency(syncItem.Hash, dependentItem);
@@ -663,7 +663,7 @@ namespace Nethermind.Synchronization.FastSync
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak? childHash = trieNode.GetChildHash(childIndex);
-                        if (childHash != null &&
+                        if (childHash is not null &&
                             alreadyProcessedChildHashes.Contains(childHash))
                         {
                             continue;
@@ -671,7 +671,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         alreadyProcessedChildHashes.Add(childHash);
 
-                        if (childHash != null)
+                        if (childHash is not null)
                         {
                             branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
 
@@ -699,7 +699,7 @@ namespace Nethermind.Synchronization.FastSync
                     break;
                 case NodeType.Extension:
                     Keccak? next = trieNode.GetChild(NullTrieNodeResolver.Instance, 0)?.Keccak;
-                    if (next != null)
+                    if (next is not null)
                     {
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 

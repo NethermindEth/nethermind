@@ -175,7 +175,7 @@ namespace Nethermind.JsonRpc
                 {
                     (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest = enumerator.Current;
 
-                    if (rpcRequest.Model != null)
+                    if (rpcRequest.Model is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc
                         yield return RecordResponse(JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess)));
                     }
 
-                    if (rpcRequest.Collection != null)
+                    if (rpcRequest.Collection is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
 

@@ -43,7 +43,7 @@ public class TransactionForRpc
         Input = Data = transaction.Data;
         if (transaction.IsEip1559)
         {
-            GasPrice = baseFee != null
+            GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
                 : transaction.MaxFeePerGas;
             MaxFeePerGas = transaction.MaxFeePerGas;
@@ -54,7 +54,7 @@ public class TransactionForRpc
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
         Signature? signature = transaction.Signature;
-        if (signature != null)
+        if (signature is not null)
         {
 
             YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;

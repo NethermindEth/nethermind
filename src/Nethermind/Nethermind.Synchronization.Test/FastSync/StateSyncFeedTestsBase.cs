@@ -237,7 +237,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _stateDb = stateDb;
                 _codeDb = codeDb;
 
-                if (executorResultFunction != null) _executorResultFunction = executorResultFunction;
+                if (executorResultFunction is not null) _executorResultFunction = executorResultFunction;
 
                 Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true);
             }
@@ -296,7 +296,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
-                if (_executorResultFunction != null) return _executorResultFunction(hashes);
+                if (_executorResultFunction is not null) return _executorResultFunction(hashes);
 
                 var responses = new byte[hashes.Count][];
 
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter == null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
+                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
 
                     i++;
                 }

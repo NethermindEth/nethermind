@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Blocks
                 (this as IPeerAllocationStrategy).CheckAsyncState(info);
                 peersCount++;
 
-                if (_minBlocksAhead != null)
+                if (_minBlocksAhead is not null)
                 {
                     if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
                     {

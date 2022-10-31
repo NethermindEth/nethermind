@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Clique
 
         internal static Address[] ExtractSigners(BlockHeader blockHeader)
         {
-            if (blockHeader.ExtraData == null)
+            if (blockHeader.ExtraData is null)
             {
                 throw new Exception(string.Empty);
             }

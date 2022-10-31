@@ -120,9 +120,9 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
+                    return Hash is null ? $"{Number} null" : $"{Number} ({Hash})";
                 default:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
+                    return Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
             }
         }
 

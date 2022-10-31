@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         SyncPeerAllocation allocation = await Allocate(request);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                        if (allocatedPeer != null)
+                        if (allocatedPeer is not null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)
         {
-            if (peer != null)
+            if (peer is not null)
             {
                 switch (result)
                 {

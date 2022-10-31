@@ -143,7 +143,7 @@ namespace Nethermind.Network.Rlpx
                     return t.Result;
                 });
 
-                if (_bootstrapChannel == null)
+                if (_bootstrapChannel is null)
                 {
                     throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
                 }

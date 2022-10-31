@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.SnapSync
         private static bool IsChildPersisted(TrieNode node, int childIndex, ITrieStore store)
         {
             TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data != null)
+            if (data is not null)
             {
 
                 return data.IsBoundaryProofNode == false;

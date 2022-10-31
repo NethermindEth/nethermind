@@ -95,7 +95,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(Keccak key, byte[]? val)
         {
-            if (val == null)
+            if (val is null)
             {
                 Delete(key);
                 return;

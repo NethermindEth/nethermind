@@ -113,7 +113,7 @@ namespace Nethermind.Db.Blooms
             {
                 var levelsFromDb = _bloomInfoDb.Get(LevelsKey);
 
-                if (levelsFromDb == null)
+                if (levelsFromDb is null)
                 {
                     _bloomInfoDb.Set(LevelsKey, Rlp.Encode(sizes.ToArray()).Bytes);
                 }
@@ -271,7 +271,7 @@ namespace Nethermind.Db.Blooms
                     lock (_fileStore)
                     {
                         Bloom? existingBloom = _cache.Get(bucket);
-                        if (existingBloom == null)
+                        if (existingBloom is null)
                         {
                             byte[] bytes = new byte[Bloom.ByteLength];
                             int bytesRead = _fileStore.Read(bucket, bytes);

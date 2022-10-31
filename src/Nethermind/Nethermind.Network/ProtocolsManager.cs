@@ -251,7 +251,7 @@ namespace Nethermind.Network
                 if (isValid)
                 {
                     var peer = _syncPool.GetPeer(session.Node);
-                    if (peer != null)
+                    if (peer is not null)
                     {
                         peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                         if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);

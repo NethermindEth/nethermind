@@ -49,7 +49,7 @@ namespace Nethermind.Evm
             long txDataNonZeroGasCost =
                 releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
             long dataCost = 0;
-            if (transaction.Data != null)
+            if (transaction.Data is not null)
             {
                 for (int i = 0; i < transaction.Data.Length; i++)
                 {

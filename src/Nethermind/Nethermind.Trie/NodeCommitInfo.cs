@@ -25,9 +25,9 @@ namespace Nethermind.Trie
 
         public int ChildPositionAtParent { get; }
 
-        public bool IsEmptyBlockMarker => Node == null;
+        public bool IsEmptyBlockMarker => Node is null;
 
-        public bool IsRoot => !IsEmptyBlockMarker && NodeParent == null;
+        public bool IsRoot => !IsEmptyBlockMarker && NodeParent is null;
 
         public override string ToString()
         {

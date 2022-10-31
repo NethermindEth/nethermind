@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 _getData = getData;
             }
 
-            public IEnumerable<T> Data => _localDataSource.Data == null
+            public IEnumerable<T> Data => _localDataSource.Data is null
                 ? Enumerable.Empty<T>()
                 : _getData(_localDataSource.Data) ?? Enumerable.Empty<T>();
 

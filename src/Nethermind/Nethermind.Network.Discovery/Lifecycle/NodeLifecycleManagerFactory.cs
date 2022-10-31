@@ -54,7 +54,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
 
     public INodeLifecycleManager CreateNodeLifecycleManager(Node node)
     {
-        if (DiscoveryManager == null)
+        if (DiscoveryManager is null)
         {
             throw new Exception($"{nameof(DiscoveryManager)} has to be set");
         }

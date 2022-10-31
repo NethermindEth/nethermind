@@ -117,7 +117,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
 
     public bool Authenticate(string? token)
     {
-        if (token == null)
+        if (token is null)
         {
             if (_logger.IsWarn) _logger.Warn("Message authentication error: Can't find authentication token");
             return false;
@@ -184,7 +184,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
         SecurityToken securityToken,
         TokenValidationParameters validationParameters)
     {
-        if (expires == null) return true;
+        if (expires is null) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
     }

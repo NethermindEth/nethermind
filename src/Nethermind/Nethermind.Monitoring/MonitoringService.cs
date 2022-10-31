@@ -59,7 +59,7 @@ namespace Nethermind.Monitoring
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
 
-            _logger = logManager == null
+            _logger = logManager is null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
             _options = GetOptions();
@@ -93,7 +93,7 @@ namespace Nethermind.Monitoring
 
                 metricPusher.Start();
             }
-            if (_exposePort != null)
+            if (_exposePort is not null)
             {
                 IMetricServer metricServer = new MetricServer(_exposePort.Value, "metrics/");
                 metricServer.Start();

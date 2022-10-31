@@ -51,7 +51,7 @@ namespace Nethermind.Runner.JsonRpc
         {
             ServiceProvider sp = Build(services);
             IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
-            if (configProvider == null)
+            if (configProvider is null)
             {
                 throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
             }
@@ -101,7 +101,7 @@ namespace Nethermind.Runner.JsonRpc
             IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
             IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
 
-            if (configProvider == null)
+            if (configProvider is null)
             {
                 throw new ApplicationException($"{nameof(IConfigProvider)} has not been loaded properly");
             }

@@ -27,7 +27,7 @@ public class MergeBlockProducer : IBlockProducer
     private readonly IBlockProducer? _preMergeProducer;
     private readonly IBlockProducer _eth2BlockProducer;
     private readonly IPoSSwitcher _poSSwitcher;
-    private bool HasPreMergeProducer => _preMergeProducer != null;
+    private bool HasPreMergeProducer => _preMergeProducer is not null;
 
     public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? postMergeBlockProducer, IPoSSwitcher? poSSwitcher)
     {

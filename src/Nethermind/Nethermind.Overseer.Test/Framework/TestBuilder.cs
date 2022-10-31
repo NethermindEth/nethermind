@@ -248,7 +248,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private string GetNodeKey(string key)
         {
-            if (key == null)
+            if (key is null)
             {
                 byte[] keyArray = new byte[32];
                 keyArray[0] = 1;

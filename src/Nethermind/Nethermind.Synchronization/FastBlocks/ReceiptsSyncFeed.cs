@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                if (infos[0] is not null)
                 {
                     batch = new ReceiptsSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            return preparedReceipts != null;
+            return preparedReceipts is not null;
         }
 
         private int InsertReceipts(ReceiptsSyncBatch batch)
@@ -205,7 +205,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
 
-                if (receipts != null)
+                if (receipts is not null)
                 {
                     TxReceipt[]? prepared = null;
                     // last batch
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer != null)
+                        if (batch.ResponseSourcePeer is not null)
                         {
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
                         }
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    if (blockInfo != null)
+                    if (blockInfo is not null)
                     {
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
