@@ -25,9 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using NUnit.Framework.Internal.Commands;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle
 {
@@ -35,6 +33,45 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
     [TestFixture]
     public class ChainSpecBasedSpecProviderTests
     {
+        [Test]
+        public void Shandong_loads_properly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/shandong.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+
+            ReleaseSpec shandongSpec = (ReleaseSpec)MainnetSpecProvider
+                .Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation);
+            shandongSpec.Name = "shandong";
+            shandongSpec.IsEip3651Enabled = true;
+            shandongSpec.IsEip3675Enabled = true;
+            shandongSpec.IsEip3855Enabled = true;
+            shandongSpec.Eip1559TransitionBlock = 0;
+            shandongSpec.DifficultyBombDelay = 0;
+            TestSpecProvider testProvider = TestSpecProvider.Instance;
+            testProvider.SpecToReturn = shandongSpec;
+            testProvider.TerminalTotalDifficulty = 0;
+            testProvider.GenesisSpec = shandongSpec;
+
+            List<ForkActivation> blockNumbersToTest = new()
+            {
+                0,
+                (0, 0),
+                (0, null),
+                1,
+                999_999_999, // far in the future
+            };
+
+            CompareSpecProviders(testProvider, provider, blockNumbersToTest);
+            Assert.AreEqual(testProvider.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
+        }
+
         [Test]
         public void Sepolia_loads_properly()
         {
@@ -46,7 +83,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
-            List<long> blockNumbersToTest = new()
+            List<ForkActivation> blockNumbersToTest = new()
             {
                 120_000_000, // far in the future
             };
@@ -68,7 +105,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
 
-            List<long> blockNumbersToTest = new()
+            List<ForkActivation> blockNumbersToTest = new()
             {
                 RinkebySpecProvider.ByzantiumBlockNumber,
                 RinkebySpecProvider.ConstantinopleFixBlockNumber - 1,
@@ -97,7 +134,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
-            List<long> blockNumbersToTest = new()
+            List<ForkActivation> blockNumbersToTest = new()
             {
                 0,
                 1,
@@ -126,9 +163,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
-            List<long> blockNumbersToTest = new()
+            List<ForkActivation> blockNumbersToTest = new()
             {
                 0,
+                (0, 0),
+                (0, null),
                 1,
                 MainnetSpecProvider.HomesteadBlockNumber - 1,
                 MainnetSpecProvider.HomesteadBlockNumber,
@@ -179,21 +218,21 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         private static void CompareSpecProviders(
             ISpecProvider oldSpecProvider,
             ISpecProvider newSpecProvider,
-            IEnumerable<long> blockNumbers,
+            IEnumerable<ForkActivation> forkActivations,
             bool checkDifficultyBomb = false)
         {
-            foreach (long blockNumber in blockNumbers)
+            foreach (ForkActivation activation in forkActivations)
             {
-                IReleaseSpec oldSpec = oldSpecProvider.GetSpec(blockNumber);
-                IReleaseSpec newSpec = newSpecProvider.GetSpec(blockNumber);
+                IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
+                IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
                 bool isMainnet = daoBlockNumber != null;
 
-                CompareSpecs(oldSpec, newSpec, blockNumber, isMainnet, checkDifficultyBomb);
+                CompareSpecs(oldSpec, newSpec, activation, isMainnet, checkDifficultyBomb);
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, long blockNumber, bool isMainnet,
+        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, ForkActivation activation, bool isMainnet,
             bool checkDifficultyBomb = false)
         {
             PropertyInfo[] propertyInfos =
@@ -209,7 +248,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
-                    blockNumber + "." + propertyInfo.Name);
+                    activation + "." + propertyInfo.Name);
             }
         }
 
@@ -224,7 +263,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
 
-            List<long> blockNumbersToTest = new()
+            List<ForkActivation> blockNumbersToTest = new()
             {
                 0,
                 1,
