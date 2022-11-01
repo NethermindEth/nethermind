@@ -1,5 +1,7 @@
 <Project>
-
+  <PropertyGroup>
+        <MicroMonitored Condition="'$(MicroMonitored)'==''">false</MicroMonitored>
+    </PropertyGroup>
   <ItemGroup Label="MonitorPackagePart1" Condition="($(ProjectName.EndsWith('Test'))==false) AND $(MicroMonitored)">
     <PackageReference Include="PostSharp" Version="6.10.15" />
   </ItemGroup>
