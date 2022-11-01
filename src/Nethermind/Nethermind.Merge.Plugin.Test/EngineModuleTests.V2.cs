@@ -39,6 +39,7 @@ public partial class EngineModuleTests
                 timestamp = timestamp.ToHexString(true),
                 prevRandao = prevRandao.ToString(),
                 suggestedFeeRecipient = feeRecipient.ToString(),
+
             };
             string?[] parameters =
             {
