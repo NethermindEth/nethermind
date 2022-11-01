@@ -609,7 +609,7 @@ public partial class EngineModuleTests
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // complete headers sync
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata
-                                         | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+                                                     | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
             requests[i].TryGetBlock(out Block? block);
@@ -678,7 +678,7 @@ public partial class EngineModuleTests
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
-                                         BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+                                                     BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = missingBlocks.Length; i-- > missingBlocks.Length - filledNum;)
         {
             chain.BlockTree.Insert(missingBlocks[i].Header, headerOptions);
@@ -730,7 +730,7 @@ public partial class EngineModuleTests
         Assert.That(
             () => rpc.engine_newPayloadV1(bestBeaconBlockRequest).Result.Data.Status,
             Is.EqualTo(PayloadStatus.Valid).After(1000, 100)
-            );
+        );
 
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
@@ -784,7 +784,7 @@ public partial class EngineModuleTests
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
-                                         BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+                                                     BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i-- > 0;)
         {
             requests[i].TryGetBlock(out Block? block);
