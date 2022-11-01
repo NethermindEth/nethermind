@@ -131,12 +131,27 @@ namespace Nethermind.Evm.Test
                                     LondonInstructions.Union(
                                     new Instruction[]
                                         {
-                                            Instruction.TLOAD,
-                                            Instruction.TSTORE,
                                             Instruction.PUSH0
                                         }
                                     )
                             )))))).ToArray();
+
+        private static readonly Instruction[] CancunInstructions =
+            FrontierInstructions.Union(
+                HomesteadInstructions.Union(
+                    ByzantiumInstructions.Union(
+                        ConstantinopleFixInstructions.Union(
+                            IstanbulInstructions.Union(
+                                BerlinInstructions.Union(
+                                    LondonInstructions.Union(
+                                        ShanghaiInstructions.Union(
+                                        new Instruction[]
+                                            {
+                                                Instruction.TSTORE,
+                                                Instruction.TLOAD
+                                            }
+                                        )
+                            ))))))).ToArray();
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
@@ -152,7 +167,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
                 {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
-                {(long.MaxValue, ulong.MaxValue), ShanghaiInstructions}
+                {MainnetSpecProvider.CancunActivation, CancunInstructions},
+                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -176,6 +192,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {

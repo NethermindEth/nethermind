@@ -20,18 +20,16 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Shanghai : GrayGlacier
+    public class Cancun : Shanghai
     {
         private static IReleaseSpec _instance;
 
-        protected Shanghai()
+        protected Cancun()
         {
-            Name = "Shanghai";
-            IsEip3675Enabled = true;
-            IsEip3651Enabled = true;
-            IsEip3855Enabled = true;
+            Name = "Cancun";
+            IsEip1153Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
     }
 }
