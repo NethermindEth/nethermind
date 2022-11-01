@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <MicroMonitored>false</MicroMonitored>
+  </PropertyGroup>
+
+  <ItemGroup>
+		<PackageReference Include="PostSharp" Version="6.10.15" />
+  </ItemGroup>
+
+</Project>

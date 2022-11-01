@@ -2,11 +2,12 @@
 
     <PropertyGroup>
         <TargetFramework>netstandard2.1</TargetFramework>
+        <MicroMonitored>false</MicroMonitored>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
         <Version>0.0.1</Version>
         <LangVersion>latest</LangVersion>
-        <Nullable>enable</Nullable>
+        <Nullable>annotations</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 

@@ -2,7 +2,8 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <MicroMonitored>false</MicroMonitored>
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>

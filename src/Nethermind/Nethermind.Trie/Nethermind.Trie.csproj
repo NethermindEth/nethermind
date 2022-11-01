@@ -1,10 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
+        <MicroMonitored>$(DefineConstants.Contains("MONITOR"))</MicroMonitored>
         <Nullable>annotations</Nullable>
         <Deterministic>true</Deterministic>
-        <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+        <ProduceReferenceAssembly>$(!MicroMonitored)</ProduceReferenceAssembly>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
