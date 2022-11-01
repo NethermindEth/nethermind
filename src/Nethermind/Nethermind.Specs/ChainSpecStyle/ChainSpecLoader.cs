@@ -226,7 +226,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
                 : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip1153TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3675TransitionTimestamp ?? (long.MaxValue - 1);
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
