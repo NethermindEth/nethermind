@@ -9,12 +9,12 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         if (rlpStream.IsNextItemNull())
         {
             rlpStream.ReadByte();
-            
+
             return null;
         }
-        
+
         rlpStream.ReadSequenceLength();
-        
+
         return new()
         {
             Index = rlpStream.DecodeULong(),
@@ -32,9 +32,9 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
 
             return null;
         }
-        
+
         decoderContext.ReadSequenceLength();
-        
+
         return new()
         {
             Index = decoderContext.DecodeULong(),
@@ -51,7 +51,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
             stream.EncodeNullObject();
             return;
         }
-        
+
         var contentLength = GetContentLength(item);
 
         stream.StartSequence(contentLength);

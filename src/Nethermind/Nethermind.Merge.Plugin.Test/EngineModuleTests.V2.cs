@@ -27,7 +27,7 @@ public partial class EngineModuleTests
 
         var forkChoiceUpdatedParams = new { headBlockHash = startingHead.ToString(), safeBlockHash = startingHead.ToString(), finalizedBlockHash = Keccak.Zero.ToString(), };
         var withdrawals = new Withdrawal[] { new Withdrawal() { Index = 1, Amount = 3, Recipient = TestItem.AddressB, ValidatorIndex = 2 } };
-        var preparePayloadParams = new { timestamp = timestamp.ToHexString(true), prevRandao = prevRandao.ToString(), suggestedFeeRecipient = feeRecipient.ToString(), withdrawals = withdrawals  };
+        var preparePayloadParams = new { timestamp = timestamp.ToHexString(true), prevRandao = prevRandao.ToString(), suggestedFeeRecipient = feeRecipient.ToString(), withdrawals = withdrawals };
         string?[] parameters = { JsonConvert.SerializeObject(forkChoiceUpdatedParams), JsonConvert.SerializeObject(preparePayloadParams) };
         // prepare a payload
         string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", parameters);

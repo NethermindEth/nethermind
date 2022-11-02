@@ -27,7 +27,7 @@ public class WithdrawalTrieTests
         var count = 10;
         var block = Build.A.Block.WithWithdrawals(count).TestObject;
         var trie = new WithdrawalTrie(block.Withdrawals!, true);
-        
+
         for (int i = 0; i < count; i++)
         {
             Assert.IsTrue(VerifyProof(trie.BuildProof(i), trie.RootHash));
@@ -40,11 +40,11 @@ public class WithdrawalTrieTests
         {
             var p = proof[i];
             var hash = Keccak.Compute(p);
-            
+
             if (i > 0)
             {
                 var hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
-                
+
                 if (!new Rlp(proof[i - 1]).ToString(false).Contains(hex, StringComparison.Ordinal))
                 {
                     return false;

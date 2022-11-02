@@ -17,7 +17,7 @@ public class ProductionWithdrawalApplier : IWithdrawalApplier
     public void ApplyWithdrawals(Block block, IReleaseSpec spec)
     {
         _validationWithdrawalApplier.ApplyWithdrawals(block, spec);
-        
+
         if (spec.IsEip4895Enabled)
         {
             block.Header.WithdrawalsRoot = block.Withdrawals.Length == 0

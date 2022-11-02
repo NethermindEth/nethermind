@@ -80,7 +80,7 @@ namespace Nethermind.Core
         public bool HasBody => TxRoot != Keccak.EmptyTreeHash
             || UnclesHash != Keccak.OfAnEmptySequenceRlp
             || WithdrawalsRoot != Keccak.EmptyTreeHash;
-        
+
         public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
 
         // ToDo we need to set this flag after reading block from db

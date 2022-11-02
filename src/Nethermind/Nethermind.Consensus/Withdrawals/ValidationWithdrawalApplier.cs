@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;

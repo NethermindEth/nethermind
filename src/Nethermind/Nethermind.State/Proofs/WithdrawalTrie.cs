@@ -37,7 +37,7 @@ public class WithdrawalTrie : PatriciaTree
             throw new InvalidOperationException("Merkle proofs not allowed");
 
         var proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
-        
+
         Accept(proofCollector, RootHash, new() { ExpectAccounts = false });
 
         return proofCollector.BuildResult();
