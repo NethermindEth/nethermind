@@ -50,7 +50,6 @@ namespace Nethermind.Core
         }
 
         public WeakReference<BlockHeader>? MaybeParent { get; set; }
-
         public bool IsGenesis => Number == 0L;
         public Keccak? ParentHash { get; set; }
         public Keccak? UnclesHash { get; set; }
@@ -59,7 +58,6 @@ namespace Nethermind.Core
         public Address? GasBeneficiary => Author ?? Beneficiary;
         public Keccak? StateRoot { get; set; }
         public Keccak? TxRoot { get; set; }
-        public Keccak? WithdrawalsRoot { get; set; }
         public Keccak? ReceiptsRoot { get; set; }
         public Bloom? Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
@@ -77,9 +75,13 @@ namespace Nethermind.Core
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
+        public Keccak? WithdrawalsRoot { get; set; }
 
-        public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
-        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
+        public bool HasBody => TxRoot != Keccak.EmptyTreeHash
+            || UnclesHash != Keccak.OfAnEmptySequenceRlp
+            || WithdrawalsRoot != Keccak.EmptyTreeHash;
+        
+        public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
 
         // ToDo we need to set this flag after reading block from db
         public bool IsPostMerge { get; set; }
@@ -100,10 +102,10 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Nonce: {Nonce}");
             builder.AppendLine($"{indent}Uncles Hash: {UnclesHash}");
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
-            builder.AppendLine($"{indent}Withdrawals Root: {WithdrawalsRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
+            builder.AppendLine($"{indent}Withdrawals Root: {WithdrawalsRoot}");
             builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
             builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
 
