@@ -79,21 +79,27 @@ namespace Nethermind.Merge.Plugin.Data
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
                     MixHash = PrevRandao,
-                    Author = FeeRecipient
+                    Author = FeeRecipient,
+                    IsPostMerge = true,
+                    TotalDifficulty = totalDifficulty
                 };
-                Transaction[] transactions = GetTransactions();
-                header.TxRoot = new TxTrie(transactions).RootHash;
-                header.IsPostMerge = true;
-                header.TotalDifficulty = totalDifficulty;
 
+                var transactions = GetTransactions();
                 var withdrawals = DecodedWithdrawals();
 
-                block = new Block(header, transactions, Array.Empty<BlockHeader>(), withdrawals);
+                header.TxRoot = new TxTrie(transactions).RootHash;
+
+                if (withdrawals != null)
+                    header.WithdrawalsRoot = new WithdrawalTrie(withdrawals).RootHash;
+
+                block = new(header, transactions, Array.Empty<BlockHeader>(), withdrawals);
+
                 return true;
             }
             catch (Exception)
             {
                 block = null;
+
                 return false;
             }
         }

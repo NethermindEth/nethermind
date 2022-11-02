@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -236,6 +237,26 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithGasUsed(long gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
+            return this;
+        }
+
+        public BlockBuilder WithWithdrawals(int count)
+        {
+            var withdrawals = new Withdrawal[count];
+
+            for (var i = 0; i < count; i++)
+                withdrawals[i] = new();
+
+            return WithWithdrawals(withdrawals);
+        }
+
+        public BlockBuilder WithWithdrawals(Withdrawal[] withdrawals)
+        {
+            TestObjectInternal = TestObjectInternal
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));
+
+            TestObjectInternal.Header.WithdrawalsRoot = new WithdrawalTrie(withdrawals).RootHash;
+
             return this;
         }
     }
