@@ -30,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -284,7 +285,8 @@ namespace Nethermind.Consensus.Processing
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
                 BaseFeePerGas = bh.BaseFeePerGas,
-                IsPostMerge = bh.IsPostMerge
+                IsPostMerge = bh.IsPostMerge,
+                WithdrawalsRoot = bh.WithdrawalsRoot
             };
 
             return suggestedBlock.CreateCopy(headerForProcessing);
@@ -379,6 +381,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
             }
+
 
             if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
         }
