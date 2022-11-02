@@ -18,6 +18,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,16 +29,16 @@ namespace Nethermind.Trie;
 public class RangeQueryVisitor : ITreeVisitor, IDisposable
 {
 
-    private readonly byte[] _startHash;
+    private readonly byte[]? _startHash;
     private bool _findFirstNodeInRange = true;
 
-    private readonly byte[] _limitHash;
+    private readonly byte[]? _limitHash;
     private readonly bool _comparePathWithLimitHash = true;
 
     private readonly bool _isAccountVisitor;
     private bool _shouldContinueTraversing = true;
 
-    private long _currentBytesCount = 0;
+    private long _currentBytesCount;
     private readonly Dictionary<byte[], byte[]> _collectedNodes = new();
 
     private HashSet<Keccak>? _nodeToVisitFilterInstance;
@@ -50,7 +51,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     private readonly long _byteLimit;
 
     private readonly long _hardByteLimit;
-    public bool _isStoppedDueToHardLimit = false;
+    public bool _isStoppedDueToHardLimit;
 
     private readonly AccountDecoder _decoder = new(true);
 
@@ -83,25 +84,15 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
         _hardByteLimit = hardByteLimit;
     }
 
-    private static int ComparePath(IReadOnlyList<byte> path, byte[] hash)
+    private static int ComparePath(List<byte> path, byte[]? hash)
     {
+        Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
         // compare the `path` and `hash` to check if a key with prefix `path` would come after the hash or not
-        for (int i = 0; i < path.Count; i++)
-        {
-            if (hash[i] > path[i])
-            {
-                return 1;
-            }
-            if (hash[i] < path[i])
-            {
-                return -1;
-            }
-        }
-        return 0;
+        return Bytes.Comparer.CompareGreaterThan(hash.AsSpan()[..pathSpan.Length], pathSpan);
     }
 
     // to check if the node should be visited on the based of its path and limitHash
-    private bool ShouldVisit(IReadOnlyList<byte> path)
+    private bool ShouldVisit(List<byte> path)
     {
         if (_collectedNodes.Count >= _nodeLimit)
         {

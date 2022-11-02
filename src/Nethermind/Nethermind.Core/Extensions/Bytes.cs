@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -104,6 +104,37 @@ namespace Nethermind.Core.Extensions
                     {
                         return result;
                     }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
+
+            public int CompareGreaterThan(Span<byte> x, Span<byte> y)
+            {
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                Span<ulong> ulongX = MemoryMarshal.Cast<byte, ulong>(x);
+                Span<ulong> ulongY = MemoryMarshal.Cast<byte, ulong>(y);
+
+                for (int i = 0; i < ulongX.Length; i++)
+                {
+                    if (ulongX[i] > ulongY[i])
+                        return 1;
+
+                    if (ulongX[i] < ulongY[i])
+                        return -1;
+                }
+
+                for (int i = ulongX.Length * Unsafe.SizeOf<ulong>(); i < x.Length; i++)
+                {
+                    if (x[i] > y[i])
+                        return 1;
+
+                    if (x[i] < y[i])
+                        return -1;
                 }
 
                 return y.Length > x.Length ? 1 : 0;
