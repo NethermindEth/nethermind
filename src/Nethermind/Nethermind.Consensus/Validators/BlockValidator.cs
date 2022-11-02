@@ -169,11 +169,6 @@ namespace Nethermind.Consensus.Validators
                         if (_logger.IsError) _logger.Error($"- invalid transaction {i}");
                     }
                 }
-
-                if (processedBlock.Header.WithdrawalsRoot != suggestedBlock.Header.WithdrawalsRoot)
-                {
-                    if (_logger.IsError) _logger.Error($"- withdrawal root: expected {suggestedBlock.Header.WithdrawalsRoot}, got {processedBlock.Header.WithdrawalsRoot}");
-                }
             }
 
             return isValid;
