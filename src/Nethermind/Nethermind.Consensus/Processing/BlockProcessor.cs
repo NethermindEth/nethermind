@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
-            ApplyWithdrawals(block, spec);
+            ApplyWithdrawals(block, spec); // ToDo change to _withdrawalApplier
 
             _stateProvider.Commit(spec);
             _stateProvider.RecalculateStateRoot();
