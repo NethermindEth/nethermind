@@ -102,13 +102,6 @@ namespace Nethermind.Synchronization.ParallelSync
             BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
             BlockHeader bestSuggested = initialBestSuggested;
 
-            // On a small network snap sync's address range request may complete very quickly meaning it will recalculate
-            // and store a valid state root. However, codes and storage may not be downloaded yet, so we need this check.
-            if (_syncConfig.SnapSync && !_progressTracker.IsSnapGetRangesFinished())
-            {
-                return 0;
-            }
-
             long bestFullState = 0;
             if (head != null)
             {
