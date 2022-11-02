@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Rewards
 
         private UInt256 GetBlockReward(Block block)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             return spec.BlockReward;
         }
 

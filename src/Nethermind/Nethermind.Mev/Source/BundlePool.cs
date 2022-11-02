@@ -248,7 +248,7 @@ namespace Nethermind.Mev.Source
                 return false;
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber, (ulong)bundle.MinTimestamp);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];

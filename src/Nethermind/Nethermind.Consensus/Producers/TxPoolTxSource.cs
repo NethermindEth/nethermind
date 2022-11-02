@@ -57,7 +57,8 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
+            ulong BlockTimestamp = parent.Timestamp + 13;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber, BlockTimestamp);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))

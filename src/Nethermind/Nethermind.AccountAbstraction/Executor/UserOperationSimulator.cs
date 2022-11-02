@@ -98,7 +98,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
+            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1, parent.Timestamp + 13);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
@@ -273,7 +273,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Array.Empty<byte>());
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();

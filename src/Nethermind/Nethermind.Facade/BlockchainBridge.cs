@@ -268,7 +268,7 @@ namespace Nethermind.Facade
                 Array.Empty<byte>());
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();
