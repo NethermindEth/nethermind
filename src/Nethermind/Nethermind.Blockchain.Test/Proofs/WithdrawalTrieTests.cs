@@ -1,6 +1,6 @@
 using System;
-using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -24,32 +24,38 @@ public class WithdrawalTrieTests
     [Test]
     public void Should_verify_proof()
     {
-        var count = 1;
+        var count = 10;
         var block = Build.A.Block.WithWithdrawals(count).TestObject;
         var trie = new WithdrawalTrie(block.Withdrawals!, true);
         
         for (int i = 0; i < count; i++)
         {
-            VerifyProof(trie.BuildProof(i), trie.RootHash);
+            Assert.IsTrue(VerifyProof(trie.BuildProof(i), trie.RootHash));
         }
     }
 
-    private static void VerifyProof(byte[][] proof, Keccak root)
+    private static bool VerifyProof(byte[][] proof, Keccak root)
     {
-        for (int i = proof.Length; i > 0; i--)
+        for (var i = proof.Length - 1; i >= 0; i--)
         {
-            Keccak proofHash = Keccak.Compute(proof[i - 1]);
-            if (i > 1)
+            var p = proof[i];
+            var hash = Keccak.Compute(p);
+            
+            if (i > 0)
             {
-                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                var hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
+                
+                if (!new Rlp(proof[i - 1]).ToString(false).Contains(hex, StringComparison.Ordinal))
                 {
-                    throw new InvalidDataException();
+                    return false;
                 }
             }
-            else if (proofHash != root)
+            else if (hash != root)
             {
-                throw new InvalidDataException();
+                return false;
             }
         }
+
+        return true;
     }
 }
