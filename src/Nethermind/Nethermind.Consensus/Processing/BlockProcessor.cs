@@ -361,23 +361,26 @@ namespace Nethermind.Consensus.Processing
             if (!spec.IsEip4895Enabled)
                 return;
 
-            if (_logger.IsTrace) _logger.Trace($"Applying withdrawals");
+            if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-            foreach (var withdrawal in block.Withdrawals)
+            if (block.Withdrawals != null)
             {
-                if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Recipient}");
+                foreach (var withdrawal in block.Withdrawals)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Recipient}");
 
-                if (_stateProvider.AccountExists(withdrawal.Recipient))
-                {
-                    _stateProvider.AddToBalance(withdrawal.Recipient, withdrawal.Amount, spec);
-                }
-                else
-                {
-                    _stateProvider.CreateAccount(withdrawal.Recipient, withdrawal.Amount);
+                    if (_stateProvider.AccountExists(withdrawal.Recipient))
+                    {
+                        _stateProvider.AddToBalance(withdrawal.Recipient, withdrawal.Amount, spec);
+                    }
+                    else
+                    {
+                        _stateProvider.CreateAccount(withdrawal.Recipient, withdrawal.Amount);
+                    }
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Withdrawals applied");
+            if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
         }
     }
 }

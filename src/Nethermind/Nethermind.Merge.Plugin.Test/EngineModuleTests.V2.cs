@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -17,7 +17,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task V2_processing_block_should_serialize_valid_responses()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain chain = await CreateShanghaiBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak prevRandao = Keccak.Zero;
@@ -26,7 +26,8 @@ public partial class EngineModuleTests
 
 
         var forkChoiceUpdatedParams = new { headBlockHash = startingHead.ToString(), safeBlockHash = startingHead.ToString(), finalizedBlockHash = Keccak.Zero.ToString(), };
-        var preparePayloadParams = new { timestamp = timestamp.ToHexString(true), prevRandao = prevRandao.ToString(), suggestedFeeRecipient = feeRecipient.ToString(), };
+        var withdrawals = new Withdrawal[] { new Withdrawal() { Index = 1, Amount = 3, Recipient = TestItem.AddressB, ValidatorIndex = 2 } };
+        var preparePayloadParams = new { timestamp = timestamp.ToHexString(true), prevRandao = prevRandao.ToString(), suggestedFeeRecipient = feeRecipient.ToString(), withdrawals = withdrawals  };
         string?[] parameters = { JsonConvert.SerializeObject(forkChoiceUpdatedParams), JsonConvert.SerializeObject(preparePayloadParams) };
         // prepare a payload
         string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", parameters);
