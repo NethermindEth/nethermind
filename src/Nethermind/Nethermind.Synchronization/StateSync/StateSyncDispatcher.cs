@@ -47,16 +47,19 @@ namespace Nethermind.Synchronization.StateSync
 
             ISyncPeer peer = peerInfo.SyncPeer;
             Keccak[]? a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
-            Task<IReadOnlyList<byte[]>> task = null;
 
             // Use GETNODEDATA if possible
             if (peer.Node.EthDetails.Equals("eth66"))
             {
+                Task<byte[][]> task;
                 task = peer.GetNodeData(a, cancellationToken);
+                await task.ContinueWith(
+                    BatchContinue, batch, cancellationToken);
             }
             // GETNODEDATA is not supported so we try with SNAP protocol
             else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))
             {
+                Task<IReadOnlyList<byte[]>> task;
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
                     task = handler.GetByteCodes(a, cancellationToken);
@@ -66,27 +69,24 @@ namespace Nethermind.Synchronization.StateSync
                     GetTrieNodesRequest request = GetGroupedRequest(batch);
                     task = handler.GetTrieNodes(request, cancellationToken);
                 }
-            }
+                await task.ContinueWith(
+                    BatchContinue, batch, cancellationToken);
 
-            if (task is null)
+            }
+        }
+
+        public void BatchContinue<T>(Task<T> t, object? state) where T : IReadOnlyList<byte[]>
+        {
+            if (t.IsFaulted)
             {
-                return;
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
             }
 
-            await task.ContinueWith(
-                (t, state) =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
-                    }
-
-                    StateSyncBatch batchLocal = (StateSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        batchLocal.Responses = t.Result;
-                    }
-                }, batch);
+            StateSyncBatch batchLocal = (StateSyncBatch)state!;
+            if (t.IsCompletedSuccessfully)
+            {
+                batchLocal.Responses = t.Result;
+            }
         }
 
         /// <summary>
