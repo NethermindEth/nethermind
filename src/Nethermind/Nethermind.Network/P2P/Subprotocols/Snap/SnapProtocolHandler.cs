@@ -321,12 +321,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<IList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        public async Task<IReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<IList<byte[]>> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
+        private async Task<IReadOnlyList<byte[]>> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
         {
             GetTrieNodesMessage reqMsg = new()
             {

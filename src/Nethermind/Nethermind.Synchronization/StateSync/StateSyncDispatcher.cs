@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.StateSync
 
             ISyncPeer peer = peerInfo.SyncPeer;
             Keccak[]? a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
-            Task<IList<byte[]>> task = null;
+            Task<IReadOnlyList<byte[]>> task = null;
 
             // Use GETNODEDATA if possible
             if (peer.Node.EthDetails.Equals("eth66"))
