@@ -50,6 +50,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             shandongSpec.IsEip3651Enabled = true;
             shandongSpec.IsEip3675Enabled = true;
             shandongSpec.IsEip3855Enabled = true;
+            shandongSpec.IsEip3860Enabled = true;
             shandongSpec.Eip1559TransitionBlock = 0;
             shandongSpec.DifficultyBombDelay = 0;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
