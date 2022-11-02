@@ -218,18 +218,23 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync)
-        {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+        // if (_syncConfig.SnapSync || stateSyncFinished)
+        // {
+        //     place for enabling eth67
+        // }
+        // else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
         if (_syncConfig.SnapSync)
         {
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager, _syncConfig.SnapServe);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            if (_syncConfig.SnapServe)
+            {
+                snapCapabilitySwitcher.EnableSnapCapability();
+            }
+            else if (!stateSyncFinished)
+            {
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
