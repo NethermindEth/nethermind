@@ -40,7 +40,7 @@ public class SnapServer : ISnapServer
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
-    private readonly AccountDecoder _decoder = new();
+    private readonly AccountDecoder _decoder = AccountDecoder.Instance;
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 10000;

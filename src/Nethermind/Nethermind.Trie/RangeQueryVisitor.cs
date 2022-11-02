@@ -53,7 +53,7 @@ public class RangeQueryVisitor : ITreeVisitor, IDisposable
     private readonly long _hardByteLimit;
     public bool _isStoppedDueToHardLimit;
 
-    private readonly AccountDecoder _decoder = new(true);
+    private readonly AccountDecoder _decoder = AccountDecoder.SlimInstance;
 
     public RangeQueryVisitor(byte[] startHash, byte[] limitHash, bool isAccountVisitor, long byteLimit = -1, long hardByteLimit = 200000, int nodeLimit = 10000)
     {

@@ -26,6 +26,9 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _slimFormat;
 
+        public static AccountDecoder Instance => new();
+        public static AccountDecoder SlimInstance => new();
+
         public AccountDecoder() { }
 
         public AccountDecoder(bool slimFormat = false)
