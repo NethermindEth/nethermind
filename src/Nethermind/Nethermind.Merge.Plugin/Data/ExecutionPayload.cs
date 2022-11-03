@@ -7,8 +7,10 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -35,6 +37,7 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
+        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -78,6 +81,9 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
+    [JsonConverter(typeof(NullableUInt256Converter))]
+    public UInt256? ExcessDataGas { get; set; }
+
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
@@ -112,6 +118,7 @@ public class ExecutionPayload
                 TotalDifficulty = totalDifficulty,
                 TxRoot = new TxTrie(transactions).RootHash,
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                ExcessDataGas = ExcessDataGas,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);

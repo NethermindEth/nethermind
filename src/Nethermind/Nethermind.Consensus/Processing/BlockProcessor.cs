@@ -276,8 +276,9 @@ namespace Nethermind.Consensus.Processing
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
                 BaseFeePerGas = bh.BaseFeePerGas,
+                WithdrawalsRoot = bh.WithdrawalsRoot,
+                ExcessDataGas = bh.ExcessDataGas,
                 IsPostMerge = bh.IsPostMerge,
-                WithdrawalsRoot = bh.WithdrawalsRoot
             };
 
             return suggestedBlock.CreateCopy(headerForProcessing);

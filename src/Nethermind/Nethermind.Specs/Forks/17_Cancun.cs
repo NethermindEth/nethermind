@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Cancun : Shanghai
+    public class Cancun : ShardingFork
     {
         private static IReleaseSpec _instance;
 

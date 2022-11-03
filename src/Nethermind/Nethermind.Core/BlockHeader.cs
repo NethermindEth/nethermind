@@ -24,7 +24,8 @@ namespace Nethermind.Core
             long number,
             long gasLimit,
             ulong timestamp,
-            byte[] extraData)
+            byte[] extraData,
+            UInt256? excessDataGas)
         {
             ParentHash = parentHash;
             UnclesHash = unclesHash;
@@ -34,6 +35,19 @@ namespace Nethermind.Core
             GasLimit = gasLimit;
             Timestamp = timestamp;
             ExtraData = extraData;
+            ExcessDataGas = excessDataGas;
+        }
+
+        public BlockHeader(
+            Keccak parentHash,
+            Keccak unclesHash,
+            Address beneficiary,
+            in UInt256 difficulty,
+            long number,
+            long gasLimit,
+            ulong timestamp,
+            byte[] extraData) : this(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, null)
+        {
         }
 
         public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -63,9 +77,11 @@ namespace Nethermind.Core
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
         public Keccak? WithdrawalsRoot { get; set; }
+        public UInt256? ExcessDataGas { get; set; }
 
         public bool HasBody => TxRoot != Keccak.EmptyTreeHash
                                || UnclesHash != Keccak.OfAnEmptySequenceRlp;
+
 
         public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
 
@@ -92,6 +108,10 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}State Root: {StateRoot}");
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
             builder.AppendLine($"{indent}Withdrawals Root: {WithdrawalsRoot}");
+            if (ExcessDataGas is not null)
+            {
+                builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
+            }
             builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
             builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
 

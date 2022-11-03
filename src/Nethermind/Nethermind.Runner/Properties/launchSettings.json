@@ -28,6 +28,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Eip4844 Local Trace": {
+      "commandName": "Project",
+      "commandLineArgs": "-c eip4844_local -dd %NETHERMIND_DATA_DIR% --log TRACE",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Energy Web": {
       "commandName": "Project",
       "commandLineArgs": "-c energyweb -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",

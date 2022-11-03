@@ -100,8 +100,16 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
-        private static readonly Instruction[] CancunInstructions =
+        private static readonly Instruction[] ShardingForkInstructions =
             ShanghaiInstructions.Union(
+                new Instruction[]
+                {
+                    // TODO: Add DATAHASH
+                }
+            ).ToArray();
+
+        private static readonly Instruction[] CancunInstructions =
+            ShardingForkInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.TSTORE,
@@ -123,6 +131,7 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
+                {MainnetSpecProvider.ShardingForkActivation, ShardingForkInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {(long.MaxValue, ulong.MaxValue), CancunInstructions}
             };
@@ -148,6 +157,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShardingForkBlockTimestamp)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
