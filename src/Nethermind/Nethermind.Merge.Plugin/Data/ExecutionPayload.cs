@@ -63,6 +63,7 @@ namespace Nethermind.Merge.Plugin.Data
             ExtraData = block.ExtraData!;
             Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
+            SetWithdrawals(block.Withdrawals);
         }
 
         public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
@@ -151,5 +152,13 @@ namespace Nethermind.Merge.Plugin.Data
         /// <returns>An RLP-decoded collection of <see cref="Withdrawal"/>.</returns>
         public IEnumerable<Withdrawal>? DecodedWithdrawals() => Withdrawals?
             .Select(w => Rlp.Decode<Withdrawal>(w, RlpBehaviors.None));
+
+        public void SetWithdrawals(params Withdrawal[]? withdrawals)
+        {
+            if (withdrawals != null)
+                Withdrawals = withdrawals
+                .Select(t => Rlp.Encode(t).Bytes)
+                .ToArray();
+        }
     }
 }
