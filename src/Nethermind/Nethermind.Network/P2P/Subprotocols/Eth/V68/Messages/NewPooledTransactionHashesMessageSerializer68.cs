@@ -28,8 +28,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            TxType[] types = rlpStream.DecodeArray(item => (TxType)item.DecodeByte());
-            uint[] sizes = rlpStream.DecodeArray(item => item.DecodeUInt());
+            rlpStream.ReadSequenceLength();
+            TxType[] types = rlpStream.DecodeArray(item => (TxType)item.ReadByte());
+            int[] sizes = rlpStream.DecodeArray(item => item.DecodeInt());
             Keccak[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
@@ -40,18 +41,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             int sizesSize = Rlp.LengthOfSequence(message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u)));
             int hashesSize = Rlp.LengthOfSequence(message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak)));
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(hashesSize + sizesSize + typesSize));
+            int totalSize = Rlp.LengthOfSequence(typesSize + sizesSize + hashesSize);
+
+            byteBuffer.EnsureWritable(totalSize, true);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
+            rlpStream.StartSequence(totalSize);
             rlpStream.StartSequence(typesSize);
             foreach (TxType type in message.Types)
             {
-                rlpStream.Encode((byte)type);
+                rlpStream.WriteByte((byte)type);
             }
 
             rlpStream.StartSequence(sizesSize);
-            foreach (uint size in message.Sizes)
+            foreach (int size in message.Sizes)
             {
                 rlpStream.Encode(size);
             }

@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
@@ -29,10 +30,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public override string Protocol { get; } = "eth";
 
         public readonly IReadOnlyList<TxType> Types;
-        public readonly IReadOnlyList<uint> Sizes;
+        public readonly IReadOnlyList<int> Sizes;
         public readonly IReadOnlyList<Keccak> Hashes;
 
-        public NewPooledTransactionHashesMessage68(IReadOnlyList<TxType> types, IReadOnlyList<uint> sizes, IReadOnlyList<Keccak> hashes)
+        public NewPooledTransactionHashesMessage68(IReadOnlyList<TxType> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
         {
             Types = types;
             Sizes = sizes;
