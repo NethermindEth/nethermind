@@ -16,7 +16,7 @@ public class WithdrawalDecoderTests
         {
             Index = 1,
             ValidatorIndex = 2,
-            Recipient = Address.SystemUser,
+            Address = Address.SystemUser,
             Amount = 3
         };
         var rlp = Rlp.Encode(withdrawal).Bytes;
@@ -31,7 +31,7 @@ public class WithdrawalDecoderTests
         {
             Index = 1,
             ValidatorIndex = 2,
-            Recipient = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
+            Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             Amount = 3
         };
         var rlp = Rlp.Encode(withdrawal).Bytes;
@@ -47,7 +47,7 @@ public class WithdrawalDecoderTests
         {
             Index = long.MaxValue,
             ValidatorIndex = int.MaxValue,
-            Recipient = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
+            Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             Amount = UInt256.UInt128MaxValue
         };
         var stream = new RlpStream(1024);
@@ -68,7 +68,7 @@ public class WithdrawalDecoderTests
         {
             Index = long.MaxValue,
             ValidatorIndex = int.MaxValue,
-            Recipient = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
+            Address = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
             Amount = UInt256.UInt128MaxValue
         };
         var rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;

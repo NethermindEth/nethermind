@@ -27,7 +27,7 @@ public class WithdrawalBuilder : BuilderBase<Withdrawal>
 
     public WithdrawalBuilder WithRecipient(Address recipient)
     {
-        TestObject.Recipient = recipient;
+        TestObject.Address = recipient;
 
         return this;
     }

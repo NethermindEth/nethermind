@@ -34,15 +34,15 @@ public class ValidationWithdrawalProcessor : IWithdrawalProcessor
 
         foreach (var withdrawal in block.Withdrawals)
         {
-            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Recipient}");
+            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Address}");
 
-            if (_stateProvider.AccountExists(withdrawal.Recipient))
+            if (_stateProvider.AccountExists(withdrawal.Address))
             {
-                _stateProvider.AddToBalance(withdrawal.Recipient, withdrawal.Amount, spec);
+                _stateProvider.AddToBalance(withdrawal.Address, withdrawal.Amount, spec);
             }
             else
             {
-                _stateProvider.CreateAccount(withdrawal.Recipient, withdrawal.Amount);
+                _stateProvider.CreateAccount(withdrawal.Address, withdrawal.Amount);
             }
         }
 

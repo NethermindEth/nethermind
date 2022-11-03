@@ -9,7 +9,12 @@ namespace Nethermind.Core;
 public class Withdrawal
 {
     /// <summary>
-    /// Gets or sets the withdrawal amount as a big-endian value in units of Wei.
+    /// Gets or sets the withdrawal address.
+    /// </summary>
+    public Address Address { get; set; } = Address.Zero;
+    
+    /// <summary>
+    /// Gets or sets the withdrawal amount in Wei.
     /// </summary>
     public UInt256 Amount { get; set; }
 
@@ -17,11 +22,6 @@ public class Withdrawal
     /// Gets or sets the withdrawal unique id.
     /// </summary>
     public ulong Index { get; set; }
-
-    /// <summary>
-    /// Gets or sets the withdrawal recipient address.
-    /// </summary>
-    public Address Recipient { get; set; } = Address.Zero;
 
     /// <summary>
     /// Gets or sets the validator index on the consensus layer the withdrawal corresponds to.
@@ -33,7 +33,7 @@ public class Withdrawal
     public string ToString(string indentation) => new StringBuilder()
         .AppendLine($"{indentation}{nameof(Index)}:          {Index}")
         .AppendLine($"{indentation}{nameof(ValidatorIndex)}: {ValidatorIndex}")
-        .AppendLine($"{indentation}{nameof(Recipient)}:      {Recipient}")
+        .AppendLine($"{indentation}{nameof(Address)}:        {Address}")
         .AppendLine($"{indentation}{nameof(Amount)}:         {Amount}")
         .ToString();
 }
