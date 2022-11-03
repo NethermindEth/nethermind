@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -7,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -36,12 +38,12 @@ public partial class EngineModuleTests
             .Be(
                 $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-        Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
+        Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         var expectedPayload = new
         {
             parentHash = startingHead.ToString(),
             feeRecipient = feeRecipient.ToString(),
-            stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(),
+            stateRoot = "0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491",
             receiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
             logsBloom = Bloom.Empty.Bytes.ToHexString(true),
             prevRandao = prevRandao.ToString(),
@@ -53,6 +55,7 @@ public partial class EngineModuleTests
             baseFeePerGas = "0x0",
             blockHash = blockHash.ToString(),
             transactions = Array.Empty<object>(),
+            withdrawals = withdrawals.Select(t => Rlp.Encode(t).Bytes.ToHexString(true)).ToArray()
         };
         string expectedPayloadString = JsonConvert.SerializeObject(expectedPayload);
         // get the payload
