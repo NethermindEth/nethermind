@@ -215,5 +215,27 @@ namespace Nethermind.Blockchain.Test.Validators
             TxValidator txValidator = new(TestChainIds.ChainId);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
+
+        [TestCase(TxType.EIP1559, false, ExpectedResult = false)]
+        [TestCase(TxType.Blob, false, ExpectedResult = false)]
+        [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
+        [TestCase(TxType.Blob, true, ExpectedResult = true)]
+        public bool MaxFeePerDataGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerDataGasSet)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 1 + TestChainIds.ChainId * 2 + 35;
+            Signature signature = new(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(txType)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
+                .WithChainId(TestChainIds.ChainId)
+                .WithSignature(signature).TestObject;
+
+            TxValidator txValidator = new(TestChainIds.ChainId);
+            return txValidator.IsWellFormed(tx, ShardingFork.Instance);
+        }
     }
 }

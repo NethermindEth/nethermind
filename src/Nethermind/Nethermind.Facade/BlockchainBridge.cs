@@ -262,7 +262,8 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData)
+                    blockHeader.ExtraData,
+                    blockHeader.ExcessDataGas)
                 {
                     BaseFeePerGas = blockHeader.BaseFeePerGas,
                 };

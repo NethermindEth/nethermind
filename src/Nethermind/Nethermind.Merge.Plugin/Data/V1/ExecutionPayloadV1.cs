@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
@@ -46,6 +47,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             ExtraData = block.ExtraData!;
             Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
+            ExcessDataGas = block.ExcessDataGas;
         }
 
         public bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
@@ -62,7 +64,8 @@ namespace Nethermind.Merge.Plugin.Data.V1
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
                     MixHash = PrevRandao,
-                    Author = FeeRecipient
+                    Author = FeeRecipient,
+                    ExcessDataGas = ExcessDataGas
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
@@ -94,6 +97,9 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public ulong Timestamp { get; set; }
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
+
+        [JsonConverter(typeof(NullableUInt256Converter))]
+        public UInt256? ExcessDataGas { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak? BlockHash { get; set; } = null!;

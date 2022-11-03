@@ -14,6 +14,7 @@ namespace Nethermind.Serialization.Rlp
         // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
         // but then RLP would have to be passed into so many places
         public static long Eip1559TransitionBlock = long.MaxValue;
+        public static ulong Eip4844TransitionTimestamp = ulong.MaxValue;
 
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -73,6 +74,11 @@ namespace Nethermind.Serialization.Rlp
             if (blockHeader.Number >= Eip1559TransitionBlock)
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
+            }
+
+            if (blockHeader.Timestamp >= Eip4844TransitionTimestamp)
+            {
+                blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -143,6 +149,11 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
+            if (blockHeader.Timestamp >= Eip4844TransitionTimestamp)
+            {
+                blockHeader.ExcessDataGas = rlpStream.DecodeUInt256();
+            }
+
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(headerCheck);
@@ -194,6 +205,11 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(header.BaseFeePerGas);
             }
+
+            if (header.Timestamp >= Eip4844TransitionTimestamp)
+            {
+                rlpStream.Encode(header.ExcessDataGas ?? 0);
+            }
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -231,7 +247,8 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas));
+                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
+                                + (item.Timestamp < Eip4844TransitionTimestamp ? 0 : Rlp.LengthOf(item.ExcessDataGas ?? 0));
 
             if (notForSealing)
             {

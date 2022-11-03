@@ -87,6 +87,8 @@ namespace Nethermind.Core
 
         public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
+        public UInt256? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
+
         public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
         public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;

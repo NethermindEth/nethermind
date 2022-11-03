@@ -125,6 +125,23 @@ namespace Nethermind.Evm.Test
                                     )
                             )))))).ToArray();
 
+        private static readonly Instruction[] ShardingForkInstructions =
+            FrontierInstructions.Union(
+                HomesteadInstructions.Union(
+                    ByzantiumInstructions.Union(
+                        ConstantinopleFixInstructions.Union(
+                            IstanbulInstructions.Union(
+                                BerlinInstructions.Union(
+                                    LondonInstructions.Union(
+                                        ShanghaiInstructions.Union(
+                                        new Instruction[]
+                                            {
+                                                // TODO: Add DATAHASH
+                                            }
+                                        )
+                                    )
+                            )))))).ToArray();
+
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
@@ -139,7 +156,8 @@ namespace Nethermind.Evm.Test
                 { MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions },
                 { MainnetSpecProvider.LondonBlockNumber, LondonInstructions },
                 { MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions },
-                { (long.MaxValue, ulong.MaxValue), ShanghaiInstructions }
+                { MainnetSpecProvider.ShardingForkActivation, ShardingForkInstructions },
+                { (long.MaxValue, ulong.MaxValue), ShardingForkInstructions }
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -163,6 +181,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShardingForkBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {

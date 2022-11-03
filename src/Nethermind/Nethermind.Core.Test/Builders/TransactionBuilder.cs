@@ -131,6 +131,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithMaxFeePerDataGas(UInt256? maxFeePerDataGas)
+        {
+            TestObjectInternal.MaxFeePerDataGas = maxFeePerDataGas;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobHashes(byte[][] blobVersionedHashes)
+        {
+            TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
+            return this;
+        }
+
         public TransactionBuilder<T> WithSignature(Signature signature)
         {
             TestObjectInternal.Signature = signature;

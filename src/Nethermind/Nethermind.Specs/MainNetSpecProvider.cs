@@ -41,7 +41,8 @@ namespace Nethermind.Specs
                 { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
                 { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
                 { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
-                _ => Shanghai.Instance
+                { Timestamp: < ShardingForkBlockTimestamp } => Shanghai.Instance,
+                _ => ShardingFork.Instance
             };
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -57,11 +58,13 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
         public const long GrayGlacierBlockNumber = 15_050_000;
-        public const ulong ShanghaiBlockTimestamp = ulong.MaxValue - 4;
+        public const ulong ShanghaiBlockTimestamp = ulong.MaxValue - 5;
+        public const ulong ShardingForkBlockTimestamp = ulong.MaxValue - 4;
         public const ulong CancunBlockTimestamp = ulong.MaxValue - 3;
         public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
         public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
         public static ForkActivation ShanghaiActivation = (15_050_000, ShanghaiBlockTimestamp);
+        public static ForkActivation ShardingForkActivation = (15_050_000, ShardingForkBlockTimestamp);
         public static ForkActivation CancunActivation = (15_050_000, CancunBlockTimestamp);
         public static ForkActivation PragueActivation = (15_050_000, PragueBlockTimestamp);
         public static ForkActivation OsakaActivation = (15_050_000, OsakaBlockTimestamp);
@@ -74,7 +77,7 @@ namespace Nethermind.Specs
             HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
             ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
             BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber,
-            //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
+            //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, ShardingForkActivation), (GrayGlacierBlockNumber, CancunBlockTimestamp),
             //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };
 

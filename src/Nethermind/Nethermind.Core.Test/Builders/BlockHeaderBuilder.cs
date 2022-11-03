@@ -164,6 +164,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockHeaderBuilder WithExcessDataGas(UInt256? excessDataGas)
+        {
+            TestObjectInternal.ExcessDataGas = excessDataGas;
+            return this;
+        }
+
         public BlockHeaderBuilder WithAura(long step, byte[]? signature = null)
         {
             TestObjectInternal.AuRaStep = step;

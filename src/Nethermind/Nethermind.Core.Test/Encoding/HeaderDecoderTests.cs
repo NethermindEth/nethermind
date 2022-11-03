@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -139,6 +141,27 @@ namespace Nethermind.Core.Test.Encoding
             blockHeader.GasUsed.Should().Be(negativeLong);
             blockHeader.Number.Should().Be(negativeLong);
             blockHeader.GasLimit.Should().Be(negativeLong);
+        }
+
+        [TestCaseSource(nameof(ExcessDataGasCaseSource))]
+        public void Can_encode_decode_with_excessDataGas(UInt256? excessDataGas, UInt256? decodedExcessDataGas)
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithTimestamp(ulong.MaxValue)
+                .WithExcessDataGas(excessDataGas).TestObject;
+
+            Rlp rlp = Rlp.Encode(header);
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+            blockHeader.ExcessDataGas.Should().Be(decodedExcessDataGas);
+        }
+        public static IEnumerable<object?[]> ExcessDataGasCaseSource()
+        {
+            yield return new object?[] { null, UInt256.Zero };
+            yield return new object?[] { UInt256.Zero, UInt256.Zero };
+            yield return new object?[] { new UInt256(1), new UInt256(1) };
+            yield return new object?[] { UInt256.UInt128MaxValue, UInt256.UInt128MaxValue };
+            yield return new object?[] { UInt256.MaxValue, UInt256.MaxValue };
         }
     }
 }

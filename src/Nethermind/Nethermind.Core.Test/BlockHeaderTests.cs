@@ -70,6 +70,21 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(new Keccak(Bytes.FromHexString("0x1423c2875714c31049cacfea8450f66a73ecbd61d7a6ab13089406a491aa9fc2")), header.Hash);
         }
 
+        [TestCase(0ul, null, "0x9890f002d41c83cc1f07bcfc59357181439b15665bda52541ec05662250222d5")]
+        [TestCase(0ul, 1ul, "0x9890f002d41c83cc1f07bcfc59357181439b15665bda52541ec05662250222d5")]
+        [TestCase(ulong.MaxValue, null, "0x32cfdac3b6fd3452c5bbebbc638d5666fa0ce8a2f855dea82758ae0917d65ad3")]
+        [TestCase(ulong.MaxValue, 0ul, "0x32cfdac3b6fd3452c5bbebbc638d5666fa0ce8a2f855dea82758ae0917d65ad3")]
+        [TestCase(ulong.MaxValue, 1ul, "0xd45ce0ae69381efc25172c4e81d6e7d283d98f0b236692968e8bfa1c26b2c0ab")]
+        public void Hash_changes_with_fork_and_excessDataGas_value(ulong timestampForForkActivation, ulong? excessDataGas, string expectedHash)
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithTimestamp(timestampForForkActivation)
+                .WithExcessDataGas(excessDataGas)
+                .TestObject;
+            header.Hash = header.CalculateHash();
+            Assert.AreEqual(new Keccak(Bytes.FromHexString(expectedHash)), header.Hash);
+        }
+
         [Test]
         public void Author()
         {
