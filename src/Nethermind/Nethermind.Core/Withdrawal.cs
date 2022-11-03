@@ -12,7 +12,7 @@ public class Withdrawal
     /// Gets or sets the withdrawal address.
     /// </summary>
     public Address Address { get; set; } = Address.Zero;
-    
+
     /// <summary>
     /// Gets or sets the withdrawal amount in Wei.
     /// </summary>
