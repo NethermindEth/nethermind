@@ -107,6 +107,8 @@ namespace Nethermind.Core
 
         public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
 
+        public Keccak? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
+
         public override string ToString()
         {
             return ToString(Format.Short);

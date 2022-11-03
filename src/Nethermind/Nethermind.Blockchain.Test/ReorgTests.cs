@@ -25,6 +25,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -101,6 +102,7 @@ namespace Nethermind.Blockchain.Test
                 storageProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
+                new ValidationWithdrawalApplier(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,

@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -41,6 +42,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
+        private readonly IWithdrawalApplier _withdrawalApplier;
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
@@ -63,6 +65,7 @@ namespace Nethermind.Consensus.Processing
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
+            IWithdrawalApplier withdrawalApplier,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -72,6 +75,7 @@ namespace Nethermind.Consensus.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
+            _withdrawalApplier = withdrawalApplier ?? throw new ArgumentNullException(nameof(withdrawalApplier));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
 
@@ -241,7 +245,7 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
-            ApplyWithdrawals(block, spec); // ToDo change to _withdrawalApplier
+            _withdrawalApplier.ApplyWithdrawals(block, spec);
 
             _stateProvider.Commit(spec);
             _stateProvider.RecalculateStateRoot();
@@ -356,34 +360,6 @@ namespace Nethermind.Consensus.Processing
                     _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
                 }
             }
-        }
-
-        private void ApplyWithdrawals(Block block, IReleaseSpec spec)
-        {
-            if (!spec.IsEip4895Enabled)
-                return;
-
-            if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
-
-            if (block.Withdrawals != null)
-            {
-                foreach (var withdrawal in block.Withdrawals)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Recipient}");
-
-                    if (_stateProvider.AccountExists(withdrawal.Recipient))
-                    {
-                        _stateProvider.AddToBalance(withdrawal.Recipient, withdrawal.Amount, spec);
-                    }
-                    else
-                    {
-                        _stateProvider.CreateAccount(withdrawal.Recipient, withdrawal.Amount);
-                    }
-                }
-            }
-
-
-            if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
         }
     }
 }

@@ -19,7 +19,7 @@ public class ProductionWithdrawalApplier : IWithdrawalApplier
         _validationWithdrawalApplier.ApplyWithdrawals(block, spec);
         if (spec.IsEip4895Enabled)
         {
-            if (block.Withdrawals == null || block.Withdrawals?.Length == 0)
+            if (block.Withdrawals!.Length == 0)
                 block.Header.WithdrawalsRoot = Keccak.EmptyTreeHash;
             else
                 block.Header.WithdrawalsRoot = new WithdrawalTrie(block.Withdrawals!).RootHash;

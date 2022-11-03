@@ -35,6 +35,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -209,6 +210,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    new ValidationWithdrawalApplier(State, LogManager),
                     LogManager);
 
                 var parser = new AbiDefinitionParser();
