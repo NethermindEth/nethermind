@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ProductionWithdrawalApplier(new ValidationWithdrawalApplier(getFromApi!.StateProvider!, getFromApi.LogManager)),
+                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(getFromApi!.StateProvider!, getFromApi.LogManager)),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

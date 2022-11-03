@@ -172,7 +172,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
-                    new ValidationWithdrawalApplier(State, LogManager));
+                    new ValidationWithdrawalProcessor(State, LogManager));
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

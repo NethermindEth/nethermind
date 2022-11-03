@@ -209,7 +209,7 @@ namespace Nethermind.Merge.Plugin.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    new ValidationWithdrawalApplier(State, LogManager),
+                    new ValidationWithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

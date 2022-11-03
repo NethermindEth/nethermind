@@ -146,7 +146,7 @@ namespace Nethermind.Clique.Test
                     storageProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    new ValidationWithdrawalApplier(stateProvider, nodeLogManager),
+                    new ValidationWithdrawalProcessor(stateProvider, nodeLogManager),
                     nodeLogManager);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -168,7 +168,7 @@ namespace Nethermind.Clique.Test
                     minerStorageProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    new ValidationWithdrawalApplier(stateProvider, nodeLogManager),
+                    new ValidationWithdrawalProcessor(stateProvider, nodeLogManager),
                     nodeLogManager);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);

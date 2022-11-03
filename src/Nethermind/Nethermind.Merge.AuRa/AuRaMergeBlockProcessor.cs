@@ -47,7 +47,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IReceiptStorage receiptStorage,
         ILogManager logManager,
         IBlockTree blockTree,
-        IWithdrawalApplier withdrawalApplier,
+        IWithdrawalProcessor withdrawalProcessor,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null
@@ -61,7 +61,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             receiptStorage,
             logManager,
             blockTree,
-            withdrawalApplier,
+            withdrawalProcessor,
             txFilter,
             gasLimitOverride,
             contractRewriter

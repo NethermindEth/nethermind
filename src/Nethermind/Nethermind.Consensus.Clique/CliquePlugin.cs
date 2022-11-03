@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ProductionWithdrawalApplier(new ValidationWithdrawalApplier(producerEnv.StateProvider, getFromApi.LogManager)),
+                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

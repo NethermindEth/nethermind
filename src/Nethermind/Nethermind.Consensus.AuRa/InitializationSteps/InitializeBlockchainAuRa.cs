@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                new ValidationWithdrawalApplier(_api.StateProvider, _api.LogManager),
+                new ValidationWithdrawalProcessor(_api.StateProvider, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

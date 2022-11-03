@@ -370,7 +370,7 @@ namespace Nethermind.Init.Steps
                 _api.StorageProvider,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
-                new ValidationWithdrawalApplier(_api.StateProvider!, _api.LogManager),
+                new ValidationWithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 _api.LogManager);
         }
 

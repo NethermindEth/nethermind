@@ -3,7 +3,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Withdrawals;
 
-public interface IWithdrawalApplier
+public interface IWithdrawalProcessor
 {
-    void ApplyWithdrawals(Block block, IReleaseSpec spec);
+    void ProcessWithdrawals(Block block, IReleaseSpec spec);
 }

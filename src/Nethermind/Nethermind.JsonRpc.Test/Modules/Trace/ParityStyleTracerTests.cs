@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalApplier(stateProvider, LimboLogs.Instance),
+                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);

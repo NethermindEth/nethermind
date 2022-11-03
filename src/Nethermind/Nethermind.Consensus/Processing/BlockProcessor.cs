@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
-        private readonly IWithdrawalApplier _withdrawalApplier;
+        private readonly IWithdrawalProcessor _withdrawalProcessor;
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Processing
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
-            IWithdrawalApplier withdrawalApplier,
+            IWithdrawalProcessor withdrawalProcessor,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -75,7 +75,7 @@ namespace Nethermind.Consensus.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-            _withdrawalApplier = withdrawalApplier ?? throw new ArgumentNullException(nameof(withdrawalApplier));
+            _withdrawalProcessor = withdrawalProcessor ?? throw new ArgumentNullException(nameof(withdrawalProcessor));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
 
@@ -245,7 +245,7 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
-            _withdrawalApplier.ApplyWithdrawals(block, spec);
+            _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
             _stateProvider.Commit(spec);
             _stateProvider.RecalculateStateRoot();

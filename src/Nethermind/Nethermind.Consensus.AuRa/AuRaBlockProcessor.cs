@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.AuRa
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
-            IWithdrawalApplier withdrawalApplier,
+            IWithdrawalProcessor withdrawalProcessor,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                withdrawalApplier,
+                withdrawalProcessor,
                 logManager)
         {
             _specProvider = specProvider;

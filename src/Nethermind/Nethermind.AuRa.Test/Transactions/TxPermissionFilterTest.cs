@@ -314,7 +314,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
-                    new ValidationWithdrawalApplier(State, LogManager),
+                    new ValidationWithdrawalProcessor(State, LogManager),
                     PermissionBasedTxFilter);
             }
 
