@@ -94,7 +94,9 @@ namespace Nethermind.Evm
         GAS = 0x5a,
         JUMPDEST = 0x5b,
         BEGINSUB = 0x5c,
+        RJUMP = 0x5c,
         RETURNSUB = 0x5d,
+        RJUMPI = 0x5c,
         JUMPSUB = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855

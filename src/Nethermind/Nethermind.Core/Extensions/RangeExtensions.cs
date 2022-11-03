@@ -13,29 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Threading;
-using Nethermind.Core.Specs;
+using System;
+using System.Diagnostics;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Core.Extensions
 {
-    public class Shanghai : GrayGlacier
+    public static class RangeExtensions
     {
-        private static IReleaseSpec _instance;
+        public static bool Includes(this Range @this, int value)
+            => value >= @this.Start.Value && value <= @this.End.Value;
 
-        protected Shanghai()
+        public static bool Includes(this Range @this, int value, int len)
         {
-            Name = "Shanghai";
-            IsEip1153Enabled = true;
-            IsEip3675Enabled = true;
-            IsEip3651Enabled = true;
-            IsEip3855Enabled = true;
-            IsEip3670Enabled = true;
-            IsEip3540Enabled = true;
-            IsEip4200Enabled = true;
+            var (offset, length) = @this.GetOffsetAndLength(len);
+            return value >= offset && value < length + offset;
         }
+        public static bool Intersects(this Range @this, Range other)
+            => @this.Start.Value <= other.End.Value && other.Start.Value <= @this.End.Value;
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());
     }
 }

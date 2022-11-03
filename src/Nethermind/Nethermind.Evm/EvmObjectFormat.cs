@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Org.BouncyCastle.Crypto.Paddings;
 
@@ -243,6 +244,8 @@ namespace Nethermind.Evm
             {
                 var (startOffset, endOffset) = (header.CodeStartOffset, header.CodeEndOffset);
                 Instruction? opcode = null;
+                HashSet<Range> immediates = new HashSet<Range>();
+                HashSet<Int32> rjumpdests = new HashSet<Int32>();
                 for (int i = startOffset; i < endOffset;)
                 {
                     opcode = (Instruction)code[i];
@@ -255,6 +258,32 @@ namespace Nethermind.Evm
                             _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                         }
                         return false;
+                    }
+
+                    if(opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                    {
+                        if(i + 2 > endOffset)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                            }
+                            return false;
+                        }
+
+                        var offset = code[i..(i + 2)].ReadEthInt32();
+                        immediates.Add(new Range(i, i + 2));
+                        var rjumpdest = offset + 2 + i;
+                        rjumpdests.Add(rjumpdest);
+                        if (rjumpdest < 0 || rjumpdest >= endOffset)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                            }
+                            return false;
+                        }
+                        i += 2;
                     }
 
                     if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
@@ -273,21 +302,33 @@ namespace Nethermind.Evm
                 }
 
                 // check if terminating opcode : STOP, RETURN, REVERT, INVALID, SELFDESTRUCT
-                switch (opcode)
+                bool endCorrectly = opcode switch
                 {
-                    case Instruction.STOP:
-                    case Instruction.RETURN:
-                    case Instruction.REVERT:
-                    case Instruction.INVALID:
-                    case Instruction.SELFDESTRUCT: // might be retired and replaced with SELLALL?
-                        return true;
-                    default:
-                        if (LoggingEnabled)
-                        {
-                            _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
-                        }
-                        return false;
+                    Instruction.STOP | Instruction.RETURN | Instruction.REVERT | Instruction.INVALID | Instruction.SELFDESTRUCT
+                        => true,
+                    _ => false
+                };
+
+                if (!endCorrectly && LoggingEnabled)
+                {
+                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                 }
+
+                foreach(int rjumpdest in rjumpdests)
+                {
+                    foreach(var range in immediates)
+                    {
+                        if(range.Includes(rjumpdest))
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
+                            }
+                            return false;
+                        }
+                    }
+                }
+                return true;
             }
             return false;
         }
