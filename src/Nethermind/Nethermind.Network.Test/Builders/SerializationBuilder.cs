@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -98,6 +98,12 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
+        }
+
+        public SerializationBuilder WithEth68()
+        {
+            return WithEth66()
+                .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
