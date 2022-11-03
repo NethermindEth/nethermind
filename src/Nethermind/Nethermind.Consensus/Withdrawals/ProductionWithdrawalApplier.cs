@@ -1,4 +1,4 @@
-﻿using Nethermind.Core;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
@@ -17,12 +17,11 @@ public class ProductionWithdrawalApplier : IWithdrawalApplier
     public void ApplyWithdrawals(Block block, IReleaseSpec spec)
     {
         _validationWithdrawalApplier.ApplyWithdrawals(block, spec);
+
         if (spec.IsEip4895Enabled)
         {
-            if (block.Withdrawals!.Length == 0)
-                block.Header.WithdrawalsRoot = Keccak.EmptyTreeHash;
-            else
-                block.Header.WithdrawalsRoot = new WithdrawalTrie(block.Withdrawals!).RootHash;
+            block.Header.WithdrawalsRoot = block.Withdrawals.Length == 0
+                ? Keccak.EmptyTreeHash : new WithdrawalTrie(block.Withdrawals!).RootHash;
         }
     }
 }

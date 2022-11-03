@@ -26,6 +26,8 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
+        //EIP-3860: Limit and meter initcode
+        long MaxInitCodeSize => 2 * MaxCodeSize;
         long MinGasLimit { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
@@ -272,7 +274,12 @@ namespace Nethermind.Core.Specs
         bool IsEip3855Enabled { get; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the
+        /// EIP-3860: Limit and meter initcode
+        /// </summary>
+        bool IsEip3860Enabled { get; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the 
         /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
         /// validator withdrawals are enabled.
         /// </summary>

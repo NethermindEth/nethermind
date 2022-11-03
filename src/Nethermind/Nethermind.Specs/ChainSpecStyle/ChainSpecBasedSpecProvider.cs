@@ -126,15 +126,15 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(releaseStartBlock, 0ul, releaseSpec);
-                _transitions[index] = ((releaseStartBlock, 0ul), releaseSpec);
+                FillReleaseSpec(releaseSpec, releaseStartBlock);
+                _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp, releaseSpec);
+                FillReleaseSpec(releaseSpec, _transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp);
                 _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;
             }
@@ -143,7 +143,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private void FillReleaseSpec(long releaseStartBlock, ulong releaseStartTimestamp, ReleaseSpec releaseSpec)
+        private void FillReleaseSpec(ReleaseSpec releaseSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review

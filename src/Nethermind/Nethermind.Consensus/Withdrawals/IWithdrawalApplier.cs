@@ -1,4 +1,4 @@
-﻿using Nethermind.Core;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Withdrawals;
