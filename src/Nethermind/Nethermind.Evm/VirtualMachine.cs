@@ -2889,33 +2889,62 @@ namespace Nethermind.Evm
 
                             break;
                         }
-                    case Instruction.BEGINSUB | Instruction.RJUMP:
+                    case Instruction.RJUMP:
                         {
                             if(spec.StaticRelativeJumpsEnabled)
                             {
                                 var destination = codeSection[programCounter..(programCounter + 2)].ReadEthInt32();
                                 programCounter += 2 + destination;
-                                break;
                             } else
                             {
-                                if (!spec.SubroutinesEnabled)
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                    return CallResult.InvalidInstructionException;
-                                }
-
-                                // why do we even need the cost of it?
-                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-
-                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
-                                return CallResult.InvalidSubroutineEntry;
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
                             }
+                            break;
                         }
-                    case Instruction.RETURNSUB | Instruction.RJUMPI:
+
+                    case Instruction.BEGINSUB:
+                        {
+                            if (!spec.SubroutinesEnabled)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            // why do we even need the cost of it?
+                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
+                            return CallResult.InvalidSubroutineEntry;
+                        }
+                    case Instruction.RETURNSUB:
+                        {
+                            if (!spec.SubroutinesEnabled)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            if (vmState.ReturnStackHead == 0)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
+                                return CallResult.InvalidSubroutineReturn;
+                            }
+
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            break;
+                        }
+                    case Instruction.RJUMPI:
                         {
                             if (spec.StaticRelativeJumpsEnabled)
                             {
@@ -2928,31 +2957,13 @@ namespace Nethermind.Evm
                                 {
                                     programCounter += 2;
                                 }
-                                break;
                             }
                             else
                             {
-                                if (!spec.SubroutinesEnabled)
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                    return CallResult.InvalidInstructionException;
-                                }
-
-                                if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-
-                                if (vmState.ReturnStackHead == 0)
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
-                                    return CallResult.InvalidSubroutineReturn;
-                                }
-
-                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                                break;
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
                             }
+                            break;
                         }
                     case Instruction.JUMPSUB:
                         {
