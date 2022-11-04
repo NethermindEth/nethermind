@@ -643,10 +643,10 @@ namespace Nethermind.Evm.Test
                     }
                 }
 
-                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, int mode, int context, int corrupt)
+                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, bool hasEofContainer, bool hasEofInitCode, bool hasCorruptContainer, bool hasCorruptInitcode, int context)
                 {
                     // if initcode should be EOF
-                    if ((mode & 2) == 2)
+                    if (hasEofInitCode)
                     {
                         deployed = EofBytecode(deployed, deployedData);
                     }
@@ -657,9 +657,9 @@ namespace Nethermind.Evm.Test
                     }
 
                     // if initcode should be corrupt
-                    if ((corrupt & 2) == 2)
+                    if (hasCorruptInitcode)
                     {
-                        deployed = corruptBytecode((mode & 2) == 2, deployed);
+                        deployed = corruptBytecode(hasEofInitCode, deployed);
                     }
 
                     // wrap initcode in container
@@ -681,7 +681,7 @@ namespace Nethermind.Evm.Test
                     };
 
                     // if container should be EOF
-                    if ((mode & 1) == 1)
+                    if (hasEofContainer)
                     {
                         result = EofBytecode(result);
                     }
@@ -692,9 +692,9 @@ namespace Nethermind.Evm.Test
                     }
 
                     // if container should be corrupt
-                    if ((corrupt & 1) == 1)
+                    if (hasCorruptContainer)
                     {
-                        result = corruptBytecode((mode & 1) == 1, result);
+                        result = corruptBytecode(hasEofContainer, result);
                     }
 
                     return result;
@@ -715,9 +715,9 @@ namespace Nethermind.Evm.Test
                             yield return new TestCase
                             {
                                 Index = idx++,
-                                Code = EmitBytecode(standardCode, standardData, i, j, k),
-                                ResultIfEOF = (corruptContainer ? StatusCode.Failure : StatusCode.Success, null),
-                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? "NON-" : String.Empty)}EOF Bytecode with {(hasEofContainer ? "NON-" : String.Empty)}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? "" : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? "" : "Not")} Corrupted INITCODE"
+                                Code = EmitBytecode(standardCode, standardData, hasEofContainer, hasEofInnitcode, corruptContainer, corruptInnitcode, k),
+                                ResultIfEOF = (corruptContainer || corruptInnitcode ? StatusCode.Failure : StatusCode.Success, null),
+                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE"
                             };
                         }
                     }
