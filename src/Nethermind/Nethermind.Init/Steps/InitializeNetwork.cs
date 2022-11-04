@@ -503,6 +503,7 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
+            _networkConfig.LocalIp!,
             _networkConfig.P2PPort,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
