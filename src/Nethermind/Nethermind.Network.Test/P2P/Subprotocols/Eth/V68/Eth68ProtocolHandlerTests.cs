@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
@@ -10,9 +11,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
@@ -90,21 +92,42 @@ public class Eth68ProtocolHandlerTests
         _handler.HeadNumber.Should().Be(0);
     }
 
-    [Test]
-    public void Can_handle_NewPooledTransactions_messages()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(100)]
+    public void Can_handle_NewPooledTransactions_message(int txCount)
     {
-        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
-
-        TxDecoder txDecoder = new();
-        IReadOnlyList<TxType> types = new[] {tx.Type};
-        IReadOnlyList<int> sizes = new[] {txDecoder.GetLength(tx, RlpBehaviors.None)};
-        IReadOnlyList<Keccak> hashes = new[] {tx.Hash};
+        GenerateLists(txCount, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes);
 
         var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
-
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+        _pooledTxsRequestor.Received().RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>());
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Should_throw_when_sizes_doesnt_match(bool removeSize)
+    {
+        GenerateLists(4, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes);
+
+        if (removeSize)
+        {
+            sizes.RemoveAt(sizes.Count - 1);
+        }
+        else
+        {
+            types.RemoveAt(sizes.Count - 1);
+        }
+
+        var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+
+        HandleIncomingStatusMessage();
+        Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+        action.Should().Throw<SubprotocolException>();
     }
 
     private void HandleIncomingStatusMessage()
@@ -123,5 +146,23 @@ public class Eth68ProtocolHandlerTests
         IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+    }
+
+    private void GenerateLists(int txCount, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes)
+    {
+        TxDecoder txDecoder = new();
+        types = new();
+        sizes = new();
+        hashes = new();
+
+        for (int i = 0; i < txCount; ++i)
+        {
+            Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
+                .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
+
+            types.Add(tx.Type);
+            sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
+            hashes.Add(tx.Hash);
+        }
     }
 }

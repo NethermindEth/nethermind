@@ -79,7 +79,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                                              $"Hashes count: {message.Hashes.Count} " +
                                              $"Types count: {message.Types.Count} " +
                                              $"Sizes count: {message.Sizes.Count}");
-            return;
+            throw new SubprotocolException("Wrong format of message");
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();

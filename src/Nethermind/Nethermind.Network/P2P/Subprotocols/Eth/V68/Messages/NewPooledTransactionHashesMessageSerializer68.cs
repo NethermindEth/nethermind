@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             int sizesSize = message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u));
             int hashesSize = message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak));
 
-            int totalSize = Rlp.LengthOfSequence(Rlp.LengthOfSequence(typesSize) + Rlp.LengthOfSequence(sizesSize) + Rlp.LengthOfSequence(hashesSize));
+            int totalSize = Rlp.LengthOfSequence(typesSize) + Rlp.LengthOfSequence(sizesSize) + Rlp.LengthOfSequence(hashesSize);
 
             byteBuffer.EnsureWritable(totalSize, true);
 
