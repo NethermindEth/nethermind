@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         {
             NettyRlpStream rlpStream = new(byteBuffer);
             rlpStream.ReadSequenceLength();
-            TxType[] types = rlpStream.DecodeArray(item => (TxType)item.ReadByte());
+            TxType[] types = rlpStream.DecodeArray(item => (TxType)item.DecodeByte());
             int[] sizes = rlpStream.DecodeArray(item => item.DecodeInt());
             Keccak[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
@@ -37,11 +37,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
-            int typesSize = Rlp.LengthOfSequence(message.Types.Count);
-            int sizesSize = Rlp.LengthOfSequence(message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u)));
-            int hashesSize = Rlp.LengthOfSequence(message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak)));
+            int typesSize = message.Types.Aggregate(0, (i, t) => i + Rlp.LengthOf((byte)t));
+            int sizesSize = message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u));
+            int hashesSize = message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak));
 
-            int totalSize = Rlp.LengthOfSequence(typesSize + sizesSize + hashesSize);
+            int totalSize = Rlp.LengthOfSequence(Rlp.LengthOfSequence(typesSize) + Rlp.LengthOfSequence(sizesSize) + Rlp.LengthOfSequence(hashesSize));
 
             byteBuffer.EnsureWritable(totalSize, true);
 
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             rlpStream.StartSequence(typesSize);
             foreach (TxType type in message.Types)
             {
-                rlpStream.WriteByte((byte)type);
+                rlpStream.Encode((byte)type);
             }
 
             rlpStream.StartSequence(sizesSize);
