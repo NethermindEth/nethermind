@@ -36,7 +36,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class BloomMigration : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>());
+        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
 
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;

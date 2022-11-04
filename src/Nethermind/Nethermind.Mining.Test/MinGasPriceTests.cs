@@ -39,7 +39,7 @@ namespace Nethermind.Mining.Test
         public void Test(long minimum, long actual, bool expectedResult)
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec()
             {
                 IsEip1559Enabled = false
             });
@@ -60,7 +60,7 @@ namespace Nethermind.Mining.Test
         public void Test1559(long minimum, long maxFeePerGas, long maxPriorityFeePerGas, bool expectedResult)
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec()
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec()
             {
                 IsEip1559Enabled = true
             });

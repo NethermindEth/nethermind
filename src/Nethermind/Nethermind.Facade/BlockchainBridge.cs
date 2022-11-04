@@ -182,7 +182,7 @@ namespace Nethermind.Facade
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 header,
-                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                Math.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
@@ -221,7 +221,7 @@ namespace Nethermind.Facade
 
         private (bool Success, string Error) TryCallAndRestore(
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
@@ -239,7 +239,7 @@ namespace Nethermind.Facade
 
         private void CallAndRestore(
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)

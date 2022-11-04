@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Producers
 {
     public class PayloadAttributes
     {
-        public UInt256 Timestamp { get; set; }
+        public ulong Timestamp { get; set; }
 
         public Keccak PrevRandao { get; set; }
 

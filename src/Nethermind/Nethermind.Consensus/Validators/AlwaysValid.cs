@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Validators
             return _result;
         }
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             return _result;
         }

@@ -38,7 +38,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
-        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>()));
+        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
 
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;

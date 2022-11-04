@@ -535,6 +535,11 @@ namespace Nethermind.Runner
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }
+            else
+            {
+                // Clear it up, otherwise internally it will keep requesting to localhost as `all` target include this.
+                NLogConfigurator.ClearSeqTarget();
+            }
         }
 
         private static string GetProductInfo()
