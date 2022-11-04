@@ -26,6 +26,6 @@ namespace Nethermind.Mev.Data
         public byte[][] Txs { get; set; } = Array.Empty<byte[]>();
         public long? BlockNumber { get; set; } = null;
         public BlockParameter StateBlockNumber { get; set; } = BlockParameter.Latest;
-        public UInt256? Timestamp { get; set; } = null;
+        public ulong? Timestamp { get; set; } = null;
     }
 }

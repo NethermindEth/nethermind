@@ -92,7 +92,7 @@ namespace Nethermind.Mev
             return CallBundle(txs, mevBundleRpc.BlockNumber, mevBundleRpc.StateBlockNumber, mevBundleRpc.Timestamp);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, UInt256? timestamp)
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, ulong? timestamp)
         {
             if (txs.Length == 0)
                 return ResultWrapper<TxsResults>.Fail("no tx specified in bundle");

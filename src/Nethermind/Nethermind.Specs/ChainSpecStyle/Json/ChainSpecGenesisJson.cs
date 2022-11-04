@@ -27,7 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ChainSpecSealJson Seal { get; set; }
         public UInt256 Difficulty { get; set; }
         public Address Author { get; set; }
-        public UInt256 Timestamp { get; set; }
+        public ulong Timestamp { get; set; }
         public Keccak ParentHash { get; set; }
         public byte[] ExtraData { get; set; }
         public UInt256 GasLimit { get; set; }

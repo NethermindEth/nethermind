@@ -71,7 +71,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -106,7 +106,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IJsonSerializer serializer = chain.JsonSerializer;
 
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         PayloadAttributes payloadAttributes = new() { Timestamp = timestamp, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
 
         string relayUrl = "http://localhost";
@@ -229,7 +229,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
