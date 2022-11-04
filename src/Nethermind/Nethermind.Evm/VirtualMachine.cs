@@ -2999,16 +2999,17 @@ namespace Nethermind.Evm
                         {
                             if (spec.IsEip4750Enabled)
                             {
-                                var index = (codeSection[programCounter + 1] << 8) | codeSection[programCounter + 2];
+                                var index = (codeSection[programCounter + 0] << 8) | codeSection[programCounter + 1];
                                 vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                                 {
                                     Index = CodeInfo.SectionId,
                                     Height = vmState.ReturnStackHead,
-                                    Offset = programCounter + 3
+                                    Offset = programCounter + 2
                                 };
                                 CodeInfo.SectionId = index;
                                 var inputCount = typeSection[index * 2];
-                                programCounter += CodeInfo.Header[index].Start;
+                                stack.EnsureDepth(inputCount);
+                                programCounter = CodeInfo.Header[index].Start;
                             } else
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
