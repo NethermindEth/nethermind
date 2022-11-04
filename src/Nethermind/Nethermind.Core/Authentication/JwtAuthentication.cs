@@ -79,8 +79,8 @@ public class JwtAuthentication : IRpcAuthentication
             }
 
             if (logger.IsInfo) logger.Info($"Authentication secret has been written to '{fileInfo.FullName}'.");
-            return new JwtAuthentication(secret, timestamper, logger);
 
+            return new(secret, timestamper, logger);
         }
         else
         {
