@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
-            int typesSize = message.Types.Aggregate(0, (i, t) => i + Rlp.LengthOf((byte)t));
+            int typesSize = message.Types.Count;
             int sizesSize = message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u));
             int hashesSize = message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak));
 
