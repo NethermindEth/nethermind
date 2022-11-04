@@ -39,18 +39,5 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public static bool IsEOFCode(ReadOnlySpan<byte> machineCode, out EofHeader header)
             => EofFormatChecker.ExtractHeader(machineCode, out header);
-        public static int CodeStartIndex(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeStartOffset
-                    : 0;
-        public static int CodeEndIndex(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeEndOffset
-                    : machineCode.Length;
-
-        public static int CodeSize(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeSize
-                    : machineCode.Length;
     }
 }
