@@ -609,7 +609,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"A new block {toBeProcessed} in fast sync transition branch - state not found");
+                        if (_logger.IsDebug) _logger.Debug($"A new block {toBeProcessed} in fast sync transition branch - state not found");
                     }
                 }
 

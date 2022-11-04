@@ -15,16 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastSync
 {
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public StateSyncBatch(StateSyncItem[] requestedNodes)
+        public StateSyncBatch(Keccak stateRoot, NodeDataType nodeDataType, StateSyncItem[] requestedNodes)
         {
+            StateRoot = stateRoot;
+            NodeDataType = nodeDataType;
             RequestedNodes = requestedNodes;
         }
+
+        public NodeDataType NodeDataType { get; }
+
+        public Keccak StateRoot;
 
         public StateSyncItem[]? RequestedNodes { get; }
 
