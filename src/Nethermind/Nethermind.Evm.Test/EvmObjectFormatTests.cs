@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
         static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
@@ -731,14 +731,12 @@ namespace Nethermind.Evm.Test
         public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
-            Address deployed = ContractAddress.From(TestItem.AddressA, 0);
             byte[] createContract = testcase.Code;
 
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
 
             transaction.GasPrice = 100.GWei();
-
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
