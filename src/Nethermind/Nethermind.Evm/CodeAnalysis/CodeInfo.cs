@@ -32,6 +32,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
+        public int SectionId { get; set; } = 0;
         public EofHeader Header
         {
             get
@@ -45,15 +46,19 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         #region EofSection Extractors
-        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
+        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
             if (Header is not null)
             {
-                CodeSection = MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
-                DataSection = MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
+                var offsets = new [] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
+                TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);
+                CodeSection = MachineCode.Slice(offsets[1].Start, offsets[1].Size);
+                DataSection = MachineCode.Slice(offsets[2].Start, offsets[2].Size);
                 return this;
             }
+
+            TypeSection = Span<byte>.Empty;
             CodeSection = MachineCode.AsSpan();
             DataSection = Span<byte>.Empty;
             return this;
@@ -92,8 +97,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            SeparateEOFSections(out _, out var CodeSection, out _);
-            byte[] codeToBeAnalyzed = CodeSection.ToArray();
+            (var SectionStart, var SectionSize) = Header?[SectionId] ?? (0, MachineCode.Length);
+            byte[] codeToBeAnalyzed = MachineCode.Slice(SectionStart, SectionSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

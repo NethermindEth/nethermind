@@ -34,6 +34,7 @@ namespace Nethermind.Specs.Forks
             IsEip3670Enabled = true;
             IsEip3540Enabled = true;
             IsEip4200Enabled = true;
+            IsEip4750Enabled = true;
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());

@@ -284,7 +284,12 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Static Relative Jumps
         /// </summary>
-        bool IsEip4200Enabled{ get; }
+        bool IsEip4200Enabled { get; }
+
+        /// <summary>
+        /// Function Sections
+        /// </summary>
+        bool IsEip4750Enabled { get; }
 
 
         /// <summary>

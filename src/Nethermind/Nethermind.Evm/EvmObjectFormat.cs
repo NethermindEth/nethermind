@@ -14,16 +14,23 @@ namespace Nethermind.Evm
 {
     enum SectionDividor : byte
     {
-        Terminator = 0,
+        Terminator  = 0,
         CodeSection = 1,
         DataSection = 2,
+        TypeSection = 3,
     }
     public class EofHeader
     {
         #region public construction properties
-        public UInt16 CodeSize { get; set; }
-        public UInt16 DataSize { get; set; }
+        public int TypeSize { get; set; }
+        public int[] CodeSize { get; set; }
+        public int CodesSize => CodeSize.Sum();
+        public int DataSize { get; set; }
         public byte Version { get; set; }
+        public int HeaderSize => DataSize == 0
+                        ? 7     // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
+                        : 10;
+        public int ContainerSize => TypeSize + CodesSize + DataSize;
         #endregion
 
         #region Equality methods
@@ -34,28 +41,10 @@ namespace Nethermind.Evm
         #endregion
 
         #region Sections Offsets
-        private int? _codeStartOffset = default;
-        public int CodeStartOffset
-        {
-            get
-            {
-                if (_codeStartOffset is null)
-                    _codeStartOffset = DataSize == 0
-                        ? 7     // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
-                        : 10;   // MagicLength + Version + 2 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 2 * (1 + 2) + 1 = 10 
-                return _codeStartOffset.Value;
-            }
-        }
-        private int? _codeEndOffset = default;
-        public int CodeEndOffset
-        {
-            get
-            {
-                if (_codeEndOffset is null)
-                    _codeEndOffset = CodeStartOffset + CodeSize;
-                return _codeEndOffset.Value;
-            }
-        }
+        public (int Start, int Size) TypeSectionOffsets => (HeaderSize, TypeSize);
+        public (int Start, int Size) CodeSectionOffsets => (HeaderSize + TypeSize, CodesSize);
+        public (int Start, int Size) DataSectionOffsets => (HeaderSize + TypeSize + CodesSize, ContainerSize);
+        public (int Start, int Size) this[int i] => (HeaderSize + TypeSize + CodeSize.Take(i).Sum(), CodeSize[i]);
         #endregion
     }
 
@@ -111,6 +100,10 @@ namespace Nethermind.Evm
         {
             bool continueParsing = true;
 
+            List<int> CodeSections = new();
+            int? TypeSections = null;
+            int? DataSections = null;
+
             while (i < codeLen && continueParsing)
             {
                 var sectionKind = (SectionDividor)code[i];
@@ -120,7 +113,7 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
-                            if (header.CodeSize == 0)
+                            if (CodeSections.Count == 0 || CodeSections[1] == 0)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -129,17 +122,61 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
+                            if (CodeSections.Count > 1 && CodeSections.Count != (TypeSections / 2))
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3750: Code Sections count must ");
+                                }
+                                header = null; return false;
+                            }
+
+                            if (CodeSections.Count > 1024)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4750 : Code section count limit exceeded only 1024 allowed but found {CodeSections.Count}");
+                                }
+                                header = null; return false;
+                            }
+                            header.CodeSize = CodeSections.ToArray();
+                            header.TypeSize = TypeSections.Value;
+                            header.DataSize = DataSections ?? 0;
                             continueParsing = false;
+                            break;
+                        }
+                    case SectionDividor.TypeSection:
+                        {
+                            if (TypeSections is not null)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
+                                }
+                                header = null; return false;
+                            }
+
+                            if (i + 2 > codeLen)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3750: type section code incomplete, failed parsing type section");
+                                }
+                                header = null; return false;
+                            }
+
+                            var typeSectionSlice = code.Slice(i, 2);
+                            var currenttypeSection = (ushort)((typeSectionSlice[0] << 8) | typeSectionSlice[1]);
+                            TypeSections = currenttypeSection;
                             break;
                         }
                     case SectionDividor.CodeSection:
                         {
-                            // code-section must come first and there can be only one data-section
-                            if (header.CodeSize > 0)
+                            if (TypeSections is null )
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : container must have exactly 1 CodeSection but found more");
+                                    _logger.Trace($"EIP-3750 : CodeSection size must follow a TypeSection, TypeSection length was {0}");
                                 }
                                 header = null; return false;
                             }
@@ -154,9 +191,10 @@ namespace Nethermind.Evm
                             }
 
                             var codeSectionSlice = code.Slice(i, 2);
-                            header.CodeSize = (ushort)((codeSectionSlice[0] << 8) | codeSectionSlice[1]);
+                            var currentCodeSize = (ushort)((codeSectionSlice[0] << 8) | codeSectionSlice[1]);
+                            CodeSections.Add(currentCodeSize);
 
-                            if (header.CodeSize == 0) // code section must be non-empty (i.e : size > 0)
+                            if (currentCodeSize == 0) // code section must be non-empty (i.e : size > 0)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -171,15 +209,15 @@ namespace Nethermind.Evm
                     case SectionDividor.DataSection:
                         {
                             // data-section must come after code-section and there can be only one data-section
-                            if (header.CodeSize == 0)
+                            if (CodeSections.Count == 0 || TypeSections is null)
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
+                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
                                 }
                                 header = null; return false;
                             }
-                            if (header.DataSize != 0)
+                            if (DataSections is not null)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -198,9 +236,10 @@ namespace Nethermind.Evm
                             }
 
                             var dataSectionSlice = code.Slice(i, 2);
-                            header.DataSize = (ushort)((dataSectionSlice[0] << 8) | dataSectionSlice[1]);
+                            var currentDataSize = (ushort)((dataSectionSlice[0] << 8) | dataSectionSlice[1]);
+                            DataSections = currentDataSize;
 
-                            if (header.DataSize == 0) // if declared data section must be non-empty
+                            if (currentDataSize == 0) // if declared data section must be non-empty
                             {
                                 if (LoggingEnabled)
                                 {
@@ -224,8 +263,16 @@ namespace Nethermind.Evm
                 }
             }
             var contractBody = code[i..];
-            var calculatedCodeLen = (int)header.CodeSize + (int)header.DataSize;
-            if (header.CodeSize == 0 || contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+
+            var calculatedCodeLen = header.TypeSize + header.CodeSize.Sum() + (int)header.DataSize;
+            if(header.TypeSize != 0 && (contractBody[0] != 0 && contractBody[1] != 0)) {
+                if (LoggingEnabled)
+                {
+                    _logger.Trace($"EIP-4750: Invalid Type Section expected {(0, 0)} but found {(contractBody[0], contractBody[1])}");
+                }
+            }
+
+            if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
             {
                 if (LoggingEnabled)
                 {
@@ -242,7 +289,7 @@ namespace Nethermind.Evm
             // check if code is EOF compliant
             if (ExtractHeader(code, out header))
             {
-                var (startOffset, endOffset) = (header.CodeStartOffset, header.CodeEndOffset);
+                var (startOffset, endOffset) = header.CodeSectionOffsets;
                 Instruction? opcode = null;
                 HashSet<Range> immediates = new HashSet<Range>();
                 HashSet<Int32> rjumpdests = new HashSet<Int32>();
@@ -260,7 +307,30 @@ namespace Nethermind.Evm
                         return false;
                     }
 
-                    if(opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                    if(opcode is Instruction.CALLF)
+                    {
+                        if (i + 2 > endOffset)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4750 : CALLF instruction undeflow");
+                            }
+                            return false;
+                        }
+                        var sectionId = code[i..(i + 2)].ReadEthInt32();
+
+                        if(sectionId >= header.CodeSize.Length)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4750 : Invalid Section ID");
+                            }
+                            return false;
+                        }
+
+                    }
+
+                    if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
                         if(i + 2 > endOffset)
                         {
@@ -304,7 +374,7 @@ namespace Nethermind.Evm
                 // check if terminating opcode : STOP, RETURN, REVERT, INVALID, SELFDESTRUCT
                 bool endCorrectly = opcode switch
                 {
-                    Instruction.STOP | Instruction.RETURN | Instruction.REVERT | Instruction.INVALID | Instruction.SELFDESTRUCT
+                    Instruction.RETF | Instruction.STOP | Instruction.RETURN | Instruction.REVERT | Instruction.INVALID | Instruction.SELFDESTRUCT
                         => true,
                     _ => false
                 };
