@@ -246,6 +246,8 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
+            block.Header.Fees = _receiptsTracer.Fees;
+            block.Header.BurntFees = _receiptsTracer.BurntFees;
 
             return receipts;
         }

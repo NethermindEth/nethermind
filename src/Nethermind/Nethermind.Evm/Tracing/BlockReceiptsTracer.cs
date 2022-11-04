@@ -240,6 +240,8 @@ namespace Nethermind.Evm.Tracing
             _block = block;
             _currentIndex = 0;
             _txReceipts.Clear();
+            Fees = UInt256.Zero;
+            BurntFees = UInt256.Zero;
 
             _otherTracer.StartNewBlockTrace(block);
         }
