@@ -37,19 +37,24 @@ public class JwtAuthentication : IRpcAuthentication
 
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
+        ArgumentNullException.ThrowIfNull(secret);
+
         _securityKey = new SymmetricSecurityKey(secret);
-        _logger = logger;
-        _timestamper = timestamper;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     }
 
-    public static JwtAuthentication CreateFromHexSecret(string hexSecret, ITimestamper timestamper, ILogger logger)
+    public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
     {
-        byte[] decodedSecret = DecodeSecret(hexSecret);
-        return new JwtAuthentication(decodedSecret, timestamper, logger);
+        ArgumentNullException.ThrowIfNull(secret);
+
+        return new(Bytes.FromHexString(secret), timestamper, logger);
     }
 
-    public static JwtAuthentication CreateFromFileOrGenerate(string filePath, ITimestamper timestamper, ILogger logger)
+    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger)
     {
+        ArgumentNullException.ThrowIfNull(filePath);
+
         FileInfo fileInfo = new(filePath);
         if (!fileInfo.Exists || fileInfo.Length == 0) // Generate secret
         {
@@ -108,7 +113,7 @@ public class JwtAuthentication : IRpcAuthentication
                 throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
             }
 
-            return CreateFromHexSecret(hexSecret, timestamper, logger);
+            return FromSecret(hexSecret, timestamper, logger);
         }
     }
 
@@ -184,14 +189,5 @@ public class JwtAuthentication : IRpcAuthentication
         if (expires == null) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
-    }
-
-    private static byte[] DecodeSecret(string hexSecret)
-    {
-        int start = hexSecret.StartsWith("0x", StringComparison.Ordinal) ? 2 : 0;
-        return Enumerable.Range(start, hexSecret.Length - start)
-            .Where(x => x % 2 == 0)
-            .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
-            .ToArray();
     }
 }
