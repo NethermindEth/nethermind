@@ -194,7 +194,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -233,7 +233,7 @@ namespace Nethermind.TxPool.Test
         private static ISpecProvider GetLondonSpecProvider()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             return specProvider;
         }
 

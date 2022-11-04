@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -150,18 +150,18 @@ public class NodeLifecycleManager : INodeLifecycleManager
             if (IsBonded)
             {
                 UpdateState(NodeLifecycleState.Active);
-                if (_logger.IsDebug) _logger.Debug($"Bonded with {ManagedNode.Host}");
+                if (_logger.IsTrace) _logger.Trace($"Bonded with {ManagedNode.Host}");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Bonding with {ManagedNode} failed.");
+                if (_logger.IsTrace) _logger.Trace($"Bonding with {ManagedNode} failed.");
             }
 
             RefreshNodeContactTime();
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Unmatched MDC when bonding with {ManagedNode}");
+            if (_logger.IsTrace) _logger.Trace($"Unmatched MDC when bonding with {ManagedNode}");
             // ignore spoofed message
             _receivedPong = false;
         }

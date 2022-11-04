@@ -20,14 +20,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -239,7 +235,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (executorResultFunction != null) _executorResultFunction = executorResultFunction;
 
-                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true);
+                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
