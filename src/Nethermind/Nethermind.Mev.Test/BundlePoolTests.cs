@@ -476,12 +476,12 @@ namespace Nethermind.Mev.Test
 
             Dictionary<long, int> expectedCountPerBlock = new()
             {
-                {4, 1},
-                {5, 1},
-                {6, 1},
-                {9, 2},
-                {12, 0},
-                {15, 0}
+                { 4, 1 },
+                { 5, 1 },
+                { 6, 1 },
+                { 9, 2 },
+                { 12, 0 },
+                { 15, 0 }
             };
 
             foreach (var expectedCount in expectedCountPerBlock)

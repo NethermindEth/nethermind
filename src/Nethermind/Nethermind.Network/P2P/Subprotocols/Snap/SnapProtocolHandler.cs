@@ -245,9 +245,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             PathGroup[] groups = GetPathGroups(request);
 
+            return await GetTrieNodes(request.RootHash, groups, token);
+        }
+
+        public async Task<byte[][]> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        {
+            return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
+        }
+
+        private async Task<byte[][]> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
+        {
             GetTrieNodesMessage reqMsg = new()
             {
-                RootHash = request.RootHash,
+                RootHash = rootHash,
                 Paths = groups,
                 Bytes = _currentBytesLimit
             };

@@ -436,7 +436,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TLOAD)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.ShanghaiBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
         }
 
@@ -452,7 +452,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TSTORE)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.ShanghaiBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 
