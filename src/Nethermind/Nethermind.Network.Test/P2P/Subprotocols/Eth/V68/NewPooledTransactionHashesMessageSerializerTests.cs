@@ -51,14 +51,14 @@ public class NewPooledTransactionHashesMessageSerializerTests
         int[] sizes = { 2 };
         Keccak[] hashes = { TestItem.KeccakA };
         Test(types, sizes, hashes,
-            "e6" + "c101" + "c102" + "e1a0"+ TestItem.KeccakA.ToString(false));
+            "e6" + "c101" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
     }
 
     [Test]
     public void Empty_to_string()
     {
         NewPooledTransactionHashesMessage68 message
-            = new(new TxType[] { },new int[] { },new Keccak[] { });
+            = new(new TxType[] { }, new int[] { }, new Keccak[] { });
         _ = message.ToString();
     }
 }
