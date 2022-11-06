@@ -49,6 +49,7 @@ namespace Nethermind.Evm.Test
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
+        protected override long BlockNumber => MainnetSpecProvider.ShanghaiActivation.BlockNumber;
         static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
@@ -716,7 +717,7 @@ namespace Nethermind.Evm.Test
                             {
                                 Index = idx++,
                                 Code = EmitBytecode(standardCode, standardData, hasEofContainer, hasEofInnitcode, corruptContainer, corruptInnitcode, k),
-                                ResultIfEOF = (corruptContainer || corruptInnitcode ? StatusCode.Failure : StatusCode.Success, null),
+                                ResultIfEOF = (corruptContainer ? StatusCode.Failure : StatusCode.Success, null),
                                 Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE"
                             };
                         }
