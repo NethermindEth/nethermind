@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -237,11 +238,22 @@ namespace Nethermind.Evm
         }
 
         public bool ValidateEofCode(ReadOnlySpan<byte> code) => ExtractHeader(code, out _);
-        public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header)
+        public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header, IReleaseSpec spec)
         {
             // check if code is EOF compliant
+            if(!spec.IsEip3540Enabled)
+            {
+                header = null;
+                return false;
+            }
+
             if (ExtractHeader(code, out header))
             {
+                if(!spec.IsEip3670Enabled)
+                {
+                    return true;
+                }
+
                 var (startOffset, endOffset) = (header.CodeStartOffset, header.CodeEndOffset);
                 Instruction? opcode = null;
                 HashSet<Range> immediates = new HashSet<Range>();
@@ -260,35 +272,40 @@ namespace Nethermind.Evm
                         return false;
                     }
 
-                    if(opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                    if (spec.IsEip4200Enabled)
                     {
-                        if(i + 2 > endOffset)
+                        if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                         {
-                            if (LoggingEnabled)
+                            if (i + 3 > endOffset)
                             {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                                }
+                                return false;
                             }
-                            return false;
-                        }
 
-                        var offset = code[i..(i + 2)].ReadEthInt32();
-                        immediates.Add(new Range(i, i + 2));
-                        var rjumpdest = offset + 2 + i;
-                        rjumpdests.Add(rjumpdest);
-                        if (rjumpdest < 0 || rjumpdest >= endOffset)
-                        {
-                            if (LoggingEnabled)
+                            var offset = code[(i + 1)..(i + 3)].ReadEthInt16();
+                            immediates.Add(new Range(i + 1, i + 2));
+                            var rjumpdest = offset + 3 + i;
+                            rjumpdests.Add(rjumpdest);
+                            if (rjumpdest < startOffset || rjumpdest >= endOffset)
                             {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                                }
+                                return false;
                             }
-                            return false;
+                            i += 2;
                         }
-                        i += 2;
                     }
 
                     if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                     {
-                        i += code[i] - (int)Instruction.PUSH1 + 1;
+                        int len = code[i] - (int)Instruction.PUSH1 + 1;
+                        immediates.Add(new Range(i + 1, i + len));
+                        i += len;
                         if (i >= endOffset)
                         {
                             if (LoggingEnabled)
@@ -301,10 +318,9 @@ namespace Nethermind.Evm
                     i++;
                 }
 
-                // check if terminating opcode : STOP, RETURN, REVERT, INVALID, SELFDESTRUCT
                 bool endCorrectly = opcode switch
                 {
-                    Instruction.STOP | Instruction.RETURN | Instruction.REVERT | Instruction.INVALID | Instruction.SELFDESTRUCT
+                    Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT
                         => true,
                     _ => false
                 };
@@ -312,19 +328,24 @@ namespace Nethermind.Evm
                 if (!endCorrectly && LoggingEnabled)
                 {
                     _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                    return false;
                 }
 
-                foreach(int rjumpdest in rjumpdests)
+                if (spec.IsEip4200Enabled)
                 {
-                    foreach(var range in immediates)
+
+                    foreach (int rjumpdest in rjumpdests)
                     {
-                        if(range.Includes(rjumpdest))
+                        foreach (var range in immediates)
                         {
-                            if (LoggingEnabled)
+                            if (range.Includes(rjumpdest))
                             {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
+                                }
+                                return false;
                             }
-                            return false;
                         }
                     }
                 }

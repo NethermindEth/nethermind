@@ -34,6 +34,7 @@ using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs.Test;
 
 namespace Nethermind.Evm.Test
 {
@@ -43,6 +44,7 @@ namespace Nethermind.Evm.Test
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
+        protected override long BlockNumber => MainnetSpecProvider.ShanghaiActivation.BlockNumber;
         static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
@@ -634,10 +636,10 @@ namespace Nethermind.Evm.Test
                     }
                 }
 
-                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, int mode, int context, int corrupt)
+                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, bool hasEofContainer, bool hasEofInitCode, bool hasCorruptContainer, bool hasCorruptInitcode, int context)
                 {
                     // if initcode should be EOF
-                    if ((mode & 2) == 2)
+                    if (hasEofInitCode)
                     {
                         deployed = EofBytecode(deployed, deployedData);
                     }
@@ -648,9 +650,9 @@ namespace Nethermind.Evm.Test
                     }
 
                     // if initcode should be corrupt
-                    if ((corrupt & 2) == 2)
+                    if (hasCorruptInitcode)
                     {
-                        deployed = corruptBytecode((mode & 2) == 2, deployed);
+                        deployed = corruptBytecode(hasEofInitCode, deployed);
                     }
 
                     // wrap initcode in container
@@ -672,7 +674,7 @@ namespace Nethermind.Evm.Test
                     };
 
                     // if container should be EOF
-                    if ((mode & 1) == 1)
+                    if (hasEofContainer)
                     {
                         result = EofBytecode(result);
                     }
@@ -683,9 +685,9 @@ namespace Nethermind.Evm.Test
                     }
 
                     // if container should be corrupt
-                    if ((corrupt & 1) == 1)
+                    if (hasCorruptContainer)
                     {
-                        result = corruptBytecode((mode & 1) == 1, result);
+                        result = corruptBytecode(hasEofContainer, result);
                     }
 
                     return result;
@@ -706,9 +708,9 @@ namespace Nethermind.Evm.Test
                             yield return new TestCase
                             {
                                 Index = idx++,
-                                Code = EmitBytecode(standardCode, standardData, i, j, k),
+                                Code = EmitBytecode(standardCode, standardData, hasEofContainer, hasEofInnitcode, corruptContainer, corruptInnitcode, k),
                                 ResultIfEOF = (corruptContainer ? StatusCode.Failure : StatusCode.Success, null),
-                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? "NON-" : String.Empty)}EOF Bytecode with {(hasEofContainer ? "NON-" : String.Empty)}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? "" : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? "" : "Not")} Corrupted INITCODE"
+                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE"
                             };
                         }
                     }
@@ -722,18 +724,185 @@ namespace Nethermind.Evm.Test
         public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
-            Address deployed = ContractAddress.From(TestItem.AddressA, 0);
             byte[] createContract = testcase.Code;
 
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
 
             transaction.GasPrice = 100.GWei();
-
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
             Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+        }
+
+        // valid code
+        [TestCase("0xEF00010100060060005DFFFB00", true, true, Description = "valid rjumpi with : offset = -5")]
+        [TestCase("0xEF00010100090060005D000300000000", true, true, Description = "valid rjumpi with : offset = 3")]
+        [TestCase("0xEF00010100060060005D000000", true, true, Description = "valid rjumpi with : offset = 0")]
+        [TestCase("0xEF0001010004005C000000", true, true, Description = "valid rjump with : offset = 0")]
+        [TestCase("0xEF0001010007005C000300000000", true, true, Description = "valid rjump with : offset = 3")]
+        [TestCase("0xEF000101000500005CFFFC00", true, true, Description = "valid rjump with : offset = -4")]
+        // code with invalid magic
+        [TestCase("0xEF0001010001005C", false, true, Description = "rjump truncated")]
+        [TestCase("0xEF0001010002005C00", false, true, Description = "rjump truncated")]
+        [TestCase("0xEF00010100030060005D", false, true, Description = "rjumpi truncated")]
+        [TestCase("0xEF00010100040060005D00", false, true, Description = "rjumpi truncated")]
+        [TestCase("0xEF0001010004005CFFFB00", false, true, Description = "rjump invalid destination, offset :  -5")]
+        [TestCase("0xEF0001010004005CFFF300", false, true, Description = "rjump invalid destination, offset : -13")]
+        [TestCase("0xEF0001010004005C000200", false, true, Description = "rjump invalid destination, offset :   2")]
+        [TestCase("0xEF0001010004005C000100", false, true, Description = "rjump invalid destination, offset :   1")]
+        [TestCase("0xEF0001010004005CFFFF00", false, true, Description = "rjump invalid destination, offset :  -1")]
+        [TestCase("0xEF00010100060060005CFFFC00", false, true, Description = "rjump invalid destination, offset :  4")]
+        [TestCase("0xEF00010100060060005DFFF900", false, true, Description = "rjumpi invalid destination, offset :  -7")]
+        [TestCase("0xEF00010100060060005DFFF100", false, true, Description = "rjumpi invalid destination, offset :  -15")]
+        [TestCase("0xEF00010100060060005D000200", false, true, Description = "rjumpi invalid destination, offset :   2")]
+        [TestCase("0xEF00010100060060005D000100", false, true, Description = "rjumpi invalid destination, offset :   1")]
+        [TestCase("0xEF00010100060060005DFFFF00", false, true, Description = "rjumpi invalid destination, offset :   -1")]
+        [TestCase("0xEF00010100060060005DFFFC00", false, true, Description = "rjumpi invalid destination, offset :   -4")]
+        public void EIP4200_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
+        {
+            var bytecode = Prepare.EvmCode
+                .FromCode(code)
+                .Done;
+
+            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
+
+            bool checkResult = ValidateByteCode(bytecode, spec, out _);
+
+            checkResult.Should().Be(isCorrectlyFormated);
+        }
+
+        public static IEnumerable<TestCase> Eip4200TestCases
+        {
+            get
+            {
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMP(11)
+                                .INVALID()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMP(0)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPI(10, new byte[] { 1 })
+                                .MSTORE8(0, new byte[] { 2 })
+                                .RETURN(0, 1)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPI(10, new byte[] { 0 })
+                                .MSTORE8(0, new byte[] { 2 })
+                                .RETURN(0, 1)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMP(11)
+                                .INVALID()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMPI(-16, new byte[] { 1 })
+                                .MSTORE8(0, new byte[] { 2 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMP(11)
+                                .INVALID()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMPI(-16, new byte[] { 0 })
+                                .MSTORE8(0, new byte[] { 2 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPI(0, new byte[] { 0 })
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPI(0, new byte[] { 1 })
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+            }
+        }
+
+        [Test]
+        public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        {
+            bool isShanghaiBlock = spec is Shanghai;
+            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+
+            var bytecode =
+                isShanghaiBlock
+                ? EofBytecode(testcase.Code, testcase.Data)
+                : Classicalcode(testcase.Code, testcase.Data);
+
+            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
+
+            if (isShanghaiBlock)
+            {
+                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
+            }
+
+            if (!isShanghaiBlock)
+            {
+                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
+            }
         }
 
         // valid code
@@ -750,15 +919,16 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF00010100010060", false, true, Description = "Missing terminating instruction")]
         [TestCase("0xEF00010100010030", false, true, Description = "Missing terminating instruction")]
         [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
-        [TestCase("EF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
         public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
         {
             var bytecode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-
+            IReleaseSpec source_spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
+            OverridableReleaseSpec spec = new(source_spec);
+            spec.IsEip4200Enabled = false;
             bool checkResult = ValidateByteCode(bytecode, spec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);

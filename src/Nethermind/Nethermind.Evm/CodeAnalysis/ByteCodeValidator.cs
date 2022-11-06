@@ -22,13 +22,9 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool HasEOFMagic(this ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
         public static bool ValidateByteCode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
-            if (_spec.IsEip3670Enabled && code.HasEOFMagic())
+            if (code.HasEOFMagic())
             {
-                return EofFormatChecker.ValidateInstructions(code, out header);
-            }
-            else if (_spec.IsEip3540Enabled && code.HasEOFMagic())
-            {
-                return IsEOFCode(code, out header);
+                return EofFormatChecker.ValidateInstructions(code, out header, _spec);
             }
 
             header = null;

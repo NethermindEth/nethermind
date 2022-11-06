@@ -351,7 +351,7 @@ namespace Nethermind.Core.Specs
         public bool ShiftOpcodesEnabled => IsEip145Enabled;
 
         public bool SubroutinesEnabled => IsEip2315Enabled;
-        public bool StaticRelativeJumpsEnabled => IsEip2315Enabled;
+        public bool StaticRelativeJumpsEnabled => IsEip4200Enabled;
 
         public bool RevertOpcodeEnabled => IsEip140Enabled;
 
