@@ -2944,7 +2944,7 @@ namespace Nethermind.Evm
                                 }
 
                                 Span<byte> condition = stack.PopBytes();
-                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt32();
+                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt16();
                                 if (!condition.SequenceEqual(BytesZero32))
                                 {
                                     programCounter += 2 + offset;
