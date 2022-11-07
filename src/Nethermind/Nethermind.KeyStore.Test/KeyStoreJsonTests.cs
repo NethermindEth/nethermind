@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -104,7 +105,7 @@ namespace Nethermind.KeyStore.Test
             try
             {
                 var securedPass = new SecureString();
-                testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
+                testModel.Password.ToCharArray().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
