@@ -13,34 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
+using System;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
-namespace Nethermind.AccountAbstraction.Executor
+namespace Nethermind.Core.Extensions
 {
-    public interface IUserOperationTxBuilder
+    public static class SpecProviderExtensions
     {
-        Transaction BuildTransaction(
-            long gaslimit,
-            byte[] callData,
-            Address sender,
-            BlockHeader parent,
-            IReleaseSpec specFor1559,
-            UInt256 nonce,
-            bool systemTransaction);
-
-        Transaction BuildTransactionFromUserOperations(
-            IEnumerable<UserOperation> userOperations,
-            BlockHeader parent,
-            long gasLimit,
-            UInt256 nonce,
-            IReleaseSpec specFor1559);
-
-        FailedOp? DecodeEntryPointOutputError(byte[] output);
+        /// <summary>
+        /// this method is here only for getting spec for 1559.
+        /// Reason of adding is that at sometime we dont know the Timestamp.
+        /// </summary>
+        /// <param name="specProvider"></param>
+        /// <param name="blockNumber"></param>
+        /// <returns>ReleaseSpec that has the values for EIP1559 correct but not the rest.</returns>
+        public static IReleaseSpec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
+        {
+            return specProvider.GetSpec(blockNumber);
+        }
     }
 }

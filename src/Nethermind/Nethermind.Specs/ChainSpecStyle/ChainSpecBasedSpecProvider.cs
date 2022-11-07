@@ -245,8 +245,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? transition.Release
                     : null;
 
-        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation, ReleaseSpec Release) transition) =>
-            forkActivation.CompareTo(transition.Item1);
+        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, ReleaseSpec Release) transition) =>
+            forkActivation.CompareTo(transition.activation);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 

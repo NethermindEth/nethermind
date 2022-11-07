@@ -98,13 +98,13 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1, parent.Timestamp + 13);
+            IReleaseSpec specfor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
-                BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
+                BuildSimulateValidationTransaction(userOperation, parent, specfor1559);
 
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
@@ -178,7 +178,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private Transaction BuildSimulateValidationTransaction(
             UserOperation userOperation,
             BlockHeader parent,
-            IReleaseSpec spec)
+            IReleaseSpec specfor1559)
         {
             AbiSignature abiSignature = _entryPointContractAbi.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
@@ -192,7 +192,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 computedCallData,
                 Address.Zero,
                 parent,
-                spec,
+                specfor1559,
                 _stateProvider.GetNonce(Address.Zero),
                 true);
 
