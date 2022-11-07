@@ -18,6 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -93,12 +95,12 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+        RJUMP = 0x5c,
+        RJUMPI = 0x5d,
         BEGINSUB = 0x5c,
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
 
-        RJUMP = 0x5c,
-        RJUMPI = 0x5d,
 
         PUSH0 = 0x5f, // EIP-3855
         PUSH1 = 0x60,
@@ -192,12 +194,17 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        {
+            spec ??= Frontier.Instance;
+            return instruction switch
+            {
+                Instruction.PREVRANDAO => isPostMerge ? FastEnum.GetName(instruction) : "DIFFICULTY",
+                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "BEGINSUB",
+                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "RETURNSUB",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
+            };
+        }
     }
 }
 
