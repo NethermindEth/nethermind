@@ -3015,14 +3015,15 @@ namespace Nethermind.Evm
                             if (spec.IsEip4750Enabled)
                             {
                                 var index = codeSection[programCounter..(programCounter + 1)].ReadEthInt16();
+                                var inputCount = typeSection[index * 2];
                                 vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                                 {
                                     Index = CodeInfo.SectionId,
-                                    Height = vmState.ReturnStackHead,
+                                    Height = stack.Head - inputCount,
                                     Offset = programCounter + 2
                                 };
                                 CodeInfo.SectionId = index;
-                                var inputCount = typeSection[index * 2];
+
                                 stack.EnsureDepth(inputCount);
                                 programCounter = CodeInfo.Header[index].Start;
                             } else
@@ -3039,10 +3040,16 @@ namespace Nethermind.Evm
                                 var index = CodeInfo.SectionId;
                                 var outputCount = typeSection[index * 2 + 1];
 
-                                stack.EnsureDepth(outputCount);
                                 var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
-                                CodeInfo.SectionId = stackFrame.Index;
-                                programCounter = stackFrame.Offset;
+                                if(stack.Head == stackFrame.Height + outputCount)
+                                {
+                                    CodeInfo.SectionId = stackFrame.Index;
+                                    programCounter = stackFrame.Offset;
+                                } else
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
+                                    return CallResult.AccessViolationException;
+                                } 
                             } else
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
