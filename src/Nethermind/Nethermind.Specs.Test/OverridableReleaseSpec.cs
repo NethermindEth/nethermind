@@ -32,179 +32,125 @@ namespace Nethermind.Specs.Test
         public OverridableReleaseSpec(IReleaseSpec spec)
         {
             _spec = spec;
-            MaximumExtraDataSize = spec.MaximumExtraDataSize                   ;
-            MaxCodeSize  = spec.MaxCodeSize ;
-            MinGasLimit  = spec.MinGasLimit ;
-            GasLimitBoundDivisor = spec.GasLimitBoundDivisor;
-            BlockReward  = spec.BlockReward ;
-            DifficultyBombDelay = spec.DifficultyBombDelay;
-            DifficultyBoundDivisor  = spec.DifficultyBoundDivisor ;
-            FixedDifficulty  = spec.FixedDifficulty ;
-            MaximumUncleCount = spec.MaximumUncleCount;
-            IsTimeAdjustmentPostOlympic = spec.IsTimeAdjustmentPostOlympic;
-            IsEip2Enabled  = spec.IsEip2Enabled ;
-            IsEip7Enabled  = spec.IsEip7Enabled ;
-            IsEip100Enabled  = spec.IsEip100Enabled ;
-            IsEip140Enabled  = spec.IsEip140Enabled ;
-            IsEip150Enabled  = spec.IsEip150Enabled ;
-            IsEip155Enabled  = spec.IsEip155Enabled ;
-            IsEip158Enabled  = spec.IsEip158Enabled ;
-            IsEip160Enabled  = spec.IsEip160Enabled ;
-            IsEip170Enabled  = spec.IsEip170Enabled ;
-            IsEip196Enabled  = spec.IsEip196Enabled ;
-            IsEip197Enabled  = spec.IsEip197Enabled ;
-            IsEip198Enabled  = spec.IsEip198Enabled ;
-            IsEip211Enabled  = spec.IsEip211Enabled ;
-            IsEip214Enabled  = spec.IsEip214Enabled ;
-            IsEip649Enabled  = spec.IsEip649Enabled ;
-            IsEip658Enabled  = spec.IsEip658Enabled ;
-            IsEip145Enabled  = spec.IsEip145Enabled ;
-            IsEip1014Enabled  = spec.IsEip1014Enabled ;
-            IsEip1052Enabled  = spec.IsEip1052Enabled ;
-            IsEip1283Enabled  = spec.IsEip1283Enabled ;
-            IsEip1234Enabled  = spec.IsEip1234Enabled ;
-            IsEip1344Enabled  = spec.IsEip1344Enabled ;
-            IsEip2028Enabled  = spec.IsEip2028Enabled ;
-            IsEip152Enabled  = spec.IsEip152Enabled ;
-            IsEip1108Enabled  = spec.IsEip1108Enabled ;
-            IsEip1884Enabled  = spec.IsEip1884Enabled ;
-            IsEip2200Enabled  = spec.IsEip2200Enabled ;
-            IsEip2315Enabled  = spec.IsEip2315Enabled ;
-            IsEip2537Enabled  = spec.IsEip2537Enabled ;
-            IsEip2565Enabled  = spec.IsEip2565Enabled ;
-            IsEip2929Enabled  = spec.IsEip2929Enabled ;
-            IsEip2930Enabled  = spec.IsEip2930Enabled ;
-            IsEip1559Enabled  = spec.IsEip1559Enabled ;
-            IsEip3198Enabled  = spec.IsEip3198Enabled ;
-            IsEip3529Enabled  = spec.IsEip3529Enabled ;
-            IsEip3541Enabled  = spec.IsEip3541Enabled ;
-            IsEip3607Enabled  = spec.IsEip3607Enabled ;
-            IsEip3675Enabled  = spec.IsEip3675Enabled ;
-            IsEip3651Enabled  = spec.IsEip3651Enabled ;
-            IsEip1153Enabled  = spec.IsEip1153Enabled ;
-            IsEip3855Enabled  = spec.IsEip3855Enabled ;
-            IsEip3860Enabled  = spec.IsEip3860Enabled ;
-            IsEip3540Enabled  = spec.IsEip3540Enabled ;
-            IsEip3670Enabled  = spec.IsEip3670Enabled ;
-            IsEip4200Enabled  = spec.IsEip4200Enabled ;
-            Eip1559TransitionBlock = spec.Eip1559TransitionBlock;
         }
 
         public string Name => "OverridableReleaseSpec";
 
-        public long MaximumExtraDataSize { get; set; }
+        public long MaximumExtraDataSize => _spec.MaximumExtraDataSize;
 
-        public long MaxCodeSize { get; set; }
+        public long MaxCodeSize => _spec.MaxCodeSize;
 
-        public long MinGasLimit { get; set; }
+        public long MinGasLimit => _spec.MinGasLimit;
 
-        public long GasLimitBoundDivisor { get; set; }
+        public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward { get; set; }
+        public UInt256 BlockReward => _spec.BlockReward;
 
-        public long DifficultyBombDelay { get; set; }
+        public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
-        public long DifficultyBoundDivisor { get; set; }
+        public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
 
-        public long? FixedDifficulty { get; set; }
+        public long? FixedDifficulty => _spec.FixedDifficulty;
 
-        public int MaximumUncleCount { get; set; }
+        public int MaximumUncleCount => _spec.MaximumUncleCount;
 
-        public bool IsTimeAdjustmentPostOlympic { get; set; }
+        public bool IsTimeAdjustmentPostOlympic => _spec.IsTimeAdjustmentPostOlympic;
 
-        public bool IsEip2Enabled { get; set; }
+        public bool IsEip2Enabled => _spec.IsEip2Enabled;
 
-        public bool IsEip7Enabled { get; set; }
+        public bool IsEip7Enabled => _spec.IsEip7Enabled;
 
-        public bool IsEip100Enabled { get; set; }
+        public bool IsEip100Enabled => _spec.IsEip100Enabled;
 
-        public bool IsEip140Enabled { get; set; }
+        public bool IsEip140Enabled => _spec.IsEip140Enabled;
 
-        public bool IsEip150Enabled { get; set; }
+        public bool IsEip150Enabled => _spec.IsEip150Enabled;
 
-        public bool IsEip155Enabled { get; set; }
+        public bool IsEip155Enabled => _spec.IsEip155Enabled;
 
-        public bool IsEip158Enabled { get; set; }
+        public bool IsEip158Enabled => _spec.IsEip158Enabled;
 
-        public bool IsEip160Enabled { get; set; }
+        public bool IsEip160Enabled => _spec.IsEip160Enabled;
 
-        public bool IsEip170Enabled { get; set; }
+        public bool IsEip170Enabled => _spec.IsEip170Enabled;
 
-        public bool IsEip196Enabled { get; set; }
+        public bool IsEip196Enabled => _spec.IsEip196Enabled;
 
-        public bool IsEip197Enabled { get; set; }
+        public bool IsEip197Enabled => _spec.IsEip197Enabled;
 
-        public bool IsEip198Enabled { get; set; }
+        public bool IsEip198Enabled => _spec.IsEip198Enabled;
 
-        public bool IsEip211Enabled { get; set; }
+        public bool IsEip211Enabled => _spec.IsEip211Enabled;
 
-        public bool IsEip214Enabled { get; set; }
+        public bool IsEip214Enabled => _spec.IsEip214Enabled;
 
-        public bool IsEip649Enabled { get; set; }
+        public bool IsEip649Enabled => _spec.IsEip649Enabled;
 
-        public bool IsEip658Enabled { get; set; }
+        public bool IsEip658Enabled => _spec.IsEip658Enabled;
 
-        public bool IsEip145Enabled { get; set; }
+        public bool IsEip145Enabled => _spec.IsEip145Enabled;
 
-        public bool IsEip1014Enabled { get; set; }
+        public bool IsEip1014Enabled => _spec.IsEip1014Enabled;
 
-        public bool IsEip1052Enabled { get; set; }
+        public bool IsEip1052Enabled => _spec.IsEip1052Enabled;
 
-        public bool IsEip1283Enabled { get; set; }
+        public bool IsEip1283Enabled => _spec.IsEip1283Enabled;
 
-        public bool IsEip1234Enabled { get; set; }
+        public bool IsEip1234Enabled => _spec.IsEip1234Enabled;
 
-        public bool IsEip1344Enabled { get; set; }
+        public bool IsEip1344Enabled => _spec.IsEip1344Enabled;
 
-        public bool IsEip2028Enabled { get; set; }
+        public bool IsEip2028Enabled => _spec.IsEip2028Enabled;
 
-        public bool IsEip152Enabled { get; set; }
+        public bool IsEip152Enabled => _spec.IsEip152Enabled;
 
-        public bool IsEip1108Enabled { get; set; }
+        public bool IsEip1108Enabled => _spec.IsEip1108Enabled;
 
-        public bool IsEip1884Enabled { get; set; }
+        public bool IsEip1884Enabled => _spec.IsEip1884Enabled;
 
-        public bool IsEip2200Enabled { get; set; }
+        public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
-        public bool IsEip2315Enabled { get; set; }
+        public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
 
-        public bool IsEip2537Enabled { get; set; }
+        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
 
-        public bool IsEip2565Enabled { get; set; }
+        public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
-        public bool IsEip2929Enabled { get; set; }
+        public bool IsEip2929Enabled => _spec.IsEip2929Enabled;
 
-        public bool IsEip2930Enabled { get; set; }
+        public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
 
-        public bool IsEip1559Enabled { get; set; }
+        public bool IsEip1559Enabled => _spec.IsEip1559Enabled;
 
-        public bool IsEip3198Enabled { get; set; }
+        public bool IsEip3198Enabled => _spec.IsEip3198Enabled;
 
-        public bool IsEip3529Enabled { get; set; }
+        public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
 
-        public bool IsEip3541Enabled { get; set; }
+        public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
 
-        public bool IsEip3607Enabled { get; set; }
+        public bool IsEip3607Enabled => _spec.IsEip3607Enabled;
 
-        public bool IsEip3675Enabled { get; set; }
+        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
 
-        public bool IsEip3651Enabled { get; set; }
+        public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
 
-        public bool IsEip1153Enabled { get; set; }
+        public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
 
-        public bool IsEip3855Enabled { get; set; }
+        public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
 
-        public bool IsEip3860Enabled { get; set; }
+        public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
 
-        public bool IsEip3540Enabled { get; set; }
+        public bool IsEip3540Enabled => _spec.IsEip3540Enabled;
 
-        public bool IsEip3670Enabled { get; set; }
+        public bool IsEip3670Enabled => _spec.IsEip3670Enabled;
 
-        public bool IsEip4200Enabled { get; set; }
+        public bool IsEip4200Enabled => _spec.IsEip4200Enabled;
 
-        public long Eip1559TransitionBlock { get; set; }
+        public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
 
         public bool IsEip158IgnoredAccount(Address address)
-            => _spec.IsEip158IgnoredAccount(address);
+        {
+            return _spec.IsEip158IgnoredAccount(address);
+        }
     }
 }
