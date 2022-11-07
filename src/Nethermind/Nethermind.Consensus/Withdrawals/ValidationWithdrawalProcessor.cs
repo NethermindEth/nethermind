@@ -22,7 +22,7 @@ public class ValidationWithdrawalProcessor : IWithdrawalProcessor
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        if (!spec.IsEip4895Enabled)
+        if (!spec.WithdrawalsEnabled)
             return;
 
         // This check is potentially redundant and must be removed

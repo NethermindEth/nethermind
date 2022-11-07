@@ -115,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 var spec = _specProvider.GetSpec(newHeadBlock.Number);
 
-                if (spec.IsEip4895Enabled && payloadAttributes.Withdrawals is null)
+                if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
                 {
                     var error = "Withdrawals are null with EIP-4895 activated.";
 
@@ -124,7 +124,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                 }
 
-                if (!spec.IsEip4895Enabled && payloadAttributes.Withdrawals is not null)
+                if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
                 {
                     var error = "Withdrawals are not null with EIP-4895 not activated.";
 

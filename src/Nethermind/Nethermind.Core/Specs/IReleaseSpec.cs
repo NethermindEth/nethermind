@@ -279,7 +279,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the 
+        /// Gets or sets a value indicating whether the
         /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
         /// validator withdrawals are enabled.
         /// </summary>
@@ -371,5 +371,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue => null;
 
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool WithdrawalsEnabled => IsEip4895Enabled;
     }
 }

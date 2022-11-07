@@ -124,7 +124,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             var spec = _specProvider.GetSpec(block.Number);
 
-            if (spec.IsEip4895Enabled && request.Withdrawals is null)
+            if (spec.WithdrawalsEnabled && request.Withdrawals is null)
             {
                 var error = $"Withdrawals are null in block {request.BlockHash} with EIP-4895 activated.";
 
@@ -133,7 +133,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return NewPayloadV1Result.Invalid(lastValidHash, error);
             }
 
-            if (!spec.IsEip4895Enabled && request.Withdrawals is not null)
+            if (!spec.WithdrawalsEnabled && request.Withdrawals is not null)
             {
                 var error = $"Withdrawals are not null in block {request.BlockHash} with EIP-4895 not activated.";
 

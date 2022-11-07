@@ -17,7 +17,7 @@ public class ProductionWithdrawalProcessor : IWithdrawalProcessor
     {
         _processor.ProcessWithdrawals(block, spec);
 
-        if (spec.IsEip4895Enabled)
+        if (spec.WithdrawalsEnabled)
         {
             block.Header.WithdrawalsRoot = block.Withdrawals.Length == 0
                 ? Keccak.EmptyTreeHash
