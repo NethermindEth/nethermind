@@ -28,6 +28,5 @@ namespace Nethermind.Init
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Runtime), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.BuildTimestamp), typeof(ProductInfo))]
         public static long Version { get; set; }
-        
     }
 }
