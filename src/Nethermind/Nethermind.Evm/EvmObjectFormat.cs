@@ -325,9 +325,12 @@ namespace Nethermind.Evm
                     _ => false
                 };
 
-                if (!endCorrectly && LoggingEnabled)
+                if (!endCorrectly)
                 {
-                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                    if (LoggingEnabled)
+                    {
+                        _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                    }
                     return false;
                 }
 
