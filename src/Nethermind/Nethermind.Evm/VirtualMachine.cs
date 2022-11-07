@@ -638,7 +638,7 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            var CodeInfo = env.CodeInfo.SeparateEOFSections(out Span<byte> fullCode, out Span<byte> typeSection, out Span<byte> codeSection, out Span<byte> dataSection);
+            var CodeInfo = env.CodeInfo.SeparateEOFSections(spec, out Span<byte> fullCode, out Span<byte> typeSection, out Span<byte> codeSection, out Span<byte> dataSection);
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -3014,7 +3014,7 @@ namespace Nethermind.Evm
                         {
                             if (spec.IsEip4750Enabled)
                             {
-                                var index = (codeSection[programCounter + 0] << 8) | codeSection[programCounter + 1];
+                                var index = codeSection[programCounter..(programCounter + 1)].ReadEthInt16();
                                 vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                                 {
                                     Index = CodeInfo.SectionId,

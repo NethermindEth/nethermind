@@ -35,6 +35,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Test;
+using System.Text.Json;
 
 namespace Nethermind.Evm.Test
 {
@@ -149,19 +150,24 @@ namespace Nethermind.Evm.Test
 
             ReleaseSpec spec = (ReleaseSpec)(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
             spec.IsEip3670Enabled = false;
+            spec.IsEip4200Enabled = false;
+            spec.IsEip4750Enabled = false;
 
             var expectedHeader = codeSize == 0 && dataSize == 0
                 ? null
                 : new EofHeader
                 {
-                    CodeSize = (ushort)codeSize,
-                    DataSize = (ushort)dataSize
+                    CodeSize = new int[] { codeSize },
+                    DataSize = dataSize,
+                    Version = 1
                 };
+            var expectedJson = JsonSerializer.Serialize(expectedHeader);
             var checkResult = ValidateByteCode(bytecode, spec, out var header);
+            var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)
             {
-                header.Should().Be(expectedHeader);
+                Assert.AreEqual(actualJson, expectedJson);
                 checkResult.Should().Be(isCorrectFormated);
             }
             else

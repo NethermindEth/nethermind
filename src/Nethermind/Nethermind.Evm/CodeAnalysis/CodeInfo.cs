@@ -19,6 +19,7 @@ using System.Collections;
 using System.Reflection.PortableExecutable;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -29,27 +30,23 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private EofHeader _header;
+        private bool? IsEOF = null;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
         public int SectionId { get; set; } = 0;
-        public EofHeader Header
-        {
-            get
-            {
-                if (_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
-                {
-                    return _header;
-                }
-                return _header;
-            }
-        }
+        public EofHeader Header => _header;
 
         #region EofSection Extractors
-        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
+        public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-            if (Header is not null)
+            if(IsEOF is null && Header is null)
+            {
+                IsEOF = ByteCodeValidator.IsEOFCode(Container, spec, out _header);
+            }
+
+            if (IsEOF.Value && (Header is not null))
             {
                 var offsets = new [] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
                 TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);

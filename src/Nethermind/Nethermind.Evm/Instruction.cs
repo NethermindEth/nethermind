@@ -97,12 +97,12 @@ namespace Nethermind.Evm
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
 
-        RJUMP = 0x5c,
-        RJUMPI = 0x5d,
+        RJUMP = 0x5c, // EIP-4200
+        RJUMPI = 0x5d, // EIP-4200
 
         // alt values to avoid collision
-        CALLF = 0xc3,
-        RETF = 0xc4,
+        RETF = 0xf6, // EIP-4750 altered version : collision with PUSH0
+        CALLF = 0xf7, // EIP-4750
 
 
         PUSH0 = 0x5f, // EIP-3855

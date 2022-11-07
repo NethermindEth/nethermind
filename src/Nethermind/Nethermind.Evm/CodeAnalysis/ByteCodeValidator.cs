@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Org.BouncyCastle.Crypto.Agreement.Srp;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -33,7 +34,11 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool ValidateByteCode(this ReadOnlySpan<byte> code, IReleaseSpec _spec)
                 => ValidateByteCode(code, _spec, out _);
 
+        public static bool IsEOFCode(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
+            => EofFormatChecker.ExtractHeader(machineCode, _spec, out header);
+
+
         public static bool IsEOFCode(ReadOnlySpan<byte> machineCode, out EofHeader header)
-            => EofFormatChecker.ExtractHeader(machineCode, out header);
+            => EofFormatChecker.ExtractHeader(machineCode, MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation), out header); // maybe Cancum spec ? 
     }
 }
