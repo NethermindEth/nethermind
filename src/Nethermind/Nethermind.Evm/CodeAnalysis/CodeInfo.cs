@@ -48,7 +48,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_analyzer == null)
+            if (_analyzer is null)
             {
                 CreateAnalyzer();
             }

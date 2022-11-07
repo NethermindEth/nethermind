@@ -139,10 +139,10 @@ public class InvalidChainTracker : IInvalidChainTracker
         if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
 
         // TODO: This port can now be removed? We should never get null here?
-        if (parent == null)
+        if (parent is null)
         {
             BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
-            if (failedBlockHeader == null)
+            if (failedBlockHeader is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
                 return;

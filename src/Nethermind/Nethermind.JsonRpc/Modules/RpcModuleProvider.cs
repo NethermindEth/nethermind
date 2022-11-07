@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            if (attribute == null)
+            if (attribute is null)
             {
                 if (_logger.IsWarn) _logger.Warn(
                     $"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");

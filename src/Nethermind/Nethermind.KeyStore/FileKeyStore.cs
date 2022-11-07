@@ -115,12 +115,12 @@ namespace Nethermind.KeyStore
             }
 
             var serializedKey = ReadKey(address);
-            if (serializedKey == null)
+            if (serializedKey is null)
             {
                 return (null, Result.Fail("Cannot find key"));
             }
             var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
-            if (keyStoreItem?.Crypto == null)
+            if (keyStoreItem?.Crypto is null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
             }
@@ -178,7 +178,7 @@ namespace Nethermind.KeyStore
             }
 
             byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
-            if (key == null)
+            if (key is null)
             {
                 return (null, Result.Fail("Error during decryption"));
             }
@@ -262,7 +262,7 @@ namespace Nethermind.KeyStore
             var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
-            if (cipher == null)
+            if (cipher is null)
             {
                 return Result.Fail("Error during encryption");
             }
@@ -322,7 +322,7 @@ namespace Nethermind.KeyStore
 
         private Result Validate(KeyStoreItem keyStoreItem)
         {
-            if (keyStoreItem.Crypto?.CipherParams == null || keyStoreItem.Crypto.KDFParams == null)
+            if (keyStoreItem.Crypto?.CipherParams is null || keyStoreItem.Crypto.KDFParams is null)
             {
                 return Result.Fail("Incorrect key");
             }

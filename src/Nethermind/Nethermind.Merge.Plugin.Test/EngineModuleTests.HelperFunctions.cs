@@ -89,7 +89,7 @@ namespace Nethermind.Merge.Plugin.Test
         private ExecutionPayloadV1 CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
-            if (head == null) throw new NotSupportedException();
+            if (head is null) throw new NotSupportedException();
             return new ExecutionPayloadV1()
             {
                 BlockNumber = head.Number,

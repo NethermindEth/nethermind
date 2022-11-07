@@ -90,8 +90,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public static ITxFilter? CreateTxPermissionFilter(AuRaNethermindApi api, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (api.ChainSpec == null) throw new StepDependencyException(nameof(api.ChainSpec));
-            if (api.SpecProvider == null) throw new StepDependencyException(nameof(api.SpecProvider));
+            if (api.ChainSpec is null) throw new StepDependencyException(nameof(api.ChainSpec));
+            if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
 
             if (api.ChainSpec.Parameters.TransactionPermissionContract != null)
             {

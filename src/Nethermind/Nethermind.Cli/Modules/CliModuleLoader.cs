@@ -58,7 +58,7 @@ namespace Nethermind.Cli.Modules
         /// <exception cref="ArgumentNullException"></exception>
         private static Delegate CreateDelegate(MethodInfo methodInfo, CliModuleBase module)
         {
-            if (methodInfo == null)
+            if (methodInfo is null)
             {
                 throw new ArgumentNullException(nameof(methodInfo));
             }
@@ -78,7 +78,7 @@ namespace Nethermind.Cli.Modules
         private void LoadModule(CliModuleBase module)
         {
             CliModuleAttribute? cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
-            if (cliModuleAttribute == null)
+            if (cliModuleAttribute is null)
             {
                 _cliConsole.WriteErrorLine(
                     $"Could not load module {module.GetType().Name} bacause of a missing {nameof(CliModuleAttribute)}.");
@@ -100,7 +100,7 @@ namespace Nethermind.Cli.Modules
                 string? objectName = cliProperty?.ObjectName ?? cliFunction?.ObjectName;
                 string? itemName = cliProperty?.PropertyName ?? cliFunction?.FunctionName;
 
-                if (objectName == null)
+                if (objectName is null)
                 {
                     throw new InvalidDataException($"Method {methodInfo.Name} of {module.GetType().Name} should be decorated with one of {nameof(CliPropertyAttribute)} or {nameof(CliFunctionAttribute)}");
                 }

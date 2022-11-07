@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization
         {
             get
             {
-                if (_blockTree.Head == null)
+                if (_blockTree.Head is null)
                 {
                     return null;
                 }
@@ -146,12 +146,12 @@ namespace Nethermind.Synchronization
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
 
-            if (block.TotalDifficulty == null)
+            if (block.TotalDifficulty is null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
 
-            if (block.Hash == null)
+            if (block.Hash is null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown hash");
             }
@@ -411,7 +411,7 @@ namespace Nethermind.Synchronization
                     values[i] = _stateDb[keys[i].Bytes];
                 }
 
-                if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
                     values[i] = _codeDb[keys[i].Bytes];
                 }
@@ -497,7 +497,7 @@ namespace Nethermind.Synchronization
             {
                 lock (_chtLock)
                 {
-                    if (_cht == null)
+                    if (_cht is null)
                     {
                         throw new InvalidAsynchronousStateException("CHT reference is null when building CHT.");
                     }

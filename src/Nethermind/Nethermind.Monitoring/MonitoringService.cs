@@ -59,7 +59,7 @@ namespace Nethermind.Monitoring
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
 
-            _logger = logManager == null
+            _logger = logManager is null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
             _options = GetOptions();

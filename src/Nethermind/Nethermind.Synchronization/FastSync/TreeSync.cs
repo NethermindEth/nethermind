@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     _handleWatch.Restart();
 
-                    bool isMissingRequestData = batch.RequestedNodes == null;
+                    bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
                     {
                         _hintsToResetRoot++;
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.FastSync
                         return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
                     }
 
-                    if (batch.Responses == null)
+                    if (batch.Responses is null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         /* if the peer does not have details of this particular node */
                         byte[] currentResponseItem = batch.Responses[i];
-                        if (currentResponseItem == null)
+                        if (currentResponseItem is null)
                         {
                             AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                             continue;
@@ -356,7 +356,7 @@ namespace Nethermind.Synchronization.FastSync
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (bestSuggested == null || bestSuggested.Number == 0)
+            if (bestSuggested is null || bestSuggested.Number == 0)
             {
                 return;
             }

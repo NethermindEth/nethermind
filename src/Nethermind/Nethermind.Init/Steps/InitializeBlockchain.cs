@@ -78,10 +78,10 @@ namespace Nethermind.Init.Steps
 
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
 
-            if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
-            if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
-            if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
-            if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
+            if (getApi.ChainSpec is null) throw new StepDependencyException(nameof(getApi.ChainSpec));
+            if (getApi.DbProvider is null) throw new StepDependencyException(nameof(getApi.DbProvider));
+            if (getApi.SpecProvider is null) throw new StepDependencyException(nameof(getApi.SpecProvider));
+            if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
 
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
@@ -230,7 +230,7 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager);
 
             InitSealEngine();
-            if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
+            if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             setApi.HeaderValidator = CreateHeaderValidator();
 
@@ -356,9 +356,9 @@ namespace Nethermind.Init.Steps
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()
         {
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             return new BlockProcessor(
                 _api.SpecProvider,

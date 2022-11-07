@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.OK, null, false);
             }
 
-            if (tree == null)
+            if (tree is null)
             {
                 throw new ArgumentNullException(nameof(tree));
             }
@@ -253,7 +253,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
         {
-            if (sortedBoundaryList == null || sortedBoundaryList.Count == 0)
+            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
                 return;
             }

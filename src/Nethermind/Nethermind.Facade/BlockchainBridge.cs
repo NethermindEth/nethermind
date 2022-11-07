@@ -244,7 +244,7 @@ namespace Nethermind.Facade
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress == null)
+            if (transaction.SenderAddress is null)
             {
                 transaction.SenderAddress = Address.SystemUser;
             }

@@ -165,7 +165,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(QueryRequest other) {
-      if (other == null) {
+      if (other is null) {
         return;
       }
       if (other.Client.Length != 0) {
@@ -320,7 +320,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(QueryResponse other) {
-      if (other == null) {
+      if (other is null) {
         return;
       }
       if (other.Client.Length != 0) {
@@ -471,7 +471,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(SubscriptionRequest other) {
-      if (other == null) {
+      if (other is null) {
         return;
       }
       if (other.Client.Length != 0) {
@@ -626,7 +626,7 @@ namespace Nethermind.Grpc {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(SubscriptionResponse other) {
-      if (other == null) {
+      if (other is null) {
         return;
       }
       if (other.Client.Length != 0) {

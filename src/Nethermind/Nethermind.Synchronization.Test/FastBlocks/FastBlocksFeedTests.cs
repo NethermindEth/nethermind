@@ -769,7 +769,7 @@
 //                 if (_pendingResponses.Count < _syncPeers.Count(p => !p.IsReported))
 //                 {
 //                     FastBlocksBatch batch = _feed.PrepareRequest();
-//                     if (batch == null && _pendingResponses.Count == 0)
+//                     if (batch is null && _pendingResponses.Count == 0)
 //                     {
 //                         TestContext.WriteLine($"STOP - NULL BATCH AND NO PENDING");
 //                         break;
@@ -780,7 +780,7 @@
 //                         bool wasAssigned = false;
 //                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
 //                         {
-//                             if (syncPeer.BusyUntil == null
+//                             if (syncPeer.BusyUntil is null
 //                                 && _peerTrees[syncPeer].Head.Number >= (batch.MinNumber ?? 0))
 //                             {
 //                                 syncPeer.BusyUntil = _time + syncPeer.Latency;
@@ -976,7 +976,7 @@
 //
 //                 Keccak hash = tree.FindHash(startNumber);
 //
-//                 if (hash == null)
+//                 if (hash is null)
 //                 {
 //                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} CANNOT FIND {headersSyncBatch.StartNumber}");
 //                     return;

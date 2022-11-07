@@ -30,8 +30,6 @@ namespace Nethermind.Monitoring.Metrics
 {
     public class MetricsController : IMetricsController
     {
-        public static readonly Dictionary<string, string> StaticTags = new();
-
         private readonly int _intervalSeconds;
         private Timer _timer;
         private Dictionary<string, Gauge> _gauges = new();
@@ -45,48 +43,49 @@ namespace Nethermind.Monitoring.Metrics
             EnsurePropertiesCached(type);
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
-                GetMemberInfoMectricsDescription(propertyInfo, gaugeName);
+                CreateMemberInfoMectricsGauge(propertyInfo, gaugeName);
             }
 
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
-                GetMemberInfoMectricsDescription(fieldInfo, gaugeName);
+                CreateMemberInfoMectricsGauge(fieldInfo, gaugeName);
             }
 
             _metricTypes.Add(type);
         }
 
-        private void GetMemberInfoMectricsDescription(MemberInfo propertyInfo, string gaugeName)
+        private void CreateMemberInfoMectricsGauge(MemberInfo propertyInfo, string gaugeName)
         {
             GaugeConfiguration configuration = new();
             Dictionary<string, string> tagValues = new();
 
-            propertyInfo.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
-                .ForEach(attribute => InsertStaticMemberInfo(attribute.Informer, attribute.Label, tagValues));
-            configuration.StaticLabels = tagValues;
+            configuration.StaticLabels = propertyInfo
+                .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
+                .ToDictionary(
+                    attribute => attribute.Label,
+                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
             string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
             _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name), description, configuration);
         }
 
-        private static void InsertStaticMemberInfo(Type givenInformer, string givenName, Dictionary<string, string> tagValues)
+        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
-            if (info == null)
+            if (info is null)
             {
-                throw new Exception("Developer error: a requested static description field was not implemented!");
+                throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
             }
 
             object value = info.GetValue(null);
-            if (value == null)
+            if (value is null)
             {
-                throw new Exception("Developer error: a requested static description field was not initialised!");
+                throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
             }
 
-            string data = value.ToString();
-            tagValues.Add(info.Name, data);
+            return value.ToString();
         }
 
         private void EnsurePropertiesCached(Type type)
@@ -167,7 +166,7 @@ namespace Nethermind.Monitoring.Metrics
                     double value = Convert.ToDouble(kvp.Value);
                     var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
 
-                    if (ReplaceValueIfChanged(value, gaugeName) == null)
+                    if (ReplaceValueIfChanged(value, gaugeName) is null)
                     {
                         var gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeName] = gauge;

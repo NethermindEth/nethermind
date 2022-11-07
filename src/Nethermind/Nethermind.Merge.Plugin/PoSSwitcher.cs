@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin
             if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
                 _hasEverReachedTerminalDifficulty = true;
 
-            if (_terminalBlockNumber == null)
+            if (_terminalBlockNumber is null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
@@ -177,7 +177,7 @@ namespace Nethermind.Merge.Plugin
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
             bool isTerminal = false, isPostMerge;
-            if (_specProvider.TerminalTotalDifficulty == null) // TTD = null, so everything is preMerge
+            if (_specProvider.TerminalTotalDifficulty is null) // TTD = null, so everything is preMerge
             {
                 isTerminal = false;
                 isPostMerge = false;
@@ -193,7 +193,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
+            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD

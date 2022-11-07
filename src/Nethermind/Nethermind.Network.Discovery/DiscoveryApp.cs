@@ -283,7 +283,7 @@ public class DiscoveryApp : IDiscoveryApp
             }
 
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node, true);
-            if (manager == null)
+            if (manager is null)
             {
                 if (_logger.IsDebug)
                 {
@@ -401,7 +401,7 @@ public class DiscoveryApp : IDiscoveryApp
             }
 
             _logger.Info("Stopping discovery udp channel");
-            if (_channel == null)
+            if (_channel is null)
             {
                 return;
             }

@@ -759,7 +759,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
-            if (session.RemoteNodeId == null)
+            if (session.RemoteNodeId is null)
             {
                 // this happens when we have a disconnect on incoming connection before handshake
                 if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
@@ -833,7 +833,7 @@ namespace Nethermind.Network
 
         private void ManageNewRemoteNodeId(ISession session)
         {
-            if (session.ObsoleteRemoteNodeId == null)
+            if (session.ObsoleteRemoteNodeId is null)
             {
                 return;
             }

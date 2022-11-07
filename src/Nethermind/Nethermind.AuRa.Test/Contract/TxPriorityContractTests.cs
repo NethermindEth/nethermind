@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }
@@ -207,7 +207,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }
@@ -253,7 +253,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }

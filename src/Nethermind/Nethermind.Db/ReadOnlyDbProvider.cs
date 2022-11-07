@@ -31,7 +31,7 @@ namespace Nethermind.Db
         {
             _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
             _createInMemoryWriteStore = createInMemoryWriteStore;
-            if (wrappedProvider == null)
+            if (wrappedProvider is null)
             {
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
@@ -74,7 +74,7 @@ namespace Nethermind.Db
 
             _registeredDbs.TryGetValue(dbName, out IReadOnlyDb? found);
             T result = found as T;
-            if (result == null && found != null)
+            if (result is null && found != null)
             {
                 throw new IOException(
                     $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");

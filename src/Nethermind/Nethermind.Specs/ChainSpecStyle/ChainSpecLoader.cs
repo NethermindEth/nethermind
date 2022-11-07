@@ -77,7 +77,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
             {
                 var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-                if (allocation == null) return null;
+                if (allocation is null) return null;
                 KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
                 if (pricing.Length > 0)
                 {
@@ -206,7 +206,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
             chainSpec.ConstantinopleBlockNumber =
-                chainSpec.Parameters.Eip1283DisableTransition == null
+                chainSpec.Parameters.Eip1283DisableTransition is null
                     ? null
                     : chainSpec.Parameters.Eip145Transition;
             chainSpec.ConstantinopleFixBlockNumber =
@@ -339,7 +339,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Genesis == null)
+            if (chainSpecJson.Genesis is null)
             {
                 return;
             }
@@ -392,7 +392,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Accounts == null)
+            if (chainSpecJson.Accounts is null)
             {
                 return;
             }
@@ -400,7 +400,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
-                if (account.Value.BuiltIn != null && account.Value.Balance == null)
+                if (account.Value.BuiltIn != null && account.Value.Balance is null)
                 {
                     continue;
                 }
@@ -416,7 +416,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Nodes == null)
+            if (chainSpecJson.Nodes is null)
             {
                 chainSpec.Bootnodes = Array.Empty<NetworkNode>();
                 return;

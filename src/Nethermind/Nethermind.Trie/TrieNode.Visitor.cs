@@ -137,7 +137,7 @@ namespace Nethermind.Trie
                     {
                         visitor.VisitExtension(this, trieVisitContext);
                         TrieNode child = GetChild(nodeResolver, 0);
-                        if (child == null)
+                        if (child is null)
                         {
                             throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         }

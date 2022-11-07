@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Producers
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
             if (Logger.IsTrace) Logger.Trace($"Checking IsProducingBlocks: maxProducingInterval {maxProducingInterval}, _lastProducedBlock {_lastProducedBlockDateTime}, IsRunning() {IsRunning()}");
-            return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
+            return IsRunning() && (maxProducingInterval is null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
         private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
@@ -165,7 +165,7 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
-            if (parentHeader == null)
+            if (parentHeader is null)
             {
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
             }
@@ -267,7 +267,7 @@ namespace Nethermind.Consensus.Producers
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
-            if (block == null)
+            if (block is null)
             {
                 if (Logger.IsError) Logger.Error("Failed to prepare block for mining.");
                 return false;

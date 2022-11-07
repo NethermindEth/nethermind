@@ -43,7 +43,7 @@ namespace Nethermind.Consensus
             if (tx is not GeneratedTransaction)
             {
                 BlockHeader parentHeader = _blockTree.Head?.Header;
-                if (parentHeader == null) return AcceptTxResult.Accepted;
+                if (parentHeader is null) return AcceptTxResult.Accepted;
 
                 AcceptTxResult isAllowed = _txFilter.IsAllowed(tx, parentHeader);
                 if (!isAllowed)

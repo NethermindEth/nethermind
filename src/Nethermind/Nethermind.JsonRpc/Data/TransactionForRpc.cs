@@ -168,16 +168,16 @@ public class TransactionForRpc
     }
 
     private AccessList? TryGetAccessList() =>
-        !Type.IsTxTypeWithAccessList() || AccessList == null
+        !Type.IsTxTypeWithAccessList() || AccessList is null
             ? null
             : AccessListItemForRpc.ToAccessList(AccessList);
 
     public void EnsureDefaults(long? gasCap)
     {
-        if (gasCap == null || gasCap == 0)
+        if (gasCap is null || gasCap == 0)
             gasCap = long.MaxValue;
 
-        Gas = Gas == null || Gas == 0
+        Gas = Gas is null || Gas == 0
             ? gasCap
             : Math.Min(gasCap.Value, Gas.Value);
 

@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] GetValidators(long? blockNumber = null)
         {
-            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
+            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
         }
 
         public PendingValidators PendingValidators

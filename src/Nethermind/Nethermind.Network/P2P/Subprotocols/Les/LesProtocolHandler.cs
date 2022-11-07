@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public override void Init()
         {
             if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
@@ -298,12 +298,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             announceMessage.HeadHash = block.Hash;
             announceMessage.HeadBlockNo = block.Number;
             announceMessage.TotalDifficulty = block.TotalDifficulty.Value;
-            if (_lastSentBlock == null || block.ParentHash == _lastSentBlock.Hash)
+            if (_lastSentBlock is null || block.ParentHash == _lastSentBlock.Hash)
                 announceMessage.ReorgDepth = 0;
             else
             {
                 BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
-                if (firstCommonAncestor == null)
+                if (firstCommonAncestor is null)
                     throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
                 announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }

@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             }
             else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                 }
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             }
             else
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
                 }

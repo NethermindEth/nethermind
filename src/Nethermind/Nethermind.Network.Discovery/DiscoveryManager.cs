@@ -69,7 +69,7 @@ public class DiscoveryManager : IDiscoveryManager
 
             Node node = new(msg.FarPublicKey, msg.FarAddress);
             INodeLifecycleManager? nodeManager = GetNodeLifecycleManager(node);
-            if (nodeManager == null)
+            if (nodeManager is null)
             {
                 return;
             }
@@ -222,7 +222,7 @@ public class DiscoveryManager : IDiscoveryManager
 
     private bool ValidatePingAddress(PingMsg msg)
     {
-        if (msg.DestinationAddress == null || msg.FarAddress == null)
+        if (msg.DestinationAddress is null || msg.FarAddress is null)
         {
             if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {msg}");
             return false;

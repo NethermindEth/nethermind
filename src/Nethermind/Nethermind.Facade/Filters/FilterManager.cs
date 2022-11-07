@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddReceipts(params TxReceipt[] txReceipts)
         {
-            if (txReceipts == null)
+            if (txReceipts is null)
             {
                 throw new ArgumentNullException(nameof(txReceipts));
             }
@@ -193,7 +193,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddBlock(Block block)
         {
-            if (block == null)
+            if (block is null)
             {
                 throw new ArgumentNullException(nameof(block));
             }
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void StoreBlock(BlockFilter filter, Block block)
         {
-            if (block.Hash == null)
+            if (block.Hash is null)
             {
                 throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             }
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
         {
-            if (txReceipt.Logs == null || txReceipt.Logs.Length == 0)
+            if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
             {
                 return;
             }

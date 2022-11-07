@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Filters
                 return Addresses.Contains(address);
             }
 
-            return Address == null || Address == address;
+            return Address is null || Address == address;
         }
 
         public bool Accepts(ref AddressStructRef address)
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Filters
                 return false;
             }
 
-            return Address == null || Address == address;
+            return Address is null || Address == address;
         }
 
         public bool Matches(Core.Bloom bloom)
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Filters
 
                 return result;
             }
-            else if (Address == null)
+            else if (Address is null)
             {
                 return true;
             }
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Filters
 
                 return result;
             }
-            else if (Address == null)
+            else if (Address is null)
             {
                 return true;
             }

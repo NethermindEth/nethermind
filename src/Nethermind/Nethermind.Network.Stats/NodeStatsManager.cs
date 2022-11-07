@@ -96,7 +96,7 @@ namespace Nethermind.Stats
 
         public INodeStats GetOrAdd(Node node)
         {
-            if (node == null)
+            if (node is null)
             {
                 return null;
             }

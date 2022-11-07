@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Visitors
                 return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
-            if (chainLevelInfo == null)
+            if (chainLevelInfo is null)
             {
                 _gapStart = _currentLevelNumber;
             }
@@ -255,8 +255,8 @@ namespace Nethermind.Blockchain.Visitors
             if (block?.ParentHash != null)
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (parentHeader == null || parentHeader.StateRoot == null ||
-                    _stateDb.Get(parentHeader.StateRoot) == null)
+                if (parentHeader is null || parentHeader.StateRoot is null ||
+                    _stateDb.Get(parentHeader.StateRoot) is null)
                     return false;
             }
             else

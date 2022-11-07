@@ -44,13 +44,13 @@ namespace Nethermind.Init.Steps
             _initConfig = _api.Config<IInitConfig>();
             Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);
 
-            if (_api.BlockTree == null)
+            if (_api.BlockTree is null)
             {
                 throw new StepDependencyException();
             }
 
             // if we already have a database with blocks then we do not need to load genesis from spec
-            if (_api.BlockTree.Genesis == null)
+            if (_api.BlockTree.Genesis is null)
             {
                 Load();
             }
@@ -66,13 +66,13 @@ namespace Nethermind.Init.Steps
 
         protected virtual void Load()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+            if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
@@ -87,7 +87,7 @@ namespace Nethermind.Init.Steps
             bool genesisLoaded = false;
             void GenesisProcessed(object? sender, BlockEventArgs args)
             {
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
                 _api.BlockTree.NewHeadBlock -= GenesisProcessed;
                 genesisLoaded = true;
                 genesisProcessedEvent.Set();
@@ -109,8 +109,8 @@ namespace Nethermind.Init.Steps
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Keccak? expectedGenesisHash)
         {
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             BlockHeader genesis = _api.BlockTree.Genesis!;
             if (expectedGenesisHash != null && genesis.Hash != expectedGenesisHash)

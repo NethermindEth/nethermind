@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Find
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
-                if (blockHash == null)
+                if (blockHash is null)
                 {
                     if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
                 }
@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain.Find
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    LogEntriesIterator logsIterator = receipt.Logs == null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
+                    LogEntriesIterator logsIterator = receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
                     if (filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Find
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
 
-                                if (topics == null)
+                                if (topics is null)
                                 {
                                     var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
                                     topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
@@ -294,7 +294,7 @@ namespace Nethermind.Blockchain.Find
                 else
                 {
                     var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    return block == null ? null : _receiptFinder.Get(block);
+                    return block is null ? null : _receiptFinder.Get(block);
                 }
             }
 
