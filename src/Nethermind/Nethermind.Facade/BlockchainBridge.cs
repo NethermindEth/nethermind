@@ -258,14 +258,16 @@ namespace Nethermind.Facade
             }
 
             BlockHeader callHeader = new(
-                blockHeader.Hash!,
+                treatBlockHeaderAsParentBlock ? blockHeader.Hash! : blockHeader.ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                0,
+                blockHeader.Beneficiary,
+                blockHeader.Difficulty,
                 treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
                 blockHeader.GasLimit,
                 timestamp,
                 Array.Empty<byte>());
+
+            callHeader.MixHash = blockHeader.MixHash;
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
                 ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
