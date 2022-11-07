@@ -30,7 +30,7 @@ namespace Nethermind.Monitoring.Metrics
 {
     public class MetricsController : IMetricsController
     {
-        public static readonly Dictionary<string, string> StaticTags= new();
+        public static readonly Dictionary<string, string> StaticTags = new();
 
         private readonly int _intervalSeconds;
         private Timer _timer;
@@ -118,7 +118,7 @@ namespace Nethermind.Monitoring.Metrics
             return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
         }
 
-        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null )
+        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
                 => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration);
 
         public MetricsController(IMetricsConfig metricsConfig)
