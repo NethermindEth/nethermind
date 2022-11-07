@@ -97,9 +97,10 @@ namespace Nethermind.Evm
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
 
+        RJUMP = 0x5c,
+        RJUMPI = 0x5d,
+
         // alt values to avoid collision
-        RJUMP = 0xc1,
-        RJUMPI = 0xc2,
         CALLF = 0xc3,
         RETF = 0xc4,
 

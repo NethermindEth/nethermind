@@ -151,6 +151,8 @@ namespace Nethermind.Evm.Test
                 {
                     >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
                     >= Instruction.DUP1 and <= Instruction.DUP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.DUP1 + 1) }),
+                    Instruction.BEGINSUB =>  Prepare.EvmCode.BEGINSUB(),
+                    Instruction.RETURNSUB => Prepare.EvmCode.RETURNSUB(),
                     _ => (Prepare)method.Invoke(null, new object[] { initBytecode })
                 };
 

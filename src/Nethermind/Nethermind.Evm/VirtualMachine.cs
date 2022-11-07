@@ -2901,77 +2901,81 @@ namespace Nethermind.Evm
 
                             break;
                         }
-                    case Instruction.BEGINSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            // why do we even need the cost of it?
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
-                            return CallResult.InvalidSubroutineEntry;
-                        }
-                    case Instruction.RJUMP:
+                    case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
                             if (spec.StaticRelativeJumpsEnabled)
                             {
-                                var destination = codeSection[programCounter..(programCounter + 2)].ReadEthInt32();
-                                programCounter += 2 + destination;
-                            } else
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                if (!UpdateGas(GasCostOf.RJump, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt16();
+                                programCounter += 2 + offset;
+                                break;
                             }
-                            break;
+                            else
+                            {
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                // why do we even need the cost of it?
+                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
+                                return CallResult.InvalidSubroutineEntry;
+                            }
                         }
-                    case Instruction.RETURNSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (vmState.ReturnStackHead == 0)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
-                                return CallResult.InvalidSubroutineReturn;
-                            }
-
-                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
-                            break;
-                        }
-                    case Instruction.RJUMPI:
+                    case Instruction.RETURNSUB | Instruction.RJUMPI:
                         {
                             if (spec.StaticRelativeJumpsEnabled)
                             {
+                                if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
                                 Span<byte> condition = stack.PopBytes();
-                                var destination = codeSection[programCounter..(programCounter + 2)].ReadEthInt32();
+                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt16();
                                 if (!condition.SequenceEqual(BytesZero32))
                                 {
-                                    programCounter += 2 + destination;
-                                } else
+                                    programCounter += 2 + offset;
+                                }
+                                else
                                 {
                                     programCounter += 2;
                                 }
-                            } else
+                            }
+                            else
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                if (vmState.ReturnStackHead == 0)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
+                                    return CallResult.InvalidSubroutineReturn;
+                                }
+
+                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
                             }
                             break;
                         }
