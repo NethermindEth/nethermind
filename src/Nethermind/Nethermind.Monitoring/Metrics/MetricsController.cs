@@ -28,7 +28,7 @@ using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
-    public class MetricsController : IMetricsUpdater
+    public class MetricsController : IMetricsController
     {
         public static readonly Dictionary<string, string> StaticTags= new();
 
@@ -73,9 +73,20 @@ namespace Nethermind.Monitoring.Metrics
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
-            var info = tagsData.FirstOrDefault(info => info.Name == givenName);
-            var value = info?.GetValue(null)?.ToString();
-            tagValues.Add(info.Name, value);
+            PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
+            if (info == null)
+            {
+                throw new Exception("Developer error: a requested static description field was not implemented!");
+            }
+
+            object value = info.GetValue(null);
+            if (value == null)
+            {
+                throw new Exception("Developer error: a requested static description field was not initialised!");
+            }
+
+            string data = value.ToString();
+            tagValues.Add(info.Name, data);
         }
 
         private void EnsurePropertiesCached(Type type)
