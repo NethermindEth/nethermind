@@ -51,6 +51,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Hash = hash;
             return this;
         }
+        public TransactionBuilder<T> CalculateHash()
+        {
+            TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
+            return this;
+        }
 
         public TransactionBuilder<T> WithTo(Address? address)
         {

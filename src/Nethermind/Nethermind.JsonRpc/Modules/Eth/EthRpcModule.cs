@@ -47,6 +47,7 @@ using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
 using Transaction = Nethermind.Core.Transaction;
+using Nethermind.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -336,6 +337,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
         TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        tx.Hash ??= tx.CalculateHash();
         return SendTx(tx, options);
     }
 
