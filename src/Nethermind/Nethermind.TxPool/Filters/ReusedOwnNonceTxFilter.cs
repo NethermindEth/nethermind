@@ -42,8 +42,10 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (tx.SenderAddress is null)
+                return AcceptTxResult.Invalid;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            Account account = _accounts.GetAccount(tx.SenderAddress!);
+            Account account = _accounts.GetAccount(tx.SenderAddress);
             UInt256 currentNonce = account.Nonce;
 
             if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))

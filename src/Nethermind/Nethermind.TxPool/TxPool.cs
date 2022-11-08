@@ -209,7 +209,7 @@ namespace Nethermind.TxPool
 
             for (int i = 0; i < transactionsInBlock; i++)
             {
-                Keccak? txHash = blockTransactions[i].Hash;
+                Keccak txHash = blockTransactions[i].Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
                 if (!IsKnown(txHash!))
                 {
@@ -265,6 +265,9 @@ namespace Nethermind.TxPool
         {
             Metrics.PendingTransactionsReceived++;
 
+            if (tx.Hash is null)
+                return AcceptTxResult.Invalid;
+
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
@@ -300,7 +303,7 @@ namespace Nethermind.TxPool
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
 
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
+                bool inserted = _transactions.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 if (inserted)
                 {
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
@@ -462,7 +465,9 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
-                if (hasBeenRemoved && transaction is not null)
+                if (transaction is null)
+                    throw new ArgumentException("Transaction removed from TxPool was unexpectedly null!");
+                if (hasBeenRemoved)
                 {
                     Address? address = transaction.SenderAddress;
 

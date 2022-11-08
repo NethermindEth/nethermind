@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
-        protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new NullReferenceException();
+        protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
         protected override Keccak GetKey(Transaction value) => value.Hash!;
 
         protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
@@ -58,9 +58,9 @@ namespace Nethermind.TxPool.Collections
                 {
                     bool reAdd = _worstSortedValues.Remove(tx);
                     change(tx);
-                    if (reAdd && tx.Hash != null)
+                    if (reAdd)
                     {
-                        _worstSortedValues.Add(tx, tx.Hash);
+                        _worstSortedValues.Add(tx, tx.Hash!);
                     }
                 }
                 else
@@ -71,8 +71,7 @@ namespace Nethermind.TxPool.Collections
 
             for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
-                if (_transactionsToRemove[i].Hash is Keccak hash)
-                    TryRemove(hash);
+                TryRemove(_transactionsToRemove[i].Hash!);
             }
         }
     }
