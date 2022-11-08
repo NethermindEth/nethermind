@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -26,7 +27,7 @@ namespace Nethermind.Specs
         public static readonly GoerliSpecProvider Instance = new();
         private GoerliSpecProvider() { }
 
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
         private UInt256? _terminalTotalDifficulty = 10790000;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -37,7 +38,7 @@ namespace Nethermind.Specs
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
 
@@ -47,8 +48,8 @@ namespace Nethermind.Specs
 
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
-            blockNumber switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            forkActivation.BlockNumber switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
                 < BerlinBlockNumber => IstanbulNoBomb,
@@ -62,7 +63,7 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 5_062_605;
         public ulong ChainId => Core.ChainId.Goerli;
 
-        public long[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionBlocks { get; } =
         {
             IstanbulBlockNumber,
             BerlinBlockNumber,

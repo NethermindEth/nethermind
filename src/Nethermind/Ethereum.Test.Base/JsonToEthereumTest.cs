@@ -77,7 +77,7 @@ namespace Ethereum.Test.Base
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
+                (ulong)Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.ExtraData)
             );
 

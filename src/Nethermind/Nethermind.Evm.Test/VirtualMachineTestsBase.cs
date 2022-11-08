@@ -60,8 +60,9 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
+        protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
+        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
         protected virtual ILogManager GetLogManager()
         {
@@ -100,26 +101,31 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected TestAllTracerWithOutput Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
+        }
+
+        protected TestAllTracerWithOutput Execute(params byte[] code)
+        {
+            return Execute(BlockNumber, Timestamp, code);
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -131,7 +137,8 @@ namespace Nethermind.Evm.Test
             byte[] code,
             SenderRecipientAndMiner senderRecipientAndMiner = null,
             int value = 1,
-            long blockGasLimit = DefaultBlockGasLimit)
+            long blockGasLimit = DefaultBlockGasLimit,
+            ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -154,7 +161,7 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit, timestamp);
             return (block, transaction);
         }
 
@@ -204,10 +211,17 @@ namespace Nethermind.Evm.Test
             return BuildBlock(blockNumber, senderRecipientAndMiner, null);
         }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx, long blockGasLimit = DefaultBlockGasLimit)
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
+            Transaction tx, long blockGasLimit = DefaultBlockGasLimit,
+            ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] { tx }).WithGasLimit(blockGasLimit).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber)
+                .WithTransactions(tx == null ? new Transaction[0] : new[] { tx })
+                .WithGasLimit(blockGasLimit)
+                .WithBeneficiary(senderRecipientAndMiner.Miner)
+                .WithTimestamp(timestamp)
+                .TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)

@@ -37,7 +37,7 @@ namespace Nethermind.Facade.Proxy.Models
         public Keccak Sha3Uncles { get; set; }
         public UInt256 Size { get; set; }
         public Keccak StateRoot { get; set; }
-        public UInt256 Timestamp { get; set; }
+        public ulong Timestamp { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public List<T> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }

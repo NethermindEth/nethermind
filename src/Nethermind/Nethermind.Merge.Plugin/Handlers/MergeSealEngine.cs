@@ -65,8 +65,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? Address.Zero : _preMergeSealValidator.Address;
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
-            _preMergeSealValidator.ValidateParams(parent, header);
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
+            _preMergeSealValidator.ValidateParams(parent, header, isUncle);
 
         public bool ValidateSeal(BlockHeader header, bool force) => _mergeSealValidator.ValidateSeal(header, force);
     }
