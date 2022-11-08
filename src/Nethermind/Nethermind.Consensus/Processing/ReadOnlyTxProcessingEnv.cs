@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
-            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
+            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
             DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);

@@ -135,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
-            if (blockInfo == null)
+            if (blockInfo is null)
             {
                 if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
                 return ForkchoiceUpdatedV1Result.Syncing;
@@ -143,7 +143,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (!blockInfo.WasProcessed)
             {
                 BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!);
-                if (blockParent == null)
+                if (blockParent is null)
                 {
                     if (_logger.IsInfo)
                         _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
@@ -299,7 +299,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
             bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
             bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
-            if (notFinalizingPoS && notFinalizedPoS && blocks != null)
+            if (notFinalizingPoS && notFinalizedPoS && blocks is not null)
             {
                 for (int i = 0; i < blocks.Length; ++i)
                 {
@@ -372,7 +372,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             while (true)
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                if (predecessor == null)
+                if (predecessor is null)
                 {
                     blocks = Array.Empty<Block>();
                     return false;
@@ -404,12 +404,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
-                if (predecessor == null)
+                if (predecessor is null)
                 {
                     break;
                 }
                 BlockInfo? predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
-                if (predecessorInfo == null) break;
+                if (predecessorInfo is null) break;
                 predecessorInfo.BlockNumber = predecessor.Number;
                 if (predecessorInfo.IsBeaconMainChain || !predecessorInfo.IsBeaconInfo) break;
                 if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash} or cache rebuilt");

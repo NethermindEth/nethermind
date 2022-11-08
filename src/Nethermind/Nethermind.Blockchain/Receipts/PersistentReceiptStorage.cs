@@ -54,14 +54,14 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            _lowestInsertedReceiptBlock = lowestBytes == null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
+            _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            return blockHashData == null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
+            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
         }
 
         // Find receipt stored with old - obsolete format.

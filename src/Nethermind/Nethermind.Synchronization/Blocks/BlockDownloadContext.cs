@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Blocks
             for (int i = 1; i < headers.Length; i++)
             {
                 BlockHeader? header = headers[i];
-                if (header?.Hash == null)
+                if (header?.Hash is null)
                 {
                     break;
                 }
@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             int mappedIndex = _indexMapping[index];
             Block block = Blocks[mappedIndex];
-            if (body == null)
+            if (body is null)
             {
                 throw new EthSyncException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
             }

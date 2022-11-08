@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.Peers
         private string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
         {
             long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
-            if (speed == null)
+            if (speed is null)
             {
                 return "     ";
             }

@@ -232,7 +232,7 @@ namespace Nethermind.Blockchain.Test
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress != null).OrderBy(t => t, comparer).ToArray();
+            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress is not null).OrderBy(t => t, comparer).ToArray();
 
             Block block = Build.A.Block
                 .WithNumber(0)

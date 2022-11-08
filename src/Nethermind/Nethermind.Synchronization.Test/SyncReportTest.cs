@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
-            selector.Current.Returns((ci) => SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts);
+            selector.Current.Returns(_ => SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts);
             timer.Elapsed += Raise.Event();
 
             if (setBarriers)

@@ -38,7 +38,7 @@ namespace Nethermind.Init.Steps
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)
         {
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)

@@ -193,7 +193,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _userOperationPools[entryPoint].RemoveUserOperation(opToRemove.RequestId!);
                     continue;
                 }
-                if (callOutput.Error != null)
+                if (callOutput.Error is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"AA Simulation error for entryPoint {entryPoint}: {callOutput.Error}");
                     continue;

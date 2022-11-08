@@ -74,7 +74,7 @@ namespace Nethermind.Network.Discovery.Test
         [TearDown]
         public async Task CleanUp()
         {
-            _channels.ToList().ForEach(x => { x.CloseAsync(); });
+            _channels.ForEach(x => { x.CloseAsync(); });
             await Task.Delay(50);
         }
 

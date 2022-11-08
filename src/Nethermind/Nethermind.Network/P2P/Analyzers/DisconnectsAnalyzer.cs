@@ -101,7 +101,7 @@ namespace Nethermind.Network.P2P.Analyzers
             Interlocked.Increment(ref _disconnectCount);
             _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), _ => 1, (_, i) => i + 1);
 
-            if (type == DisconnectType.Local && details != null)
+            if (type == DisconnectType.Local && details is not null)
             {
                 _logger.Warn(details);
             }
