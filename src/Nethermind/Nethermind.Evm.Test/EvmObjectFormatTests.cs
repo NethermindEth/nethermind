@@ -932,10 +932,13 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec source_spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-            OverridableReleaseSpec spec = new(source_spec);
-            spec.IsEip4200Enabled = false;
-            bool checkResult = ValidateByteCode(bytecode, spec, out _);
+            OverridableReleaseSpec source_spec = new(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            {
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false
+            };
+
+            bool checkResult = ValidateByteCode(bytecode, source_spec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

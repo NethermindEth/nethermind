@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -31,6 +33,34 @@ namespace Nethermind.Evm.Test
         public void Return_prevrandao_name_for_prevrandao_opcode_for_post_merge()
         {
             Instruction.PREVRANDAO.GetName(true).Should().Be("PREVRANDAO");
+        }
+
+        [Test]
+        public void Return_rjump_name_for_beginsub_opcode_for_post_eof()
+        {
+            Instruction.RJUMP.GetName(true, Shanghai.Instance).Should().Be("RJUMP");
+        }
+
+
+        [Test]
+        public void Return_beginsub_name_for_beginsub_opcode_for_post_eof()
+        {
+            Instruction.BEGINSUB.GetName(true, GrayGlacier.Instance).Should().Be("BEGINSUB");
+        }
+
+
+
+        [Test]
+        public void Return_rjumpi_name_for_returnsub_opcode_for_post_eof()
+        {
+            Instruction.RJUMPI.GetName(true, Shanghai.Instance).Should().Be("RJUMPI");
+        }
+
+
+        [Test]
+        public void Return_returnsub_name_for_returnsub_opcode_for_post_eof()
+        {
+            Instruction.RETURNSUB.GetName(true, GrayGlacier.Instance).Should().Be("RETURNSUB");
         }
     }
 }
