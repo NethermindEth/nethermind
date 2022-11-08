@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            if (attribute == null)
+            if (attribute is null)
             {
                 throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
             }

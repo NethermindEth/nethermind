@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch?.MarkHandlingStart();
             try
             {
-                if (batch == null)
+                if (batch is null)
                 {
                     if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
@@ -180,7 +180,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     : batch.Response![i];
 
                 // last batch
-                if (blockInfo == null)
+                if (blockInfo is null)
                 {
                     break;
                 }

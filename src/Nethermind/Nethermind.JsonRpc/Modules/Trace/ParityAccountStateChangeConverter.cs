@@ -33,13 +33,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteChange(JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
             else
             {
-                if (change.Before == null)
+                if (change.Before is null)
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("+");
@@ -63,13 +63,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteChange(JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
             else
             {
-                if (change.Before == null)
+                if (change.Before is null)
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("+");
@@ -93,7 +93,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteStorageChange(JsonWriter writer, ParityStateChange<byte[]> change, bool isNew, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             writer.WriteStartObject();
             writer.WritePropertyName("balance");
-            if (value.Balance == null)
+            if (value.Balance is null)
             {
                 writer.WriteValue("=");
             }
@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("code");
-            if (value.Code == null)
+            if (value.Code is null)
             {
                 writer.WriteValue("=");
             }
@@ -145,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("nonce");
-            if (value.Nonce == null)
+            if (value.Nonce is null)
             {
                 writer.WriteValue("=");
             }
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
 
                     writer.WritePropertyName(string.Concat("0x", trimmedKey));
-                    WriteStorageChange(writer, pair.Value, value.Balance?.Before == null && value.Balance?.After is not null, serializer);
+                    WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After is not null, serializer);
                 }
             }
 

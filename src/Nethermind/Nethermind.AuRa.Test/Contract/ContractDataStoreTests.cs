@@ -263,7 +263,7 @@ namespace Nethermind.AuRa.Test.Contract
                 BlockTree = blockTree,
                 ReceiptFinder = receiptsFinder,
                 ContractDataStore = keyComparer is null
-                    ? (IContractDataStore<T>)new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockTree, receiptsFinder, LimboLogs.Instance)
+                    ? new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockTree, receiptsFinder, LimboLogs.Instance)
                     : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockTree, receiptsFinder, LimboLogs.Instance)
             };
         }

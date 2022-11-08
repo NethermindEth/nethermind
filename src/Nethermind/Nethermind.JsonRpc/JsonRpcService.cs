@@ -170,7 +170,7 @@ public class JsonRpcService : IJsonRpcService
         if (expectedParameters.Length > 0)
         {
             parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
-            if (parameters == null)
+            if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
@@ -233,7 +233,7 @@ public class JsonRpcService : IJsonRpcService
         }
 
         Result? result = resultWrapper.GetResult();
-        if (result == null)
+        if (result is null)
         {
             if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
             return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
@@ -307,7 +307,7 @@ public class JsonRpcService : IJsonRpcService
 
                 if (string.IsNullOrWhiteSpace(providedParameter))
                 {
-                    if (providedParameter == null && IsNullableParameter(expectedParameter))
+                    if (providedParameter is null && IsNullableParameter(expectedParameter))
                     {
                         executionParameters.Add(null);
                     }
@@ -420,7 +420,7 @@ public class JsonRpcService : IJsonRpcService
 
     private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
-        if (rpcRequest == null)
+        if (rpcRequest is null)
         {
             return (ErrorCodes.InvalidRequest, "Invalid request");
         }

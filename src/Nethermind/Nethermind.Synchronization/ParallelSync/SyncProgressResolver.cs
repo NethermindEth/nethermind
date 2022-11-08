@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             for (int i = 0; i < MaxLookupBack; i++)
             {
-                if (startHeader == null)
+                if (startHeader is null)
                 {
                     break;
                 }

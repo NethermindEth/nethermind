@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
             BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
-            if (header == null)
+            if (header is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
                 preparedReceipts = null;
@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     TxReceipt[]? prepared = null;
                     // last batch
-                    if (blockInfo == null)
+                    if (blockInfo is null)
                     {
                         break;
                     }
@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (isValid)
                     {
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        if (block == null)
+                        if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {

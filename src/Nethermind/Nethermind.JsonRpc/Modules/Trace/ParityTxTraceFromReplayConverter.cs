@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteStartObject();
             writer.WriteProperty("action", traceAction, serializer);
-            if (traceAction.Error == null)
+            if (traceAction.Error is null)
             {
                 writer.WriteProperty("result", traceAction.Result, serializer);
             }

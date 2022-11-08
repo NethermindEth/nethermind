@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             long? headersSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers);
             long? bodiesSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies);
-            if (headersSpeed == null && bodiesSpeed == null)
+            if (headersSpeed is null && bodiesSpeed is null)
             {
                 return null;
             }
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Blocks
             decimal averageSpeed = 0M;
             int peersCount = 0;
 
-            bool wasNull = currentPeer == null;
+            bool wasNull = currentPeer is null;
 
             long currentSpeed = wasNull
                 ? nullSpeed :
@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.Blocks
                 return currentPeer;
             }
 
-            if (bestDiffPeer.Info == null)
+            if (bestDiffPeer.Info is null)
             {
                 return fastestPeer.Info;
             }

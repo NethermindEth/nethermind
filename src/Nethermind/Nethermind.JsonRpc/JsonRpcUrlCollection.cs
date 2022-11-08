@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc
 
         private void BuildEngineUrls(bool includeWebSockets)
         {
-            if (_jsonRpcConfig.EnginePort == null)
+            if (_jsonRpcConfig.EnginePort is null)
             {
                 return;
             }

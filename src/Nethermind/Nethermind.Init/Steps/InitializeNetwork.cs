@@ -213,11 +213,13 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        // if (_syncConfig.SnapSync || stateSyncFinished)
-        // {
-        //     place for enabling eth67
-        // }
-        // else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+        if (_syncConfig.SnapSync || stateSyncFinished)
+        {
+            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
+            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+        }
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -491,6 +493,7 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
+            _networkConfig.LocalIp!,
             _networkConfig.P2PPort,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,

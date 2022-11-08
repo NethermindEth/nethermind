@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            bool useSyncPivot = _blockTree.LowestInsertedHeader == null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
+            bool useSyncPivot = _blockTree.LowestInsertedHeader is null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
             long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
             Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
@@ -269,7 +269,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
         {
-            if (batch == null)
+            if (batch is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                 return SyncResponseHandlingResult.InternalError;
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
             }
 
             try
@@ -338,7 +338,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual int InsertHeaders(HeadersSyncBatch batch)
         {
-            if (batch.Response == null)
+            if (batch.Response is null)
             {
                 return 0;
             }

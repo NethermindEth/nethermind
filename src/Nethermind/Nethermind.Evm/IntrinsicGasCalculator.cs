@@ -19,6 +19,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -55,6 +56,11 @@ namespace Nethermind.Evm
                 {
                     dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
                 }
+            }
+
+            if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
+            {
+                dataCost += EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.Length) * GasCostOf.InitCodeWord;
             }
 
             return dataCost;
