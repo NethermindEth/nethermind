@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             {
                 string name = definitionToken[_nameTokenName]?.Value<string>();
                 JToken typeToken = definitionToken[_typeTokenName];
-                if (typeToken == null)
+                if (typeToken is null)
                 {
                     continue;
                 }

@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -81,7 +81,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 rlpStream.EncodeNullObject();
                 return;
@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 1;
             }
@@ -114,7 +114,7 @@ namespace Nethermind.Serialization.Rlp
         private static (int Total, int Topics) GetContentLength(LogEntry? item)
         {
             var contentLength = 0;
-            if (item == null)
+            if (item is null)
             {
                 return (contentLength, 0);
             }
@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static int GetTopicsLength(LogEntry? item)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 0;
             }

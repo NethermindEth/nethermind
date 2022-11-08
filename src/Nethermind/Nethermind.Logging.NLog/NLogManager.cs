@@ -41,7 +41,7 @@ namespace Nethermind.Logging.NLog
 
         private static void SetupLogFile(string logFileName, string logDirectory)
         {
-            if (LogManager.Configuration?.AllTargets != null)
+            if (LogManager.Configuration?.AllTargets is not null)
             {
                 foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
                 {
@@ -82,7 +82,7 @@ namespace Nethermind.Logging.NLog
         private void SetupLogRules(string logRules)
         {
             //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
-            if (logRules != null)
+            if (logRules is not null)
             {
                 IList<LoggingRule> configurationLoggingRules = LogManager.Configuration.LoggingRules;
                 lock (configurationLoggingRules)

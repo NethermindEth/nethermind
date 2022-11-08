@@ -34,7 +34,7 @@ namespace Nethermind.Consensus
 
         public Address Address => _key?.Address ?? Address.Zero;
 
-        public bool CanSign => _key != null;
+        public bool CanSign => _key is not null;
 
         public Signer(ulong chainId, PrivateKey key, ILogManager logManager)
         {
@@ -71,7 +71,7 @@ namespace Nethermind.Consensus
         {
             _key = key;
             if (_logger.IsInfo) _logger.Info(
-                _key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
+                _key is not null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
 
         public void SetSigner(ProtectedPrivateKey? key)

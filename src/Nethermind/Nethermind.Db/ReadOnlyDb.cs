@@ -63,7 +63,7 @@ namespace Nethermind.Db
                 for (int i = 0; i < memResult.Length; i++)
                 {
                     var memValue = memResult[i];
-                    if (memValue.Value != null)
+                    if (memValue.Value is not null)
                     {
                         result[i] = memValue;
                     }

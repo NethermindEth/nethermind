@@ -117,7 +117,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetBucketSnapshot(TGroupKey group)
         {
-            if (group == null) throw new ArgumentNullException(nameof(group));
+            if (group is null) throw new ArgumentNullException(nameof(group));
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public int GetBucketCount(TGroupKey group)
         {
-            if (group == null) throw new ArgumentNullException(nameof(group));
+            if (group is null) throw new ArgumentNullException(nameof(group));
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
         }
 
@@ -389,7 +389,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
-            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
+            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 UpdateGroup(groupKey, bucket, changingElements);

@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.LesSync
         private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];
-            return hash == null ? EmptyTreeHash : new Keccak(hash);
+            return hash is null ? EmptyTreeHash : new Keccak(hash);
         }
 
         private static Keccak GetMaxRootHash(IKeyValueStore db)
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.LesSync
         public (Keccak?, UInt256) Get(Span<byte> key)
         {
             byte[]? val = base.Get(key);
-            if (val == null)
+            if (val is null)
             {
                 throw new InvalidDataException("Missing CHT data");
             }

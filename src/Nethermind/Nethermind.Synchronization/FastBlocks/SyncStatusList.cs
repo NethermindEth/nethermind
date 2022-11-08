@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 while (collected < blockInfos.Length && currentNumber != 0)
                 {
-                    if (blockInfos[collected] != null)
+                    if (blockInfos[collected] is not null)
                     {
                         collected++;
                         continue;

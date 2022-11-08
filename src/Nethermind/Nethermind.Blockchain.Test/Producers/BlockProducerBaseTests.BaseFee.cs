@@ -225,7 +225,7 @@ namespace Nethermind.Blockchain.Test.Producers
 
                 private async Task ExecuteAntecedentIfNeeded()
                 {
-                    if (_antecedent != null)
+                    if (_antecedent is not null)
                         await _antecedent;
                 }
 

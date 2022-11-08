@@ -83,7 +83,7 @@ public class DbOnTheRocks : IDbWithSpan
         static RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
         {
             (DbOptions options, ColumnFamilies? families) = db;
-            return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
+            return families is null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
         }
 
         _fullPath = GetFullDbPath(dbPath, basePath);
@@ -131,7 +131,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     protected internal void UpdateReadMetrics()
     {
-        if (_settings.UpdateReadMetrics != null)
+        if (_settings.UpdateReadMetrics is not null)
             _settings.UpdateReadMetrics?.Invoke();
         else
             Metrics.OtherDbReads++;
@@ -139,7 +139,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     protected internal void UpdateWriteMetrics()
     {
-        if (_settings.UpdateWriteMetrics != null)
+        if (_settings.UpdateWriteMetrics is not null)
             _settings.UpdateWriteMetrics?.Invoke();
         else
             Metrics.OtherDbWrites++;
@@ -291,7 +291,7 @@ public class DbOnTheRocks : IDbWithSpan
 
             UpdateWriteMetrics();
 
-            if (value == null)
+            if (value is null)
             {
                 _db.Remove(key, null, WriteOptions);
             }
@@ -394,7 +394,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
 
         // seems it has no performance impact
-        return _db.Get(key) != null;
+        return _db.Get(key) is not null;
         //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
     }
 
@@ -456,7 +456,7 @@ public class DbOnTheRocks : IDbWithSpan
                     throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
                 }
 
-                if (value == null)
+                if (value is null)
                 {
                     _rocksBatch.Delete(key);
                 }

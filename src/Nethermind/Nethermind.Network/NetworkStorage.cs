@@ -53,7 +53,7 @@ namespace Nethermind.Network
             List<NetworkNode> nodes = new();
             foreach (byte[]? nodeRlp in _fullDb.Values)
             {
-                if (nodeRlp == null)
+                if (nodeRlp is null)
                 {
                     continue;
                 }

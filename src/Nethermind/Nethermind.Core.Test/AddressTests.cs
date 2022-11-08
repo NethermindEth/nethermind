@@ -100,9 +100,9 @@ namespace Nethermind.Core.Test
             Assert.True(addressA == addressA);
 #pragma warning restore CS1718
             Assert.False(addressA == addressB);
-            Assert.False(addressA == null);
+            Assert.False(addressA is null);
             Assert.False(null == addressA);
-            Assert.True((Address?)null == null);
+            Assert.True((Address?)null is null);
         }
 
         [Test]
@@ -117,9 +117,9 @@ namespace Nethermind.Core.Test
             Assert.False(addressA != addressA);
 #pragma warning restore CS1718
             Assert.True(addressA != addressB);
-            Assert.True(addressA != null);
+            Assert.True(addressA is not null);
             Assert.True(null != addressA);
-            Assert.False((Address?)null != null);
+            Assert.False((Address?)null is not null);
         }
 
         [Test]
