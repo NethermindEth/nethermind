@@ -31,7 +31,6 @@ namespace Nethermind.Specs.Forks
             IsEip3675Enabled = true;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
-<<<<<<<<< Temporary merge branch 1
             IsEip3670Enabled = true;
             IsEip3540Enabled = true;
             IsEip4200Enabled = true;

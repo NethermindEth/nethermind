@@ -32,6 +32,7 @@ namespace Nethermind.Specs.Test
         public OverridableReleaseSpec(IReleaseSpec spec)
         {
             _spec = spec;
+            IsEip3607Enabled = _spec.IsEip3607Enabled;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -68,7 +69,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip155Enabled => _spec.IsEip155Enabled;
 
-        public bool IsEip158Enabled => _spec.IsEip158Enabled;
+        public bool IsEip158Enabled => _spec.IsEip1559Enabled;
 
         public bool IsEip160Enabled => _spec.IsEip160Enabled;
 
@@ -112,7 +113,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
 
-        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
+        public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
 
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
@@ -121,36 +122,74 @@ namespace Nethermind.Specs.Test
         public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
 
         public bool IsEip1559Enabled => _spec.IsEip1559Enabled;
-
         public bool IsEip3198Enabled => _spec.IsEip3198Enabled;
-
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
 
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
-
-        public bool IsEip3607Enabled => _spec.IsEip3607Enabled;
-
-        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
-
-        public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
-
-        public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
-
-        public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
-
-        public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
-
-        public bool IsEip3540Enabled => _spec.IsEip3540Enabled;
-
-        public bool IsEip3670Enabled => _spec.IsEip3670Enabled;
-
-        public bool IsEip4200Enabled => _spec.IsEip4200Enabled;
-
-        public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
+        public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address)
         {
             return _spec.IsEip158IgnoredAccount(address);
+        }
+
+        private long? _overridenEip1559TransitionBlock;
+        public long Eip1559TransitionBlock
+        {
+            get
+            {
+                return _overridenEip1559TransitionBlock ?? _spec.Eip1559TransitionBlock;
+            }
+            set
+            {
+                _overridenEip1559TransitionBlock = value;
+            }
+        }
+
+        public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
+        public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
+        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
+        public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
+        public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
+        public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
+
+        private bool? _overridenEip3540Status;
+        public bool IsEip3540Enabled
+        {
+            get
+            {
+                return _overridenEip3540Status ?? _spec.IsEip3540Enabled;
+            }
+            set
+            {
+                _overridenEip3540Status = value;
+            }
+        }
+
+        private bool? _overridenEip3670Status;
+        public bool IsEip3670Enabled
+        {
+            get
+            {
+                return _overridenEip3670Status ?? _spec.IsEip3670Enabled;
+            }
+            set
+            {
+                _overridenEip3670Status = value;
+            }
+        }
+
+        private bool? _overridenEip4200Status;
+        public bool IsEip4200Enabled
+        {
+            get
+            {
+                return _overridenEip4200Status ?? _spec.IsEip4200Enabled;
+            }
+            set
+            {
+                _overridenEip4200Status = value;
+            }
         }
     }
 }
