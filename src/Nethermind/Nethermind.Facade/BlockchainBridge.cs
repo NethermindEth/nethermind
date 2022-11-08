@@ -278,9 +278,9 @@ namespace Nethermind.Facade
                     blockHeader.ExtraData)
                 {
                     BaseFeePerGas = blockHeader.BaseFeePerGas,
-                    MixHash = blockHeader.MixHash
                 };
 
+            callHeader.MixHash = blockHeader.MixHash;
             transaction.Hash = transaction.CalculateHash();
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
