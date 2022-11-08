@@ -102,7 +102,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void validators_return_as_expected(IDb db, long? blockNumber, IEnumerable<(long FinalizingBlock, Address[] Validators)> validatorsToAdd, Address[] expectedValidators)
         {
             ValidatorStore store = new(db);
-            if (validatorsToAdd != null)
+            if (validatorsToAdd is not null)
             {
                 foreach ((long FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(v => v.FinalizingBlock))
                 {

@@ -95,7 +95,7 @@ namespace Nethermind.Monitoring
 
 
             }
-            if (_exposePort != null)
+            if (_exposePort is not null)
             {
                 IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
                 metricServer.Start();

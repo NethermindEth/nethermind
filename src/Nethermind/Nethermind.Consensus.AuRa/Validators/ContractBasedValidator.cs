@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
 
-                if (parentHeader != null)
+                if (parentHeader is not null)
                 {
                     Validators = LoadValidatorsFromContract(parentHeader);
                     InitValidatorStore();
@@ -260,7 +260,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
         {
-            if (CurrentPendingValidators != null)
+            if (CurrentPendingValidators is not null)
             {
                 // .Any equivalent with for
                 var currentPendingValidatorsBlockGotFinalized = false;

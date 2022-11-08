@@ -192,7 +192,7 @@ namespace Nethermind.Init.Steps
             }
 
             // Init state if we need system calls before actual processing starts
-            if (getApi.BlockTree!.Head?.StateRoot != null)
+            if (getApi.BlockTree!.Head?.StateRoot is not null)
             {
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }

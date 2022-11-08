@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(Address address)
         {
-            if (Addresses != null)
+            if (Addresses is not null)
             {
                 return Addresses.Contains(address);
             }
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses != null)
+            if (Addresses is not null)
             {
                 foreach (var a in Addresses)
                 {
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Matches(Core.Bloom bloom)
         {
-            if (Addresses != null)
+            if (Addresses is not null)
             {
                 bool result = true;
                 var indexes = AddressesBloomExtracts;
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Matches(ref BloomStructRef bloom)
         {
-            if (Addresses != null)
+            if (Addresses is not null)
             {
                 bool result = true;
                 var indexes = AddressesBloomExtracts;

@@ -409,7 +409,7 @@ namespace Nethermind.Consensus.Processing
                 _recoveryTask.IsCompleted)
                 return false;
 
-            if (maxProcessingInterval != null)
+            if (maxProcessingInterval is not null)
                 return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
             else // user does not setup interval and we cannot set interval time based on chainspec
                 return true;
@@ -517,7 +517,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     _loopCancellationSource?.Token.ThrowIfCancellationRequested();
 
-                    if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
+                    if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
                         if (_logger.IsInfo)
                             _logger.Info(
@@ -626,7 +626,7 @@ namespace Nethermind.Consensus.Processing
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
             } while (preMergeFinishBranchingCondition);
 
-            if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
+            if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");

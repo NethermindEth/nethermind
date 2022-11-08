@@ -323,7 +323,7 @@ public partial class BlockTreeTests
             )
             {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
-                if (ttd != null) testSpecProvider.TerminalTotalDifficulty = ttd;
+                if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
                 NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = new(
                     NotSyncedTreeBuilder.BlocksDb,
@@ -403,7 +403,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
                 BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
-                while (headers != null && headers.Length > 1)
+                while (headers is not null && headers.Length > 1)
                 {
                     BlockDownloadContext blockDownloadContext = new(
                         Substitute.For<ISpecProvider>(),
@@ -413,7 +413,7 @@ public partial class BlockTreeTests
                         Substitute.For<IReceiptsRecovery>()
                     );
                     bool shouldSetBlocks = NotSyncedTree.FindBlock(headers[1].Hash,
-                        BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
+                        BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null;
                     Assert.AreEqual(shouldSetBlocks, _chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext));
                     for (int i = 1; i < headers.Length; ++i)
                     {
@@ -567,7 +567,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder AssertBestSuggestedBody(long expected, UInt256? expectedTotalDifficulty = null)
             {
                 Assert.AreEqual(expected, NotSyncedTree!.BestSuggestedBody!.Number);
-                if (expectedTotalDifficulty != null)
+                if (expectedTotalDifficulty is not null)
                     Assert.AreEqual(expectedTotalDifficulty, NotSyncedTree.BestSuggestedBody.TotalDifficulty);
                 return this;
             }

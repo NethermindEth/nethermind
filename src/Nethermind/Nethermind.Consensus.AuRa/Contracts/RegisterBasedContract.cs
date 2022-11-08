@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             bool needUpdate = false;
             lock (_currentHashAddress)
             {
-                needUpdate = header != null && _currentHashAddress != header.Hash;
+                needUpdate = header is not null && _currentHashAddress != header.Hash;
             }
 
             if (needUpdate)

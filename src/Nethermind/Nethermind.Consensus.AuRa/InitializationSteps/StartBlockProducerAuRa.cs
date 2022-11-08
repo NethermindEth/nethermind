@@ -186,7 +186,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
-            if (_txPriorityContract != null || _localDataSource != null)
+            if (_txPriorityContract is not null || _localDataSource is not null)
             {
                 _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);
@@ -373,7 +373,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
 
             ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
-            if (txPermissionFilter != null)
+            if (txPermissionFilter is not null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
                 txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, _api.LogManager);

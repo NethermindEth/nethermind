@@ -272,7 +272,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
             bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
             bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
-            if (notFinalizingPoS && notFinalizedPoS && blocks != null)
+            if (notFinalizingPoS && notFinalizedPoS && blocks is not null)
             {
                 for (int i = 0; i < blocks.Length; ++i)
                 {

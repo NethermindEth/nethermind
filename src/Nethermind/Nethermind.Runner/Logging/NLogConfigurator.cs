@@ -33,9 +33,9 @@ namespace Nethermind.Runner.Logging
             string minLevel = "Off")
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration is not null)
             {
-                if (loggingConfiguration.AllTargets != null)
+                if (loggingConfiguration.AllTargets is not null)
                 {
                     foreach (SeqTarget target in loggingConfiguration.AllTargets.OfType<SeqTarget>())
                     {
@@ -63,7 +63,7 @@ namespace Nethermind.Runner.Logging
         public static void ClearSeqTarget()
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration is not null)
             {
                 loggingConfiguration.RemoveTarget("seq");
             }

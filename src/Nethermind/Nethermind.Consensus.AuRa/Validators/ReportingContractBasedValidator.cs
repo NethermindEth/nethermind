@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         if (_logger.IsTrace) _logger.Trace($"Reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
 
                         Transaction transaction = createReportTransactionDelegate(validator, blockNumber, proof);
-                        if (transaction != null)
+                        if (transaction is not null)
                         {
                             ITxSender txSender = SetSender(blockNumber);
                             SendTransaction(reportType, txSender, transaction);
@@ -230,7 +230,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (!_contractValidator.ForSealing)
             {
                 var parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                if (parentHeader != null)
+                if (parentHeader is not null)
                 {
                     ResendPersistedReports(parentHeader);
                 }

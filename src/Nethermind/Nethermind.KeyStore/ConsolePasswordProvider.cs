@@ -33,7 +33,7 @@ namespace Nethermind.KeyStore
         public override SecureString GetPassword(Address address)
         {
             var password = _consoleUtils.ReadSecret(Message);
-            if (password is null && AlternativeProvider != null)
+            if (password is null && AlternativeProvider is not null)
                 password = AlternativeProvider.GetPassword(address);
 
             return password;

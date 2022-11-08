@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
             {
-                if (_lastBlockHash != null)
+                if (_lastBlockHash is not null)
                 {
                     Keccak[] hackedResult = { _lastBlockHash }; // truffle hack
                     _lastBlockHash = null;

@@ -445,7 +445,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if (ProtocolHandlers.TryGetValue(protocol, out object handler))
             {
                 protocolHandler = handler as T;
-                return protocolHandler != null;
+                return protocolHandler is not null;
             }
 
             protocolHandler = null;

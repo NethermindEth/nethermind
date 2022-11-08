@@ -259,7 +259,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (downloadReceipts)
                         {
                             TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                            if (contextReceiptsForBlock != null)
+                            if (contextReceiptsForBlock is not null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     parent = block;
                 }
 
-                BlocksByHash = Blocks.Where(b => b != null).ToDictionary(b => b.Hash, b => b);
+                BlocksByHash = Blocks.Where(b => b is not null).ToDictionary(b => b.Hash, b => b);
             }
 
             public Dictionary<Keccak, Block> BlocksByHash;

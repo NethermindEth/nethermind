@@ -117,9 +117,9 @@ namespace Nethermind.Core.Test
             Assert.False(addressA != addressA);
 #pragma warning restore CS1718
             Assert.True(addressA != addressB);
-            Assert.True(addressA != null);
+            Assert.True(addressA is not null);
             Assert.True(null != addressA);
-            Assert.False((Address?)null != null);
+            Assert.False((Address?)null is not null);
         }
 
         [Test]

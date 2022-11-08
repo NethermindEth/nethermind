@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (blockNumber > EmptyBlockNumber)
             {
                 var bytes = _db.Get(GetKey(blockNumber));
-                return bytes != null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
+                return bytes is not null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
             }
 
             return EmptyValidatorInfo;

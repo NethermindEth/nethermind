@@ -76,10 +76,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 // TODO - implement config option for these
                 ServeHeaders = true,
                 ServeChainSince = 0x00,
-                //if (config.recentchain != null)
+                //if (config.recentchain is not null)
                 //    ServeRecentChain = Config.recentchain
                 ServeStateSince = 0x00,
-                //if (Config.serverecentstate != null)
+                //if (Config.serverecentstate is not null)
                 //    ServeRecentState = Config.RecentState
                 TxRelay = true,
                 // TODO - should allow setting to infinite

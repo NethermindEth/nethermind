@@ -40,7 +40,7 @@ namespace Nethermind.KeyStore
                 password = GetPasswordFromFile(fileName);
             }
 
-            if (password is null && AlternativeProvider != null)
+            if (password is null && AlternativeProvider is not null)
                 password = AlternativeProvider.GetPassword(address);
 
             return password;

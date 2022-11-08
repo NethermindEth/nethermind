@@ -127,7 +127,7 @@ namespace Nethermind.Grpc {
       int hash = 1;
       if (Client.Length != 0) hash ^= Client.GetHashCode();
       hash ^= args_.GetHashCode();
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         hash ^= _unknownFields.GetHashCode();
       }
       return hash;
@@ -145,7 +145,7 @@ namespace Nethermind.Grpc {
         output.WriteString(Client);
       }
       args_.WriteTo(output, _repeated_args_codec);
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         _unknownFields.WriteTo(output);
       }
     }
@@ -157,7 +157,7 @@ namespace Nethermind.Grpc {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
       }
       size += args_.CalculateSize(_repeated_args_codec);
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         size += _unknownFields.CalculateSize();
       }
       return size;
@@ -277,7 +277,7 @@ namespace Nethermind.Grpc {
       int hash = 1;
       if (Client.Length != 0) hash ^= Client.GetHashCode();
       if (Data.Length != 0) hash ^= Data.GetHashCode();
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         hash ^= _unknownFields.GetHashCode();
       }
       return hash;
@@ -298,7 +298,7 @@ namespace Nethermind.Grpc {
         output.WriteRawTag(18);
         output.WriteString(Data);
       }
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         _unknownFields.WriteTo(output);
       }
     }
@@ -312,7 +312,7 @@ namespace Nethermind.Grpc {
       if (Data.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Data);
       }
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         size += _unknownFields.CalculateSize();
       }
       return size;
@@ -433,7 +433,7 @@ namespace Nethermind.Grpc {
       int hash = 1;
       if (Client.Length != 0) hash ^= Client.GetHashCode();
       hash ^= args_.GetHashCode();
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         hash ^= _unknownFields.GetHashCode();
       }
       return hash;
@@ -451,7 +451,7 @@ namespace Nethermind.Grpc {
         output.WriteString(Client);
       }
       args_.WriteTo(output, _repeated_args_codec);
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         _unknownFields.WriteTo(output);
       }
     }
@@ -463,7 +463,7 @@ namespace Nethermind.Grpc {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Client);
       }
       size += args_.CalculateSize(_repeated_args_codec);
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         size += _unknownFields.CalculateSize();
       }
       return size;
@@ -583,7 +583,7 @@ namespace Nethermind.Grpc {
       int hash = 1;
       if (Client.Length != 0) hash ^= Client.GetHashCode();
       if (Data.Length != 0) hash ^= Data.GetHashCode();
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         hash ^= _unknownFields.GetHashCode();
       }
       return hash;
@@ -604,7 +604,7 @@ namespace Nethermind.Grpc {
         output.WriteRawTag(18);
         output.WriteString(Data);
       }
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         _unknownFields.WriteTo(output);
       }
     }
@@ -618,7 +618,7 @@ namespace Nethermind.Grpc {
       if (Data.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Data);
       }
-      if (_unknownFields != null) {
+      if (_unknownFields is not null) {
         size += _unknownFields.CalculateSize();
       }
       return size;

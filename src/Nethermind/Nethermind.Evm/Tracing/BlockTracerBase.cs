@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Tracing
 
         void IBlockTracer.EndTxTrace()
         {
-            if (CurrentTxTracer != null)
+            if (CurrentTxTracer is not null)
             {
                 TxTraces.Add(OnEnd(CurrentTxTracer));
                 CurrentTxTracer = null;

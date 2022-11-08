@@ -190,7 +190,7 @@ namespace Nethermind.Stats
         public bool HasFailedValidation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.FailedCompatibilityValidation != null;
+            return stats.FailedCompatibilityValidation is not null;
         }
 
         public void ReportTransferSpeedEvent(Node node, TransferSpeedType type, long value)

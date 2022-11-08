@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc
                         }
                     }
 
-                    if (url.IsModuleEnabled(ModuleType.Engine) && _jsonRpcConfig.EnginePort != null &&
+                    if (url.IsModuleEnabled(ModuleType.Engine) && _jsonRpcConfig.EnginePort is not null &&
                         !string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
                     {
                         if (_logger.IsInfo) _logger.Info($"EngineUrl specified. EnginePort {_jsonRpcConfig.EnginePort} EngineHost {_jsonRpcConfig.EngineHost}. Additional JSON RPC URL '{url}' has engine module enabled. skipping...");

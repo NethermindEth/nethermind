@@ -131,7 +131,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     protected internal void UpdateReadMetrics()
     {
-        if (_settings.UpdateReadMetrics != null)
+        if (_settings.UpdateReadMetrics is not null)
             _settings.UpdateReadMetrics?.Invoke();
         else
             Metrics.OtherDbReads++;
@@ -139,7 +139,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     protected internal void UpdateWriteMetrics()
     {
-        if (_settings.UpdateWriteMetrics != null)
+        if (_settings.UpdateWriteMetrics is not null)
             _settings.UpdateWriteMetrics?.Invoke();
         else
             Metrics.OtherDbWrites++;
@@ -394,7 +394,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
 
         // seems it has no performance impact
-        return _db.Get(key) != null;
+        return _db.Get(key) is not null;
         //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
     }
 

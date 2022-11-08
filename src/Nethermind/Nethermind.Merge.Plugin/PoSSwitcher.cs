@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
+            if (_terminalBlockNumber is not null || _finalTotalDifficulty is not null)
                 _hasEverReachedTerminalDifficulty = true;
 
             if (_terminalBlockNumber is null)
@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty != null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty is not null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
@@ -168,7 +168,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
+        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Keccak.Zero;
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
@@ -182,7 +182,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = false;
             }
-            else if (header.TotalDifficulty != null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
                 isTerminal = false;
@@ -239,14 +239,14 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
                                    _specProvider.MergeBlockNumber?.BlockNumber - 1;
 
-            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
+            _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (_terminalBlockNumber != null)
+            if (_terminalBlockNumber is not null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 

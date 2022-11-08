@@ -111,7 +111,7 @@ namespace Nethermind.Wallet
         private Signature SignCore(Keccak message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {
             var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
-            using PrivateKey key = protectedPrivateKey != null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
+            using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }

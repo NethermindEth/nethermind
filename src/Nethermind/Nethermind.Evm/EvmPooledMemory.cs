@@ -218,7 +218,7 @@ namespace Nethermind.Evm
         {
             int traceLocation = 0;
             List<string> memoryTrace = new();
-            if (_memory != null)
+            if (_memory is not null)
             {
                 while ((ulong)traceLocation < Size)
                 {
@@ -233,7 +233,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (_memory != null)
+            if (_memory is not null)
             {
                 Pool.Return(_memory);
             }

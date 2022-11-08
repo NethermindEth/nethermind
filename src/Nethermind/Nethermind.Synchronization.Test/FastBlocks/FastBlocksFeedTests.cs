@@ -113,7 +113,7 @@
 //                 .Do(ci =>
 //                 {
 //                     LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
-//                     if (mock != null)
+//                     if (mock is not null)
 //                     {
 //                         mock.BusyUntil = _time + 5000;
 //                         mock.IsReported = true;
@@ -124,7 +124,7 @@
 //                 .Do(ci =>
 //                 {
 //                     LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
-//                     if (mock != null)
+//                     if (mock is not null)
 //                     {
 //                         mock.BusyUntil = _time + 30000;
 //                         mock.IsReported = true;
@@ -720,7 +720,7 @@
 //                 {
 //                     Block expectedBlock = _localBlockTree.FindBlock(nextHash, BlockTreeLookupOptions.None);
 //                     Assert.AreEqual(nextHash, expectedBlock?.Hash, $"hash difference {tree.Head.Number - i}");
-//                     if (expectedBlock != null)
+//                     if (expectedBlock is not null)
 //                     {
 //                         Block actualBlock = tree.FindBlock(expectedBlock.Hash, BlockTreeLookupOptions.None);
 //                         Rlp saved = Rlp.Encode(actualBlock);
@@ -775,7 +775,7 @@
 //                         break;
 //                     }
 //
-//                     if (batch != null)
+//                     if (batch is not null)
 //                     {
 //                         bool wasAssigned = false;
 //                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
@@ -811,7 +811,7 @@
 //                     {
 //                         intSyncPeerMock.BusyUntil = null;
 //                         FastBlocksBatch responseBatch = CreateResponse(intSyncPeerMock);
-//                         if (responseBatch != null)
+//                         if (responseBatch is not null)
 //                         {
 //                             _feed.HandleResponse(responseBatch);
 //                         }
@@ -960,7 +960,7 @@
 //
 //         private void PrepareHeadersResponse(HeadersSyncBatch headersSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
 //         {
-//             if (headersSyncBatch != null)
+//             if (headersSyncBatch is not null)
 //             {
 //                 long startNumber = headersSyncBatch.StartNumber;
 //                 if (_maliciousByShiftedOneBack.Contains(syncPeer))

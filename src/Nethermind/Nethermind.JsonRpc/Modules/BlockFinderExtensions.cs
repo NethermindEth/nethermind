@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (header is null && !allowNulls)
                 {
                     header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header != null)
+                    if (header is not null)
                     {
                         return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                     }
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header != null)
+                    if (header is not null)
                     {
                         return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                     }

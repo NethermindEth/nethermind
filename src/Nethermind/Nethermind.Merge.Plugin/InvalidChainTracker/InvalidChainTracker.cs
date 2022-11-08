@@ -75,7 +75,7 @@ public class InvalidChainTracker : IInvalidChainTracker
         lock (parentNode)
         {
             parentNode.Children.Add(child);
-            needPropagate = parentNode.LastValidHash != null;
+            needPropagate = parentNode.LastValidHash is not null;
         }
 
         if (needPropagate)
@@ -153,7 +153,7 @@ public class InvalidChainTracker : IInvalidChainTracker
 
         Keccak effectiveParent = parent;
         BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
-        if (parentHeader != null)
+        if (parentHeader is not null)
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))
             {
@@ -179,12 +179,12 @@ public class InvalidChainTracker : IInvalidChainTracker
         Node node = GetNode(blockHash);
         lock (node)
         {
-            if (node.LastValidHash != null)
+            if (node.LastValidHash is not null)
             {
                 lastValidHash = node.LastValidHash;
             }
 
-            return node.LastValidHash != null;
+            return node.LastValidHash is not null;
         }
     }
 

@@ -307,7 +307,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 if (result.ResultType == NodeAddResultType.Full && result.EvictionCandidate?.Node is not null)
                 {
                     INodeLifecycleManager? evictionCandidate = _discoveryManager.GetNodeLifecycleManager(result.EvictionCandidate.Node);
-                    if (evictionCandidate != null)
+                    if (evictionCandidate is not null)
                     {
                         _evictionManager.StartEvictionProcess(evictionCandidate, this);
                     }

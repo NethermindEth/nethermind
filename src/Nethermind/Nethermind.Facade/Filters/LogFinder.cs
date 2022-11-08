@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
         {
-            if (blockHash != null)
+            if (blockHash is not null)
             {
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
                     ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, cancellationToken)
@@ -303,7 +303,7 @@ namespace Nethermind.Blockchain.Find
                 if (_receiptsRecovery.NeedRecover(receipts))
                 {
                     var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (block != null)
+                    if (block is not null)
                     {
                         if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
                         {
@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Find
 
             var receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
-            if (receipts != null)
+            if (receipts is not null)
             {
                 for (var i = 0; i < receipts.Length; i++)
                 {

@@ -451,7 +451,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Span<byte> input)
         {
-            if (input == null || input.Length == 0)
+            if (input.IsEmpty || input.Length == 0)
             {
                 WriteByte(EmptyArrayByte);
             }

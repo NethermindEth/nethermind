@@ -273,7 +273,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                 {
                     if (t.IsCompletedSuccessfully)
                     {
-                        if (t.Result != null)
+                        if (t.Result is not null)
                         {
                             if (_logger.IsInfo)
                                 _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -323,7 +323,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
         if (_producerTask is null || _producerTask.IsCompleted)
             return false;
-        if (maxProducingInterval != null)
+        if (maxProducingInterval is not null)
             return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
         else
             return true;

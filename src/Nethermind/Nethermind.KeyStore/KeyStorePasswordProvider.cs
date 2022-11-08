@@ -61,7 +61,7 @@ namespace Nethermind.KeyStore
                 password ??= GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
             }
 
-            if (password is null && AlternativeProvider != null)
+            if (password is null && AlternativeProvider is not null)
             {
                 password = AlternativeProvider.GetPassword(address);
             }

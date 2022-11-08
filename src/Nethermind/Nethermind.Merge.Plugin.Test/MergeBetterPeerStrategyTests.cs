@@ -139,7 +139,7 @@ public class MergeBetterPeerStrategyTests
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256)ttd);
 
         IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
-        if (beaconPivotNum != null)
+        if (beaconPivotNum is not null)
         {
             beaconPivot.BeaconPivotExists().Returns(true);
             beaconPivot.PivotNumber.Returns((long)beaconPivotNum);

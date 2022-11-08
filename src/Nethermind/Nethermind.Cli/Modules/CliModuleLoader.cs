@@ -95,7 +95,7 @@ namespace Nethermind.Cli.Modules
                 var cliProperty = methodInfo.GetCustomAttribute<CliPropertyAttribute>();
                 var cliFunction = methodInfo.GetCustomAttribute<CliFunctionAttribute>();
 
-                bool isProperty = cliProperty != null;
+                bool isProperty = cliProperty is not null;
 
                 string? objectName = cliProperty?.ObjectName ?? cliFunction?.ObjectName;
                 string? itemName = cliProperty?.PropertyName ?? cliFunction?.FunctionName;
@@ -117,7 +117,7 @@ namespace Nethermind.Cli.Modules
                 var @delegate = CreateDelegate(methodInfo, module);
                 DelegateWrapper nativeDelegate = new DelegateWrapper(_engine.JintEngine, @delegate);
 
-                if (itemName != null)
+                if (itemName is not null)
                 {
                     if (isProperty)
                     {
@@ -198,7 +198,7 @@ namespace Nethermind.Cli.Modules
         private bool IsCliModule(Type type)
         {
             bool isCliModule = !type.IsAbstract && typeof(CliModuleBase).IsAssignableFrom(type);
-            bool hasAttribute = type.GetCustomAttribute<CliModuleAttribute>() != null;
+            bool hasAttribute = type.GetCustomAttribute<CliModuleAttribute>() is not null;
             if (isCliModule && !hasAttribute)
             {
                 _cliConsole.WriteInteresting(
@@ -218,7 +218,7 @@ namespace Nethermind.Cli.Modules
         public void LoadModule(Type type)
         {
             ConstructorInfo? ctor = type.GetConstructor(new[] { typeof(ICliEngine), typeof(INodeManager) });
-            if (ctor != null)
+            if (ctor is not null)
             {
                 CliModuleBase module = (CliModuleBase)ctor.Invoke(new object[] { _engine, _client });
                 LoadModule(module);

@@ -187,13 +187,13 @@ namespace Nethermind.Synchronization
 
             if (_recentlySuggested.Set(block.Hash))
             {
-                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
                     if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
                 Block? parent = _blockTree.FindBlock(block.ParentHash);
-                if (parent != null)
+                if (parent is not null)
                 {
                     // we null total difficulty for a block in a block tree as we don't trust the message
                     UInt256? totalDifficulty = block.TotalDifficulty;
@@ -329,7 +329,7 @@ namespace Nethermind.Synchronization
             StringBuilder sb = new();
             sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
 
-            if (block.Author != null)
+            if (block.Author is not null)
             {
                 sb.Append(" sealer ");
                 if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
@@ -345,7 +345,7 @@ namespace Nethermind.Synchronization
                     sb.Append(block.Author);
                 }
             }
-            else if (block.Beneficiary != null)
+            else if (block.Beneficiary is not null)
             {
                 sb.Append(" miner ");
                 if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
@@ -360,7 +360,7 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header?.AuRaStep != null)
+            if (block.Header?.AuRaStep is not null)
             {
                 sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
             }
@@ -392,7 +392,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Keccak? blockHash)
         {
-            return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
+            return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)

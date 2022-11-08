@@ -56,7 +56,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
-            if (syncConfig.FixReceipts && _api.BlockTree != null)
+            if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
                 CancellationToken cancellationToken = _cancellationTokenSource.Token;
@@ -140,13 +140,13 @@ namespace Nethermind.Init.Steps.Migrations
                 FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
-                if (currentSyncPeer != null)
+                if (currentSyncPeer is not null)
                 {
                     try
                     {
                         TxReceipt[][]? receipts = await currentSyncPeer.GetReceipts(new List<Keccak> { block.Hash }, _cancellationToken);
                         TxReceipt[]? txReceipts = receipts?.FirstOrDefault();
-                        if (txReceipts != null)
+                        if (txReceipts is not null)
                         {
                             _receiptStorage.Insert(block, txReceipts);
                             if (_logger.IsInfo) _logger.Info($"Downloaded missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");

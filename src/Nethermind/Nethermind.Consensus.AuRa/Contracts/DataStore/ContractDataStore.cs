@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            bool fromReceipts = receipts != null;
+            bool fromReceipts = receipts is not null;
             if (fromReceipts || !isConsecutiveBlock)
             {
                 bool incrementalChanges = _dataContract.IncrementalChanges;

@@ -121,7 +121,7 @@ namespace Nethermind.Db
                 using StreamWriter streamWriter = new(DbPath);
                 foreach ((byte[] key, byte[] value) in snapshot)
                 {
-                    if (value != null)
+                    if (value is not null)
                     {
                         key.StreamHex(streamWriter);
                         streamWriter.Write(',');
@@ -167,7 +167,7 @@ namespace Nethermind.Db
             {
                 try
                 {
-                    if (BackupPath != null && File.Exists(BackupPath))
+                    if (BackupPath is not null && File.Exists(BackupPath))
                     {
                         if (File.Exists(_dbPath))
                         {

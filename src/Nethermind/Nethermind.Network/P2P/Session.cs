@@ -334,7 +334,7 @@ namespace Nethermind.Network.P2P
             {
                 RemoteNodeId = handshakeRemoteNodeId;
             }
-            else if (handshakeRemoteNodeId != null && RemoteNodeId != handshakeRemoteNodeId)
+            else if (handshakeRemoteNodeId is not null && RemoteNodeId != handshakeRemoteNodeId)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
@@ -456,7 +456,7 @@ namespace Nethermind.Network.P2P
 
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
-            if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
+            if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
                 NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
 
             if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
@@ -511,7 +511,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnected;
             }
 
-            if (Disconnected != null)
+            if (Disconnected is not null)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");

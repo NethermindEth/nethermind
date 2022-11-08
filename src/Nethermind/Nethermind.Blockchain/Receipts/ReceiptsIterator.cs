@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Reset()
         {
-            if (_receipts != null)
+            if (_receipts is not null)
             {
                 _position = 0;
             }

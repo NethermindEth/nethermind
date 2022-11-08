@@ -49,9 +49,9 @@ namespace Nethermind.Core
         public byte[]? Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
-        public bool IsSigned => Signature != null;
+        public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
-        public bool IsMessageCall => To != null;
+        public bool IsMessageCall => To is not null;
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }

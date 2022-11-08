@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
             {
                 _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
+                _trace.StoragesByDepth.Push(previousTraceEntry is not null ? previousTraceEntry.Storage : new Dictionary<string, string>());
             }
             else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
             {

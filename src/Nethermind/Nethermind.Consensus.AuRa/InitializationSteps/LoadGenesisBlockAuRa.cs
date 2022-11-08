@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
                 if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));

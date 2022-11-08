@@ -205,7 +205,7 @@ namespace Nethermind.Consensus.Producers
                         {
                             if (t.IsCompletedSuccessfully)
                             {
-                                if (t.Result != null)
+                                if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");

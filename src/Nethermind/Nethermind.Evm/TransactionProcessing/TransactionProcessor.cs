@@ -235,7 +235,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
-                if (transaction.Signature != null)
+                if (transaction.Signature is not null)
                 {
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 }

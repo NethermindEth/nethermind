@@ -133,7 +133,7 @@ namespace Nethermind.Merge.Plugin
             // it does not get marked as main causing some issue on eth_getLogs.
             Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
             Block? block = _api.BlockTree!.FindBlock(blockHash);
-            if (block != null)
+            if (block is not null)
             {
                 ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
                 if (level is null)
@@ -224,7 +224,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool HasTtd()
         {
-            return _api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
+            return _api.SpecProvider?.TerminalTotalDifficulty is not null || _mergeConfig.TerminalTotalDifficulty is not null;
         }
 
         public Task InitNetworkProtocol()

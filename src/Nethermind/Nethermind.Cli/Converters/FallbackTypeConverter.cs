@@ -43,7 +43,7 @@ namespace Nethermind.Cli.Converters
             TypeConverter? converter = GetConverter(type, GetFromType(value));
 
             bool result;
-            if (converter != null)
+            if (converter is not null)
             {
                 converted = converter.ConvertFrom(value);
                 result = true;

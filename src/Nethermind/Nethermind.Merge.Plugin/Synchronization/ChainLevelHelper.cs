@@ -117,7 +117,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
                 }
-                else if (headers.Count > 0 && headers[^1].TotalDifficulty != null)
+                else if (headers.Count > 0 && headers[^1].TotalDifficulty is not null)
                 {
                     // The beacon header may not have the total difficulty available since it is downloaded
                     // backwards and final total difficulty may not be known early on. But this is still needed

@@ -368,7 +368,7 @@ public class DiscoveryManager : IDiscoveryManager
         {
             unchecked
             {
-                return ((SenderAddressHash != null ? SenderAddressHash.GetHashCode() : 0) * 397) ^ MessageType;
+                return ((SenderAddressHash is not null ? SenderAddressHash.GetHashCode() : 0) * 397) ^ MessageType;
             }
         }
     }

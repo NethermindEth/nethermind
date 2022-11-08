@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("storage");
 
             writer.WriteStartObject();
-            if (value.Storage != null)
+            if (value.Storage is not null)
             {
                 foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(s => s.Key))
                 {
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
 
                     writer.WritePropertyName(string.Concat("0x", trimmedKey));
-                    WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After != null, serializer);
+                    WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After is not null, serializer);
                 }
             }
 

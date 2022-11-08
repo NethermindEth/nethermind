@@ -171,7 +171,7 @@ namespace Nethermind.Runner.Test
                     }
                     catch (Exception e)
                     {
-                        if (exception != null)
+                        if (exception is not null)
                         {
                             await TestContext.Error.WriteLineAsync(e.ToString());
                         }
@@ -190,7 +190,7 @@ namespace Nethermind.Runner.Test
                 }
                 catch
                 {
-                    if (exception != null)
+                    if (exception is not null)
                     {
                         // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
                         // await TestContext.Error.WriteLineAsync(e.ToString());

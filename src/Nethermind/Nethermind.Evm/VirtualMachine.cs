@@ -724,7 +724,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (previousCallResult != null)
+            if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
@@ -1608,7 +1608,7 @@ namespace Nethermind.Evm
 
                             if (isTrace)
                             {
-                                if (_txTracer.IsTracingBlockHash && blockHash != null)
+                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
                                 {
                                     _txTracer.ReportBlockHash(blockHash);
                                 }

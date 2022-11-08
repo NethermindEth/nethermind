@@ -281,7 +281,7 @@ namespace Nethermind.Runner
 
                 ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
-                if (typeLevel != null && (typeLevel?.DisabledForCli ?? true))
+                if (typeLevel is not null && (typeLevel?.DisabledForCli ?? true))
                 {
                     continue;
                 }
@@ -301,7 +301,7 @@ namespace Nethermind.Runner
 
             // Create Help Text for environment variables
             Type noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
-            if (noCategoryConfig != null)
+            if (noCategoryConfig is not null)
             {
                 StringBuilder sb = new();
                 sb.AppendLine();
@@ -309,7 +309,7 @@ namespace Nethermind.Runner
                 foreach (PropertyInfo propertyInfo in noCategoryConfig.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (configItemAttribute != null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
+                    if (configItemAttribute is not null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
                     {
                         sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
                     }

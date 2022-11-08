@@ -229,7 +229,7 @@ namespace Nethermind.Blockchain
 
         private void AttemptToFixCorruptionByMovingHeadBackwards()
         {
-            if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader != null)
+            if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
             {
                 ChainLevelInfo chainLevelInfo = LoadLevel(BestSuggestedHeader.Number);
                 BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
@@ -1507,7 +1507,7 @@ namespace Nethermind.Blockchain
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
             // than current head and header.TD >= TTD.
-            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
+            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty is not null &&
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty;
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
@@ -1843,7 +1843,7 @@ namespace Nethermind.Blockchain
                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
                                                   FindBlock(levelForBatch.BlockInfos[i].BlockHash,
                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
-                            if (header != null)
+                            if (header is not null)
                             {
                                 lastTotalDifficulty = BatchSetTotalDifficulty(header);
                             }

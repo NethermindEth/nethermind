@@ -183,7 +183,7 @@ namespace Nethermind.Init.Steps.Migrations
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
-                        if (level != null)
+                        if (level is not null)
                         {
                             if (!level.HasBlockOnMainChain)
                             {
@@ -195,7 +195,7 @@ namespace Nethermind.Init.Steps.Migrations
                             }
 
                             blockHash = level.MainChainBlock?.BlockHash;
-                            return blockHash != null;
+                            return blockHash is not null;
                         }
                         else
                         {
@@ -243,7 +243,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GeAveragesMessage()
         {
-            if (_bloomConfig.MigrationStatistics && _averages != null)
+            if (_bloomConfig.MigrationStatistics && _averages is not null)
             {
                 _builder.Clear();
                 _builder.Append("Average bloom saturation: ");

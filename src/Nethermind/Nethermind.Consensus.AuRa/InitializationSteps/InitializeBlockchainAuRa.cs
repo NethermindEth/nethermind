@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             processor.AuRaValidator = auRaValidator;
             var reportingValidator = auRaValidator.GetReportingValidator();
             _api.ReportingValidator = reportingValidator;
-            if (_sealValidator != null)
+            if (_sealValidator is not null)
             {
                 _sealValidator.ReportingValidator = reportingValidator;
             }
@@ -230,7 +230,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
         {
-            if (txPriorityContract != null || localDataSource != null)
+            if (txPriorityContract is not null || localDataSource is not null)
             {
                 ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
                     new HashSetContractDataStoreCollection<Address>(),
@@ -294,12 +294,12 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             ILogger? logger = _api.LogManager.GetClassLogger();
 
-            if (localDataSource?.FilePath != null)
+            if (localDataSource?.FilePath is not null)
             {
                 if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");
             }
 
-            if (txPriorityContract != null)
+            if (txPriorityContract is not null)
             {
                 if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
             }

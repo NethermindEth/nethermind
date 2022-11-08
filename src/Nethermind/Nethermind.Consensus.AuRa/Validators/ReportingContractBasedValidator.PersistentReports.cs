@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void FilterReports(BlockHeader parent)
         {
             var node = _persistentReports.First;
-            while (node != null)
+            while (node is not null)
             {
                 var next = node.Next;
                 var persistentReport = node.Value;

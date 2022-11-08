@@ -61,7 +61,7 @@ public class NodesLocator : INodesLocator
 
         ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
 
-        if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
+        if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId is not null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
 
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
@@ -74,7 +74,7 @@ public class NodesLocator : INodesLocator
             while (true)
             {
                 //if searched node is not specified master node is used
-                IEnumerable<Node> closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
+                IEnumerable<Node> closestNodes = searchedNodeId is not null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
 
                 candidatesCount = 0;
                 foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
@@ -162,7 +162,7 @@ public class NodesLocator : INodesLocator
         IEnumerable<Node?> nodesToSend,
         ISet<Keccak> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n != null))
+        foreach (Node? node in nodesToSend.Where(n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);

@@ -375,7 +375,7 @@ namespace Nethermind.Synchronization.Blocks
                         if (downloadReceipts)
                         {
                             TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
-                            if (contextReceiptsForBlock != null)
+                            if (contextReceiptsForBlock is not null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }
@@ -428,7 +428,7 @@ namespace Nethermind.Synchronization.Blocks
                     _syncBatchSize.Shrink();
                 }
 
-                if (downloadTask.Exception != null)
+                if (downloadTask.Exception is not null)
                 {
                     _ = downloadTask.Result; // trying to throw with stack trace
                 }
@@ -525,7 +525,7 @@ namespace Nethermind.Synchronization.Blocks
             // so we need to confirm that the blocks form a valid subchain
             for (int i = 1; i < headers.Length; i++)
             {
-                if (headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
+                if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
                     throw new EthSyncException("Peer sent an inconsistent block list");
@@ -652,12 +652,12 @@ namespace Nethermind.Synchronization.Blocks
             {
                 case { IsFaulted: true } t:
                     string reason;
-                    if (t.Exception != null && t.Exception.Flatten().InnerExceptions.Any(x => x is TimeoutException))
+                    if (t.Exception is not null && t.Exception.Flatten().InnerExceptions.Any(x => x is TimeoutException))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} timed out. {t.Exception?.Message}");
                         reason = "timeout";
                     }
-                    else if (t.Exception != null && t.Exception.Flatten().InnerExceptions.Any(x => x is TaskCanceledException))
+                    else if (t.Exception is not null && t.Exception.Flatten().InnerExceptions.Any(x => x is TaskCanceledException))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} was canceled.");
                         reason = "cancel";
@@ -688,7 +688,7 @@ namespace Nethermind.Synchronization.Blocks
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
-                        if (peerInfo != null) // fix this for node data sync
+                        if (peerInfo is not null) // fix this for node data sync
                         {
                             SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Cancelled));
                         }
@@ -697,7 +697,7 @@ namespace Nethermind.Synchronization.Blocks
                     break;
                 case { IsCompletedSuccessfully: true } t:
                     if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed with progress {t.Result}.");
-                    if (peerInfo != null) // fix this for node data sync
+                    if (peerInfo is not null) // fix this for node data sync
                     {
                         SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
                     }
@@ -770,7 +770,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsDebug) _logger.Debug($"Replacing {e.Previous} with {e.Current} for the blocks sync allocation.");
             }
 
-            if (e.Previous != null)
+            if (e.Previous is not null)
             {
                 _cancelDueToBetterPeer = true;
                 _allocationWithCancellation.Cancel();

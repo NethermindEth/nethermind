@@ -44,13 +44,13 @@ namespace Nethermind.Consensus.AuRa.Rewards
             {
                 var contracts = new List<IRewardContract>();
 
-                if (auRaParameters.BlockRewardContractTransitions != null)
+                if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
                     contracts.Sort((a, b) => a.Activation.CompareTo(b.Activation));
                 }
 
-                if (auRaParameters.BlockRewardContractAddress != null)
+                if (auRaParameters.BlockRewardContractAddress is not null)
                 {
                     var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
                     if (contractTransition > (contracts.FirstOrDefault()?.Activation ?? long.MaxValue))

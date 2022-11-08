@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Data
         protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
         protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Data
         private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
