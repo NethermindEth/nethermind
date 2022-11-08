@@ -44,14 +44,14 @@ namespace Nethermind.Evm
         #region Sections Offsets
         public (int Start, int Size) TypeSectionOffsets => (HeaderSize, TypeSize);
         public (int Start, int Size) CodeSectionOffsets => (HeaderSize + TypeSize, CodesSize);
-        public (int Start, int Size) DataSectionOffsets => (HeaderSize + TypeSize + CodesSize, ContainerSize);
+        public (int Start, int Size) DataSectionOffsets => (HeaderSize + TypeSize + CodesSize, DataSize);
         public (int Start, int Size) this[int i] => (HeaderSize + TypeSize + CodeSize.Take(i).Sum(), CodeSize[i]);
         #endregion
     }
 
     public class EvmObjectFormat
     {
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = null;
         private bool LoggingEnabled => _logger is not null;
         public EvmObjectFormat(ILogger logger = null)
             => _logger = logger;
@@ -118,7 +118,7 @@ namespace Nethermind.Evm
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize.Length}");
+                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodesSize}");
                                 }
                                 header = null; return false;
                             }
@@ -223,7 +223,7 @@ namespace Nethermind.Evm
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {header.CodeSize[0]}");
+                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {header.CodeSize?[0] ?? 0}");
                                 }
                                 header = null; return false;
                             }
@@ -328,12 +328,12 @@ namespace Nethermind.Evm
                 return true;
             }
 
-            var (startOffset, endOffset) = header[sectionId];
-            ReadOnlySpan<byte> code = container[startOffset..endOffset];
+            var (startOffset, sectionSize) = header[sectionId];
+            ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
             Instruction? opcode = null;
             HashSet<Range> immediates = new HashSet<Range>();
             HashSet<Int32> rjumpdests = new HashSet<Int32>();
-            for (int i = startOffset; i < endOffset;)
+            for (int i = 0; i < sectionSize;)
             {
                 opcode = (Instruction)code[i];
 
@@ -351,7 +351,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 3 > endOffset)
+                        if (i + 3 > sectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -364,7 +364,7 @@ namespace Nethermind.Evm
                         immediates.Add(new Range(i + 1, i + 2));
                         var rjumpdest = offset + 3 + i;
                         rjumpdests.Add(rjumpdest);
-                        if (rjumpdest < startOffset || rjumpdest >= endOffset)
+                        if (rjumpdest < 0 || rjumpdest >= sectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -380,7 +380,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.CALLF)
                     {
-                        if (i + 3 > endOffset)
+                        if (i + 3 > sectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -409,7 +409,7 @@ namespace Nethermind.Evm
                     int len = code[i] - (int)Instruction.PUSH1 + 1;
                     immediates.Add(new Range(i + 1, i + len));
                     i += len;
-                    if (i >= endOffset)
+                    if (i >= sectionSize)
                     {
                         if (LoggingEnabled)
                         {

@@ -3014,6 +3014,12 @@ namespace Nethermind.Evm
                         {
                             if (spec.IsEip4750Enabled)
                             {
+                                if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
                                 var index = codeSection[programCounter..(programCounter + 1)].ReadEthInt16();
                                 var inputCount = typeSection[index * 2];
                                 vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
@@ -3037,6 +3043,12 @@ namespace Nethermind.Evm
                         {
                             if (spec.IsEip4750Enabled)
                             {
+                                if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
                                 var index = CodeInfo.SectionId;
                                 var outputCount = typeSection[index * 2 + 1];
 

@@ -148,10 +148,12 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            ReleaseSpec spec = (ReleaseSpec)(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
-            spec.IsEip3670Enabled = false;
-            spec.IsEip4200Enabled = false;
-            spec.IsEip4750Enabled = false;
+            OverridableReleaseSpec spec = new(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            {
+                IsEip3670Enabled = false,
+                IsEip4750Enabled = false,
+                IsEip4200Enabled = false,
+            };
 
             var expectedHeader = codeSize == 0 && dataSize == 0
                 ? null
@@ -772,8 +774,9 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-
+            IReleaseSpec source_spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
+            OverridableReleaseSpec spec = new(source_spec);
+            spec.IsEip4750Enabled = false;
             bool checkResult = ValidateByteCode(bytecode, spec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);

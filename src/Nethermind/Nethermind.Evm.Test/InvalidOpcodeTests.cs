@@ -136,6 +136,8 @@ namespace Nethermind.Evm.Test
                                             Instruction.PUSH0,
                                             Instruction.RJUMP,
                                             Instruction.RJUMPI,
+                                            Instruction.CALLF,
+                                            // Instruction.RETF
                                         }
                                     )
                             )))))).ToArray();
@@ -152,6 +154,7 @@ namespace Nethermind.Evm.Test
                 Instruction.PUSH29, Instruction.PUSH30, Instruction.PUSH31, Instruction.PUSH32,
 
                 Instruction.RJUMP, Instruction.RJUMPI,
+                Instruction.CALLF
             };
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
@@ -197,10 +200,10 @@ namespace Nethermind.Evm.Test
         {
             ILogger logger = _logManager.GetClassLogger();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
-            for (int i = 0; i <= byte.MaxValue; i++)
+            for (int i = 0; i <= validOpcodes.Length; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                Instruction instruction = (Instruction)i;
+                Instruction instruction = validOpcodes[i];
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
                 if(InstructionsWithImmediates.Contains(instruction))
@@ -209,6 +212,7 @@ namespace Nethermind.Evm.Test
                     {
                         >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
                         Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(i => (byte)i),
+                        Instruction.CALLF => Enumerable.Range(0, 2).Select(i => (byte)i),
                         _ => Enumerable.Empty<byte>()
                     };
                     foreach(byte arg in immediateArgs)
