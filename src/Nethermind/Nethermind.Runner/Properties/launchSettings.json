@@ -273,6 +273,13 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "Withdrawals_Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-c withdrawals_test -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }
