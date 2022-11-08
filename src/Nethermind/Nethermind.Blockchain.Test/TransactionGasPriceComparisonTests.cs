@@ -169,6 +169,8 @@ namespace Nethermind.Blockchain.Test
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
                 specProvider.GetSpec(Arg.Is<ForkActivation>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
                 specProvider.GetSpec(Arg.Is<ForkActivation>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
+                specProvider.GetSpec(Arg.Is<BlockHeader>(x => x.Number >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
+                specProvider.GetSpec(Arg.Is<BlockHeader>(x => x.Number < eip1559TransitionBlock)).Returns(releaseSpec);
                 _blockTree = Substitute.For<IBlockTree>();
                 UpdateBlockTreeHead();
                 _transactionComparerProvider =

@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -36,9 +37,9 @@ namespace Nethermind.Consensus.Transactions
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             long blockNumber = parentHeader.Number + 1;
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, releaseSpec);
-            bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
+            IReleaseSpec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, specFor1559);
+            bool isEip1559Enabled = specFor1559.IsEip1559Enabled;
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
             bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;

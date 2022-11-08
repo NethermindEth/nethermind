@@ -42,10 +42,18 @@ namespace Nethermind.Monitoring.Test
             };
             List<Type> knownMetricsTypes = new()
             {
-                typeof(Nethermind.Mev.Metrics), typeof(Nethermind.TxPool.Metrics), typeof(Nethermind.Blockchain.Metrics),
-                typeof(Nethermind.Consensus.AuRa.Metrics), typeof(Nethermind.Evm.Metrics), typeof(Nethermind.JsonRpc.Metrics),
-                typeof(Nethermind.Db.Metrics), typeof(Nethermind.Network.Metrics), typeof(Init.Metrics),
-                typeof(Nethermind.Synchronization.Metrics), typeof(Nethermind.Trie.Metrics), typeof(Nethermind.Trie.Pruning.Metrics),
+                typeof(Nethermind.Mev.Metrics),
+                typeof(Nethermind.TxPool.Metrics),
+                typeof(Nethermind.Blockchain.Metrics),
+                typeof(Nethermind.Consensus.AuRa.Metrics),
+                typeof(Nethermind.Evm.Metrics),
+                typeof(Nethermind.JsonRpc.Metrics),
+                typeof(Nethermind.Db.Metrics),
+                typeof(Nethermind.Network.Metrics),
+                typeof(Init.Metrics),
+                typeof(Nethermind.Synchronization.Metrics),
+                typeof(Nethermind.Trie.Metrics),
+                typeof(Nethermind.Trie.Pruning.Metrics),
             };
             MetricsUpdater metricsUpdater = new(metricsConfig);
             MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);

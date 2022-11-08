@@ -141,7 +141,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number, block.Timestamp);
             bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution

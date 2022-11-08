@@ -54,7 +54,8 @@ namespace Nethermind.Specs
                 { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
                 { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
                 { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
-                _ => Shanghai.Instance
+                { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
+                _ => Cancun.Instance
             };
 
         public const long HomesteadBlockNumber = 1_150_000;

@@ -15,27 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System.Threading;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Specs.Forks
 {
-    public class FollowOtherMiners : IGasLimitCalculator
+    public class Cancun : Shanghai
     {
-        private readonly ISpecProvider _specProvider;
+        private static IReleaseSpec _instance;
 
-        public FollowOtherMiners(ISpecProvider specProvider)
+        protected Cancun()
         {
-            _specProvider = specProvider;
+            Name = "Cancun";
+            IsEip1153Enabled = true;
         }
 
-        public long GetGasLimit(BlockHeader parentHeader)
-        {
-            long gasLimit = parentHeader.GasLimit;
-            long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
-            gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
-            return gasLimit;
-        }
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
     }
 }

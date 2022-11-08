@@ -30,7 +30,7 @@ namespace Nethermind.AccountAbstraction.Executor
             byte[] callData,
             Address sender,
             BlockHeader parent,
-            IReleaseSpec spec,
+            IReleaseSpec specFor1559,
             UInt256 nonce,
             bool systemTransaction);
 
@@ -39,7 +39,7 @@ namespace Nethermind.AccountAbstraction.Executor
             BlockHeader parent,
             long gasLimit,
             UInt256 nonce,
-            IReleaseSpec spec);
+            IReleaseSpec specFor1559);
 
         FailedOp? DecodeEntryPointOutputError(byte[] output);
     }

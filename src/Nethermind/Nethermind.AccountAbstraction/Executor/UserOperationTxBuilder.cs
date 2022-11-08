@@ -50,12 +50,12 @@ namespace Nethermind.AccountAbstraction.Executor
             _abiEncoder = new AbiEncoder();
         }
 
-        public Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IReleaseSpec spec,
+        public Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IReleaseSpec specFor1559,
             UInt256 nonce, bool systemTransaction)
         {
             Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
 
-            UInt256 fee = BaseFeeCalculator.Calculate(parent, spec);
+            UInt256 fee = BaseFeeCalculator.Calculate(parent, specFor1559);
 
             transaction.GasPrice = fee;
             transaction.GasLimit = gaslimit;
@@ -79,7 +79,7 @@ namespace Nethermind.AccountAbstraction.Executor
             BlockHeader parent,
             long gasLimit,
             UInt256 nonce,
-            IReleaseSpec spec)
+            IReleaseSpec specFor1559)
         {
             byte[] computedCallData;
 
@@ -105,7 +105,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             Transaction transaction =
-                BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, spec, nonce, false);
+                BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, specFor1559, nonce, false);
 
             return transaction;
         }

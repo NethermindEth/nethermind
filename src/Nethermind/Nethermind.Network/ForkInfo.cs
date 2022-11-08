@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Buffers.Binary;
+using System.Linq;
 using Force.Crc32;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -24,8 +25,9 @@ namespace Nethermind.Network
     public static class ForkInfo
     {
         private const long ImpossibleBlockNumberWithSpaceForImpossibleForks = long.MaxValue - 100;
+        private const ulong ImpossibleTimestampWithSpaceForImpossibleForks = ulong.MaxValue - 100;
 
-        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, ulong headTimestamp, Keccak genesisHash)
         {
             uint crc = 0;
             ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
@@ -33,12 +35,10 @@ namespace Nethermind.Network
             crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
             {
-                if (transitionBlocks[i] > headNumber)
-                {
+                if (transitionBlocks[i] > (headNumber, headTimestamp))
                     break;
-                }
-
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i].BlockNumber);
+                ulong numberToAddToCrc = transitionBlocks[i].Timestamp ?? (ulong)transitionBlocks[i].BlockNumber;
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, numberToAddToCrc);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
             }
 
@@ -47,19 +47,28 @@ namespace Nethermind.Network
             return forkHash;
         }
 
-        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, ulong headTimestamp, Keccak genesisHash)
         {
-            byte[] forkHash = CalculateForkHash(specProvider, headNumber, genesisHash);
-            long next = 0;
-            for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
+
+            byte[] forkHash = CalculateForkHash(specProvider, headNumber, headTimestamp, genesisHash);
+            ulong next = 0;
+            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
+            for (int i = 0; i < transitionBlocks.Length; i++)
             {
-                if (specProvider.TransitionBlocks[i] >= ImpossibleBlockNumberWithSpaceForImpossibleForks)
+                bool useTimestamp = false;
+                if (transitionBlocks[i].Timestamp != null)
+                    useTimestamp = true;
+                ulong transition = transitionBlocks[i].Timestamp ?? (ulong)transitionBlocks[i].BlockNumber;
+
+
+                if ((useTimestamp && transition >= ImpossibleTimestampWithSpaceForImpossibleForks)
+                    || (!useTimestamp && transition >= ImpossibleBlockNumberWithSpaceForImpossibleForks))
                 {
                     continue;
                 }
 
-                long transition = specProvider.TransitionBlocks[i].BlockNumber;
-                if (transition > headNumber)
+                if ((useTimestamp && transition > headTimestamp)
+                    || (!useTimestamp && transition > (ulong)headNumber))
                 {
                     next = transition;
                     break;

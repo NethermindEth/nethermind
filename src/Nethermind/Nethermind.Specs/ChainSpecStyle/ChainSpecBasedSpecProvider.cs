@@ -126,7 +126,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(releaseSpec, releaseStartBlock);
+                FillReleaseSpec(releaseSpec, releaseStartBlock, 0);
                 _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }
@@ -219,6 +219,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip1153Enabled = (_chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3651Enabled = (_chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip3675Enabled = (_chainSpec.Parameters.Eip3675TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip3855Enabled = (_chainSpec.Parameters.Eip3855TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip3860Enabled = (_chainSpec.Parameters.Eip3860TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4895Enabled = (_chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         }
 
@@ -243,8 +246,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? transition.Release
                     : null;
 
-        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation, ReleaseSpec Release) transition) =>
-            forkActivation.CompareTo(transition.Item1);
+        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, ReleaseSpec Release) transition) =>
+            forkActivation.CompareTo(transition.activation);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 

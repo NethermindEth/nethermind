@@ -15,40 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 
-namespace Nethermind.Network
+namespace Nethermind.Core.Extensions
 {
-    public readonly struct ForkId : IEquatable<ForkId>
+    public static class SpecProviderExtensions
     {
-        public ForkId(byte[] forkHash, ulong next)
+        /// <summary>
+        /// this method is here only for getting spec for 1559.
+        /// Reason of adding is that at sometime we dont know the Timestamp.
+        /// </summary>
+        /// <param name="specProvider"></param>
+        /// <param name="blockNumber"></param>
+        /// <returns>ReleaseSpec that has the values for EIP1559 correct but not the rest.</returns>
+        public static IReleaseSpec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
         {
-            ForkHash = forkHash;
-            Next = next;
-        }
-
-        public byte[] ForkHash { get; }
-
-        public ulong Next { get; }
-
-        public bool Equals(ForkId other)
-        {
-            return Bytes.AreEqual(ForkHash, other.ForkHash) && Next == other.Next;
-        }
-
-        public override bool Equals(object obj)
-        {
-            return obj is ForkId other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(ForkHash.GetSimplifiedHashCode(), Next);
-        }
-
-        public override string ToString()
-        {
-            return $"{ForkHash.ToHexString()} {Next}";
+            return specProvider.GetSpec(blockNumber);
         }
     }
 }
