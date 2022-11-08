@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.AuRa
         {
             AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
-                if (tx.Signature != null)
+                if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);

@@ -93,7 +93,7 @@ namespace Nethermind.Serialization.Rlp
 
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
-            if (item == null)
+            if (item is null)
             {
                 return (0, 0);
             }
@@ -160,7 +160,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 rlpStream.EncodeNullObject();
                 return;

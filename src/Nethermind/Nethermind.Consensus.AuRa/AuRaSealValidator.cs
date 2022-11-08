@@ -55,14 +55,14 @@ namespace Nethermind.Consensus.AuRa
         {
             const long rejectedStepDrift = 4;
 
-            if (header.AuRaSignature == null)
+            if (header.AuRaSignature is null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature.");
                 return false;
             }
 
             // Ensure header is from the step after parent.
-            if (header.AuRaStep == null)
+            if (header.AuRaStep is null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing step value.");
                 return false;
@@ -234,7 +234,7 @@ namespace Nethermind.Consensus.AuRa
                     contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AuthorBlock == item;
                     if (!contains)
                     {
-                        if (stepElement.AuthorBlocks == null)
+                        if (stepElement.AuthorBlocks is null)
                         {
                             stepElement.AuthorBlocks = new HashSet<AuthorBlock>
                             {

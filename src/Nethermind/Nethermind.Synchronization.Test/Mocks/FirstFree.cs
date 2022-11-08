@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
             get
             {
-                if (_instance == null) LazyInitializer.EnsureInitialized(ref _instance, () => new FirstFree());
+                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, () => new FirstFree());
 
                 return _instance;
             }

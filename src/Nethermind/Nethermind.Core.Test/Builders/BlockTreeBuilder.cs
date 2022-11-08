@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Builders
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
 
-            bool skipGenesis = TestObjectInternal.Genesis != null;
+            bool skipGenesis = TestObjectInternal.Genesis is not null;
             for (int i = 0; i < chainLength; i++)
             {
                 Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i % blockBeneficiaries.Length];
@@ -133,7 +133,7 @@ namespace Nethermind.Core.Test.Builders
         private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
         {
             Block currentBlock;
-            if (_receiptStorage != null && blockIndex % 3 == 0)
+            if (_receiptStorage is not null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
                 {

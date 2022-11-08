@@ -66,7 +66,7 @@ namespace Nethermind.Init.Steps
                 {
                     ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
                     BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
-                    if (firstBlockInfo != null)
+                    if (firstBlockInfo is not null)
                     {
                         TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
                         if (receipts.Length > 0)

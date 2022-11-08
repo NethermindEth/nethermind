@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test.Encoding
 
         public static Rlp BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }

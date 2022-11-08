@@ -44,7 +44,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             SortedSet<ulong> transitionTimestamps = new();
             transitionBlockNumbers.Add(0L);
 
-            if (_chainSpec.Ethash?.BlockRewards != null)
+            if (_chainSpec.Ethash?.BlockRewards is not null)
             {
                 foreach ((long blockNumber, _) in _chainSpec.Ethash.BlockRewards)
                 {
@@ -84,7 +84,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 else if (propertyInfo.PropertyType == typeof(long?))
                 {
                     var optionalTransition = (long?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition != null)
+                    if (optionalTransition is not null)
                     {
                         transitionBlockNumbers.Add(optionalTransition.Value);
                     }
@@ -102,7 +102,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 else if (propertyInfo.PropertyType == typeof(ulong?))
                 {
                     var optionalTransition = (ulong?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition != null && optionalTransition.Value > 0)
+                    if (optionalTransition is not null && optionalTransition.Value > 0)
                     {
                         transitionTimestamps.Add(optionalTransition.Value);
                     }
@@ -197,7 +197,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
 
-            if (_chainSpec.Ethash != null)
+            if (_chainSpec.Ethash is not null)
             {
                 foreach (KeyValuePair<long, UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
                 {
@@ -226,9 +226,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 MergeBlockNumber = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 

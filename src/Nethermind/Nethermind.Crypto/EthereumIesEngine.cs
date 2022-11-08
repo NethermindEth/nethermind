@@ -102,12 +102,12 @@ namespace Nethermind.Crypto
             _mac.Init(new KeyParameter(k2A));
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(c, 0, c.Length);
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }
@@ -159,12 +159,12 @@ namespace Nethermind.Crypto
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(inEnc, inOff, inLen - t2.Length);
 
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }

@@ -55,9 +55,9 @@ namespace Nethermind.Specs.Test
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Specs.Test
             get
             {
                 (ForkActivation forkActivation, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
-                return daoRelease != null ? forkActivation.BlockNumber : null;
+                return daoRelease is not null ? forkActivation.BlockNumber : null;
             }
         }
 

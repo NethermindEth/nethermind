@@ -54,7 +54,7 @@ public class BySpeedStrategyTests
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, minDiffPercentageForSpeedSwitch, minDiffSpeed, 0, 0);
 
         PeerInfo? currentPeer = null;
-        if (currentPeerIdx != null) currentPeer = peers[currentPeerIdx.Value];
+        if (currentPeerIdx is not null) currentPeer = peers[currentPeerIdx.Value];
 
         PeerInfo? selectedPeer = strategy.Allocate(currentPeer, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
 
@@ -128,7 +128,7 @@ public class BySpeedStrategyTests
         {
             PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
             int selectedPeerIdx = peers.IndexOf(selectedPeer);
-            if (peerSpeeds[selectedPeerIdx] == null)
+            if (peerSpeeds[selectedPeerIdx] is null)
             {
                 peerWithoutSpeedPicked++;
             }

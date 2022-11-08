@@ -110,7 +110,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
-            if (_changes[_currentPosition + 1] != null)
+            if (_changes[_currentPosition + 1] is not null)
             {
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
