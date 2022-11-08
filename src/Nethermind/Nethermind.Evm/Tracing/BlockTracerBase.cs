@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly Keccak? _txHash;
 
-        private bool IsTracingEntireBlock => _txHash == null;
+        private bool IsTracingEntireBlock => _txHash is null;
 
         protected BlockTracerBase()
         {

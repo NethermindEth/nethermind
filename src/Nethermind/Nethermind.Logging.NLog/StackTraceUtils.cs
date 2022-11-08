@@ -37,7 +37,7 @@ namespace Nethermind.Logging
 
         private static string GetStackFrameMethodClassName(MethodBase method, bool includeNameSpace, bool cleanAsyncMoveNext, bool cleanAnonymousDelegates)
         {
-            if (method == null)
+            if (method is null)
             {
                 return null;
             }
@@ -101,11 +101,11 @@ namespace Nethermind.Logging
         private static Assembly LookupAssemblyFromStackFrame(StackFrame stackFrame)
         {
             MethodBase method = stackFrame.GetMethod();
-            if (method == null)
+            if (method is null)
                 return null;
             Type declaringType = method.DeclaringType;
             Assembly assembly1 = (object)declaringType != null ? declaringType.Assembly : null;
-            if ((object)assembly1 == null)
+            if ((object)assembly1 is null)
             {
                 Module module = method.Module;
                 assembly1 = (object)module != null ? module.Assembly : null;

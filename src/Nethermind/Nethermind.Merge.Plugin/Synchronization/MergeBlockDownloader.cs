@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
             }
 
-            if (bestPeer == null)
+            if (bestPeer is null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
                 if (_logger.IsError) _logger.Error(message);
@@ -125,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-                if (headers == null || headers.Length <= 1)
+                if (headers is null || headers.Length <= 1)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace("Chain level helper got no headers suggestion");
@@ -224,7 +224,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (downloadReceipts)
                     {
                         TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                        if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
+                        if (currentBlock.Header.HasBody && contextReceiptsForBlock is null)
                         {
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }

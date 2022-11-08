@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var notConsecutiveBlock = block.Number - 1 > _lastProcessedBlockNumber || _lastProcessedBlockNumber == 0;
-            var shouldLoadValidators = Validators == null || notConsecutiveBlock || isProducingBlock;
+            var shouldLoadValidators = Validators is null || notConsecutiveBlock || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
 
             if (shouldLoadValidators)
@@ -229,7 +229,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
-            if (CurrentPendingValidators == null && potentialValidators.Length > 0)
+            if (CurrentPendingValidators is null && potentialValidators.Length > 0)
             {
                 SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators)
                 {

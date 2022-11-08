@@ -132,7 +132,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             private async Task<bool> DownloadReceiptsForBlock(Block block)
             {
-                if (block.Hash == null)
+                if (block.Hash is null)
                 {
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }

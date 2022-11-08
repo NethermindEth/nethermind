@@ -138,7 +138,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     public void ProcessPongMsg(PongMsg pongMsg)
     {
         PingMsg? sentPingMsg = Interlocked.Exchange(ref _lastSentPing, null);
-        if (sentPingMsg == null)
+        if (sentPingMsg is null)
         {
             return;
         }

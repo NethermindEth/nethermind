@@ -102,7 +102,7 @@ namespace Nethermind.Wallet
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
             => SignCore(message, address, () =>
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
+                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
                 return _keyStore.GetKey(address, passphrase).PrivateKey;
             });
 

@@ -54,7 +54,7 @@ public class NodesLocator : INodesLocator
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
     {
-        if (_masterNode == null)
+        if (_masterNode is null)
         {
             throw new InvalidOperationException("Master node has not been initialized");
         }

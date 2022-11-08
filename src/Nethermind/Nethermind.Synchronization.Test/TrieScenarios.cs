@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Test
         [MethodImpl(MethodImplOptions.Synchronized)]
         public static void InitOnce()
         {
-            if (Empty == null)
+            if (Empty is null)
             {
                 // _logger = new ConsoleAsyncLogger(LogLevel.Debug);
                 // _logManager = new OneLoggerLogManager(_logger);

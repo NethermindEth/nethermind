@@ -39,7 +39,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockProductionPolicy.ShouldStartBlockProduction() && _api.BlockProducer != null)
             {
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
@@ -64,7 +64,7 @@ namespace Nethermind.Init.Steps
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
 
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
 
             if (consensusPlugin is not null)

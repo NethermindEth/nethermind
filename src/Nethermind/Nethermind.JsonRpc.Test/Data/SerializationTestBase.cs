@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Data
             string result = serializer.Serialize(item);
             T deserialized = serializer.Deserialize<T>(result);
 
-            if (equalityComparer == null)
+            if (equalityComparer is null)
             {
                 Assert.AreEqual(item, deserialized, description);
             }

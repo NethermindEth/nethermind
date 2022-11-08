@@ -58,19 +58,19 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.ChainHeadStateProvider == null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
-            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
-            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
+            if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+            if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
+            if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
+            if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -122,10 +122,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
@@ -166,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         protected AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             if (blockGasLimitContractTransitions?.Any() == true)
@@ -195,10 +195,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         protected override void InitSealEngine()
         {
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             _api.ValidatorStore = new ValidatorStore(_api.DbProvider.BlockInfosDb);
 
@@ -216,7 +216,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         protected override IHeaderValidator CreateHeaderValidator()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
             return blockGasLimitContractTransitions?.Any() == true
                 ? new AuRaHeaderValidator(

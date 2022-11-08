@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
                         if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                        if (dormantTaskLocal == null)
+                        if (dormantTaskLocal is null)
                         {
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
-                        if (request == null)
+                        if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
                             {

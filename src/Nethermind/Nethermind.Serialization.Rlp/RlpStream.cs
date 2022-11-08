@@ -173,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Keccak? keccak)
         {
-            if (keccak == null)
+            if (keccak is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -194,7 +194,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Keccak[] keccaks)
         {
-            if (keccaks == null)
+            if (keccaks is null)
             {
                 EncodeNullObject();
             }
@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Address? address)
         {
-            if (address == null)
+            if (address is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -224,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Rlp? rlp)
         {
-            if (rlp == null)
+            if (rlp is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -243,7 +243,7 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(0);
                 WriteZero(256);
             }
-            else if (bloom == null)
+            else if (bloom is null)
             {
                 WriteByte(EmptyArrayByte);
             }

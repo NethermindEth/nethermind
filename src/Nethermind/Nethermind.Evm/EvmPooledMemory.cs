@@ -172,7 +172,7 @@ namespace Nethermind.Evm
                 return new byte[(long)length];
             }
 
-            if (_memory == null || location + length > _memory.Length)
+            if (_memory is null || location + length > _memory.Length)
             {
                 return ReadOnlyMemory<byte>.Empty;
             }
@@ -273,7 +273,7 @@ namespace Nethermind.Evm
 
             if (rentIfNeeded)
             {
-                if (_memory == null)
+                if (_memory is null)
                 {
                     _memory = Pool.Rent((int)Size);
                     Array.Clear(_memory, 0, (int)Size);

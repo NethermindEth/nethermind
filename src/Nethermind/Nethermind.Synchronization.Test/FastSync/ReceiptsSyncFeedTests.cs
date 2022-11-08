@@ -270,7 +270,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ci =>
                 {
                     Block block = scenario.Blocks[ci.Arg<long>()];
-                    if (block == null)
+                    if (block is null)
                     {
                         return null;
                     }

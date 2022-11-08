@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
         public override PublicKey ReadJson(JsonReader reader, Type objectType, PublicKey existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return s == null ? null : new PublicKey(s);
+            return s is null ? null : new PublicKey(s);
         }
     }
 }

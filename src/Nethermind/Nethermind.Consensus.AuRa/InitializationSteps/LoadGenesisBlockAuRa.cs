@@ -39,13 +39,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private void CreateSystemAccounts()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (hasConstructorAllocation)
             {
-                if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-                if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
+                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+                if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
 
                 _api.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 _api.StorageProvider.Commit();

@@ -128,7 +128,7 @@ public class BySpeedStrategyTests
         {
             PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
             int selectedPeerIdx = peers.IndexOf(selectedPeer);
-            if (peerSpeeds[selectedPeerIdx] == null)
+            if (peerSpeeds[selectedPeerIdx] is null)
             {
                 peerWithoutSpeedPicked++;
             }

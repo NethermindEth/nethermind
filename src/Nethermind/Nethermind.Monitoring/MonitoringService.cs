@@ -29,7 +29,7 @@ namespace Nethermind.Monitoring
 {
     public class MonitoringService : IMonitoringService
     {
-        private readonly IMetricsUpdater _metricsUpdater;
+        private readonly IMetricsController _metricsController;
         private readonly ILogger _logger;
         private readonly Options _options;
 
@@ -39,9 +39,9 @@ namespace Nethermind.Monitoring
         private readonly string _pushGatewayUrl;
         private readonly int _intervalSeconds;
 
-        public MonitoringService(IMetricsUpdater metricsUpdater, IMetricsConfig metricsConfig, ILogManager logManager)
+        public MonitoringService(IMetricsController metricsController, IMetricsConfig metricsConfig, ILogManager logManager)
         {
-            _metricsUpdater = metricsUpdater ?? throw new ArgumentNullException(nameof(metricsUpdater));
+            _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
 
             int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
@@ -59,7 +59,7 @@ namespace Nethermind.Monitoring
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
 
-            _logger = logManager == null
+            _logger = logManager is null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
             _options = GetOptions();
@@ -92,24 +92,26 @@ namespace Nethermind.Monitoring
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
                 metricPusher.Start();
+
+
             }
             if (_exposePort != null)
             {
-                IMetricServer metricServer = new MetricServer(_exposePort.Value, "metrics/");
+                IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
                 metricServer.Start();
             }
-            await Task.Factory.StartNew(() => _metricsUpdater.StartUpdating(), TaskCreationOptions.LongRunning);
+            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
         public void RegisterMetrics(Type type)
         {
-            _metricsUpdater.RegisterMetrics(type);
+            _metricsController.RegisterMetrics(type);
         }
 
         public Task StopAsync()
         {
-            _metricsUpdater.StopUpdating();
+            _metricsController.StopUpdating();
 
             return Task.CompletedTask;
         }

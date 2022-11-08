@@ -38,7 +38,7 @@ namespace Nethermind.Cli.Modules
 
         public override string ToString()
         {
-            return $"{ObjectName}.{FunctionName}{(Description == null ? "" : $" {Description}")}";
+            return $"{ObjectName}.{FunctionName}{(Description is null ? "" : $" {Description}")}";
         }
     }
 }

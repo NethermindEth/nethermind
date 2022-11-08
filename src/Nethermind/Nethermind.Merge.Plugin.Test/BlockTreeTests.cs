@@ -491,7 +491,7 @@ public partial class BlockTreeTests
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
-                    if (parent == null)
+                    if (parent is null)
                         parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
@@ -519,7 +519,7 @@ public partial class BlockTreeTests
                 List<Block> newBlocks = new();
                 for (long i = low; i <= high; i++)
                 {
-                    if (parent == null)
+                    if (parent is null)
                         parent = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     blockToInsert.Header.TotalDifficulty = parent.TotalDifficulty + blockToInsert.Difficulty;

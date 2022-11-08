@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;
-            if (currentDiffOrNull == null)
+            if (currentDiffOrNull is null)
             {
                 return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             }

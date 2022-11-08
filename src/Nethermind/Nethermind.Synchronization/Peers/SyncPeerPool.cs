@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void ReportWeakPeer(PeerInfo? weakPeer, AllocationContexts allocationContexts)
         {
-            if (weakPeer == null)
+            if (weakPeer is null)
             {
                 /* it may have just got disconnected and in such case the allocation would be nullified
                  * in such case there is no need to talk about whether the peer is good or bad
@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PublicKey id = syncPeer.Node.Id;
-            if (id == null)
+            if (id is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Peer ID was null when removing peer");
                 return;
@@ -590,7 +590,7 @@ namespace Nethermind.Synchronization.Peers
                     continue;
                 }
 
-                if (worstPeer == null)
+                if (worstPeer is null)
                 {
                     worstPeer = peerInfo;
                 }
@@ -647,7 +647,7 @@ namespace Nethermind.Synchronization.Peers
                         {
                             delaySource.Cancel();
                             BlockHeader? header = getHeadHeaderTask.Result;
-                            if (header == null)
+                            if (header is null)
                             {
                                 ReportRefreshFailed(syncPeer, "null response");
                                 return;

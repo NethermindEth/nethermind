@@ -1349,7 +1349,7 @@ namespace Nethermind.Blockchain
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
         {
-            if (blockInfos == null || blockInfos.Length == 0)
+            if (blockInfos is null || blockInfos.Length == 0)
                 return;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
@@ -1502,7 +1502,7 @@ namespace Nethermind.Blockchain
             bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
                                                            && (header.TotalDifficulty <
                                                                _specProvider.TerminalTotalDifficulty
-                                                               || _specProvider.TerminalTotalDifficulty == null);
+                                                               || _specProvider.TerminalTotalDifficulty is null);
 
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
@@ -1515,7 +1515,7 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
-            if (BestSuggestedHeader == null) return true;
+            if (BestSuggestedHeader is null) return true;
 
             bool reachedTtd = header.IsPostTTD(_specProvider);
             bool isPostMerge = header.IsPoS();
@@ -1811,7 +1811,7 @@ namespace Nethermind.Blockchain
                 while (stack.TryPop(out (BlockHeader child, ChainLevelInfo level, BlockInfo blockInfo) item))
                 {
                     item.child.TotalDifficulty = current.TotalDifficulty + item.child.Difficulty;
-                    if (item.level == null)
+                    if (item.level is null)
                     {
                         item.blockInfo = new(item.child.Hash, item.child.TotalDifficulty.Value);
                         item.level = new(false, item.blockInfo);

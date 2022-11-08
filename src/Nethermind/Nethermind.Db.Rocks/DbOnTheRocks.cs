@@ -83,7 +83,7 @@ public class DbOnTheRocks : IDbWithSpan
         static RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
         {
             (DbOptions options, ColumnFamilies? families) = db;
-            return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
+            return families is null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
         }
 
         _fullPath = GetFullDbPath(dbPath, basePath);
@@ -291,7 +291,7 @@ public class DbOnTheRocks : IDbWithSpan
 
             UpdateWriteMetrics();
 
-            if (value == null)
+            if (value is null)
             {
                 _db.Remove(key, null, WriteOptions);
             }
@@ -456,7 +456,7 @@ public class DbOnTheRocks : IDbWithSpan
                     throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
                 }
 
-                if (value == null)
+                if (value is null)
                 {
                     _rocksBatch.Delete(key);
                 }

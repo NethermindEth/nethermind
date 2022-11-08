@@ -122,8 +122,8 @@ namespace Nethermind.Grpc {
     /// <param name="serviceImpl">An object implementing the server-side handling logic.</param>
     public static void BindService(grpc::ServiceBinderBase serviceBinder, NethermindServiceBase serviceImpl)
     {
-      serviceBinder.AddMethod(__Method_Query, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Nethermind.Grpc.QueryRequest, global::Nethermind.Grpc.QueryResponse>(serviceImpl.Query));
-      serviceBinder.AddMethod(__Method_Subscribe, serviceImpl == null ? null : new grpc::ServerStreamingServerMethod<global::Nethermind.Grpc.SubscriptionRequest, global::Nethermind.Grpc.SubscriptionResponse>(serviceImpl.Subscribe));
+      serviceBinder.AddMethod(__Method_Query, serviceImpl is null ? null : new grpc::UnaryServerMethod<global::Nethermind.Grpc.QueryRequest, global::Nethermind.Grpc.QueryResponse>(serviceImpl.Query));
+      serviceBinder.AddMethod(__Method_Subscribe, serviceImpl is null ? null : new grpc::ServerStreamingServerMethod<global::Nethermind.Grpc.SubscriptionRequest, global::Nethermind.Grpc.SubscriptionResponse>(serviceImpl.Subscribe));
     }
 
   }

@@ -45,7 +45,7 @@ namespace Nethermind.Db
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (dbDirectoryPath == null) throw new ArgumentNullException(nameof(dbDirectoryPath));
+            if (dbDirectoryPath is null) throw new ArgumentNullException(nameof(dbDirectoryPath));
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";
@@ -63,7 +63,7 @@ namespace Nethermind.Db
             get => _cache[key];
             set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _cache.TryRemove(key, out _);
                 }

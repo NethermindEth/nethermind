@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Peers
         public void Cancel()
         {
             PeerInfo? current = Current;
-            if (current == null)
+            if (current is null)
             {
                 return;
             }

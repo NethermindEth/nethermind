@@ -176,7 +176,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
-            if (Validators == null)
+            if (Validators is null)
             {
                 return;
             }

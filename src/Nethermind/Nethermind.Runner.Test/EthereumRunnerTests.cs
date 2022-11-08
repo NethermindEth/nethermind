@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Test
         [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
         {
-            if (testCase.configProvider == null)
+            if (testCase.configProvider is null)
             {
                 // some weird thing, not worth investigating
                 return;
@@ -102,7 +102,7 @@ namespace Nethermind.Runner.Test
         [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
         {
-            if (testCase.configProvider == null)
+            if (testCase.configProvider is null)
             {
                 // some weird thing, not worth investigating
                 return;

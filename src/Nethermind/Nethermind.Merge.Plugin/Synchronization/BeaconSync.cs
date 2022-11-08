@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 ((lowestInsertedBeaconHeader?.Number ?? 0) - 1) <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue) &&
                 lowestInsertedBeaconHeader != null &&
                 _blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
-            bool finished = lowestInsertedBeaconHeader == null
+            bool finished = lowestInsertedBeaconHeader is null
                             || lowestInsertedBeaconHeader.Number <= _beaconPivot.PivotDestinationNumber
                             || (!_syncConfig.StrictMode && chainMerged);
 

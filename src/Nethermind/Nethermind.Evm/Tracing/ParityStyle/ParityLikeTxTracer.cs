@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash,
-                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                TransactionPosition = tx is null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
                 BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Output = output;
 
             // quick tx fail (before execution)
-            if (_trace.Action == null)
+            if (_trace.Action is null)
             {
                 _trace.Action = new ParityTraceAction();
                 _trace.Action.From = _tx.SenderAddress;

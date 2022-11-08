@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ILogManager logManager,
             bool forSealing = false)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
+            if (validator is null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

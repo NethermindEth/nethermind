@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Clique
                         throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
                     }
 
-                    if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -141,7 +141,7 @@ namespace Nethermind.Consensus.Clique
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -246,7 +246,7 @@ namespace Nethermind.Consensus.Clique
         {
             Keccak key = GetSnapshotKey(hash);
             byte[]? bytes = _blocksDb.Get(key);
-            if (bytes == null) return null;
+            if (bytes is null) return null;
 
             return _decoder.Decode(bytes.AsRlpStream());
         }
