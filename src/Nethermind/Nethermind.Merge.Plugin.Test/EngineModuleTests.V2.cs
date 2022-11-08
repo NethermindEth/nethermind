@@ -1,5 +1,7 @@
+// Copyright 2022 Demerzel Solutions Limited
+// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -8,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Merge.Plugin.Data;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -39,30 +41,29 @@ public partial class EngineModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
         Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
-        var expectedPayload = new
+        var expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
-            parentHash = startingHead.ToString(),
-            feeRecipient = feeRecipient.ToString(),
-            stateRoot = "0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491",
-            receiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
-            logsBloom = Bloom.Empty.Bytes.ToHexString(true),
-            prevRandao = prevRandao.ToString(),
-            blockNumber = "0x1",
-            gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
-            gasUsed = "0x0",
-            timestamp = timestamp.ToHexString(true),
-            extraData = "0x4e65746865726d696e64", // Nethermind
-            baseFeePerGas = "0x0",
-            blockHash = blockHash.ToString(),
-            transactions = Array.Empty<object>(),
-            withdrawals = withdrawals.Select(t => Rlp.Encode(t).Bytes.ToHexString(true)).ToArray()
-        };
-        string expectedPayloadString = JsonConvert.SerializeObject(expectedPayload);
+            BaseFeePerGas = 0,
+            BlockHash = blockHash,
+            BlockNumber = 1,
+            ExtraData = Bytes.FromHexString("0x4e65746865726d696e64"), // Nethermind
+            FeeRecipient = feeRecipient,
+            GasLimit = chain.BlockTree.Head!.GasLimit,
+            GasUsed = 0,
+            LogsBloom = Bloom.Empty,
+            ParentHash = startingHead,
+            PrevRandao = prevRandao,
+            ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+            StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+            Timestamp = timestamp.ToUInt64(null),
+            Transactions = Array.Empty<byte[]>(),
+            Withdrawals = withdrawals
+        });
         // get the payload
         result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId.ToHexString(true));
-        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayloadString},\"id\":67}}");
+        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
         // execute the payload
-        result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2", expectedPayloadString);
+        result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2", expectedPayload);
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\",\"validationError\":null}},\"id\":67}}");
 
         forkChoiceUpdatedParams = new { headBlockHash = blockHash.ToString(true), safeBlockHash = blockHash.ToString(true), finalizedBlockHash = startingHead.ToString(true), };
