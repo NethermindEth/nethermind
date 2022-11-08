@@ -1,0 +1,58 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+//
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+//
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
+
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data.V2;
+
+namespace Nethermind.Merge.Plugin.Handlers.V2
+{
+    public class GetPayloadV2Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
+    {
+        private readonly IPayloadPreparationService _payloadPreparationService;
+        private readonly ILogger _logger;
+
+        public GetPayloadV2Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
+        {
+            _payloadPreparationService = payloadPreparationService;
+            _logger = logManager.GetClassLogger();
+        }
+
+        public async Task<ResultWrapper<GetPayloadV2Result?>> HandleAsync(byte[] payloadId)
+        {
+            string payloadStr = payloadId.ToHexString(true);
+            Block? block = await _payloadPreparationService.GetPayload(payloadStr);
+
+            if (block == null)
+            {
+                // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
+                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");
+                return ResultWrapper<GetPayloadV2Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
+            }
+
+            if (_logger.IsInfo) _logger.Info($"GetPayloadV2 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
+
+            Metrics.GetPayloadRequests++;
+            Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
+            return ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(block));
+        }
+    }
+}
