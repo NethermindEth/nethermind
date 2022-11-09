@@ -44,8 +44,6 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
-        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiActivation.BlockNumber;
         static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
@@ -148,12 +146,13 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            OverridableReleaseSpec spec = new(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
             {
                 IsEip3670Enabled = false,
                 IsEip4750Enabled = false,
                 IsEip4200Enabled = false,
             };
+            
 
             var expectedHeader = codeSize == 0 && dataSize == 0
                 ? null
@@ -164,7 +163,7 @@ namespace Nethermind.Evm.Test
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, spec, out var header);
+            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)
@@ -602,6 +601,17 @@ namespace Nethermind.Evm.Test
                 ? EofBytecode(testcase.Code, testcase.Data)
                 : Classicalcode(testcase.Code, testcase.Data);
 
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
+            {
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false
+            };
+
+            ILogManager logManager = GetLogManager();
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
+            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+
             TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
 
             if (isShanghaiBlock)
@@ -731,11 +741,20 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            {
+                IsEip4750Enabled = false
+            };
+
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
             byte[] createContract = testcase.Code;
 
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            ILogManager logManager = GetLogManager();
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
+            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
+
 
             transaction.GasPrice = 100.GWei();
             TestAllTracerWithOutput tracer = CreateTracer();
@@ -774,10 +793,13 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            IReleaseSpec source_spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-            OverridableReleaseSpec spec = new(source_spec);
-            spec.IsEip4750Enabled = false;
-            bool checkResult = ValidateByteCode(bytecode, spec, out _);
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            {
+                IsEip4750Enabled = false
+            };
+            
+
+            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }
@@ -893,22 +915,33 @@ namespace Nethermind.Evm.Test
         [Test]
         public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
         {
-            bool isShanghaiBlock = spec is Shanghai;
-            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+            bool isShanghaiFork = spec is Shanghai;
+            long blockTestNumber = isShanghaiFork ? BlockNumber : BlockNumber - 1;
 
             var bytecode =
-                isShanghaiBlock
+                isShanghaiFork
                 ? EofBytecode(testcase.Code, testcase.Data)
                 : Classicalcode(testcase.Code, testcase.Data);
 
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            {
+                IsEip4200Enabled = isShanghaiFork,
+                IsEip4750Enabled = false
+            };
+
+            ILogManager logManager = GetLogManager();
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
+            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+
             TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
 
-            if (isShanghaiBlock)
+            if (isShanghaiFork)
             {
                 receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
             }
 
-            if (!isShanghaiBlock)
+            if (!isShanghaiFork)
             {
                 receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
             }
@@ -935,13 +968,14 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            OverridableReleaseSpec source_spec = new(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
             {
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false
             };
+            
 
-            bool checkResult = ValidateByteCode(bytecode, source_spec, out _);
+            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

@@ -203,7 +203,7 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i <= validOpcodes.Length; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                Instruction instruction = validOpcodes[i];
+                Instruction instruction = (Instruction)i;
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
                 if(InstructionsWithImmediates.Contains(instruction))

@@ -30,6 +30,12 @@ namespace Nethermind.Specs
             GenesisSpec = initialSpecToReturn;
         }
 
+        public TestSpecProvider(IReleaseSpec genesisSpec, IReleaseSpec specToReturn)
+        {
+            SpecToReturn = specToReturn;
+            GenesisSpec = genesisSpec;
+        }
+
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber != null)

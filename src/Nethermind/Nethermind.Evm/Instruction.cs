@@ -203,8 +203,8 @@ namespace Nethermind.Evm
             return instruction switch
             {
                 Instruction.PREVRANDAO => isPostMerge ? FastEnum.GetName(instruction) : "DIFFICULTY",
-                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "BEGINSUB",
-                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "RETURNSUB",
+                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
+                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
