@@ -338,7 +338,7 @@ namespace Nethermind.Synchronization.SnapSync
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
                 if (_logger.IsInfo)
-                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] | data:{(double)(StateSyncedBytes + StateStichedBytes)/1024/1024:F2} MB");
+                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] | data:{(double)(StateSyncedBytes + StateStichedBytes) / 1024 / 1024:F2} MB");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)
