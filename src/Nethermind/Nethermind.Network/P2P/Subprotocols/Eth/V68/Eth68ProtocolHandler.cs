@@ -75,11 +75,16 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
     {
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
-            if (Logger.IsTrace) Logger.Trace($"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
-                                             $"Hashes count: {message.Hashes.Count} " +
-                                             $"Types count: {message.Types.Count} " +
-                                             $"Sizes count: {message.Sizes.Count}");
-            throw new SubprotocolException("Wrong format of message");
+            if (Logger.IsTrace)
+                Logger.Trace($"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
+                             $"Hashes count: {message.Hashes.Count} " +
+                             $"Types count: {message.Types.Count} " +
+                             $"Sizes count: {message.Sizes.Count}");
+
+            throw new SubprotocolException($"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
+                                           $"Hashes count: {message.Hashes.Count} " +
+                                           $"Types count: {message.Types.Count} " +
+                                           $"Sizes count: {message.Sizes.Count}");
         }
 
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -120,7 +125,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             if (tx.Hash is not null)
             {
                 types.Add(tx.Type);
-                sizes.Add((int)txDecoder.GetLength(tx, RlpBehaviors.None));
+                sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
                 hashes.Add(tx.Hash);
             }
         }
