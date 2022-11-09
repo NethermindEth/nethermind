@@ -13,27 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Threading;
-using Nethermind.Core.Specs;
+using System;
+using FluentAssertions;
+using Nethermind.Core.Extensions;
+using NUnit.Framework;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Core.Test
 {
-    public class Shanghai : GrayGlacier
+    [TestFixture]
+    public class SizeExtensionsTests
     {
-        private static IReleaseSpec _instance;
-
-        protected Shanghai()
+        [TestCase(0)]
+        [TestCase(1000)]
+        [TestCase(9223372036)] // Int64.MaxValue / 1_000_000_000
+        public void CheckOverflow_long(long testCase)
         {
-            Name = "Shanghai";
-            IsEip1153Enabled = true;
-            IsEip3675Enabled = true;
-            IsEip3651Enabled = true;
-            IsEip3855Enabled = true;
-            IsEip3860Enabled = true;
+            Assert.IsTrue(testCase.GB() >= 0);
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());
+        [TestCase(0)]
+        [TestCase(1000)]
+        [TestCase(2147483647)] // Int32.MaxValue
+        public void CheckOverflow_int(int testCase)
+        {
+            Assert.IsTrue(testCase.GB() >= 0);
+        }
     }
 }
