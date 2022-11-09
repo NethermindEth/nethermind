@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -91,19 +91,67 @@ namespace Nethermind.JsonRpc
             {
                 if (token is JArray array)
                 {
-                    foreach (JToken tokenElement in array)
-                    {
-                        UpdateParams(tokenElement);
-                    }
-
-                    yield return (null, array.ToObject<List<JsonRpcRequest>>(_obsoleteBasicJsonSerializer));
+                    yield return (null, array.Select(JTokenToJsonRpcRequest).ToList());
                 }
                 else
                 {
-                    UpdateParams(token);
-                    yield return (token.ToObject<JsonRpcRequest>(_obsoleteBasicJsonSerializer), null);
+                    yield return (JTokenToJsonRpcRequest(token), null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Manually convert JToken to JsonRpcRequests as the param inside JsonRpcRequests is a JToken. If we use
+        /// a JTokenReader, it would iterate through the JSON which is a waste of time, as we already have a JToken.
+        /// </summary>
+        /// <param name="token"></param>
+        /// <returns></returns>
+        private JsonRpcRequest JTokenToJsonRpcRequest(JToken token)
+        {
+            JsonRpcRequest jsonRpcRequest = new JsonRpcRequest();
+
+            JToken? jsonRpcField = token["jsonrpc"];
+            if (jsonRpcField != null)
+            {
+                jsonRpcRequest.JsonRpc = jsonRpcField.Value<string>();
+            }
+
+            JToken? methodField = token["method"];
+            if (methodField != null)
+            {
+                jsonRpcRequest.Method = methodField.Value<string>();
+            }
+
+            JToken? idField = token["id"];
+            if (idField != null)
+            {
+                // Not sure what is the logic here.. not gonna unuse the IdConverter
+                JTokenReader reader = new JTokenReader(idField);
+                if (reader.Read())
+                {
+                    jsonRpcRequest.Id = new IdConverter().ReadJson(reader, null, null, null);
+                }
+            }
+
+            JToken? paramsField = token["params"];
+            if (paramsField == null)
+            {
+                paramsField = token["Params"];
+            }
+
+            if (paramsField != null)
+            {
+                if (paramsField is JArray asArray)
+                {
+                    jsonRpcRequest.Params = asArray.ToArray();
+                }
+                else
+                {
+                    throw new JsonSerializationException($"Params is expected to be an array. Got {paramsField.Type}");
+                }
+            }
+
+            return jsonRpcRequest;
         }
 
         private void UpdateParams(JToken token)
