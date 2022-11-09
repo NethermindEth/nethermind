@@ -1,3 +1,19 @@
+//  Copyright (c) 2022 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,10 +38,13 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ProgressTracker _progressTracker;
 
+        public event EventHandler<SnapSyncEventArgs>? StateRangesFinished;
+
         public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+            _progressTracker.StateRangesFinished += OnStateRangesFinished;
 
             _store = new TrieStore(
                 _dbProvider.StateDb,
@@ -71,7 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
             StateTree tree = new(_store, _logManager);
 
             (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs, _progressTracker);
 
             if (result == AddRangeResult.OK)
             {
@@ -151,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs, _progressTracker);
 
             if (result == AddRangeResult.OK)
             {
@@ -244,6 +263,11 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
+        private void OnStateRangesFinished(object? sender, SnapSyncEventArgs e)
+        {
+            StateRangesFinished?.Invoke(this, e);
+        }
+
         public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
         {
             HashSet<Keccak> set = requestedHashes.ToHashSet();
@@ -257,6 +281,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
                     _dbProvider.CodeDb.Set(codeHash, code);
+                    _progressTracker.UpdateStateSyncedBytes(code.Length);
                 }
             }
 
@@ -291,5 +316,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _progressTracker.UpdatePivot();
         }
+
+        public void SetSyncStart() => _progressTracker.SetSyncStart();
     }
 }

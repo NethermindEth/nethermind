@@ -1,3 +1,20 @@
+//  Copyright (c) 2022 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -25,6 +42,11 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeStorageRequests;
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
+        private DateTime _syncStart;
+        private long _secondsInSync;
+
+        internal long StateSyncedBytes;
+        internal long StateStichedBytes;
 
         private readonly ILogger _logger;
         private readonly IDb _db;
@@ -38,6 +60,8 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
+
+        public event EventHandler<SnapSyncEventArgs>? StateRangesFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -73,6 +97,7 @@ namespace Nethermind.Synchronization.SnapSync
         public (SnapSyncBatch request, bool finished) GetNextRequest()
         {
             Interlocked.Increment(ref _reqCount);
+            Interlocked.Exchange(ref _secondsInSync, (long)(DateTime.UtcNow - _syncStart).TotalSeconds);
 
             var pivotHeader = _pivot.GetPivotHeader();
             var rootHash = pivotHeader.StateRoot;
@@ -172,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
             bool rangePhaseFinished = IsSnapGetRangesFinished();
             if (rangePhaseFinished)
             {
-                _logger.Info($"SNAP - State Ranges (Phase 1) finished.");
+                _logger.Info($"SNAP - State Ranges (Phase 1 of 2) finished.");
                 FinishRangePhase();
             }
 
@@ -268,6 +293,16 @@ namespace Nethermind.Synchronization.SnapSync
                 && _activeAccRefreshRequests == 0;
         }
 
+        public void UpdateStateSyncedBytes(long bytes)
+        {
+            Interlocked.Add(ref StateSyncedBytes, bytes);
+        }
+
+        public void SetSyncStart()
+        {
+            _syncStart = DateTime.UtcNow;
+        }
+
         private void GetSyncProgress()
         {
             byte[] progress = _db.Get(ACC_PROGRESS_KEY);
@@ -277,7 +312,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
+                    _logger.Info($"SNAP - State Ranges (Phase 1 of 2) is finished.");
                     MoreAccountsToRight = false;
                 }
                 else
@@ -292,6 +327,8 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
+
+            StateRangesFinished?.Invoke(this, new SnapSyncEventArgs(true, StateSyncedBytes + StateStichedBytes));
         }
 
         private void LogRequest(string reqType)
@@ -300,7 +337,8 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                if (_logger.IsInfo)
+                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] | data:{(double)(StateSyncedBytes + StateStichedBytes)/1024/1024:F2} MB");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)

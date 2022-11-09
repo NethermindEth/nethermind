@@ -35,6 +35,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -88,11 +89,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
             ctx.Pool.Start();
             ctx.Pool.AddPeer(syncPeer);
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager, snapProvider);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.StateSyncDispatcher =
                 new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);

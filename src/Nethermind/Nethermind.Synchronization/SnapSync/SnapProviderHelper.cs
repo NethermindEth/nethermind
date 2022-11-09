@@ -1,19 +1,28 @@
+//  Copyright (c) 2022 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+//
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -25,7 +34,7 @@ namespace Nethermind.Synchronization.SnapSync
         private static object _syncCommit = new();
 
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
-            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ProgressTracker progressTracker = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
@@ -58,6 +67,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rlp is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+                    progressTracker?.UpdateStateSyncedBytes(rlp.Bytes.Length);
                 }
             }
 
@@ -68,7 +78,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore, progressTracker);
 
             lock (_syncCommit)
             {
@@ -78,7 +88,8 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null)
+        public static (AddRangeResult result, bool moreChildrenToRight)
+            AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null, ProgressTracker progressTracker = null)
         {
             // TODO: Check the slots boundaries and sorting
 
@@ -95,6 +106,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+                progressTracker?.UpdateStateSyncedBytes(slot.SlotRlpValue.Length);
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 
@@ -105,7 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore, progressTracker);
 
             lock (_syncCommit)
             {
@@ -251,7 +263,7 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
+        private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store, ProgressTracker progressTracker)
         {
             if (sortedBoundaryList == null || sortedBoundaryList.Count == 0)
             {
@@ -285,6 +297,11 @@ namespace Nethermind.Synchronization.SnapSync
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+
+                    if (!node.IsBoundaryProofNode && progressTracker != null)
+                    {
+                        Interlocked.Add(ref progressTracker.StateStichedBytes, node.FullRlp?.Length ?? 0);
                     }
                 }
             }
