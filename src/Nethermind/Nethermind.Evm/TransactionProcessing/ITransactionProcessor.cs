@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -24,21 +25,21 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <summary>
         /// Execute transaction, commit state
         /// </summary>
-        void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null);
 
         /// <summary>
         /// Call transaction, rollback state
         /// </summary>
-        void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null);
 
         /// <summary>
         /// Execute transaction, keep the state uncommitted
         /// </summary>
-        void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null);
 
         /// <summary>
         /// Call transaction, no validations, commit state
         /// </summary>
-        void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null);
     }
 }

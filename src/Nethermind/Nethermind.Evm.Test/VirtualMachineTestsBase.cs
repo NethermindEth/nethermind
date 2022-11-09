@@ -32,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using FluentAssertions.Execution;
 
 namespace Nethermind.Evm.Test
 {
@@ -85,49 +86,63 @@ namespace Nethermind.Evm.Test
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 
+
+
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
+            => ExecuteAndTrace(null, code);
+        protected GethLikeTxTrace ExecuteAndTrace(IReleaseSpec overridedSpec , params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer, overridedSpec);
             return tracer.BuildResult();
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
+            => ExecuteAndTrace(blockNumber, gasLimit, null, code);
+        protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, IReleaseSpec overridedSpec, params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer, overridedSpec);
             return tracer.BuildResult();
         }
 
         protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
+            => Execute(blockNumber, timestamp, null, code);
+        protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, IReleaseSpec overridedSpec , params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer, overridedSpec);
             return tracer;
         }
 
         protected TestAllTracerWithOutput Execute(params byte[] code)
+            => Execute(null, code);
+        protected TestAllTracerWithOutput Execute(IReleaseSpec overridedSpec, params byte[] code)
         {
-            return Execute(BlockNumber, Timestamp, code);
+            return Execute(BlockNumber, Timestamp, overridedSpec, code);
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
+            => Execute<T>(tracer, null, code);
+        protected T Execute<T>(T tracer, IReleaseSpec overridedSpec, params byte[] code) where T : ITxTracer
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer, overridedSpec);
             return tracer;
         }
 
         protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
+            => Execute(blockNumber, gasLimit, code, null, blockGasLimit, timestamp);
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, IReleaseSpec overridedSpec, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, block.Header, tracer, overridedSpec);
             return tracer;
         }
 

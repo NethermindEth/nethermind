@@ -93,27 +93,27 @@ namespace Nethermind.Evm.TransactionProcessing
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
+            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore, spec);
         }
 
-        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             _worldState.TakeSnapshot(true);
-            Execute(transaction, block, txTracer, ExecutionOptions.None);
+            Execute(transaction, block, txTracer, ExecutionOptions.None, spec);
         }
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.Commit);
+            Execute(transaction, block, txTracer, ExecutionOptions.Commit, spec);
         }
 
-        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
+            Execute(transaction, block, txTracer, ExecutionOptions.NoValidation, spec);
         }
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
@@ -139,9 +139,9 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
-            ExecutionOptions executionOptions)
+            ExecutionOptions executionOptions, IReleaseSpec defaultSpec = null)
         {
-            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+            IReleaseSpec spec = defaultSpec ?? _specProvider.GetSpec((block.Number, block.Timestamp));
             bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -366,7 +366,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(block.GasBeneficiary);
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, txTracer);
+                    substate = _virtualMachine.Run(state, _worldState, txTracer, spec);
                     unspentGas = state.GasAvailable;
 
                     if (txTracer.IsTracingAccess)

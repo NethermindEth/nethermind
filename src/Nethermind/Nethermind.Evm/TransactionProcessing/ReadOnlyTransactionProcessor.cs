@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
@@ -41,17 +42,17 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.Execute(transaction, block, txTracer);
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null) =>
+            _transactionProcessor.Execute(transaction, block, txTracer, spec);
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, block, txTracer);
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null) =>
+            _transactionProcessor.CallAndRestore(transaction, block, txTracer, spec);
 
-        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, block, txTracer);
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null) =>
+            _transactionProcessor.BuildUp(transaction, block, txTracer, spec);
 
-        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(transaction, block, txTracer);
+        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer, IReleaseSpec spec = null) =>
+            _transactionProcessor.Trace(transaction, block, txTracer, spec);
 
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
@@ -63,5 +64,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _storageProvider.Reset();
             _codeDb.ClearTempChanges();
         }
+
     }
 }

@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer, IReleaseSpec overridedSpec = null)
         {
             _txTracer = txTracer;
 
@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
+            IReleaseSpec spec = overridedSpec ?? _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
