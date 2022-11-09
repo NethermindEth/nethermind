@@ -250,7 +250,7 @@ namespace Nethermind.Evm.Tracing
         {
             _currentTx = tx;
             _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
-            return this;
+            return _currentTxTracer;
         }
 
         public void EndTxTrace()
