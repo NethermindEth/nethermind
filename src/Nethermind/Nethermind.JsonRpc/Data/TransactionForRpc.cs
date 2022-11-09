@@ -130,7 +130,7 @@ public class TransactionForRpc
             AccessList = TryGetAccessList(),
             ChainId = chainId,
             DecodedMaxFeePerGas = MaxFeePerGas ?? 0,
-            Hash = Hash ?? null
+            Hash = Hash
         };
 
         if (tx.IsEip1559)

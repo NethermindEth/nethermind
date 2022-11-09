@@ -465,8 +465,8 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
-                if (transaction is null)
-                    throw new ArgumentException("Transaction removed from TxPool was unexpectedly null!");
+                if (transaction is null || !hasBeenRemoved)
+                    return false;
                 if (hasBeenRemoved)
                 {
                     Address? address = transaction.SenderAddress;

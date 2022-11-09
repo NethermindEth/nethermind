@@ -1224,8 +1224,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.Hash = TestItem.KeccakA;
+            Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
             _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
         }
 
