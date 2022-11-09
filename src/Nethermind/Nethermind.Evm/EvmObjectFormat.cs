@@ -28,9 +28,8 @@ namespace Nethermind.Evm
         public int CodesSize => CodeSize?.Sum() ?? 0;
         public int DataSize { get; set; }
         public byte Version { get; set; }
-        public int HeaderSize => DataSize == 0
-                        ? 7     // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
-                        : 10;
+        public int HeaderSize => 2 + 1 + (DataSize == 0 ? 0 : (1 + 2)) + (TypeSize == 0 ? 0 : (1 + 2)) + 1 + CodesSize + 1;
+                                // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
         public int ContainerSize => TypeSize + CodesSize + DataSize;
         #endregion
 
@@ -150,11 +149,20 @@ namespace Nethermind.Evm
                         {
                             if(spec.IsEip4750Enabled)
                             {
+                                if (DataSections is not null || CodeSections.Count != 0)
+                                {
+                                    if (LoggingEnabled)
+                                    {
+                                        _logger.Trace($"EIP-4750 : TypeSection must be before : CodeSection, DataSection");
+                                    }
+                                    header = null; return false;
+                                }
+
                                 if (TypeSections is not null)
                                 {
                                     if (LoggingEnabled)
                                     {
-                                        _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
+                                        _logger.Trace($"EIP-4750 : container must have at max 1 TypeSection but found more");
                                     }
                                     header = null; return false;
                                 }
@@ -183,15 +191,6 @@ namespace Nethermind.Evm
                         }
                     case SectionDividor.CodeSection:
                         {
-                            if (spec.IsEip4750Enabled && TypeSections is null )
-                            {
-                                if (LoggingEnabled)
-                                {
-                                    _logger.Trace($"EIP-4750 : CodeSection size must follow a TypeSection, TypeSection length was {0}");
-                                }
-                                header = null; return false;
-                            }
-
                             if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
@@ -219,7 +218,7 @@ namespace Nethermind.Evm
                     case SectionDividor.DataSection:
                         {
                             // data-section must come after code-section and there can be only one data-section
-                            if (CodeSections.Count == 0 || (spec.IsEip4750Enabled && TypeSections is null))
+                            if (CodeSections.Count == 0)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -423,19 +422,20 @@ namespace Nethermind.Evm
 
             bool endCorrectly = opcode switch
             {
+                Instruction.RETF when spec.IsEip4750Enabled => true,
                 Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT
                     => true,
                 _ => false
             };
 
-                if (!endCorrectly)
+            if (!endCorrectly)
+            {
+                if (LoggingEnabled)
                 {
-                    if (LoggingEnabled)
-                    {
-                        _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
-                    }
-                    return false;
+                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                 }
+                return false;
+            }
 
             if (spec.IsEip4200Enabled)
             {

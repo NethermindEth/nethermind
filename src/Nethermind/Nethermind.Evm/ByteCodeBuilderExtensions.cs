@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -154,6 +155,12 @@ namespace Nethermind.Evm
         public static Prepare RJUMP(this Prepare @this, Int16 to)
             => @this.Op(Instruction.RJUMP)
                     .Data(BitConverter.GetBytes(to));
+        public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
+            => @this.Op(Instruction.CALLF)
+                    .Data(BitConverter.GetBytes(sectionId));
+        public static Prepare RETF(this Prepare @this)
+            => @this.Op(Instruction.RETF);
+
         public static Prepare BLOCKHASH(this Prepare @this, UInt256? target = null)
             => @this.PushSingle(target)
                     .Op(Instruction.BLOCKHASH);
