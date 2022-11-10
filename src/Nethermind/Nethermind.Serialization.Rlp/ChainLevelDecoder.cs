@@ -98,14 +98,14 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
 
             for (int i = 0; i < item.BlockInfos.Length; i++)
             {
-                if (item.BlockInfos[i] == null)
+                if (item.BlockInfos[i] is null)
                 {
                     throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
                 }

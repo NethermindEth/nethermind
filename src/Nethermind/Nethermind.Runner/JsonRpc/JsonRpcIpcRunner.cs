@@ -86,7 +86,7 @@ namespace Nethermind.Runner.JsonRpc
                     _resetEvent.WaitOne();
                 }
             }
-            catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
+            catch (IOException exc) when (exc.InnerException is not null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogDebug("Client disconnected.");
             }
@@ -131,7 +131,7 @@ namespace Nethermind.Runner.JsonRpc
 
                 await socketsClient.ReceiveAsync();
             }
-            catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
+            catch (IOException exc) when (exc.InnerException is not null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogDebug("Client disconnected.");
             }

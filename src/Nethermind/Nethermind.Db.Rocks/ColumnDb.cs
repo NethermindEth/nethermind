@@ -120,7 +120,7 @@ public class ColumnDb : IDbWithSpan
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
     }
 
-    public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
+    public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) is not null;
 
     public void Flush()
     {

@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Core.Collections;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -32,9 +33,9 @@ namespace Nethermind.Runner.Logging
             string minLevel = "Off")
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration is not null)
             {
-                if (loggingConfiguration.AllTargets != null)
+                if (loggingConfiguration.AllTargets is not null)
                 {
                     foreach (SeqTarget target in loggingConfiguration.AllTargets.OfType<SeqTarget>())
                     {
@@ -54,7 +55,7 @@ namespace Nethermind.Runner.Logging
                 }
 
                 // // // re-initialize single target
-                loggingConfiguration.AllTargets?.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
+                loggingConfiguration.AllTargets?.OfType<SeqTarget>().ForEach(t => t.Dispose());
                 LogManager.ReconfigExistingLoggers();
             }
         }
@@ -62,7 +63,7 @@ namespace Nethermind.Runner.Logging
         public static void ClearSeqTarget()
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration is not null)
             {
                 loggingConfiguration.RemoveTarget("seq");
             }

@@ -307,7 +307,7 @@ namespace Nethermind.TxPool
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
 
-                    if (removed != null)
+                    if (removed is not null)
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(removed));
                         // transaction which was on last position in sorted TxPool and was deleted to give
@@ -365,7 +365,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck == null)
+                    if (previousTxBottleneck is null)
                     {
                         previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
@@ -502,7 +502,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return transaction != null;
+            return transaction is not null;
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.

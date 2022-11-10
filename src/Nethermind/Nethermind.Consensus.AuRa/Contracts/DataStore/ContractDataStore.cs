@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
-            Collection = collection == null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
+            Collection = collection is null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            bool fromReceipts = receipts != null;
+            bool fromReceipts = receipts is not null;
             if (fromReceipts || !isConsecutiveBlock)
             {
                 bool incrementalChanges = _dataContract.IncrementalChanges;

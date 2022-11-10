@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
         {
-            _isAuRaBlock = block.Header.AuRaSignature != null;
+            _isAuRaBlock = block.Header.AuRaSignature is not null;
             Author = block.Author ?? block.Beneficiary;
             Difficulty = block.Difficulty;
             ExtraData = block.ExtraData;
@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Signature = block.Header.AuRaSignature;
             }
 
-            if (specProvider != null)
+            if (specProvider is not null)
             {
                 var spec = specProvider.GetSpec(block.Header);
                 if (spec.IsEip1559Enabled)
@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Address Miner { get; set; }
         public Keccak MixHash { get; set; }
 
-        public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash != null;
+        public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Nonce { get; set; }

@@ -64,11 +64,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             List<PeerInfo> peersAsList = peers.ToList();
 
             long peerCount = peersAsList.Count();
-            long noSpeedPeerCount = peersAsList.Count(p => nodeStatsManager.GetOrAdd(p.SyncPeer.Node).GetAverageTransferSpeed(_speedType) == null);
+            long noSpeedPeerCount = peersAsList.Count(p => nodeStatsManager.GetOrAdd(p.SyncPeer.Node).GetAverageTransferSpeed(_speedType) is null);
             bool shouldRediscoverSpeed = _random.NextDouble() < _recalculateSpeedProbability;
             bool shouldDiscoverSpeed = (peerCount - noSpeedPeerCount) < _desiredPeersWithKnownSpeed;
 
-            long currentSpeed = currentPeer == null ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(_speedType) ?? nullSpeed;
+            long currentSpeed = currentPeer is null ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(_speedType) ?? nullSpeed;
             (PeerInfo? Info, long TransferSpeed) bestPeer = (currentPeer, currentSpeed);
             bool forceTake = false;
 
@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;
 
-                if (speed == null && shouldDiscoverSpeed)
+                if (speed is null && shouldDiscoverSpeed)
                 {
                     forceTake = true;
                 }

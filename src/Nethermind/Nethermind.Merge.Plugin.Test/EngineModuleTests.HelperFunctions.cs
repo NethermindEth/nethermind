@@ -83,7 +83,7 @@ namespace Nethermind.Merge.Plugin.Test
         private ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
-            if (head == null) throw new NotSupportedException();
+            if (head is null) throw new NotSupportedException();
             return new ExecutionPayload()
             {
                 BlockNumber = head.Number,
@@ -156,7 +156,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static bool TryCalculateHash(ExecutionPayload request, out Keccak hash)
         {
-            if (request.TryGetBlock(out Block? block) && block != null)
+            if (request.TryGetBlock(out Block? block) && block is not null)
             {
                 hash = block.CalculateHash();
                 return true;

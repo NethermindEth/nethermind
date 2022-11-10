@@ -116,8 +116,8 @@ namespace Nethermind.Core
         public string ToString(Format format) => format switch
         {
             Format.Full => ToString(string.Empty),
-            Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
-            _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
+            Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
+            _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
         };
 
         [Todo(Improve.Refactor, "Use IFormattable here")]

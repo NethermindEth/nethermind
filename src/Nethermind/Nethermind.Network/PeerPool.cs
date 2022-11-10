@@ -144,7 +144,7 @@ namespace Nethermind.Network
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
                     Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
-                    if (oldPeer != null)
+                    if (oldPeer is not null)
                     {
                         oldPeer.InSession = null;
                         oldPeer.OutSession = null;

@@ -141,7 +141,7 @@ namespace Nethermind.Consensus.Clique
         public bool ValidateSeal(BlockHeader header, bool force)
         {
             header.Author ??= _snapshotManager.GetBlockSealer(header);
-            return header.Author != null;
+            return header.Author is not null;
         }
 
         private bool IsEpochTransition(long number)

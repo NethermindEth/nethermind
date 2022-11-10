@@ -80,13 +80,13 @@ namespace Nethermind.Blockchain
             {
                 _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
-                if (allocation.Code != null)
+                if (allocation.Code is not null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
                     _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec, true);
                 }
 
-                if (allocation.Storage != null)
+                if (allocation.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                     {
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (allocation.Constructor != null)
+                if (allocation.Constructor is not null)
                 {
                     Transaction constructorTransaction = new SystemTransaction()
                     {

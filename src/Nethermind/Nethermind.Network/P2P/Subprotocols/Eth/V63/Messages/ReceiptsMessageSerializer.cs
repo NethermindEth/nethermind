@@ -37,11 +37,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
         {
             Rlp rlp = Rlp.Encode(message.TxReceipts.Select(
-                b => b == null
+                b => b is null
                     ? Rlp.OfEmptySequence
                     : Rlp.Encode(
                         b.Select(
-                            n => n == null
+                            n => n is null
                                 ? Rlp.OfEmptySequence
                                 // for TxReceipt there is no timestamp, as such, we are keeping the old implementation. wonder how we can metigate this later if future EIPs affecting this are added. 
                                 : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());

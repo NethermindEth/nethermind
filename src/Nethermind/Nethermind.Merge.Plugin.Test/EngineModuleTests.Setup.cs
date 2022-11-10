@@ -263,7 +263,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Thread.Sleep(DelayMs);
             }
 
-            if (ExceptionToThrow != null)
+            if (ExceptionToThrow is not null)
             {
                 throw ExceptionToThrow;
             }

@@ -46,7 +46,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
         }
 
         byte[] data = Rlp.Encode(
-            nodes == null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
+            nodes is null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
             Rlp.Encode(msg.ExpirationTime)
         ).Bytes;
 

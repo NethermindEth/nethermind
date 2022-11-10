@@ -172,7 +172,7 @@ namespace Nethermind.Evm
                 return new byte[(long)length];
             }
 
-            if (_memory == null || location + length > _memory.Length)
+            if (_memory is null || location + length > _memory.Length)
             {
                 return ReadOnlyMemory<byte>.Empty;
             }
@@ -218,7 +218,7 @@ namespace Nethermind.Evm
         {
             int traceLocation = 0;
             List<string> memoryTrace = new();
-            if (_memory != null)
+            if (_memory is not null)
             {
                 while ((ulong)traceLocation < Size)
                 {
@@ -233,7 +233,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (_memory != null)
+            if (_memory is not null)
             {
                 Pool.Return(_memory);
             }
@@ -273,7 +273,7 @@ namespace Nethermind.Evm
 
             if (rentIfNeeded)
             {
-                if (_memory == null)
+                if (_memory is null)
                 {
                     _memory = Pool.Rent((int)Size);
                     Array.Clear(_memory, 0, (int)Size);

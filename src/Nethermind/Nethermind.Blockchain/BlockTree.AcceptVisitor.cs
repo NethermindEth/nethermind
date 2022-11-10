@@ -63,10 +63,10 @@ namespace Nethermind.Blockchain
                         // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
                         Keccak hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
                         Block block = FindBlock(hash, BlockTreeLookupOptions.None);
-                        if (block == null)
+                        if (block is null)
                         {
                             BlockHeader header = FindHeader(hash, BlockTreeLookupOptions.None);
-                            if (header == null)
+                            if (header is null)
                             {
                                 if (await VisitMissing(visitor, hash, cancellationToken)) break;
                             }

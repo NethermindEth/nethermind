@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// Copyright 2022 Demerzel Solutions Limited
+// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -110,5 +96,28 @@ public class InvalidBlockInterceptor : IBlockValidator
     private static bool ShouldNotTrackInvalidation(BlockHeader header)
     {
         return !HeaderValidator.ValidateHash(header);
+    }
+
+    public bool ValidateWithdrawals(Block block, out string? error)
+    {
+        var result = _baseValidator.ValidateWithdrawals(block, out error);
+
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+
+            if (ShouldNotTrackInvalidation(block.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
+
+                return false;
+            }
+
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        }
+
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+
+        return result;
     }
 }

@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test
             Console.WriteLine(text);
             // TestContext.Out.WriteLine(text);
 
-            if (ex != null)
+            if (ex is not null)
             {
                 TestContext.Out.WriteLine(ex.ToString());
             }

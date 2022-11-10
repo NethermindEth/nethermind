@@ -227,7 +227,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
                 IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
-                bool isMainnet = daoBlockNumber != null;
+                bool isMainnet = daoBlockNumber is not null;
 
                 CompareSpecs(oldSpec, newSpec, activation, isMainnet, checkDifficultyBomb);
             }
