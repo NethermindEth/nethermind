@@ -20,7 +20,7 @@ public class TraceStorePlugin : INethermindPlugin
     private IDbWithSpan _db = null!;
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
-    private ILogger _logger;
+    private ILogger _logger = null!;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
@@ -59,7 +59,7 @@ public class TraceStorePlugin : INethermindPlugin
             // Setup tracing
             ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace,ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db, static t => TraceSerializer.Serialize(t), _logManager);
+                new(parityTracer, _db, static t => TraceSerializer.Serialize(t), _logManager, _config.VerifySerialized);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
         }
 

@@ -24,4 +24,5 @@ public class TraceStoreConfig : ITraceStoreConfig
     public bool Enabled { get; set; }
     public int BlocksToKeep { get; set; } = 10000;
     public ParityTraceTypes TraceTypes { get; set; } = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
+    public bool VerifySerialized { get; set; } = false;
 }
