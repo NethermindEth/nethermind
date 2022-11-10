@@ -15,14 +15,12 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with: 
         submodules: true
         fetch-depth: 0
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -189,11 +187,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v2
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - uses: actions/checkout@v3
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Unshallow fetching
       run: git fetch --unshallow
     - name: Updating submodules
@@ -253,7 +249,7 @@ jobs:
     needs: [neth-tests-cc, eth-tests-cc]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Download reports from Nethermind/Ethereum projects
         uses: actions/download-artifact@v2
         with:

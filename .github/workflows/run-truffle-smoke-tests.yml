@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out Nethermind repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Checking out Truffle repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: 'NethermindEth/truffleTest'
         path: truffleTest

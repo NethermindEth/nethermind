@@ -10,10 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
-    - name: running dotnet format check
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+    - name: Format
       run: |
         dotnet format whitespace src/Nethermind/ --folder --verify-no-changes

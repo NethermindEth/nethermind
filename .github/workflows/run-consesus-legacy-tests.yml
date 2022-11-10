@@ -10,13 +10,11 @@ jobs:
     name: Running Blockchain Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -30,13 +28,11 @@ jobs:
     name: Running General State Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Updating submodules
       run: git submodule update --init
     - name: Ethereum.Blockchain.Legacy

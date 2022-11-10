@@ -14,9 +14,9 @@ jobs:
     name: Updating POA Bootnodes
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Cloning poa-chain-spec repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: 'poanetwork/poa-chain-spec'
         path: poa-chain-spec

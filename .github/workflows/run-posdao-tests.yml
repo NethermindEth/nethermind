@@ -25,17 +25,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Cloning Nethermind repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
     - name: Cloning posdao-test-setup repo from Nethermind
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: NethermindEth/posdao-test-setup
         ref: ${{ github.event.inputs.branch }}

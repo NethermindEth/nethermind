@@ -23,9 +23,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -54,9 +52,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -103,9 +99,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -149,9 +143,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -171,9 +163,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -207,10 +197,8 @@ jobs:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: '6.0.x'
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -239,9 +227,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -273,9 +259,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -298,9 +282,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Ethereum.Blockchain.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
@@ -313,9 +295,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Ethereum.Trie.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Trie.Test -c ${{ env.BUILD_CONFIG }}
@@ -331,9 +311,7 @@ jobs:
       with:
         submodules: true
     - name: Setting up .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: 6.0.x
+      uses: actions/setup-dotnet@v3
     - name: Ethereum.Basic.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Basic.Test -c ${{ env.BUILD_CONFIG }}

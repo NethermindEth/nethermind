@@ -10,11 +10,9 @@ jobs:
     name: Running Vault Integration Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
+    - uses: actions/checkout@v3
+    - name: Setting up .NET
+      uses: actions/setup-dotnet@v3
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native
     - name: Installing Linux packages

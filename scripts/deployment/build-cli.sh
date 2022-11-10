@@ -2,7 +2,7 @@
 #exit when any command fails
 set -e
 CLI_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli
-PUBLISH_PATH=bin/release/net6.0
+PUBLISH_PATH=bin/release/net7.0
 OUT=out
 
 cd $CLI_PATH
