@@ -48,12 +48,19 @@ namespace Nethermind.Config
             string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
             string host = enodeParts2[1];
-            string[] portParts = enodeParts[2].Split("?discport=");
 
-            if (enodeParts.Length <= 2 || portParts.Length < 1)
+            try
             {
-                throw GetPortException(host);
+                HostIp = IPAddress.TryParse(host, out IPAddress? ip)
+                    ? ip
+                    : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
             }
+            catch (SocketException e)
+            {
+                throw GetDnsException(host, e);
+            }
+
+            string[] portParts = enodeParts[2].Split("?discport=");
 
             switch (portParts.Length)
             {
@@ -75,17 +82,6 @@ namespace Nethermind.Config
                     break;
                 default:
                     throw GetPortException(host);
-            }
-
-            try
-            {
-                HostIp = IPAddress.TryParse(host, out IPAddress? ip)
-                    ? ip
-                    : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
-            }
-            catch (SocketException e)
-            {
-                throw GetDnsException(host, e);
             }
         }
 

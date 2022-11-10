@@ -75,6 +75,9 @@ namespace Nethermind.Network.Test
         private const string enode7String =
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingwrong=6789";
 
+        private const string enode8String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789?discport=67899";
+
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
         {
@@ -127,7 +130,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_parse_udpPort_correctly()
+        public void Will_parse_ports_correctly_when_there_are_two_different_ports()
         {
             Enode enode = new(enode5String);
             enode.Port.Should().Be(12345);
@@ -135,7 +138,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_parse_ports_correctly_when_there_is_only_one()
+        public void Will_parse_port_correctly_when_there_is_only_one()
         {
             Enode enode = new(enode6String);
             enode.Port.Should().Be(12345);
@@ -148,6 +151,15 @@ namespace Nethermind.Network.Test
             Assert.Throws<ArgumentException>(delegate
             {
                 Enode unused = new(enode7String);
+            });
+        }
+
+        [Test]
+        public void Will_throw_on_duplicated_udpPort_part()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode8String);
             });
         }
 
