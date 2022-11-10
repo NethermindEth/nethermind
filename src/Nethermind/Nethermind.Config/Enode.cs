@@ -67,9 +67,9 @@ namespace Nethermind.Config
                     else throw GetPortException(host);
                     break;
                 case 2:
-                    if (int.TryParse(portParts[0], out int tcpPort) && int.TryParse(portParts[1], out int discoveryPort))
+                    if (int.TryParse(portParts[0], out int listeningPort) && int.TryParse(portParts[1], out int discoveryPort))
                     {
-                        Port = tcpPort;
+                        Port = listeningPort;
                         DiscoveryPort = discoveryPort;
                     }
                     else throw GetPortException(host);
