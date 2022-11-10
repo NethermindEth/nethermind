@@ -131,8 +131,8 @@ namespace Nethermind.Monitoring.Metrics
         }
 
         private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null, bool useUserDefinedName = false)
-                => useUserDefinedName ? Prometheus.Metrics.CreateGauge(name, help, configuration) : 
-        Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration) ;
+                => useUserDefinedName ? Prometheus.Metrics.CreateGauge(name, help, configuration) :
+        Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {

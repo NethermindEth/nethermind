@@ -262,7 +262,7 @@ namespace Nethermind.Network
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
         [MetricsManualNamed("ethereum_peer_count")]
-        public static long  PeerCount;
+        public static long PeerCount;
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The maximum number of peers this node allows to connect.")]
