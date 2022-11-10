@@ -90,20 +90,20 @@ namespace Nethermind.HealthChecks
                     if (_healthChecksConfig.WebhooksEnabled)
                     {
                         setup.AddWebhookNotification("webhook",
-                        uri: _healthChecksConfig.WebhooksUri,
-                        payload: _healthChecksConfig.WebhooksPayload,
-                        restorePayload: _healthChecksConfig.WebhooksRestorePayload,
-                        customDescriptionFunc: report =>
-                        {
-                            string description = report.Entries["node-health"].Description;
+                            uri: _healthChecksConfig.WebhooksUri,
+                            payload: _healthChecksConfig.WebhooksPayload,
+                            restorePayload: _healthChecksConfig.WebhooksRestorePayload,
+                            customDescriptionFunc: (livenessName, report) =>
+                            {
+                                string description = report.Entries["node-health"].Description;
 
-                            IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
+                                IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
 
-                            string hostname = Dns.GetHostName();
+                                string hostname = Dns.GetHostName();
 
-                            HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
-                            return info.GetFullInfo();
-                        }
+                                HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
+                                return info.GetFullInfo();
+                            }
                         );
                     }
                 })

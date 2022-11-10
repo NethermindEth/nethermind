@@ -16,11 +16,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="6.0.8" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.8" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.8" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="7.0.0" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="7.0.0" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="7.0.0" />
       <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
-      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="6.0.0" />
+      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="7.0.0" />
     </ItemGroup>
 
     <ItemGroup>

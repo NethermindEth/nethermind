@@ -6,10 +6,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.4" />
+      <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.5" />
       <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-      <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
-      <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
+      <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.5" />
+      <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.5" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />

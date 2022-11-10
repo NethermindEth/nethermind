@@ -56,17 +56,16 @@ namespace Nethermind.Monitoring.Metrics
 
         private void CreateMemberInfoMectricsGauge(MemberInfo propertyInfo, string gaugeName)
         {
-            GaugeConfiguration configuration = new();
             Dictionary<string, string> tagValues = new();
 
-            configuration.StaticLabels = propertyInfo
+            var staticLabels = propertyInfo
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
                 .ToDictionary(
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
             string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
-            _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name), description, configuration);
+            _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name), description, staticLabels);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -117,8 +116,16 @@ namespace Nethermind.Monitoring.Metrics
             return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
         }
 
-        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
-                => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration);
+        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null)
+        {
+            var gaugeName = $"nethermind_{name}";
+
+            help ??= string.Empty;
+
+            return labels is null
+                ? Prometheus.Metrics.CreateGauge(gaugeName, help)
+                : Prometheus.Metrics.WithLabels(labels).CreateGauge(gaugeName, help);
+        }
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
