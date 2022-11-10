@@ -37,6 +37,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Facade
 {
