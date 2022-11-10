@@ -14,7 +14,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
@@ -104,7 +104,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received().RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+        _pooledTxsRequestor.Received().RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
             Arg.Any<IReadOnlyList<Keccak>>());
     }
 

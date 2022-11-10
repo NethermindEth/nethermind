@@ -89,7 +89,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        _pooledTxsRequestor.RequestTransactions(Send, message.Hashes.ToArray());
+        _pooledTxsRequestor.RequestTransactionsEth66(Send, message.Hashes.ToArray());
 
         stopwatch.Stop();
 
