@@ -113,25 +113,26 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else if (payloadAttributes is not null)
             {
-                var spec = _specProvider.GetSpec(newHeadBlock.Number);
-
-                if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
-                {
-                    var error = "Withdrawals are null with EIP-4895 activated.";
-
-                    if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
-
-                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-                }
-
-                if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
-                {
-                    var error = "Withdrawals are not null with EIP-4895 not activated.";
-
-                    if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
-
-                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-                }
+                // ToDo this validation is incorrect, we need think about payloadAttributes timestamp and newHeadBlock.Timestamp
+                // var spec = _specProvider.GetSpec(newHeadBlock.Number, newHeadBlock.Timestamp);
+                //
+                // if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
+                // {
+                //     var error = "Withdrawals are null with EIP-4895 activated.";
+                //
+                //     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
+                //
+                //     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                // }
+                //
+                // if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
+                // {
+                //     var error = "Withdrawals are not null with EIP-4895 not activated.";
+                //
+                //     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
+                //
+                //     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                // }
             }
 
             BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
