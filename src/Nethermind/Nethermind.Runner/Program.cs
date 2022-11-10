@@ -208,6 +208,7 @@ namespace Nethermind.Runner
 
                     _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
                 }
+                catch (TaskCanceledException) { }
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
