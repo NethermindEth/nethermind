@@ -28,12 +28,12 @@ namespace Nethermind.Config
     {
         private readonly PublicKey _nodeKey;
 
-        public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? udpPort = null)
+        public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
             _nodeKey = nodeKey;
             HostIp = hostIp;
             Port = port;
-            UdpPort = udpPort ?? port;
+            DiscoveryPort = discoveryPort ?? port;
         }
 
         public Enode(string enodeString)
@@ -49,15 +49,9 @@ namespace Nethermind.Config
             _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
             string host = enodeParts2[1];
 
-            try
+            if (enodeParts.Length != 3)
             {
-                HostIp = IPAddress.TryParse(host, out IPAddress? ip)
-                    ? ip
-                    : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
-            }
-            catch (SocketException e)
-            {
-                throw GetDnsException(host, e);
+                throw GetPortException(host);
             }
 
             string[] portParts = enodeParts[2].Split("?discport=");
@@ -68,20 +62,31 @@ namespace Nethermind.Config
                     if (int.TryParse(portParts[0], out int port))
                     {
                         Port = port;
-                        UdpPort = port;
+                        DiscoveryPort = port;
                     }
                     else throw GetPortException(host);
                     break;
                 case 2:
-                    if (int.TryParse(portParts[0], out int tcpPort) && int.TryParse(portParts[1], out int udpPort))
+                    if (int.TryParse(portParts[0], out int tcpPort) && int.TryParse(portParts[1], out int discoveryPort))
                     {
                         Port = tcpPort;
-                        UdpPort = udpPort;
+                        DiscoveryPort = discoveryPort;
                     }
                     else throw GetPortException(host);
                     break;
                 default:
                     throw GetPortException(host);
+            }
+
+            try
+            {
+                HostIp = IPAddress.TryParse(host, out IPAddress? ip)
+                    ? ip
+                    : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
+            }
+            catch (SocketException e)
+            {
+                throw GetDnsException(host, e);
             }
         }
 
@@ -103,10 +108,10 @@ namespace Nethermind.Config
         public Address Address => _nodeKey.Address;
         public IPAddress HostIp { get; }
         public int Port { get; }
-        public int UdpPort { get; }
-        public string Info => UdpPort == Port
+        public int DiscoveryPort { get; }
+        public string Info => DiscoveryPort == Port
             ? $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={UdpPort}";
+            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
     }

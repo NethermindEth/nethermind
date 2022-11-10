@@ -67,16 +67,22 @@ namespace Nethermind.Network.Test
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@some.url:434";
 
         private const string enode5String =
-            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345";
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53";
 
         private const string enode6String =
-            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789";
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345";
 
         private const string enode7String =
-            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingwrong=6789";
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789";
 
         private const string enode8String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingwrong=6789";
+
+        private const string enode9String =
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789?discport=67899";
+
+        private const string enode10String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345:discport=6789";
 
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
@@ -130,32 +136,41 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public void Will_return_exception_in_dns()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode4String);
+            });
+        }
+
+        [Test]
+        public void Will_return_exception_when_there_is_no_port()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode5String);
+            });
+        }
+
+        [Test]
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
         {
-            Enode enode = new(enode5String);
+            Enode enode = new(enode6String);
             enode.Port.Should().Be(12345);
-            enode.UdpPort.Should().Be(12345);
+            enode.DiscoveryPort.Should().Be(12345);
         }
 
         [Test]
         public void Will_parse_port_correctly_when_there_is_only_one()
         {
-            Enode enode = new(enode6String);
+            Enode enode = new(enode7String);
             enode.Port.Should().Be(12345);
-            enode.UdpPort.Should().Be(6789);
+            enode.DiscoveryPort.Should().Be(6789);
         }
 
         [Test]
-        public void Will_throw_on_wrong_ports_part()
-        {
-            Assert.Throws<ArgumentException>(delegate
-            {
-                Enode unused = new(enode7String);
-            });
-        }
-
-        [Test]
-        public void Will_throw_on_duplicated_udpPort_part()
+        public void Will_return_exception_on_wrong_ports_part()
         {
             Assert.Throws<ArgumentException>(delegate
             {
@@ -164,11 +179,20 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_return_exception_in_dns()
+        public void Will_return_exception_on_duplicated_discovery_port_part()
         {
             Assert.Throws<ArgumentException>(delegate
             {
-                Enode unused = new(enode4String);
+                Enode unused = new(enode9String);
+            });
+        }
+
+        [Test]
+        public void Will_return_exception_on_wrong_form_of_discovery_port_part()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode10String);
             });
         }
 
