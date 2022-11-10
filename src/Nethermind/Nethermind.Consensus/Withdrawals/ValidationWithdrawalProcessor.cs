@@ -32,17 +32,20 @@ public class ValidationWithdrawalProcessor : IWithdrawalProcessor
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-        foreach (var withdrawal in block.Withdrawals)
+        if (block.Withdrawals != null)
         {
-            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Address}");
+            foreach (var withdrawal in block.Withdrawals)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} to account {withdrawal.Address}");
 
-            if (_stateProvider.AccountExists(withdrawal.Address))
-            {
-                _stateProvider.AddToBalance(withdrawal.Address, withdrawal.Amount, spec);
-            }
-            else
-            {
-                _stateProvider.CreateAccount(withdrawal.Address, withdrawal.Amount);
+                if (_stateProvider.AccountExists(withdrawal.Address))
+                {
+                    _stateProvider.AddToBalance(withdrawal.Address, withdrawal.Amount, spec);
+                }
+                else
+                {
+                    _stateProvider.CreateAccount(withdrawal.Address, withdrawal.Amount);
+                }
             }
         }
 

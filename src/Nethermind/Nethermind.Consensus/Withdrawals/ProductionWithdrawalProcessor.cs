@@ -19,7 +19,7 @@ public class ProductionWithdrawalProcessor : IWithdrawalProcessor
 
         if (spec.WithdrawalsEnabled)
         {
-            block.Header.WithdrawalsRoot = block.Withdrawals.Length == 0
+            block.Header.WithdrawalsRoot = block.Withdrawals == null || block.Withdrawals.Length == 0
                 ? Keccak.EmptyTreeHash
                 : new WithdrawalTrie(block.Withdrawals!).RootHash;
         }
