@@ -122,7 +122,7 @@ namespace Nethermind.Evm
             _memory.AsSpan().Slice(intLocation + value.Memory.Length, value.PaddingLength).Clear();
         }
 
-        public Span<byte> LoadSpan(in UInt256 location)
+        public Span<byte> LoadSpan(scoped in UInt256 location)
         {
             CheckMemoryAccessViolation(in location, WordSize);
             UpdateSize(in location, WordSize);

@@ -32,7 +32,7 @@ namespace Nethermind.Evm
         public const int MaxStackSize = 1025;
         public const int ReturnStackSize = 1023;
 
-        public EvmStack(in Span<byte> bytes, in int head, ITxTracer txTracer)
+        public EvmStack(scoped in Span<byte> bytes, scoped in int head, ITxTracer txTracer)
         {
             _bytes = bytes;
             Head = head;
@@ -49,7 +49,7 @@ namespace Nethermind.Evm
 
         private ITxTracer _tracer;
 
-        public void PushBytes(in Span<byte> value)
+        public void PushBytes(scoped in Span<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public void PushBytes(in ZeroPaddedSpan value)
+        public void PushBytes(scoped in ZeroPaddedSpan value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -93,7 +93,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public void PushBytes(in ZeroPaddedMemory value)
+        public void PushBytes(scoped in ZeroPaddedMemory value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 

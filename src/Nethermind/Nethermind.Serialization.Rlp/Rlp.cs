@@ -743,7 +743,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ref struct ValueDecoderContext
         {
-            public ValueDecoderContext(in Span<byte> data)
+            public ValueDecoderContext(scoped in Span<byte> data)
             {
                 Data = data;
                 Position = 0;
