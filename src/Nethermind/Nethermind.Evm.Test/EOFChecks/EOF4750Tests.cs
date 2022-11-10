@@ -36,14 +36,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
-using EofTestCase = Nethermind.Evm.Test.EOF3540Tests.TestCase;
 
 namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF4750Tests : VirtualMachineTestsBase
+    public class EOF4750Tests : EofTestsBase
     {
         public class FunctionCase
         {
@@ -51,11 +50,11 @@ namespace Nethermind.Evm.Test
             public int OutputCount;
             public byte[] Body;
         }
-        public class TestCase
+        public class TestCase2
         {
             public int Index;
             public byte[] Main;
-            public FunctionCase[] Functions;
+            public FunctionCase[] Functions = Array.Empty<FunctionCase>();
             public byte[] Data;
             public byte[] Type;
             public (byte Status, string error) Result;
@@ -74,18 +73,22 @@ namespace Nethermind.Evm.Test
 
             private enum Scenario
             {
-                OmitSection,
-                MisplaceSection,
+                OmitSection = 1,
+                MisplaceSection = 2,
             }
-            public IEnumerable<EofTestCase> GenerateScenarios()
+            public IEnumerable<TestCase> GenerateScenarios()
             {
                 byte[] GenerateCase(bool ommitTypeSection, bool misplaceTypeSection)
                 {
                     byte[] bytes;
                     var bytecodeSize = 3;
-                    bytecodeSize += ommitTypeSection ? 0 : 3 + 2 * (Functions.Length + 1 /*Main Code*/);
-                    bytecodeSize += 3 + Main.Length + Functions.Aggregate(0, (acc, funcCase) => acc + funcCase.Body.Length);
-                    bytecodeSize += (Data is not null && Data.Length > 0 ? 3 + Data.Length : 0);
+                    bytecodeSize += ommitTypeSection ? 0 : 3; // typesectionHeader
+                    bytecodeSize += ommitTypeSection ? 0 : 2 * (Functions.Length + 1 /*Main Code*/); // typesection
+                    bytecodeSize += 1 + 2 * (Functions.Length + 1 /*Main Code*/); // codesectionHeader 
+                    bytecodeSize += Main.Length + Functions.Aggregate(0, (acc, funcCase) => acc + funcCase.Body.Length); // codesection 
+                    bytecodeSize += (Data is not null && Data.Length > 0 ? 3 : 0); // datasectionHeader 
+                    bytecodeSize += (Data is not null && Data.Length > 0 ? Data.Length : 0); // datasection
+                    bytecodeSize += 1; // terminator
                     bytes = new byte[bytecodeSize];
 
                     int i = 0;
@@ -97,9 +100,9 @@ namespace Nethermind.Evm.Test
                     byte[] lenBytes;
                     if(!misplaceTypeSection)
                     {
-                        if (!ommitTypeSection && Functions.Length > 0)
+                        if (!ommitTypeSection)
                         {
-                            lenBytes = (Functions.Length * 2).ToByteArray();
+                            lenBytes = ((1 + Functions.Length) * 2).ToByteArray();
                             bytes[i++] = 0x03; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
                         }
                     }
@@ -118,9 +121,9 @@ namespace Nethermind.Evm.Test
 
                     if (misplaceTypeSection)
                     {
-                        if (!ommitTypeSection && Functions.Length > 0)
+                        if (!ommitTypeSection)
                         {
-                            lenBytes = (Functions.Length * 2).ToByteArray();
+                            lenBytes = ((1 + Functions.Length) * 2).ToByteArray();
                             bytes[i++] = 0x03; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
                         }
                     }
@@ -134,10 +137,15 @@ namespace Nethermind.Evm.Test
 
                     // set the terminator byte
                     bytes[i++] = 0x00;
-                    bytes[i++] = (byte)0; bytes[i++] = (byte)0;
-                    foreach (var functionDef in Functions)
+
+                    //set typesection
+                    if(!ommitTypeSection)
                     {
-                        bytes[i++] = (byte)functionDef.InputCount; bytes[i++] = (byte)functionDef.OutputCount;
+                        bytes[i++] = (byte)0; bytes[i++] = (byte)0;
+                        foreach (var functionDef in Functions)
+                        {
+                            bytes[i++] = (byte)functionDef.InputCount; bytes[i++] = (byte)functionDef.OutputCount;
+                        }
                     }
 
                     foreach (var bytecode in Routines)
@@ -154,27 +162,27 @@ namespace Nethermind.Evm.Test
                     return bytes;
                 }
 
-                for(int i = 0; i < 4; i++)
+                for(int i = 3; i <= 3; i++)
                 {
                     var scenario = (Scenario)i;
                     switch(scenario)
                     {
                         case Scenario.OmitSection:
-                            yield return new EofTestCase
+                            yield return new TestCase
                             {
                                 Code = GenerateCase(true, false),
                                 ResultIfEOF = (StatusCode.Failure, "Missing Type Section")
                             };
                             break;
                         case Scenario.MisplaceSection:
-                            yield return new EofTestCase
+                            yield return new TestCase
                             {
                                 Code = GenerateCase(false, true),
                                 ResultIfEOF = (StatusCode.Failure, "Misplaced Type Section")
                             };
                             break;
                         default:
-                            yield return new EofTestCase
+                            yield return new TestCase
                             {
                                 Code = GenerateCase(false, false),
                                 ResultIfEOF = Result
@@ -185,24 +193,22 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        public static IEnumerable<TestCase> Eip4750TestCases
+        public static IEnumerable<TestCase2> Eip4750TestCases
         {
             get
             {
-                yield return new TestCase
+                /*
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .MUL(1)
+                        .MUL(3, 23)
                         .STOP()
                         .Done,
                     Data = Bytes.FromHexString("deadbeef"),
                     Result = (StatusCode.Success, null),
-                    
                 };
-
-                yield return new TestCase
+                */
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -223,10 +229,9 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Success, null),
-                    
                 };
 
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -248,10 +253,9 @@ namespace Nethermind.Evm.Test
                     },
                     Data = Bytes.FromHexString("deadbeef"),
                     Result = (StatusCode.Success, null),
-                    
                 };
-
-                yield return new TestCase
+                /*
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -271,11 +275,9 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Failure, "Code ending in non terminating opcode"),
-                    
                 };
 
-
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -295,10 +297,9 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Failure, "Code ending in non terminating opcode"),
-                    
                 };
 
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -318,10 +319,9 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Failure, "Invalid Code Section call"),
-                    
                 };
 
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .PushData(23)
@@ -353,28 +353,25 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Failure, "Invalid Code Section call"),
-                    
                 };
 
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .STOP()
                         .Done,
-                    Functions = Enumerable.Range(0, 1024).Select(_ => new FunctionCase
+                    Functions = Enumerable.Range(0, 1023).Select(_ => new FunctionCase
                     {
                         Body = Prepare.EvmCode
                                 .INVALID()
                                 .Done,
-                        InputCount = 2,
+                        InputCount = 0,
                         OutputCount = 0
                     }).ToArray(),
                     Result = (StatusCode.Success, null),
-                    
                 };
 
-
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .STOP()
@@ -389,11 +386,9 @@ namespace Nethermind.Evm.Test
                         }
                     },
                     Result = (StatusCode.Failure, null),
-                    
                 };
 
-
-                yield return new TestCase
+                yield return new TestCase2
                 {
                     Main = Prepare.EvmCode
                         .STOP()
@@ -407,136 +402,68 @@ namespace Nethermind.Evm.Test
                         OutputCount = 0
                     }).ToArray(),
                     Result = (StatusCode.Failure, "Code Section overflow (+1024)"),
-                    
                 };
+                */
             }
         }
 
-        public static IEnumerable<IReleaseSpec> Specs
+        public static IEnumerable<TestCase> Eip4750Scenarios
         {
             get
             {
-                yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
+                foreach (var testCase in Eip4750TestCases)
+                {
+                    foreach (var scenarioCase in testCase.GenerateScenarios())
+                    {
+                        yield return scenarioCase;
+                    }
+                }
             }
         }
 
         [Test]
-        public void Eip4750_execution_tests([ValueSource(nameof(Eip4750TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        public void Eip4750_execution_tests([ValueSource(nameof(Eip4750Scenarios))] TestCase testCase)
         {
-            foreach(var scenarioCase in testcase.GenerateScenarios()) {
-                bool isShanghaiBlock = spec is Shanghai;
-                long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+            ILogManager logManager = GetLogManager();
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, Shanghai.Instance);
+            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
 
+            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, testCase.Code, Int64.MaxValue);
 
-
-                var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
-                {
-                    IsEip4200Enabled = false,
-                    IsEip4750Enabled = false
-                };
-
-                ILogManager logManager = GetLogManager();
-                var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
-                Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
-                _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-
-                TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, scenarioCase.Code, Int64.MaxValue);
-
-                if (isShanghaiBlock)
-                {
-                    receipts.StatusCode.Should().Be(scenarioCase.ResultIfEOF.Status, testcase.Description);
-                }
-
-                if (!isShanghaiBlock)
-                {
-                    receipts.StatusCode.Should().Be(StatusCode.Failure, testcase.Description);
-                }
-            }
+            receipts.StatusCode.Should().Be(testCase.ResultIfEOF.Status, receipts.Error);
         }
 
         // valid code
-        [TestCase("0xEF00010100010000", true, 1, 0, true)]
-        [TestCase("0xEF0001010002006000", true, 2, 0, true)]
-        [TestCase("0xEF0001010002020001006000AA", true, 2, 1, true)]
-        [TestCase("0xEF0001010002020004006000AABBCCDD", true, 2, 4, true)]
-        [TestCase("0xEF00010100040200020060006001AABB", true, 4, 2, true)]
-        [TestCase("0xEF000101000602000400600060016002AABBCCDD", true, 6, 4, true)]
+        //[TestCase("0xEF000101000100FE", true, true)]
+        //[TestCase("0xEF00010100050060006000F3", true, true)]
+        //[TestCase("0xEF00010100050060006000FD", true, true)]
+        [TestCase("0xEF0001010003006000FF", true, true)]
+        //[TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true, true)]
+        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true, true)]
+        //[TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true, true)]
         // code with invalid magic
-        [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete Magic")]
-        [TestCase("0xEF01", false, 0, 0, true, Description = "Incorrect Magic second byte")]
-        [TestCase("0xEF0101010002020004006000AABBCCDD", false, 0, 0, true, Description = "Valid code with wrong magic second byte")]
-        // code with valid magic but invalid body
-        [TestCase("0xEF0000010002020004006000AABBCCDD", false, 0, 0, true, Description = "Invalid Version")]
-        [TestCase("0xEF00010100", false, 0, 0, true, Description = "Code section missing")]
-        [TestCase("0xEF0001010002006000DEADBEEF", false, 0, 0, true, Description = "Invalid total Size")]
-        [TestCase("0xEF00010100020100020060006000", false, 0, 0, true, Description = "Multiple Code sections")]
-        [TestCase("0xEF000101000002000200AABB", false, 0, 0, true, Description = "Empty code section")]
-        [TestCase("0xEF000102000401000200AABBCCDD6000", false, 0, 0, true, Description = "Data section before code section")]
-        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "Data Section size Missing")]
-        [TestCase("0xEF0001010002020004020004006000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple Data sections")]
-        [TestCase("0xEF0001010002030004006000AABBCCDD", false, 0, 0, true, Description = "Unknown Section")]
-        // tests proposed on the eip paper
-        [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete magic")]
-        [TestCase("0xEFFF0101000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid magic")]
-        [TestCase("0xEF00", false, 0, 0, true, Description = "No version")]
-        [TestCase("0xEF000001000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF000201000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF00FF01000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF0001", false, 0, 0, true, Description = "No header")]
-        [TestCase("0xEF000100", false, 0, 0, true, Description = "No code section")]
-        [TestCase("0xEF000101", false, 0, 0, true, Description = "No code section size")]
-        [TestCase("0xEF00010100", false, 0, 0, true, Description = "Code section size incomplete")]
-        [TestCase("0xEF0001010003", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF0001010003600000", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF000101000200", false, 0, 0, true, Description = "No code section contents")]
-        [TestCase("0xEF00010100020060", false, 0, 0, true, Description = "Code section contents incomplete")]
-        [TestCase("0xEF000101000300600000DEADBEEF", false, 0, 0, true, Description = "Trailing bytes after code section")]
-        [TestCase("0xEF000101000301000300600000600000", false, 0, 0, true, Description = "Multiple code sections")]
-        [TestCase("0xEF000101000000", false, 0, 0, true, Description = "Empty code section")]
-        [TestCase("0xEF000101000002000200AABB", false, 0, 0, true, Description = "Empty code section (with non-empty data section)")]
-        [TestCase("0xEF000102000401000300AABBCCDD600000", false, 0, 0, true, Description = "Data section preceding code section")]
-        [TestCase("0xEF000102000400AABBCCDD", false, 0, 0, true, Description = "Data section without code section")]
-        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "No data section size")]
-        [TestCase("0xEF00010100020200", false, 0, 0, true, Description = "Data section size incomplete")]
-        [TestCase("0xEF0001010003020004", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF0001010003020004600000AABBCCDD", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF000101000302000400600000", false, 0, 0, true, Description = "No data section contents")]
-        [TestCase("0xEF000101000302000400600000AABBCC", false, 0, 0, true, Description = "Data section contents incomplete")]
-        [TestCase("0xEF000101000302000400600000AABBCCDDEE", false, 0, 0, true, Description = "Trailing bytes after data section")]
-        [TestCase("0xEF000101000302000402000400600000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple data sections")]
-        [TestCase("0xEF000101000101000102000102000100FEFEAABB", false, 0, 0, true, Description = "Multiple code and data sections")]
-        [TestCase("0xEF000101000302000000600000", false, 0, 0, true, Description = "Empty data section")]
-        [TestCase("0xEF0001010002030004006000AABBCCDD", false, 0, 0, true, Description = "Unknown section (id = 3)")]
-        public void EIP4750_Compliant_formats_Test(string code, bool isCorrectFormated, int codeSize, int dataSize, bool isShanghaiFork)
+        //[TestCase("0xEF0001010001000C", false, true, Description = "Undefined instruction")]
+        //[TestCase("0xEF000101000100EF", false, true, Description = "Undefined instruction")]
+        //[TestCase("0xEF00010100010060", false, true, Description = "Missing terminating instruction")]
+        //[TestCase("0xEF00010100010030", false, true, Description = "Missing terminating instruction")]
+        //[TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
+        //[TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
+        public void EIP4570_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
         {
             var bytecode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
 
-            var TargetReleaseSpec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-
-            var expectedHeader = codeSize == 0 && dataSize == 0
-                ? null
-                : new EofHeader
-                {
-                    CodeSize = new int[] { codeSize },
-                    DataSize = dataSize,
-                    Version = 1
-                };
-            var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
-            var actualJson = JsonSerializer.Serialize(header);
-
-            if (isShanghaiFork)
+            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
             {
-                Assert.AreEqual(actualJson, expectedJson);
-                checkResult.Should().Be(isCorrectFormated);
-            }
-            else
-            {
-                checkResult.Should().Be(isCorrectFormated);
-            }
+                IsEip4750Enabled = true
+            };
+
+
+            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
+
+            checkResult.Should().Be(isCorrectlyFormated);
         }
     }
 }

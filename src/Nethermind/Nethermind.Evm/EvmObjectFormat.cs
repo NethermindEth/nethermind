@@ -28,7 +28,7 @@ namespace Nethermind.Evm
         public int CodesSize => CodeSize?.Sum() ?? 0;
         public int DataSize { get; set; }
         public byte Version { get; set; }
-        public int HeaderSize => 2 + 1 + (DataSize == 0 ? 0 : (1 + 2)) + (TypeSize == 0 ? 0 : (1 + 2)) + 1 + CodesSize + 1;
+        public int HeaderSize => 2 + 1 + (DataSize == 0 ? 0 : (1 + 2)) + (TypeSize == 0 ? 0 : (1 + 2)) + 1 + 2 * CodeSize.Length + 1;
                                 // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
         public int ContainerSize => TypeSize + CodesSize + DataSize;
         #endregion
@@ -187,6 +187,7 @@ namespace Nethermind.Evm
 
                                 header = null; return false;
                             }
+                            i += 2;
                             break;
                         }
                     case SectionDividor.CodeSection:
@@ -200,19 +201,23 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            CodeSections.Add(codeSectionSize);
-
-                            if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
+                            var functionsCount = (TypeSections is null || TypeSections.Value == 0 ? 2 : TypeSections.Value) / 2;
+                            for (int j = 0; j < functionsCount; j++)
                             {
-                                if (LoggingEnabled)
+                                var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
+                                CodeSections.Add(codeSectionSize);
+
+                                if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
                                 {
-                                    _logger.Trace($"EIP-3540 : CodeSection size must be strictly bigger than 0 but found 0");
+                                    if (LoggingEnabled)
+                                    {
+                                        _logger.Trace($"EIP-3540 : CodeSection size must be strictly bigger than 0 but found 0");
+                                    }
+                                    header = null; return false;
                                 }
-                                header = null; return false;
+                                i += 2;
                             }
 
-                            i += 2;
                             break;
                         }
                     case SectionDividor.DataSection:
@@ -335,7 +340,7 @@ namespace Nethermind.Evm
             for (int i = 0; i < sectionSize;)
             {
                 opcode = (Instruction)code[i];
-
+                i++;
                 // validate opcode
                 if (!Enum.IsDefined(opcode.Value))
                 {
@@ -350,7 +355,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 3 > sectionSize)
+                        if (i + 2 > sectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -359,9 +364,9 @@ namespace Nethermind.Evm
                             return false;
                         }
 
-                        var offset = code[(i + 1)..(i + 3)].ReadEthInt16();
-                        immediates.Add(new Range(i + 1, i + 2));
-                        var rjumpdest = offset + 3 + i;
+                        var offset = code.Slice(i, 2).ReadEthInt16();
+                        immediates.Add(new Range(i, i + 1));
+                        var rjumpdest = offset + 2 + i;
                         rjumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= sectionSize)
                         {
@@ -371,7 +376,7 @@ namespace Nethermind.Evm
                             }
                             return false;
                         }
-                        i += 2;
+                        i += 3;
                     }
                 }
 
@@ -379,7 +384,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.CALLF)
                     {
-                        if (i + 3 > sectionSize)
+                        if (i + 2 > sectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -388,8 +393,8 @@ namespace Nethermind.Evm
                             return false;
                         }
 
-                        var targetSectionId = code[(i + 1)..(i + 3)].ReadEthInt16();
-                        immediates.Add(new Range(i + 1, i + 2));
+                        var targetSectionId = code.Slice(i, 2).ReadEthInt16();
+                        immediates.Add(new Range(i, i + 1));
 
                         if (targetSectionId >= header.CodeSize.Length)
                         {
@@ -399,14 +404,16 @@ namespace Nethermind.Evm
                             }
                             return false;
                         }
-                        i += 2;
+                        i += 3;
                     }
                 }
 
+                opcode = (Instruction)code[i];
+
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
-                    int len = code[i] - (int)Instruction.PUSH1 + 1;
-                    immediates.Add(new Range(i + 1, i + len));
+                    int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
+                    immediates.Add(new Range(i, i + len));
                     i += len;
                     if (i >= sectionSize)
                     {

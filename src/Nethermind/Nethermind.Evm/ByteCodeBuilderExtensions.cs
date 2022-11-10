@@ -158,6 +158,10 @@ namespace Nethermind.Evm
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
             => @this.Op(Instruction.CALLF)
                     .Data(BitConverter.GetBytes(sectionId));
+        public static Prepare CALLF(this Prepare @this, UInt16 sectionId, params byte[] arguments)
+            => @this.PushData(arguments)
+                    .Op(Instruction.CALLF)
+                    .Data(BitConverter.GetBytes(sectionId));
         public static Prepare RETF(this Prepare @this)
             => @this.Op(Instruction.RETF);
 

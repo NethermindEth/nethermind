@@ -43,51 +43,8 @@ namespace Nethermind.Evm.Test
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF4200Tests : VirtualMachineTestsBase
+    public class EOF4200Tests : EofTestsBase
     {
-        static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
-
-            Array.Copy(bytecode, 0, bytes, 0, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-        static byte[] EofBytecode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? 10 + data.Length : 7) + bytecode.Length];
-
-            int i = 0;
-
-            // set magic
-            bytes[i++] = 0xEF; bytes[i++] = 0x00; bytes[i++] = 0x01;
-
-            // set code section
-            var lenBytes = bytecode.Length.ToByteArray();
-            bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-
-            // set PushData section
-            if (data is not null && data.Length > 0)
-            {
-                lenBytes = data.Length.ToByteArray();
-                bytes[i++] = 0x02; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-            }
-            bytes[i++] = 0x00;
-
-            // set the terminator byte
-            Array.Copy(bytecode, 0, bytes, i, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, i + bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-
         // valid code
         [TestCase("0xEF00010100060060005DFFFB00", true, true, Description = "valid rjumpi with : offset = -5")]
         [TestCase("0xEF00010100090060005D000300000000", true, true, Description = "valid rjumpi with : offset = 3")]
@@ -238,38 +195,24 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase)
         {
-            bool isShanghaiFork = spec is Shanghai;
-            long blockTestNumber = isShanghaiFork ? BlockNumber : BlockNumber - 1;
+            var bytecode = testcase.GenerateCode(isEof : true);
 
-            var bytecode =
-                isShanghaiFork
-                ? EofBytecode(testcase.Code, testcase.Data)
-                : Classicalcode(testcase.Code, testcase.Data);
-
-            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip4200Enabled = isShanghaiFork,
+                IsEip4200Enabled = true,
                 IsEip4750Enabled = false
             };
 
             ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, Shanghai.Instance);
             Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
 
-            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
+            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
 
-            if (isShanghaiFork)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
-            }
-
-            if (!isShanghaiFork)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
-            }
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
         }
     }
 }

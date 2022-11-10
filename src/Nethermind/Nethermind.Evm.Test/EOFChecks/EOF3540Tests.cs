@@ -42,51 +42,8 @@ namespace Nethermind.Evm.Test
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF3540Tests : VirtualMachineTestsBase
+    public class EOF3540Tests : EofTestsBase
     {
-        static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
-
-            Array.Copy(bytecode, 0, bytes, 0, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-        static byte[] EofBytecode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? 10 + data.Length : 7) + bytecode.Length];
-
-            int i = 0;
-
-            // set magic
-            bytes[i++] = 0xEF; bytes[i++] = 0x00; bytes[i++] = 0x01;
-
-            // set code section
-            var lenBytes = bytecode.Length.ToByteArray();
-            bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-
-            // set PushData section
-            if (data is not null && data.Length > 0)
-            {
-                lenBytes = data.Length.ToByteArray();
-                bytes[i++] = 0x02; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-            }
-            bytes[i++] = 0x00;
-
-            // set the terminator byte
-            Array.Copy(bytecode, 0, bytes, i, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, i + bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-
         // valid code
         [TestCase("0xEF00010100010000", true, 1, 0, true)]
         [TestCase("0xEF0001010002006000", true, 2, 0, true)]
@@ -175,16 +132,6 @@ namespace Nethermind.Evm.Test
             {
                 checkResult.Should().Be(isCorrectFormated);
             }
-        }
-
-        public class TestCase
-        {
-            public int Index;
-            public byte[] Code;
-            public byte[] Data;
-            public (byte Status, string error) ResultIfEOF;
-            public (byte Status, string error) ResultIfNotEOF;
-            public string Description;
         }
 
         public static IEnumerable<TestCase> Eip3540TestCases
@@ -581,28 +528,17 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        public static IEnumerable<IReleaseSpec> Specs
-        {
-            get
-            {
-                yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
-            }
-        }
-
         [Test]
         public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
         {
             bool isShanghaiBlock = spec is Shanghai;
             long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
 
-            var bytecode =
-                isShanghaiBlock
-                ? EofBytecode(testcase.Code, testcase.Data)
-                : Classicalcode(testcase.Code, testcase.Data);
+            var bytecode = testcase.GenerateCode(isShanghaiBlock);
 
             var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
             {
+                IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false
             };
@@ -659,12 +595,12 @@ namespace Nethermind.Evm.Test
                     // if initcode should be EOF
                     if (hasEofInitCode)
                     {
-                        deployed = EofBytecode(deployed, deployedData);
+                        deployed = TestCase.EofBytecode(deployed, deployedData);
                     }
                     // if initcode should be Legacy
                     else
                     {
-                        deployed = Classicalcode(deployed, deployedData);
+                        deployed = TestCase.Classicalcode(deployed, deployedData);
                     }
 
                     // if initcode should be corrupt
@@ -684,6 +620,7 @@ namespace Nethermind.Evm.Test
                                 .MSTORE(0, deployed)
                                 .PUSHx(salt)
                                 .CREATEx(2, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .STOP()
                                 .Done,
                         _ => Prepare.EvmCode
                                 .MSTORE(0, deployed)
@@ -694,12 +631,12 @@ namespace Nethermind.Evm.Test
                     // if container should be EOF
                     if (hasEofContainer)
                     {
-                        result = EofBytecode(result);
+                        result = TestCase.EofBytecode(result);
                     }
                     // if initcode should be Legacy
                     else
                     {
-                        result = Classicalcode(result);
+                        result = TestCase.Classicalcode(result);
                     }
 
                     // if container should be corrupt

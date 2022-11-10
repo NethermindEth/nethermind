@@ -43,51 +43,8 @@ namespace Nethermind.Evm.Test
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF3750Tests : VirtualMachineTestsBase
+    public class EOF3670Tests : EofTestsBase
     {
-        static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
-
-            Array.Copy(bytecode, 0, bytes, 0, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-        static byte[] EofBytecode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? 10 + data.Length : 7) + bytecode.Length];
-
-            int i = 0;
-
-            // set magic
-            bytes[i++] = 0xEF; bytes[i++] = 0x00; bytes[i++] = 0x01;
-
-            // set code section
-            var lenBytes = bytecode.Length.ToByteArray();
-            bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-
-            // set PushData section
-            if (data is not null && data.Length > 0)
-            {
-                lenBytes = data.Length.ToByteArray();
-                bytes[i++] = 0x02; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-            }
-            bytes[i++] = 0x00;
-
-            // set the terminator byte
-            Array.Copy(bytecode, 0, bytes, i, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, i + bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-
         public static IEnumerable<TestCase> Eip3670TestCases
         {
             get
@@ -253,7 +210,26 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "EOF1 execution with data section: Try to jump into data section"
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .PushData(4)
+                            .Op(Instruction.JUMP)
+                            .Op(Instruction.CODESIZE)
+                            .Done,
+                    Data = Prepare.EvmCode
+                            .Op(Instruction.JUMPDEST)
+                            .PushData(1)
+                            .PushData(0)
+                            .Op(Instruction.MSTORE8)
+                            .Return(1, 0)
+                            .Done,
+                    ResultIfEOF = (StatusCode.Failure, "End Instruction is not a terminal opcode"),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Try to jump into data section"
                 };
@@ -273,7 +249,27 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "EOF1 execution : Try to conditinally jump into data section"
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .PushData(1)
+                            .PushData(6)
+                            .Op(Instruction.JUMPI)
+                            .Op(Instruction.CODESIZE)
+                            .Done,
+                    Data = Prepare.EvmCode
+                            .Op(Instruction.JUMPDEST)
+                            .PushData(1)
+                            .PushData(0)
+                            .Op(Instruction.MSTORE8)
+                            .Return(1, 0)
+                            .Done,
+                    ResultIfEOF = (StatusCode.Failure, "Missing End Instruction"),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Try to conditinally jump into data section"
                 };
@@ -485,7 +481,7 @@ namespace Nethermind.Evm.Test
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
-                            .Op(0xff)
+                            .Op(0xfb) // works as long as 0xfb is not defined yet
                             .PushData(new byte[] { 23, 69 })
                             .Return(2, 0)
                             .Done,
@@ -529,14 +525,6 @@ namespace Nethermind.Evm.Test
 
             checkResult.Should().Be(isCorrectlyFormated);
         }
-        public static IEnumerable<IReleaseSpec> Specs
-        {
-            get
-            {
-                yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
-            }
-        }
 
         [Test]
         public void Eip3670_execution_tests([ValueSource(nameof(Eip3670TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
@@ -544,10 +532,7 @@ namespace Nethermind.Evm.Test
             bool isShanghaiBlock = spec is Shanghai;
             long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
 
-            var bytecode =
-                isShanghaiBlock
-                ? EofBytecode(testcase.Code, testcase.Data)
-                : Classicalcode(testcase.Code, testcase.Data);
+            var bytecode = testcase.GenerateCode(isShanghaiBlock);
 
             var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
             {
@@ -565,13 +550,11 @@ namespace Nethermind.Evm.Test
             if (isShanghaiBlock)
             {
                 receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfEOF.error, testcase.Description);
             }
 
             if (!isShanghaiBlock)
             {
                 receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
             }
         }
 
@@ -605,15 +588,9 @@ namespace Nethermind.Evm.Test
                 byte[] EmitBytecode(byte[] deployed, byte[] deployedData, bool hasEofContainer, bool hasEofInitCode, bool hasCorruptContainer, bool hasCorruptInitcode, int context)
                 {
                     // if initcode should be EOF
-                    if (hasEofInitCode)
-                    {
-                        deployed = EofBytecode(deployed, deployedData);
-                    }
-                    // if initcode should be Legacy
-                    else
-                    {
-                        deployed = Classicalcode(deployed, deployedData);
-                    }
+                    deployed = hasEofInitCode
+                        ? TestCase.EofBytecode(deployed, deployedData)
+                        : TestCase.Classicalcode(deployed, deployedData);
 
                     // if initcode should be corrupt
                     if (hasCorruptInitcode)
@@ -642,16 +619,9 @@ namespace Nethermind.Evm.Test
                                 .Done,
                     };
 
-                    // if container should be EOF
-                    if (hasEofContainer)
-                    {
-                        result = EofBytecode(result);
-                    }
-                    // if initcode should be Legacy
-                    else
-                    {
-                        result = Classicalcode(result);
-                    }
+                    result = hasEofContainer
+                        ? TestCase.EofBytecode(result)
+                        : TestCase.Classicalcode(result);
 
                     // if container should be corrupt
                     if (hasCorruptContainer)
