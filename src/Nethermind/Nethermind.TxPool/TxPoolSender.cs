@@ -36,6 +36,8 @@ namespace Nethermind.TxPool
 
         public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            if (tx.Hash is null)
+                throw new ArgumentNullException(nameof(tx.Hash));
             AcceptTxResult? result = null;
 
             // TODO: this is very not intuitive - can we fix it...?

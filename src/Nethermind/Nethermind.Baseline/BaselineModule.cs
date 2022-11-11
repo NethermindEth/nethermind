@@ -27,6 +27,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -95,6 +96,7 @@ namespace Nethermind.Baseline
             tx.SenderAddress = address;
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
+            tx.Hash = tx.CalculateHash();
 
             Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
             return ResultWrapper<Keccak>.Success(txHash);
@@ -126,6 +128,7 @@ namespace Nethermind.Baseline
             tx.SenderAddress = address;
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
+            tx.Hash = tx.CalculateHash();
 
             Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
 
@@ -586,6 +589,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
+            tx.Hash = tx.CalculateHash();
 
             Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
 
