@@ -63,6 +63,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             case Eth68MessageCode.NewPooledTransactionHashes:
                 NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
                     Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                ReportIn(newPooledTxHashesMsg);
                 Handle(newPooledTxHashesMsg);
                 break;
             default:
@@ -86,6 +87,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                                            $"Types count: {message.Types.Count} " +
                                            $"Sizes count: {message.Sizes.Count}");
         }
+
+        Metrics.Eth68NewPooledTransactionHashesReceived++;
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -140,6 +143,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
     private void SendMessage(IReadOnlyList<TxType> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
+        Metrics.Eth68NewPooledTransactionHashesSent++;
         Send(message);
     }
 }

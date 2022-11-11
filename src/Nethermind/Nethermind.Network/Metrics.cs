@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -166,6 +166,24 @@ namespace Nethermind.Network
 
         [Description("Number of eth.65 NewPooledTransactionHashes messages sent")]
         public static long Eth65NewPooledTransactionHashesSent { get; set; }
+
+        [Description("Number of eth.68 NewPooledTransactionHashes messages received")]
+        public static long Eth68NewPooledTransactionHashesReceived { get; set; }
+
+        [Description("Number of eth.68 NewPooledTransactionHashes messages sent")]
+        public static long Eth68NewPooledTransactionHashesSent { get; set; }
+
+        [Description("Number of eth NewPooledTransactionHashes messages received")]
+        public static long EthNewPooledTransactionHashesReceived
+        {
+            get => Eth68NewPooledTransactionHashesReceived + Eth65NewPooledTransactionHashesReceived;
+        }
+
+        [Description("Number of eth NewPooledTransactionHashes messages sent")]
+        public static long EthNewPooledTransactionHashesSent
+        {
+            get => Eth68NewPooledTransactionHashesSent + Eth65NewPooledTransactionHashesSent;
+        }
 
         [Description("Number of eth.65 GetPooledTransactions messages received")]
         public static long Eth65GetPooledTransactionsReceived { get; set; }
