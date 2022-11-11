@@ -5,7 +5,7 @@
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
         <Version>0.0.1</Version>
-        <LangVersion>latest</LangVersion>
+        <LangVersion>10.0</LangVersion>
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
