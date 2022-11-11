@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
