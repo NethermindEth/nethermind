@@ -104,8 +104,8 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received().RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>());
+        _pooledTxsRequestor.Received().RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<TxType>>());
     }
 
     [TestCase(true)]
