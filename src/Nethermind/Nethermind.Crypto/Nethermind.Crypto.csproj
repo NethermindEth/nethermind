@@ -10,12 +10,19 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <Compile Remove="Resources\**" />
+      <EmbeddedResource Remove="Resources\**" />
+      <None Remove="Resources\**" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\Nethermind.Native\Nethermind.Native.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Ckzg.Bindings" Version="0.1.1.54" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="6.0.8" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.8" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.8" />
@@ -42,6 +49,21 @@
       <Content Include="runtimes\win-x64\native\shamatar.dll">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="Properties\Resources.Designer.cs">
+        <DesignTime>True</DesignTime>
+        <AutoGen>True</AutoGen>
+        <DependentUpon>Resources.resx</DependentUpon>
+      </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Update="Properties\Resources.resx">
+        <Generator>ResXFileCodeGenerator</Generator>
+        <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      </EmbeddedResource>
     </ItemGroup>
 
 </Project>
