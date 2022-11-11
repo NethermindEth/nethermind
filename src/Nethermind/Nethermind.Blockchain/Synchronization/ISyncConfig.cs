@@ -99,6 +99,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool StrictMode { get; set; }
 
         [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
-        public bool NoValidatorLightClient { get; set; }
+        public bool NoValidatorNode { get; set; }
     }
 }
