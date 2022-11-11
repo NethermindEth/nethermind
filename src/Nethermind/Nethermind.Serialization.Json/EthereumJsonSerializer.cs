@@ -33,9 +33,9 @@ namespace Nethermind.Serialization.Json
         private JsonSerializerSettings _settings;
         private JsonSerializerSettings _readableSettings;
 
-        public EthereumJsonSerializer()
+        public EthereumJsonSerializer(int? maxDepth = null)
         {
-            RebuildSerializers();
+            RebuildSerializers(maxDepth);
         }
 
         public static IReadOnlyList<JsonConverter> CommonConverters { get; } = new ReadOnlyCollection<JsonConverter>(
@@ -141,7 +141,7 @@ namespace Nethermind.Serialization.Json
             RebuildSerializers();
         }
 
-        private void RebuildSerializers()
+        private void RebuildSerializers(int? maxDepth = null)
         {
             _readableSettings = new JsonSerializerSettings
             {
@@ -149,7 +149,6 @@ namespace Nethermind.Serialization.Json
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
                 Converters = ReadableConverters,
-                MaxDepth = 128
             };
 
             _settings = new JsonSerializerSettings
@@ -158,8 +157,12 @@ namespace Nethermind.Serialization.Json
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.None,
                 Converters = BasicConverters,
-                MaxDepth = 128
             };
+
+            if (maxDepth is not null)
+            {
+                _readableSettings.MaxDepth = _settings.MaxDepth = maxDepth.Value;
+            }
 
             _internalSerializer = JsonSerializer.Create(_settings);
             _internalReadableSerializer = JsonSerializer.Create(_readableSettings);

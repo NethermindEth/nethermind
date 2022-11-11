@@ -15,15 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System.IO.Compression;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
@@ -36,7 +33,6 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
 {
     private readonly IDb _db;
     private readonly Func<IReadOnlyCollection<TTrace>, byte[]> _serialization;
-    private readonly bool _verifySerialized;
     private readonly IBlockTracer _blockTracer;
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
     private Keccak _currentBlockHash = null!;
@@ -50,16 +46,13 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
     /// <param name="db">Database</param>
     /// <param name="serialization">Method for serialization</param>
     /// <param name="logManager"></param>
-    /// <param name="verifySerialized"></param>
     public DbPersistingBlockTracer(BlockTracerBase<TTrace, TTracer> blockTracer,
         IDb db,
         Func<IReadOnlyCollection<TTrace>, byte[]> serialization,
-        ILogManager logManager,
-        bool verifySerialized = false)
+        ILogManager logManager)
     {
         _db = db;
         _serialization = serialization;
-        _verifySerialized = verifySerialized;
         _blockTracer = _tracerWithResults = blockTracer;
         _logger = logManager.GetClassLogger<DbPersistingBlockTracer<TTrace, TTracer>>();
     }
@@ -89,23 +82,5 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
         long currentBlockNumber = _currentBlockNumber;
         _db.Set(currentBlockHash, tracesSerialized);
         if (_logger.IsTrace) _logger.Trace($"Saved traces for block {currentBlockNumber} ({currentBlockHash}) with size {tracesSerialized.Length} bytes for {result.Count} traces.");
-
-        if (_verifySerialized)
-        {
-            Task.Run(() =>
-            {
-                try
-                {
-                    using GZipStream compressionStream2 = new(new MemoryStream(tracesSerialized), CompressionMode.Decompress);
-                    new EthereumJsonSerializer().Deserialize<List<ParityLikeTxTrace>>(compressionStream2);
-                }
-                catch (Exception e)
-                {
-                    string tracesWrittenToPath = Path.Combine(Path.GetTempPath(), $"{currentBlockNumber}.json");
-                    if (_logger.IsError) _logger.Error($"Can't deserialize trace logs for block {currentBlockNumber} ({currentBlockHash}), size {tracesSerialized.Length}, dump: {tracesWrittenToPath}", e);
-                    File.WriteAllBytes(tracesWrittenToPath, tracesSerialized);
-                }
-            });
-        }
     }
 }

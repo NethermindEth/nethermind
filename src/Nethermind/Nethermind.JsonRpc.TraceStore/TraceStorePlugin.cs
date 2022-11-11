@@ -36,6 +36,11 @@ public class TraceStorePlugin : INethermindPlugin
 
         if (Enabled)
         {
+            // Setup serialization
+            TraceSerializer.VerifySerialized = _config.VerifySerialized;
+            TraceSerializer.MaxDepth = _config.MaxDepth;
+            TraceSerializer.Logger = _logger;
+
             // Setup DB
             _db = (IDbWithSpan)_api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName,  _db);
@@ -59,7 +64,7 @@ public class TraceStorePlugin : INethermindPlugin
             // Setup tracing
             ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace,ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db, static t => TraceSerializer.Serialize(t), _logManager, _config.VerifySerialized);
+                new(parityTracer, _db, static t => TraceSerializer.Serialize(t), _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
         }
 
