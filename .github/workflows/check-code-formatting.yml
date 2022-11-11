@@ -1,4 +1,4 @@
-name: 'No spacing issues check'
+name: 'Check code formatting'
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   spacing-check:
-    name: Check spacing changes if any
+    name: Check whitespaces
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3

@@ -1,4 +1,4 @@
-name: '[RUN] Nethermind/Ethereum Tests'
+name: '[RUN] Nethermind/Ethereum tests'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -16,15 +16,15 @@ env:
 
 jobs:
   neth-tests:
-    name: Running Nethermind Tests 1
+    name: 'Run Nethermind tests #1'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -45,15 +45,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.AccountAbstraction.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests2:
-    name: Running Nethermind Tests 2
+    name: 'Run Nethermind tests #2'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -92,15 +92,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Logging.NLog.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests3:
-    name: Running Nethermind Tests 3
+    name: 'Run Nethermind tests #3'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -136,15 +136,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Specs.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests4:
-    name: Running Nethermind Tests 4
+    name: 'Run Nethermind tests #4'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -156,15 +156,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Synchronization.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests5:
-    name: Running Nethermind Tests 5
+    name: 'Run Nethermind tests #5'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -191,15 +191,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.State.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests6:
-    name: Running Nethermind Tests 6
+    name: 'Run Nethermind tests #6'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -220,15 +220,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Overseer.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests-cortex:
-    name: Running Cortex Tests
+    name: Run Cortex tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -252,15 +252,15 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Ssz.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-runner:
-    name: Nethermind Runner Tests
+    name: Run Nethermind.Runner tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -275,26 +275,26 @@ jobs:
         dotnet test src/Nethermind/Nethermind.Cli.Test -c ${{ env.BUILD_CONFIG }}
 
   eth-tests1:
-    name: Running Ethereum Tests 1
+    name: 'Run Ethereum tests #1'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
     - name: Ethereum.Blockchain.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
 
   eth-tests2:
-    name: Running Ethereum Tests 2
+    name: 'Run Ethereum tests #2'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
     - name: Ethereum.Trie.Test
       run: |
@@ -304,13 +304,13 @@ jobs:
         dotnet test src/Nethermind/Ethereum.VM.Test -c ${{ env.BUILD_CONFIG }}
 
   eth-tests3:
-    name: Running Ethereum Tests 3
+    name: 'Run Ethereum tests #3'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
     - name: Ethereum.Basic.Test
       run: |

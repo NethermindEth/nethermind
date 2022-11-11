@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The TAG of the version you want to release'
+        description: 'The tag of the version to release'
         required: true
 
 permissions:
@@ -14,52 +14,47 @@ permissions:
 
 jobs:
   build-nethermind:
-    name: Building Nethermind Packages
+    name: Build Nethermind packages
     runs-on: ubuntu-latest
     env:      
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
-      OSX_RELEASE: nethermind-osx-x64
-      WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      WIN_RELEASE: nethermind-win-x64
+      OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
-      LINUX: linux-x64
-      OSX: osx-x64
-      WIN10: win10-x64
-      LINUX_ARM64: linux-arm64
-      OSX_ARM64: osx-arm64
     outputs:
       COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
       BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
     steps:
-    - name: Checking out Nethermind repository
+    - name: Check out Nethermind
       uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
         ref: ${{ github.event.inputs.tag }}
-    - name: Checking out Nethermind Launcher repository
+    - name: Check out Nethermind Launcher
       uses: actions/checkout@v3
       with:
         repository: NethermindEth/nethermind.launcher
         path: launcher
-    - name: Setting up Node.js
+    - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: "14"
-    - name: Setting up Build Environment
+        node-version: '14'
+    - name: Set up build environment
       run: |
         npm i pkg @vercel/ncc -g
-    - name: Setting up .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v3
-    - name: Setting up QEMU
+    - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
-    - name: Setting up Docker Buildx
+    - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    - name: Setting up Packages
+    - name: Set up packages
       run: ./nethermind/scripts/deployment/setup-packages.sh
-    - name: Building Runner
+    - name: Build Nethermind.Runner
       id: build-runner
       run: |
         cd nethermind/
@@ -68,51 +63,51 @@ jobs:
         echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
         ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
-    - name: Building Cli
+    - name: Build Nethermind.Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
-    - name: Building Launcher
+    - name: Build Nethermind.Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
-    - name: Building Launcher for arm64
+    - name: Build Nethermind.Launcher for ARM64
       run: |
         cd nethermind/
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
-    - name: Archiving packages
+    - name: Archive packages
       run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
-      name: Uploading Nethermind darwin package
-      with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
-    - uses: actions/upload-artifact@v3
-      name: Uploading Nethermind linux package
+      name: Upload Nethermind Linux package
       with:
         name: nethermind-linux-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
     - uses: actions/upload-artifact@v3
-      name: Uploading Nethermind windows package
-      with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
-    - uses: actions/upload-artifact@v3
-      name: Uploading Nethermind linux arm64 package
+      name: Upload Nethermind Linux ARM64 package
       with:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
     - uses: actions/upload-artifact@v3
-      name: Uploading Nethermind darwin arm64 package
+      name: Upload Nethermind Windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+    - uses: actions/upload-artifact@v3
+      name: Upload Nethermind Darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@v3
+      name: Upload Nethermind Darwin ARM64 package
       with:
         name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
     - uses: actions/upload-artifact@v3
-      name: Uploading update-homebrew.sh
+      name: Upload update-homebrew.sh
       with:
         name: update-homebrew-sh
         path: ./nethermind/scripts/deployment/update-homebrew.sh  
 
   update-homebrew:
-    name: Update Homebrew to latest version
+    name: Update Homebrew to the latest version
     runs-on: ubuntu-latest
     needs: build-nethermind
     env:
@@ -123,31 +118,31 @@ jobs:
       TIMESTAMP: ${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }}
       HASH: ${{ needs.build-nethermind.outputs.COMMIT_HASH }} 
     steps:
-      - name: Downloading Nethermind darwin package
+      - name: Download Nethermind Darwin package
         uses: actions/download-artifact@v3
         with:
           name: nethermind-darwin-package
           path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
-      - name: Downloading Nethermind darwin arm64 package
+      - name: Download Nethermind Darwin ARM64 package
         uses: actions/download-artifact@v3
         with:
           name: nethermind-darwin-arm64-package
           path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
-      - name: Downloading update-homebrew script
+      - name: Download update-homebrew.sh
         uses: actions/download-artifact@v3
         with:
           name: update-homebrew-sh
           path: ${{ env.RELEASE_DIRECTORY }}/          
-      - name: Checkout repository
+      - name: Check out homebrew-nethermind
         uses: actions/checkout@v3
         with: 
           repository: NethermindEth/homebrew-nethermind
           path: homebrew-nethermind
-      - name: Update Homebrew file with new version, commit and date
+      - name: Update Homebrew file with new version, commit, and date
         run: | 
           chmod +x ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
           bash ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
-      - name: Create Pull Request
+      - name: Create pull request
         uses: peter-evans/create-pull-request@v4
         with:
           token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
@@ -160,7 +155,7 @@ jobs:
             nethermind.rb
 
   trigger-publish:
-    name: Triggering publish event to different sources
+    name: Trigger publish event to different sources
     runs-on: ubuntu-latest
     needs: update-homebrew
     environment:
@@ -170,101 +165,101 @@ jobs:
     - run: echo "Just a middle-man job"
 
   publish-github:
-    name: Publishing packages to Github Releases
+    name: Publish packages to GitHub Releases
     runs-on: ubuntu-latest
     needs: trigger-publish
     env: 
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
-      OSX_RELEASE: nethermind-osx-x64
-      WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      WIN_RELEASE: nethermind-win-x64
+      OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
-    - name: Checking out Nethermind repository
+    - name: Check out Nethermind
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
         path: nethermind
         fetch-depth: 0
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind darwin package
-      with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
-    - uses: actions/download-artifact@v3
-      name: Downloading Nethermind linux package
+      name: Download Nethermind Linux package
       with:
         name: nethermind-linux-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind windows package
-      with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
-    - uses: actions/download-artifact@v3
-      name: Downloading Nethermind linux arm64 package
+      name: Download Nethermind Linux ARM64 package
       with:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind darwin arm64 package
+      name: Download Nethermind Windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+    - uses: actions/download-artifact@v3
+      name: Download Nethermind Darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
+    - uses: actions/download-artifact@v3
+      name: Download Nethermind Darwin ARM64 package
       with:
         name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
-    - name: Creating Release
+    - name: Publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         ./nethermind/scripts/deployment/publish-github.sh
 
   publish-downloads:
-    name: Publishing packages to Downloads Page
+    name: Publish packages to Downloads page
     runs-on: ubuntu-latest
     needs: trigger-publish
     env: 
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
-      OSX_RELEASE: nethermind-osx-x64
-      WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      WIN_RELEASE: nethermind-win-x64
+      OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
-    - name: Checking out Nethermind repository
+    - name: Check out Nethermind
       uses: actions/checkout@v3
       with:
         path: nethermind
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind darwin package
-      with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
-    - uses: actions/download-artifact@v3
-      name: Downloading Nethermind linux package
+      name: Download Nethermind Linux package
       with:
         name: nethermind-linux-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind windows package
-      with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
-    - uses: actions/download-artifact@v3
-      name: Downloading Nethermind linux arm64 package
+      name: Download Nethermind Linux ARM64 package
       with:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
     - uses: actions/download-artifact@v3
-      name: Downloading Nethermind darwin arm64 package
+      name: Download Nethermind Windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+    - uses: actions/download-artifact@v3
+      name: Download Nethermind Darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
+    - uses: actions/download-artifact@v3
+      name: Download Nethermind Darwin ARM64 package
       with:
         name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
-    - name: Configuring GPG Key
+    - name: Configure GPG Key
       run: |
         mkdir -p ~/.gnupg/
         printf "${{ secrets.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
         gpg --import --no-tty --batch --yes ~/.gnupg/private.key
-    - name: Publishing packages to Downloads Page
+    - name: Publish packages to Downloads page
       run: |
         ./nethermind/scripts/deployment/publish-downloads.sh
       env:
@@ -272,42 +267,42 @@ jobs:
         PASS: ${{ secrets.GPG_PASSWORD }}
 
   publish-dockers:
-    name: Publishing Docker images to Docker Hub
+    name: Publish Docker images to Docker Hub
     runs-on: ubuntu-latest
     needs: trigger-publish
     env:
       DOCKER_IMAGE: nethermind/nethermind
     steps:
-    - name: Checking out Nethermind repository
+    - name: Check out Nethermind
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
         fetch-depth: 0
-    - name: Setting up QEMU
+    - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
-    - name: Setting up Docker Buildx
+    - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    - name: Logging to Docker Hub
+    - name: Log in to Docker Hub
       if: success()
       run: |
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-    - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
+    - name: Build and push image to Docker registry (major) / trigger DAppNode Build
       if: ${{ !contains(github.event.inputs.tag, 'beta') && !contains(github.event.inputs.tag, 'unstable') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
         curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
-    - name: Building & Pushing image to docker registry  (patch)
+    - name: Build and push image to Docker registry  (patch)
       if: ${{ contains(github.event.inputs.tag, 'beta') || contains(github.event.inputs.tag, 'unstable') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
-    - name: Clearing
+    - name: Clear Docker cache
       if: always()
       run: |
         rm -f $HOME/.docker/config.json
 
   publish-ppa:
-    name: Publishing Nethermind to PPA repository
+    name: Publish Nethermind to PPA repository
     runs-on: ubuntu-latest
     needs: trigger-publish
     env:
@@ -325,15 +320,15 @@ jobs:
         GPG_PASSPHRASE: ${{secrets.PPA_GPG_PASSPHRASE}}
     - name: Import GPG key
       run: base64 --decode -i SECRET_KEY | gpg --import --no-tty --batch --yes
-    - name: Import GPG Owner Trust
+    - name: Import GPG owner trust
       run: echo ${{secrets.GPG_OWNERTRUST}} | base64 --decode | gpg --import-ownertrust
     - name: Install dependencies for PPA
       run: sudo apt update > /dev/null 2>&1 && sudo apt install debhelper devscripts -y > /dev/null 2>&1
-    - name: Checking out Nethermind repository
+    - name: Check out Nethermind
       uses: actions/checkout@v3
       with:
         path: nethermind
-    - name: Run publish PPA script
+    - name: Publish to PPA
       run: | 
         chmod +x ./nethermind/scripts/deployment/publish-ppa.sh
         ./nethermind/scripts/deployment/publish-ppa.sh
