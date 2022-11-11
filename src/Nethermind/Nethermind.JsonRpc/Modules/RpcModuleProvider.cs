@@ -63,13 +63,13 @@ namespace Nethermind.JsonRpc.Modules
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
             }
 
             string moduleType = attribute.ModuleType;
 
-            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m), pool);
+            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
             _modules.Add(moduleType);
 
             IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();

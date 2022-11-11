@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -192,7 +192,7 @@ namespace Nethermind.Evm.Tracing
         void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
         /// <summary>
-        
+
         /// </summary>
         /// <param name="stackItem"></param>
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>

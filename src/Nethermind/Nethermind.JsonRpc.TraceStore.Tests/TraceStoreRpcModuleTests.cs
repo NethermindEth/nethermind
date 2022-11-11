@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -107,7 +107,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_filter(new TraceFilterForRpc {FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1)})
+        test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = new BlockParameter(1) })
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
     }
 
@@ -116,7 +116,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        test.Module.trace_filter(new TraceFilterForRpc {FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest})
+        test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest })
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
     }
 

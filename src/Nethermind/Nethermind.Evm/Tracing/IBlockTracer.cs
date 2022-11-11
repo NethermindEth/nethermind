@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Tracing
         /// <remarks>Depends on <see cref="IsTracingRewards"/></remarks>
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
 
-        
+
         /// Starts a trace for new block.
         /// </summary>
         /// <param name="block">Block to be traced.</param>

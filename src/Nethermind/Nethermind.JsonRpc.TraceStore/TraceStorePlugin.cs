@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -43,7 +43,7 @@ public class TraceStorePlugin : INethermindPlugin
 
             // Setup DB
             _db = (IDbWithSpan)_api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
-            _api.DbProvider!.RegisterDb(DbName,  _db);
+            _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured
             if (_config.BlocksToKeep != 0)
@@ -63,7 +63,7 @@ public class TraceStorePlugin : INethermindPlugin
 
             // Setup tracing
             ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
-            DbPersistingBlockTracer<ParityLikeTxTrace,ParityLikeTxTracer> dbPersistingTracer =
+            DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
                 new(parityTracer, _db, static t => TraceSerializer.Serialize(t), _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
         }
