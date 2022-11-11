@@ -167,7 +167,7 @@ namespace Nethermind.Merge.Plugin
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (syncConfig.FastSync)
             {
-                if (!syncConfig.NoValidatorLightClient &&
+                if (!syncConfig.NoValidatorNode &&
                     (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync))
                 {
                     throw new InvalidConfigurationException(
