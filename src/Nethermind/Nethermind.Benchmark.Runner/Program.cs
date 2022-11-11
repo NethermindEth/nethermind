@@ -48,7 +48,8 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            List<Assembly> additionalJobAssemblies = new(){
+            List<Assembly> additionalJobAssemblies = new()
+            {
                 typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Nethermind.Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Nethermind.Evm.Benchmark.EvmStackBenchmarks).Assembly,
@@ -56,7 +57,8 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Nethermind.Precompiles.Benchmark.KeccakBenchmark).Assembly
             };
 
-            List<Assembly> simpleJobAssemblies = new() {
+            List<Assembly> simpleJobAssemblies = new()
+            {
                 typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
             };
 

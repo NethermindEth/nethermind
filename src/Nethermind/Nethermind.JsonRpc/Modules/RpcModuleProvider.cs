@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            if (attribute == null)
+            if (attribute is null)
             {
                 if(_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
@@ -98,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
                 return ModuleResolution.EndpointDisabled;
 
-            if (context.Url != null)
+            if (context.Url is not null)
                 return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;

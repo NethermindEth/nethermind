@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Peers
         public AllocationContexts Contexts { get; }
         public PeerInfo? Current { get; private set; }
 
-        public bool HasPeer => Current != null;
+        public bool HasPeer => Current is not null;
 
         public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts)
             : this(new StaticStrategy(peerInfo), contexts)
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Peers
 
             lock (_allocationLock)
             {
-                if (selected != null && selected.TryAllocate(Contexts))
+                if (selected is not null && selected.TryAllocate(Contexts))
                 {
                     Current = selected;
                     AllocationChangeEventArgs args = new(current, selected);
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Peers
         public void Cancel()
         {
             PeerInfo? current = Current;
-            if (current == null)
+            if (current is null)
             {
                 return;
             }

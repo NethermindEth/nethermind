@@ -159,7 +159,7 @@ namespace Nethermind.Consensus.Processing
         {
             /* Please note that we do not reset the state if branch state root is null.
                That said, I do not remember in what cases we receive null here.*/
-            if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
+            if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
             {
                 /* Discarding the other branch data - chain reorganization.
                    We cannot use cached values any more because they may have been written

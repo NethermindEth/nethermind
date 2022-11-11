@@ -46,7 +46,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             Rlp[] rlpSequence = new Rlp[items.Length];
             for (int i = 0; i < items.Length; i++)
             {
-                rlpSequence[i] = items[i] == null ? Rlp.OfEmptySequence : decoder.Encode(items[i], behaviors);
+                rlpSequence[i] = items[i] is null ? Rlp.OfEmptySequence : decoder.Encode(items[i], behaviors);
             }
 
             return Rlp.Encode(rlpSequence);

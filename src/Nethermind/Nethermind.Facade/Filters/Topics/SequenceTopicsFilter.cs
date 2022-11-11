@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(ref LogEntryStructRef entry)
         {
-            if (entry.Topics != null)
+            if (entry.Topics is not null)
             {
                 return Accepts(entry.Topics);
             }

@@ -102,7 +102,7 @@ namespace Nethermind.Wallet
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
             => SignCore(message, address, () =>
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
+                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
                 return _keyStore.GetKey(address, passphrase).PrivateKey;
             });
 
@@ -111,7 +111,7 @@ namespace Nethermind.Wallet
         private Signature SignCore(Keccak message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {
             var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
-            using PrivateKey key = protectedPrivateKey != null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
+            using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }

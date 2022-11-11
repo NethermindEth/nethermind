@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Json
             }
 
             string s = reader.Value?.ToString();
-            if (s == null)
+            if (s is null)
             {
                 throw new JsonException($"{nameof(UInt256)} cannot be deserialized from null");
             }

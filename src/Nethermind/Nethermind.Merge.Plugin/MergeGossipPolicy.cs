@@ -58,6 +58,6 @@ namespace Nethermind.Merge.Plugin
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We SHOULD start disconnecting gossiping peers after receiving next finalized block to FIRST_FINALIZED_BLOCK, so one block after we started discarding NewBlock/NewBlockHash messages.
         // In our approach we will start disconnecting peers when FinalTotalDifficulty will be set in config, so after first post-merge release.
-        public bool ShouldDisconnectGossipingNodes => _poSSwitcher.FinalTotalDifficulty != null;
+        public bool ShouldDisconnectGossipingNodes => _poSSwitcher.FinalTotalDifficulty is not null;
     }
 }

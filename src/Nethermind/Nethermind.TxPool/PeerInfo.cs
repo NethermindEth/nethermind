@@ -49,7 +49,7 @@ namespace Nethermind.TxPool
         {
             foreach (Transaction tx in txs)
             {
-                if (sendFullTx || NotifiedTransactions.Set(tx.Hash))
+                if (sendFullTx || (tx.Hash != null && NotifiedTransactions.Set(tx.Hash)))
                 {
                     yield return tx;
                 }

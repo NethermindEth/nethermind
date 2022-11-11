@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node:c}");
 
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {Name} without the head block set");
             }

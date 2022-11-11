@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Clique
 
         public bool ProduceBlock(Keccak parentHash)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 return false;
             }
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Clique
 
         public void CastVote(Address signer, bool vote)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Clique
 
         public void UncastVote(Address signer)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             BlockHeader? header = _blockTree.FindHeader(hash);
-            if (header == null)
+            if (header is null)
             {
                 return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");
             }
