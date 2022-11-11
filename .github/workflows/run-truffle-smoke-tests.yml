@@ -11,9 +11,9 @@ jobs:
     name: Run Nethermind Truffle tests on Spaceneth
     runs-on: ubuntu-latest
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
-    - name: Checking out truffleTest
+    - name: Check out truffleTest repository
       uses: actions/checkout@v3
       with:
         repository: 'NethermindEth/truffleTest'

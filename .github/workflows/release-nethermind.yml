@@ -27,13 +27,13 @@ jobs:
       COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
       BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
         ref: ${{ github.event.inputs.tag }}
-    - name: Check out Nethermind Launcher
+    - name: Check out Nethermind Launcher repository
       uses: actions/checkout@v3
       with:
         repository: NethermindEth/nethermind.launcher
@@ -133,7 +133,7 @@ jobs:
         with:
           name: update-homebrew-sh
           path: ${{ env.RELEASE_DIRECTORY }}/          
-      - name: Check out homebrew-nethermind
+      - name: Check out homebrew-nethermind repository
         uses: actions/checkout@v3
         with: 
           repository: NethermindEth/homebrew-nethermind
@@ -176,7 +176,7 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
@@ -225,7 +225,7 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         path: nethermind
@@ -273,7 +273,7 @@ jobs:
     env:
       DOCKER_IMAGE: nethermind/nethermind
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
@@ -287,7 +287,7 @@ jobs:
       if: success()
       run: |
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-    - name: Build and push image to Docker registry (major) / trigger DAppNode Build
+    - name: Build and push image to Docker registry (major) / trigger DAppNode build
       if: ${{ !contains(github.event.inputs.tag, 'beta') && !contains(github.event.inputs.tag, 'unstable') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build-nethermind.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }} . --push
@@ -324,7 +324,7 @@ jobs:
       run: echo ${{secrets.GPG_OWNERTRUST}} | base64 --decode | gpg --import-ownertrust
     - name: Install dependencies for PPA
       run: sudo apt update > /dev/null 2>&1 && sudo apt install debhelper devscripts -y > /dev/null 2>&1
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         path: nethermind

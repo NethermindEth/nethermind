@@ -10,7 +10,8 @@ jobs:
     name: Run blockchain tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
         submodules: recursive
     - name: Set up .NET
@@ -28,7 +29,8 @@ jobs:
     name: Run general state tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
         submodules: recursive
     - name: Set up .NET

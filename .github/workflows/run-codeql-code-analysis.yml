@@ -7,7 +7,7 @@ on:
 
 jobs:
   run-analysis:
-    name: Analysing Nethermind code
+    name: Analyse Nethermind code
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,7 +19,7 @@ jobs:
       with:
         fetch-depth: 2
     - name: Update submodules
-      run: git submodule update --init src/int256 src/Dirichlet src/tests src/Math.Gmp.Native
+      run: git submodule update --init src/tests
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v1
       with:
@@ -29,6 +29,6 @@ jobs:
     - name: Build Nethermind
       run: |
         cd src/Nethermind
-        dotnet build Nethermind.sln -c Release
+        dotnet build Nethermind.sln -c release
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v1

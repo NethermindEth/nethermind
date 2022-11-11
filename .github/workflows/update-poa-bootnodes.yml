@@ -14,8 +14,9 @@ jobs:
     name: Update POA bootnodes
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Check out poa-chain-spec
+    - name: Check out Nethermind repository
+      uses: actions/checkout@v3
+    - name: Check out poa-chain-spec repository
       uses: actions/checkout@v3
       with:
         repository: 'poanetwork/poa-chain-spec'

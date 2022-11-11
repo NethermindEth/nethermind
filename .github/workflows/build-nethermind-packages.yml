@@ -19,12 +19,12 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
-    - name: Check out Nethermind Launcher
+    - name: Check out Nethermind Launcher repository
       uses: actions/checkout@v3
       with:
         repository: NethermindEth/nethermind.launcher

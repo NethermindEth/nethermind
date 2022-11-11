@@ -18,7 +18,8 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
       with: 
         submodules: true
         fetch-depth: 0
@@ -190,7 +191,8 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v3
+    - name: Check out repository
+      uses: actions/checkout@v3
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
     - name: Unshallow fetching
@@ -252,7 +254,8 @@ jobs:
     needs: [neth-tests-cc, eth-tests-cc]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v3
       - name: Download reports from Nethermind/Ethereum projects
         uses: actions/download-artifact@v2
         with:

@@ -20,12 +20,12 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Check out Nethermind
+    - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
-    - name: Check out posdao-test-setup
+    - name: Check out posdao-test-setup repository
       uses: actions/checkout@v3
       with:
         repository: NethermindEth/posdao-test-setup
