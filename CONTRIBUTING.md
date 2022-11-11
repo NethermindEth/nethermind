@@ -53,7 +53,7 @@ Branch names must follow `snake_case` pattern. Follow the pattern `<projectIfAny
 
 ## File Headers
 
-The following notice must be included in all `.cs` files.
+The following notice must be included in all source files if possible.
 
 ```csharp
 // Copyright 2022 Demerzel Solutions Limited
