@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc
         public void Dispose()
         {
             Response?.Dispose();
-            if (Responses != null)
+            if (Responses is not null)
             {
                 for (var i = 0; i < Responses.Count; i++)
                 {

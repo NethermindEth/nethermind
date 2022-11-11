@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string payloadStr = payloadId.ToHexString(true);
             Block? block = await _payloadPreparationService.GetPayload(payloadStr);
 
-            if (block == null)
+            if (block is null)
             {
                 // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
                 if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");

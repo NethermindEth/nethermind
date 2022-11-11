@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.SnapSync
         public bool CanSync()
         {
             BlockHeader? header = _pivot.GetPivotHeader();
-            if (header == null || header.Number == 0)
+            if (header is null || header.Number == 0)
             {
                 if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
 

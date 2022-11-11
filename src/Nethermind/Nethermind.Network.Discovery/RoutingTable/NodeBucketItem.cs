@@ -44,7 +44,7 @@ public class NodeBucketItem
             return true;
         }
 
-        if (obj is NodeBucketItem item && Node != null)
+        if (obj is NodeBucketItem item && Node is not null)
         {
             return Node.IdHash.Equals(item.Node?.IdHash);
         }

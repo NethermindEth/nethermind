@@ -42,7 +42,7 @@ namespace Nethermind.Consensus
             DefaultValue = "false")]
         bool RandomizedBlocks { get; set; }
 
-        [ConfigItem(Description = "Block header extra data.", DefaultValue = "Nethermind")]
+        [ConfigItem(Description = "Block header extra data. 32-bytes shall be extra data max length.", DefaultValue = "Nethermind")]
         string ExtraData { get; set; }
 
         byte[] GetExtraDataBytes();

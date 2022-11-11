@@ -19,7 +19,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void WithInheritance()
         {
-            var spec = _provider.GetSpec(MainnetSpecProvider.ShanghaiBlockNumber);
+            var spec = _provider.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp));
             _ = spec.UseTxAccessLists;
         }
 

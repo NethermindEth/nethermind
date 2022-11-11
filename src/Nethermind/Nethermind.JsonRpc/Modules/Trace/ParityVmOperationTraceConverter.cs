@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("ex");
             writer.WriteStartObject();
             writer.WritePropertyName("mem");
-            if (value.Memory != null)
+            if (value.Memory is not null)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("data");
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("push");
-            if (value.Push != null)
+            if (value.Push is not null)
             {
                 writer.WriteStartArray();
                 for (int i = 0; i < value.Push.Length; i++)
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("store");
-            if (value.Store != null)
+            if (value.Store is not null)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("key");

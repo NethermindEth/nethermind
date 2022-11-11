@@ -113,11 +113,11 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _accounts, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
+            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
+            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -279,10 +279,11 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
+            TxFilteringState state = new(tx, _accounts);
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, state, handlingOptions);
                 if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
@@ -307,7 +308,7 @@ namespace Nethermind.TxPool
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
 
-                    if (removed != null)
+                    if (removed is not null)
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(removed));
                         // transaction which was on last position in sorted TxPool and was deleted to give
@@ -365,7 +366,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck == null)
+                    if (previousTxBottleneck is null)
                     {
                         previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
@@ -502,7 +503,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return transaction != null;
+            return transaction is not null;
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.

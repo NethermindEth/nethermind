@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Producers
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
             if (Logger.IsTrace) Logger.Trace($"Checking IsProducingBlocks: maxProducingInterval {maxProducingInterval}, _lastProducedBlock {_lastProducedBlockDateTime}, IsRunning() {IsRunning()}");
-            return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
+            return IsRunning() && (maxProducingInterval is null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
         private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
@@ -165,7 +165,7 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
-            if (parentHeader == null)
+            if (parentHeader is null)
             {
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
             }
@@ -205,7 +205,7 @@ namespace Nethermind.Consensus.Producers
                         {
                             if (t.IsCompletedSuccessfully)
                             {
-                                if (t.Result != null)
+                                if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -267,7 +267,7 @@ namespace Nethermind.Consensus.Producers
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
-            if (block == null)
+            if (block is null)
             {
                 if (Logger.IsError) Logger.Error("Failed to prepare block for mining.");
                 return false;
@@ -285,7 +285,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
-            UInt256 timestamp = payloadAttributes?.Timestamp ?? UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
+            ulong timestamp = payloadAttributes?.Timestamp ?? Math.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,

@@ -73,7 +73,7 @@ namespace Nethermind.Network
                     if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
                     {
                         ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
+                        if (constructor is null)
                         {
                             continue;
                         }
@@ -84,7 +84,7 @@ namespace Nethermind.Network
                     if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
                     {
                         ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
+                        if (constructor is null)
                         {
                             continue;
                         }

@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
-                if (tx != null)
+                if (tx is not null)
                 {
                     yield return tx;
                 }

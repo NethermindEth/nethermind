@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.ParallelSync
             //   3) the full block state has been synced in the state nodes sync (fast sync)
             // In 2) and 3) the state root will be saved in the database.
             // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
-            return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
+            return stateRootIsInMemory || _stateDb.Get(stateRoot) is not null;
         }
 
         public long FindBestFullState()
@@ -102,21 +102,14 @@ namespace Nethermind.Synchronization.ParallelSync
             BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
             BlockHeader bestSuggested = initialBestSuggested;
 
-            // On a small network snap sync's address range request may complete very quickly meaning it will recalculate
-            // and store a valid state root. However, codes and storage may not be downloaded yet, so we need this check.
-            if (_syncConfig.SnapSync && !_progressTracker.IsSnapGetRangesFinished())
-            {
-                return 0;
-            }
-
             long bestFullState = 0;
-            if (head != null)
+            if (head is not null)
             {
                 // head search should be very inexpensive as we generally expect the state to be there
                 bestFullState = SearchForFullState(head.Header);
             }
 
-            if (bestSuggested != null)
+            if (bestSuggested is not null)
             {
                 if (bestFullState < bestSuggested?.Number)
                 {
@@ -132,7 +125,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             for (int i = 0; i < MaxLookupBack; i++)
             {
-                if (startHeader == null)
+                if (startHeader is null)
                 {
                     break;
                 }
@@ -162,7 +155,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             BlockHeader best = _blockTree.BestSuggestedHeader;
 
-            if (best != null)
+            if (best is not null)
             {
                 if (best.Hash == blockHash)
                 {

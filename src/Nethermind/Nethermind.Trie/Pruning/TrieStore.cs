@@ -780,7 +780,7 @@ namespace Nethermind.Trie.Pruning
                 void PersistNode(TrieNode n)
                 {
                     Keccak? hash = n.Keccak;
-                    if (hash?.Bytes != null)
+                    if (hash?.Bytes is not null)
                     {
                         store[hash.Bytes] = n.FullRlp;
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);

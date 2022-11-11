@@ -438,7 +438,7 @@ namespace Nethermind.Synchronization.Test
 
         private class SlowSealValidator : ISealValidator
         {
-            public bool ValidateParams(BlockHeader parent, BlockHeader header)
+            public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -840,7 +840,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions)
-                    .Result.Select(r => r == null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
+                    .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -1213,7 +1213,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 BlockHeader startHeader = _blockTree.FindHeader(blockHashes[0], BlockTreeLookupOptions.None);
-                if (startHeader == null) startHeader = _headers[blockHashes[0]];
+                if (startHeader is null) startHeader = _headers[blockHashes[0]];
 
                 BlockHeader[] blockHeaders = new BlockHeader[blockHashes.Count];
                 BlockBody[] blockBodies = new BlockBody[blockHashes.Count];

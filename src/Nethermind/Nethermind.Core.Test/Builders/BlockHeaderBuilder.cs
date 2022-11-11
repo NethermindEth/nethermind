@@ -153,7 +153,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockHeaderBuilder WithTimestamp(UInt256 timestamp)
+        public BlockHeaderBuilder WithTimestamp(ulong timestamp)
         {
             TestObjectInternal.Timestamp = timestamp;
             return this;

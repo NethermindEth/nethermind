@@ -43,21 +43,21 @@ namespace Nethermind.Merge.Plugin
         {
             if (MergeEnabled)
             {
-                if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
-                if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
-                if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
-                if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.SpecProvider == null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-                if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-                if (_api.RewardCalculatorSource == null) throw new ArgumentNullException(nameof(_api.RewardCalculatorSource));
-                if (_api.ReceiptStorage == null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
-                if (_api.TxPool == null) throw new ArgumentNullException(nameof(_api.TxPool));
-                if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
-                if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
-                if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
-                if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-                if (_mergeBlockProductionPolicy == null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
-                if (_api.SealValidator == null) throw new ArgumentNullException(nameof(_api.SealValidator));
+                if (_api.EngineSigner is null) throw new ArgumentNullException(nameof(_api.EngineSigner));
+                if (_api.ChainSpec is null) throw new ArgumentNullException(nameof(_api.ChainSpec));
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+                if (_api.RewardCalculatorSource is null) throw new ArgumentNullException(nameof(_api.RewardCalculatorSource));
+                if (_api.ReceiptStorage is null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
+                if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
+                if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
+                if (_api.ReadOnlyTrieStore is null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
+                if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
+                if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
+                if (_mergeBlockProductionPolicy is null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
+                if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 

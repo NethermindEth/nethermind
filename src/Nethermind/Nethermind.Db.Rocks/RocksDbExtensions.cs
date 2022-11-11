@@ -43,7 +43,7 @@ internal static class RocksDbExtensions
             keyLength = key.Length;
 
         var keyLengthPtr = (UIntPtr)keyLength;
-        var result = cf == null
+        var result = cf is null
             ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, key, keyLengthPtr, out var valueLength, out var error)
             : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, key, keyLengthPtr, out valueLength, out error);
 

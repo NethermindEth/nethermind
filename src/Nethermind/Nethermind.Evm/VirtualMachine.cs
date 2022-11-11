@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -119,7 +119,10 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            if (!(currentState.IsTopLevel && currentState.Env.Value == UInt256.Zero))
+                            {
+                                _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
+                            }
                         }
 
                         callResult = ExecutePrecompile(currentState, spec);
@@ -397,11 +400,11 @@ namespace Nethermind.Evm
 
             Keccak codeHash = state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo == null)
+            if (cachedCodeInfo is null)
             {
                 byte[] code = state.GetCode(codeHash);
 
-                if (code == null)
+                if (code is null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
@@ -721,7 +724,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (previousCallResult != null)
+            if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
@@ -1605,7 +1608,7 @@ namespace Nethermind.Evm
 
                             if (isTrace)
                             {
-                                if (_txTracer.IsTracingBlockHash && blockHash != null)
+                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
                                 {
                                     _txTracer.ReportBlockHash(blockHash);
                                 }
@@ -2366,7 +2369,18 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
-                            long gasCost = GasCostOf.Create + (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
+                            long gasCost = GasCostOf.Create +
+                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
+                                (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+
                             if (!UpdateGas(gasCost, ref gasAvailable))
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -3040,7 +3054,7 @@ namespace Nethermind.Evm
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }
             public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute == null;
+            public bool IsReturn => StateToExecute is null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
         }
     }

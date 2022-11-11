@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
@@ -436,7 +436,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TLOAD)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.ShanghaiBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
         }
 
@@ -452,7 +452,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TSTORE)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.ShanghaiBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 

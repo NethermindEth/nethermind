@@ -17,6 +17,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
@@ -67,7 +68,7 @@ namespace Nethermind.Config.Test
                 Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
             }
 
-            new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(CheckIfEnabled);
+            new[] { ModuleType.Eth, ModuleType.Debug }.ForEach(CheckIfEnabled);
 
             Assert.AreEqual(4, networkConfig.Concurrency);
         }

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
                         if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                        if (dormantTaskLocal == null)
+                        if (dormantTaskLocal is null)
                         {
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
-                        if (request == null)
+                        if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
                             {
@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         SyncPeerAllocation allocation = await Allocate(request);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                        if (allocatedPeer != null)
+                        if (allocatedPeer is not null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                             Task task = Dispatch(allocatedPeer, request, cancellationToken)
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)
         {
-            if (peer != null)
+            if (peer is not null)
             {
                 switch (result)
                 {

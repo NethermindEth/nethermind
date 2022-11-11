@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P
 
             lock (_requestQueue)
             {
-                if (_currentRequest == null)
+                if (_currentRequest is null)
                 {
                     _currentRequest = request;
                     _currentRequest.StartMeasuringTime();
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
         {
             lock (_requestQueue)
             {
-                if (_currentRequest == null)
+                if (_currentRequest is null)
                 {
                     throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
                 }

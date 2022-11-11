@@ -85,11 +85,11 @@ namespace Nethermind.Merge.Plugin
 
             if (MergeEnabled)
             {
-                if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
-                if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
-                if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
-                if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
-                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+                if (_api.DbProvider is null) throw new ArgumentException(nameof(_api.DbProvider));
+                if (_api.BlockTree is null) throw new ArgumentException(nameof(_api.BlockTree));
+                if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
+                if (_api.ChainSpec is null) throw new ArgumentException(nameof(_api.ChainSpec));
+                if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
                 EnsureReceiptAvailable();
@@ -133,10 +133,10 @@ namespace Nethermind.Merge.Plugin
             // it does not get marked as main causing some issue on eth_getLogs.
             Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
             Block? block = _api.BlockTree!.FindBlock(blockHash);
-            if (block != null)
+            if (block is not null)
             {
                 ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
-                if (level == null)
+                if (level is null)
                 {
                     _logger.Warn("Unable to fix transition block. Unable to find chain level info.");
                     return;
@@ -225,7 +225,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool HasTtd()
         {
-            return _api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
+            return _api.SpecProvider?.TerminalTotalDifficulty is not null || _mergeConfig.TerminalTotalDifficulty is not null;
         }
 
         public Task InitNetworkProtocol()
@@ -235,9 +235,9 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
-                if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
-                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
-                if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
+                if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
+                if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
+                if (_api.HeaderValidator is null) throw new ArgumentException(nameof(_api.HeaderValidator));
 
                 MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,

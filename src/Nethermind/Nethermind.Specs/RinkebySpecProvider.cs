@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -26,18 +27,18 @@ namespace Nethermind.Specs
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
-            blockNumber switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            forkActivation.BlockNumber switch
             {
                 < HomesteadBlockNumber => Frontier.Instance,
                 < TangerineWhistleBlockNumber => Homestead.Instance,
@@ -65,7 +66,7 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 
-        public long[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionBlocks { get; } =
         {
             HomesteadBlockNumber,
             TangerineWhistleBlockNumber,

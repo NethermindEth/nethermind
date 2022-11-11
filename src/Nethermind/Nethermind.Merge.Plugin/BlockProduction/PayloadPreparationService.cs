@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -191,7 +192,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             if (t.IsCompletedSuccessfully)
             {
-                if (t.Result != null)
+                if (t.Result is not null)
                 {
                     BlockImproved?.Invoke(this, new BlockEventArgs(t.Result));
                     if (_logger.IsInfo) _logger.Info($"Improved post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -238,7 +239,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
-            payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
             payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);

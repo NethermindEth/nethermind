@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
             _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
         }
 
-        public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) != null;
+        public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) is not null;
 
         public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
 

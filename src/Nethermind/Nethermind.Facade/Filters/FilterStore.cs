@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -56,9 +55,9 @@ namespace Nethermind.Blockchain.Filters
         public IEnumerable<T> GetFilters<T>() where T : FilterBase =>
             _filters.Select(f => f.Value).OfType<T>();
 
-        public T GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
                 ? filter as T
-                : throw new InvalidOperationException($"Filter with ID {filterId} not found");
+                : null;
 
         public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
@@ -112,7 +111,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
-            if (topics == null)
+            if (topics is null)
             {
                 return SequenceTopicsFilter.AnyTopic;
             }
@@ -130,7 +129,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
-            if (filterTopic == null)
+            if (filterTopic is null)
             {
                 return AnyTopic.Instance;
             }
@@ -192,7 +191,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = obj as IEnumerable<string>;
-            if (topics == null)
+            if (topics is null)
             {
                 return null;
             }

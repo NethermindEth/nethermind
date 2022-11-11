@@ -41,7 +41,7 @@ namespace Nethermind.Init.Steps
 
         private void Update()
         {
-            if (_api.ChainSpec == null)
+            if (_api.ChainSpec is null)
             {
                 return;
             }

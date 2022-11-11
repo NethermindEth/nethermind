@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] GetValidators(long? blockNumber = null)
         {
-            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
+            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
         }
 
         public PendingValidators PendingValidators
@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (blockNumber > EmptyBlockNumber)
             {
                 var bytes = _db.Get(GetKey(blockNumber));
-                return bytes != null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
+                return bytes is not null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
             }
 
             return EmptyValidatorInfo;

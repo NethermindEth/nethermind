@@ -37,16 +37,16 @@ namespace Nethermind.Logging
 
         private static string GetStackFrameMethodClassName(MethodBase method, bool includeNameSpace, bool cleanAsyncMoveNext, bool cleanAnonymousDelegates)
         {
-            if (method == null)
+            if (method is null)
             {
                 return null;
             }
 
             Type declaringType = method.DeclaringType;
-            if (cleanAsyncMoveNext && method.Name == "MoveNext" && ((object)declaringType != null ? declaringType.DeclaringType : null) != null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
+            if (cleanAsyncMoveNext && method.Name == "MoveNext" && ((object)declaringType is not null ? declaringType.DeclaringType : null) is not null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
                 declaringType = declaringType.DeclaringType;
-            string str = includeNameSpace ? ((object)declaringType != null ? declaringType.FullName : (string)null) : ((object)declaringType != null ? declaringType.Name : (string)null);
-            if (cleanAnonymousDelegates && str != null)
+            string str = includeNameSpace ? ((object)declaringType is not null ? declaringType.FullName : (string)null) : ((object)declaringType is not null ? declaringType.Name : (string)null);
+            if (cleanAnonymousDelegates && str is not null)
             {
                 int length = str.IndexOf("+<>", StringComparison.Ordinal);
                 if (length >= 0)
@@ -101,14 +101,14 @@ namespace Nethermind.Logging
         private static Assembly LookupAssemblyFromStackFrame(StackFrame stackFrame)
         {
             MethodBase method = stackFrame.GetMethod();
-            if (method == null)
+            if (method is null)
                 return null;
             Type declaringType = method.DeclaringType;
-            Assembly assembly1 = (object)declaringType != null ? declaringType.Assembly : null;
-            if ((object)assembly1 == null)
+            Assembly assembly1 = (object)declaringType is not null ? declaringType.Assembly : null;
+            if ((object)assembly1 is null)
             {
                 Module module = method.Module;
-                assembly1 = (object)module != null ? module.Assembly : null;
+                assembly1 = (object)module is not null ? module.Assembly : null;
             }
 
             Assembly assembly2 = assembly1;
@@ -138,7 +138,7 @@ namespace Nethermind.Logging
         private static string LookupClassNameFromStackFrame(StackFrame stackFrame)
         {
             MethodBase method = stackFrame.GetMethod();
-            if (method != null && LookupAssemblyFromStackFrame(stackFrame) != null)
+            if (method is not null && LookupAssemblyFromStackFrame(stackFrame) is not null)
             {
                 string str = GetStackFrameMethodClassName(method, true, true, true) ?? method.Name;
                 if (!string.IsNullOrEmpty(str) && !str.StartsWith("System.", StringComparison.Ordinal))
