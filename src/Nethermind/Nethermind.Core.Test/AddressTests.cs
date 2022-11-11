@@ -176,6 +176,16 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Is_PointEvaluationPrecompile_properly_activated()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 0x14;
+            Address address = new(addressBytes);
+            Assert.False(address.IsPrecompile(Shanghai.Instance));
+            Assert.True(address.IsPrecompile(ShardingFork.Instance));
+        }
+
+        [Test]
         public void There_are_no_duplicates_in_known_addresses()
         {
             _ = KnownAddresses.GoerliValidators;

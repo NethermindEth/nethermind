@@ -54,5 +54,8 @@ namespace Nethermind.Evm
 
         [Description("Number of SHA256 precompile calls.")]
         public static long Sha256Precompile { get; set; }
+
+        [Description("Number of Point Evaluation precompile calls.")]
+        public static long PointEvaluationPrecompile { get; set; }
     }
 }
