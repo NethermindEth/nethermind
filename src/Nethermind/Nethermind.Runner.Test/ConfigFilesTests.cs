@@ -534,7 +534,7 @@ namespace Nethermind.Runner.Test
             foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
             {
                 ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                if (groupAttribute != null)
+                if (groupAttribute is not null)
                 {
                     groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
                 }

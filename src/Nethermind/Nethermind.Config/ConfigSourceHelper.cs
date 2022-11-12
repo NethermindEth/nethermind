@@ -111,7 +111,7 @@ namespace Nethermind.Config
 
             var nullableType = Nullable.GetUnderlyingType(valueType);
 
-            return nullableType == null
+            return nullableType is null
                 ? Convert.ChangeType(itemValue, valueType)
                 : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase)
                     ? Convert.ChangeType(itemValue, nullableType)

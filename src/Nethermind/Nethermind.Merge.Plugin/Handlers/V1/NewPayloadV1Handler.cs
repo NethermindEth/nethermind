@@ -163,13 +163,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
-                if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
+                if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
                     return NewPayloadV1Result.Syncing;
                 }
 
-                if (_beaconPivot.ProcessDestination != null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
+                if (_beaconPivot.ProcessDestination is not null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
                 {
                     insertHeaderOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
                     _beaconPivot.ProcessDestination = block.Header;
@@ -422,7 +422,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 // last block inserted is parent of current block, part of the same chain
                 Block? current = block;
                 Stack<Block> stack = new();
-                while (current != null)
+                while (current is not null)
                 {
                     stack.Push(current);
                     Keccak currentHash = current.Hash!;
@@ -435,7 +435,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     current = parentBlock;
                 }
 
-                if (current == null)
+                if (current is null)
                 {
                     // block not part of beacon pivot chain, save in cache
                     _blockCacheService.BlockCache.TryAdd(block.Hash!, block);

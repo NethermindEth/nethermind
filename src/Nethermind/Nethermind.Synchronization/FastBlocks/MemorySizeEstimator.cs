@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public static long EstimateSize(Block? block)
         {
-            if (block == null)
+            if (block is null)
             {
                 return 0;
             }
@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public static long EstimateSize(TxReceipt? txReceipt)
         {
-            if (txReceipt == null)
+            if (txReceipt is null)
             {
                 return 0;
             }
@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public static long EstimateSize(BlockBody? blockBody)
         {
-            if (blockBody == null)
+            if (blockBody is null)
             {
                 return 0;
             }
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         public static long EstimateSize(BlockHeader? header)
         {
-            if (header == null)
+            if (header is null)
             {
                 return 8;
             }
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public static long EstimateSize(Transaction? transaction)
         {
-            if (transaction == null)
+            if (transaction is null)
             {
                 return 8;
             }

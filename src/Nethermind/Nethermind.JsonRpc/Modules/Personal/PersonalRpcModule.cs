@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         {
             if (!_wallet.IsUnlocked(address))
             {
-                if (passphrase != null)
+                if (passphrase is not null)
                 {
                     var notSecuredHere = passphrase.Secure();
                     _wallet.UnlockAccount(address, notSecuredHere);

@@ -170,7 +170,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            if (block == null)
+            if (block is null)
             {
                 _logger.Error($"{nameof(EthStatsIntegration)} received null as the new head block.");
                 return;

@@ -201,7 +201,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader? header = searchResult.Object;
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -299,7 +299,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -335,7 +335,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
-        TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
@@ -407,12 +407,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (returnFullTransactionObjects && block != null)
+        if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc>.Success(block == null
+        return ResultWrapper<BlockForRpc>.Success(block is null
             ? null
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
@@ -422,10 +422,10 @@ public partial class EthRpcModule : IEthRpcModule
         UInt256? baseFee = null;
         _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
-        if (transaction == null)
+        if (transaction is null)
         {
             (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
-            if (transaction == null)
+            if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
             }
@@ -507,7 +507,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
     {
         (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-        if (receipt == null)
+        if (receipt is null)
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
@@ -715,7 +715,7 @@ public partial class EthRpcModule : IEthRpcModule
         try
         {
             header = _blockFinder.FindHeader(blockParameter);
-            if (header == null)
+            if (header is null)
             {
                 return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
                     ErrorCodes.ResourceNotFound, null);

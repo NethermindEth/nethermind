@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Clique
 
         public void RecoverData(Block block)
         {
-            if (block.Header.Author != null) return;
+            if (block.Header.Author is not null) return;
             block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
         }
     }

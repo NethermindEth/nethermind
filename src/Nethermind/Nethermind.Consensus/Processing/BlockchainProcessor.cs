@@ -276,7 +276,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    if (blockRef.IsInDb || blockRef.Block == null)
+                    if (blockRef.IsInDb || blockRef.Block is null)
                     {
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                         throw new InvalidOperationException("Processing loop expects only resolved blocks");
@@ -357,7 +357,7 @@ namespace Nethermind.Consensus.Processing
 
             _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
-            if (processedBlocks == null)
+            if (processedBlocks is null)
             {
                 return null;
             }
@@ -405,11 +405,11 @@ namespace Nethermind.Consensus.Processing
 
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            if (_processorTask == null || _recoveryTask == null || _processorTask.IsCompleted ||
+            if (_processorTask is null || _recoveryTask is null || _processorTask.IsCompleted ||
                 _recoveryTask.IsCompleted)
                 return false;
 
-            if (maxProcessingInterval != null)
+            if (maxProcessingInterval is not null)
                 return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
             else // user does not setup interval and we cannot set interval time based on chainspec
                 return true;
@@ -517,7 +517,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     _loopCancellationSource?.Token.ThrowIfCancellationRequested();
 
-                    if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
+                    if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
                         if (_logger.IsInfo)
                             _logger.Info(
@@ -559,7 +559,7 @@ namespace Nethermind.Consensus.Processing
 
                 branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (branchingPoint == null)
+                if (branchingPoint is null)
                 {
                     // genesis block
                     break;
@@ -582,7 +582,7 @@ namespace Nethermind.Consensus.Processing
                 toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
                 if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
-                if (toBeProcessed == null)
+                if (toBeProcessed is null)
                 {
                     if (_logger.IsDebug)
                         _logger.Debug(
@@ -602,7 +602,7 @@ namespace Nethermind.Consensus.Processing
                     }
 
                     // if we have parent state it means that we don't need to go deeper
-                    if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
+                    if (toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header))
                     {
                         if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
@@ -626,7 +626,7 @@ namespace Nethermind.Consensus.Processing
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
             } while (preMergeFinishBranchingCondition);
 
-            if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
+            if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
@@ -636,7 +636,7 @@ namespace Nethermind.Consensus.Processing
             else
             {
                 if (_logger.IsTrace)
-                    _logger.Trace(branchingPoint == null
+                    _logger.Trace(branchingPoint is null
                         ? "Setting as genesis block"
                         : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
             }
@@ -660,7 +660,7 @@ namespace Nethermind.Consensus.Processing
                 return false;
             }
 
-            if (suggestedBlock.Header.TotalDifficulty == null)
+            if (suggestedBlock.Header.TotalDifficulty is null)
             {
                 if (_logger.IsDebug)
                     _logger.Debug(
@@ -677,7 +677,7 @@ namespace Nethermind.Consensus.Processing
 
             for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
             {
-                if (suggestedBlock.Uncles[i].Hash == null)
+                if (suggestedBlock.Uncles[i].Hash is null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
                     throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");

@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Visitors
             }
             else
             {
-                return _receiptStorage.Get(block)?.Where(r => r != null).Count() ?? 0;
+                return _receiptStorage.Get(block)?.Where(r => r is not null).Count() ?? 0;
             }
         }
 

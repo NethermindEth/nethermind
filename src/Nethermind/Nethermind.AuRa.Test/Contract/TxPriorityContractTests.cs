@@ -140,11 +140,11 @@ namespace Nethermind.AuRa.Test.Contract
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
                 TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-                if (localData != null)
+                if (localData is not null)
                 {
                     localData.Whitelist.Should().BeEquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB });
                     semaphoreSlim.Release();
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }
@@ -187,11 +187,11 @@ namespace Nethermind.AuRa.Test.Contract
                 new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
             };
 
-            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
                 TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-                if (localData != null)
+                if (localData is not null)
                 {
                     chain.LocalDataSource.Data.Priorities.Should().BeEquivalentTo(
                         expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local),
@@ -207,7 +207,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }
@@ -233,11 +233,11 @@ namespace Nethermind.AuRa.Test.Contract
                 new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
             };
 
-            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
                 TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-                if (localData != null)
+                if (localData is not null)
                 {
                     chain.LocalDataSource.Data.MinGasPrices.Should().BeEquivalentTo(
                         expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local),
@@ -253,7 +253,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             if (!await semaphoreSlim.WaitAsync(100))
             {
-                if (chain.LocalDataSource.Data == null)
+                if (chain.LocalDataSource.Data is null)
                 {
                     Assert.Fail("Local file rule storage has not been loaded.");
                 }

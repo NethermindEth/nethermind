@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Contracts
         {
             Keccak[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Keccak>();
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
-                logEntry != null
+                logEntry is not null
                 && logEntry.LoggersAddress == searchedEntryTemplate?.LoggersAddress
                 && logEntry.Topics.Length >= matchEntryTopics.Length
                 && logEntry.Topics.Take(matchEntryTopics.Length).SequenceEqual(matchEntryTopics)
