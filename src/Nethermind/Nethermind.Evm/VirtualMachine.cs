@@ -3020,7 +3020,7 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
-                                var index = codeSection[programCounter..(programCounter + 1)].ReadEthInt16();
+                                var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
                                 var inputCount = typeSection[index * 2];
                                 vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                                 {

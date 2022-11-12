@@ -18,11 +18,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1.Mozilla;
 
 namespace Nethermind.Evm
@@ -154,10 +156,10 @@ namespace Nethermind.Evm
                     .Op(Instruction.JUMP);
         public static Prepare RJUMP(this Prepare @this, Int16 to)
             => @this.Op(Instruction.RJUMP)
-                    .Data(BitConverter.GetBytes(to));
+                    .Data(BitConverter.GetBytes(to).Reverse().ToArray()); // little endian mistake
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
             => @this.Op(Instruction.CALLF)
-                    .Data(BitConverter.GetBytes(sectionId));
+                    .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId, params byte[] arguments)
             => @this.PushData(arguments)
                     .Op(Instruction.CALLF)
@@ -276,8 +278,8 @@ namespace Nethermind.Evm
                     .Op(Instruction.JUMPI);
         public static Prepare RJUMPI(this Prepare @this, Int16 to, byte[] cond = null)
             => @this.PushSingle(cond)
-                    .Op(Instruction.RJUMP)
-                    .Data(BitConverter.GetBytes(to));
+                        .Op(Instruction.RJUMPI)
+                        .Data(BitConverter.GetBytes(to).Reverse().ToArray());
         public static Prepare LOGx(this Prepare @this, byte i, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
                     .Op(Instruction.LOG0 + i);

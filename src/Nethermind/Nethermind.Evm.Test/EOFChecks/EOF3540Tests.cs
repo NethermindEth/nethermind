@@ -678,6 +678,8 @@ namespace Nethermind.Evm.Test
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
+                IsEip3670Enabled = false,
+                IsEip4200Enabled = false,
                 IsEip4750Enabled = false
             };
 

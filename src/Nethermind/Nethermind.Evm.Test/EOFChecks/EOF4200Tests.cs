@@ -46,36 +46,36 @@ namespace Nethermind.Evm.Test
     public class EOF4200Tests : EofTestsBase
     {
         // valid code
-        [TestCase("0xEF00010100060060005DFFFB00", true, true, Description = "valid rjumpi with : offset = -5")]
-        [TestCase("0xEF00010100090060005D000300000000", true, true, Description = "valid rjumpi with : offset = 3")]
-        [TestCase("0xEF00010100060060005D000000", true, true, Description = "valid rjumpi with : offset = 0")]
-        [TestCase("0xEF0001010004005C000000", true, true, Description = "valid rjump with : offset = 0")]
-        [TestCase("0xEF0001010007005C000300000000", true, true, Description = "valid rjump with : offset = 3")]
-        [TestCase("0xEF000101000500005CFFFC00", true, true, Description = "valid rjump with : offset = -4")]
+        [TestCase("0xEF00010100060060005DFFFB00", true, Description = "valid rjumpi with : offset = -5")]
+        [TestCase("0xEF00010100090060005D000300000000", true, Description = "valid rjumpi with : offset = 3")]
+        [TestCase("0xEF00010100060060005D000000", true, Description = "valid rjumpi with : offset = 0")]
+        [TestCase("0xEF0001010004005C000000", true, Description = "valid rjump with : offset = 0")]
+        [TestCase("0xEF0001010007005C000300000000", true, Description = "valid rjump with : offset = 3")]
+        [TestCase("0xEF000101000500005CFFFC00", true, Description = "valid rjump with : offset = -4")]
         // code with invalid magic
-        [TestCase("0xEF0001010001005C", false, true, Description = "rjump truncated")]
-        [TestCase("0xEF0001010002005C00", false, true, Description = "rjump truncated")]
-        [TestCase("0xEF00010100030060005D", false, true, Description = "rjumpi truncated")]
-        [TestCase("0xEF00010100040060005D00", false, true, Description = "rjumpi truncated")]
-        [TestCase("0xEF0001010004005CFFFB00", false, true, Description = "rjump invalid destination, offset :  -5")]
-        [TestCase("0xEF0001010004005CFFF300", false, true, Description = "rjump invalid destination, offset : -13")]
-        [TestCase("0xEF0001010004005C000200", false, true, Description = "rjump invalid destination, offset :   2")]
-        [TestCase("0xEF0001010004005C000100", false, true, Description = "rjump invalid destination, offset :   1")]
-        [TestCase("0xEF0001010004005CFFFF00", false, true, Description = "rjump invalid destination, offset :  -1")]
-        [TestCase("0xEF00010100060060005CFFFC00", false, true, Description = "rjump invalid destination, offset :  4")]
-        [TestCase("0xEF00010100060060005DFFF900", false, true, Description = "rjumpi invalid destination, offset :  -7")]
-        [TestCase("0xEF00010100060060005DFFF100", false, true, Description = "rjumpi invalid destination, offset :  -15")]
-        [TestCase("0xEF00010100060060005D000200", false, true, Description = "rjumpi invalid destination, offset :   2")]
-        [TestCase("0xEF00010100060060005D000100", false, true, Description = "rjumpi invalid destination, offset :   1")]
-        [TestCase("0xEF00010100060060005DFFFF00", false, true, Description = "rjumpi invalid destination, offset :   -1")]
-        [TestCase("0xEF00010100060060005DFFFC00", false, true, Description = "rjumpi invalid destination, offset :   -4")]
-        public void EIP4200_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
+        [TestCase("0xEF0001010001005C", false, Description = "rjump truncated")]
+        [TestCase("0xEF0001010002005C00", false, Description = "rjump truncated")]
+        [TestCase("0xEF00010100030060005D", false, Description = "rjumpi truncated")]
+        [TestCase("0xEF00010100040060005D00", false, Description = "rjumpi truncated")]
+        [TestCase("0xEF0001010004005CFFFB00", false, Description = "rjump invalid destination, offset :  -5")]
+        [TestCase("0xEF0001010004005CFFF300", false, Description = "rjump invalid destination, offset : -13")]
+        [TestCase("0xEF0001010004005C000200", false, Description = "rjump invalid destination, offset :   2")]
+        [TestCase("0xEF0001010004005C000100", false, Description = "rjump invalid destination, offset :   1")]
+        [TestCase("0xEF0001010004005CFFFF00", false, Description = "rjump invalid destination, offset :  -1")]
+        [TestCase("0xEF00010100060060005CFFFC00", false, Description = "rjump invalid destination, offset :  4")]
+        [TestCase("0xEF00010100060060005DFFF900", false, Description = "rjumpi invalid destination, offset :  -7")]
+        [TestCase("0xEF00010100060060005DFFF100", false, Description = "rjumpi invalid destination, offset :  -15")]
+        [TestCase("0xEF00010100060060005D000200", false, Description = "rjumpi invalid destination, offset :   2")]
+        [TestCase("0xEF00010100060060005D000100", false, Description = "rjumpi invalid destination, offset :   1")]
+        [TestCase("0xEF00010100060060005DFFFF00", false, Description = "rjumpi invalid destination, offset :   -1")]
+        [TestCase("0xEF00010100060060005DFFFC00", false, Description = "rjumpi invalid destination, offset :   -4")]
+        public void EIP4200_Compliant_formats_Test(string code, bool isCorrectlyFormated)
         {
             var bytecode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
                 IsEip4750Enabled = false
             };
@@ -98,6 +98,7 @@ namespace Nethermind.Evm.Test
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
+                                .STOP()
                                 .Done,
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
@@ -144,7 +145,7 @@ namespace Nethermind.Evm.Test
                 {
                     Code = Prepare.EvmCode
                                 .RJUMP(11)
-                                .INVALID()
+                                .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .RJUMPI(-16, new byte[] { 1 })
@@ -159,7 +160,7 @@ namespace Nethermind.Evm.Test
                 {
                     Code = Prepare.EvmCode
                                 .RJUMP(11)
-                                .INVALID()
+                                .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .RJUMPI(-16, new byte[] { 0 })
@@ -206,13 +207,13 @@ namespace Nethermind.Evm.Test
             };
 
             ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, Shanghai.Instance);
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
             Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
 
             TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
 
-            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}");
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}, bytecode : {bytecode.ToHexString()}");
         }
     }
 }

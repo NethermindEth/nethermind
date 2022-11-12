@@ -44,7 +44,7 @@ namespace Nethermind.Evm
         public (int Start, int Size) TypeSectionOffsets => (HeaderSize, TypeSize);
         public (int Start, int Size) CodeSectionOffsets => (HeaderSize + TypeSize, CodesSize);
         public (int Start, int Size) DataSectionOffsets => (HeaderSize + TypeSize + CodesSize, DataSize);
-        public (int Start, int Size) this[int i] => (HeaderSize + TypeSize + CodeSize.Take(i).Sum(), CodeSize[i]);
+        public (int Start, int Size) this[int i] => (CodeSize.Take(i).Sum(), CodeSize[i]);
         #endregion
     }
 
@@ -333,7 +333,7 @@ namespace Nethermind.Evm
             }
 
             var (startOffset, sectionSize) = header[sectionId];
-            ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
+            ReadOnlySpan<byte> code = container.Slice(header.CodeSectionOffsets.Start + startOffset, sectionSize);
             Instruction? opcode = null;
             HashSet<Range> immediates = new HashSet<Range>();
             HashSet<Int32> rjumpdests = new HashSet<Int32>();
@@ -376,7 +376,7 @@ namespace Nethermind.Evm
                             }
                             return false;
                         }
-                        i += 3;
+                        i += 2;
                     }
                 }
 
@@ -393,7 +393,7 @@ namespace Nethermind.Evm
                             return false;
                         }
 
-                        var targetSectionId = code.Slice(i, 2).ReadEthInt16();
+                        var targetSectionId = code.Slice(i, 2).ReadEthUInt16();
                         immediates.Add(new Range(i, i + 1));
 
                         if (targetSectionId >= header.CodeSize.Length)
@@ -404,11 +404,9 @@ namespace Nethermind.Evm
                             }
                             return false;
                         }
-                        i += 3;
+                        i += 2;
                     }
                 }
-
-                opcode = (Instruction)code[i];
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
@@ -424,7 +422,6 @@ namespace Nethermind.Evm
                         return false;
                     }
                 }
-                i++;
             }
 
             bool endCorrectly = opcode switch

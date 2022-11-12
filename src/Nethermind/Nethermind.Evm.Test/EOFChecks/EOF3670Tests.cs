@@ -494,27 +494,27 @@ namespace Nethermind.Evm.Test
 
 
         // valid code
-        [TestCase("0xEF000101000100FE", true, true)]
-        [TestCase("0xEF00010100050060006000F3", true, true)]
-        [TestCase("0xEF00010100050060006000FD", true, true)]
-        [TestCase("0xEF0001010003006000FF", true, true)]
-        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true, true)]
-        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true, true)]
-        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true, true)]
+        [TestCase("0xEF000101000100FE", true)]
+        [TestCase("0xEF00010100050060006000F3", true)]
+        [TestCase("0xEF00010100050060006000FD", true)]
+        [TestCase("0xEF0001010003006000FF", true)]
+        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
+        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
+        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
         // code with invalid magic
-        [TestCase("0xEF0001010001000C", false, true, Description = "Undefined instruction")]
-        [TestCase("0xEF000101000100EF", false, true, Description = "Undefined instruction")]
-        [TestCase("0xEF00010100010060", false, true, Description = "Missing terminating instruction")]
-        [TestCase("0xEF00010100010030", false, true, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
-        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
+        [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
+        [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
+        [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF00010100010030", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
+        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated)
         {
             var bytecode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false
@@ -527,14 +527,11 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Eip3670_execution_tests([ValueSource(nameof(Eip3670TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        public void Eip3670_execution_tests([ValueSource(nameof(Eip3670TestCases))] TestCase testcase)
         {
-            bool isShanghaiBlock = spec is Shanghai;
-            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+            var bytecode = testcase.GenerateCode(true);
 
-            var bytecode = testcase.GenerateCode(isShanghaiBlock);
-
-            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false
@@ -545,17 +542,9 @@ namespace Nethermind.Evm.Test
             Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
 
-            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
+            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
 
-            if (isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
-            }
-
-            if (!isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
-            }
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
         }
 
         public static IEnumerable<TestCase> Eip3670TxTestCases
