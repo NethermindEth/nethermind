@@ -101,7 +101,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private void CreateAnalyzer()
         {
             (var SectionStart, var SectionSize) = Header?[SectionId] ?? (0, MachineCode.Length);
-            byte[] codeToBeAnalyzed = MachineCode.Slice(SectionStart, SectionSize);
+            var headerOffset = IsEOF ?? false ? Header.CodeSectionOffsets.Start : 0;
+            byte[] codeToBeAnalyzed = MachineCode.Slice(headerOffset + SectionStart, SectionSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

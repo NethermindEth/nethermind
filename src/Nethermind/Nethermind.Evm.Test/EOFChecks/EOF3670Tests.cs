@@ -544,7 +544,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
 
-            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description}, error : {receipts.Error}");
         }
 
         public static IEnumerable<TestCase> Eip3670TxTestCases

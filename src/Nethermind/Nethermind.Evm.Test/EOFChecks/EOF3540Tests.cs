@@ -529,14 +529,11 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase)
         {
-            bool isShanghaiBlock = spec is Shanghai;
-            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+            var bytecode = testcase.GenerateCode(true);
 
-            var bytecode = testcase.GenerateCode(isShanghaiBlock);
-
-            var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiBlock ? Shanghai.Instance : GrayGlacier.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
@@ -548,19 +545,10 @@ namespace Nethermind.Evm.Test
             Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
 
-            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
+            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
 
-            if (isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfEOF.error, testcase.Description);
-            }
-
-            if (!isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
-            }
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} :: {receipts.Error}");
+            receipts.Error.Should().Be(testcase.ResultIfEOF.error, testcase.Description);
         }
 
         public static IEnumerable<TestCase> Eip3540TxTestCases
