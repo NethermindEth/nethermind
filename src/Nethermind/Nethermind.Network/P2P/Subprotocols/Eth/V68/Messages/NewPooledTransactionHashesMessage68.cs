@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
     public class NewPooledTransactionHashesMessage68 : P2PMessage
     {
-        public const int MaxCount = 2048;
+        public const int MaxCount = 1024;
 
         public override int PacketType { get; } = Eth68MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
