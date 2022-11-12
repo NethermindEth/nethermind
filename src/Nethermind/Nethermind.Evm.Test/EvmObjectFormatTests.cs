@@ -42,8 +42,7 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class EvmObjectFormatTests : VirtualMachineTestsBase
     {
-        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiActivation.BlockNumber;
+        protected override ISpecProvider SpecProvider => new TestSpecProvider(Shanghai.Instance);
         static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
         {
             var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
@@ -192,6 +191,7 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSIZE)
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
+                            .Op(Instruction.STOP)
                             .Done,
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
@@ -614,7 +614,7 @@ namespace Nethermind.Evm.Test
             {
                 int idx = 0;
                 byte[] salt = { 4, 5, 6 };
-                var standardCode = Prepare.EvmCode.ADD(2, 3).Done;
+                var standardCode = Prepare.EvmCode.ADD(2, 3).STOP().Done;
                 var standardData = new byte[] { 0xaa };
 
                 byte[] corruptBytecode(bool isEof, byte[] arg)
@@ -660,11 +660,13 @@ namespace Nethermind.Evm.Test
                         1 => Prepare.EvmCode
                                 .MSTORE(0, deployed)
                                 .CREATEx(1, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .STOP()
                                 .Done,
                         2 => Prepare.EvmCode
                                 .MSTORE(0, deployed)
                                 .PUSHx(salt)
                                 .CREATEx(2, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
+                                .STOP()
                                 .Done,
                         _ => Prepare.EvmCode
                                 .MSTORE(0, deployed)

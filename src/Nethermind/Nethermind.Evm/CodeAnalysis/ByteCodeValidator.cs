@@ -22,13 +22,9 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool HasEOFMagic(this ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
         public static bool ValidateByteCode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
-            if (_spec.IsEip3670Enabled && code.HasEOFMagic())
+            if(IsEOFCode(code, _spec, out header))
             {
-                return EofFormatChecker.ValidateInstructions(code, out header);
-            }
-            else if (_spec.IsEip3540Enabled && code.HasEOFMagic())
-            {
-                return IsEOFCode(code, out header);
+                return true;
             }
 
             header = null;
@@ -37,20 +33,21 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool ValidateByteCode(this ReadOnlySpan<byte> code, IReleaseSpec _spec)
                 => ValidateByteCode(code, _spec, out _);
 
-        public static bool IsEOFCode(ReadOnlySpan<byte> machineCode, out EofHeader header)
-            => EofFormatChecker.ExtractHeader(machineCode, out header);
-        public static int CodeStartIndex(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeStartOffset
-                    : 0;
-        public static int CodeEndIndex(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeEndOffset
-                    : machineCode.Length;
-
-        public static int CodeSize(ReadOnlySpan<byte> machineCode)
-            => IsEOFCode(machineCode, out var header)
-                    ? header.CodeSize
-                    : machineCode.Length;
+        public static bool IsEOFCode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
+        {
+            if(code.HasEOFMagic())
+            {
+                if (_spec.IsEip3670Enabled)
+                {
+                    return EofFormatChecker.ValidateInstructions(code, out header);
+                }
+                else if (_spec.IsEip3540Enabled)
+                {
+                    return EofFormatChecker.ExtractHeader(code, out header);
+                }
+            }
+            header = null;
+            return false;
+        }
     }
 }

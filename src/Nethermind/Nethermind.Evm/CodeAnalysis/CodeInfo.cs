@@ -19,6 +19,8 @@ using System.Collections;
 using System.Reflection.PortableExecutable;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -29,26 +31,23 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private EofHeader _header;
+        private bool? isEof = null;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
-        public EofHeader Header
-        {
-            get
-            {
-                if (_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
-                {
-                    return _header;
-                }
-                return _header;
-            }
-        }
+        public EofHeader Header => _header;
 
         #region EofSection Extractors
-        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
+        public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-            if (Header is not null)
+
+            if (isEof is null && _header is null)
+            {
+                isEof = ByteCodeValidator.IsEOFCode(MachineCode, spec, out _header);
+            }
+
+            if (isEof.Value)
             {
                 CodeSection = MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
                 DataSection = MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
@@ -92,8 +91,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            SeparateEOFSections(out _, out var CodeSection, out _);
-            byte[] codeToBeAnalyzed = CodeSection.ToArray();
+            var codeToBeAnalyzed = isEof.HasValue && isEof.Value == true ? MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize) : MachineCode;
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;
