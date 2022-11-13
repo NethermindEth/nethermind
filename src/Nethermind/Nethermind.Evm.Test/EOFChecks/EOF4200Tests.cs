@@ -36,15 +36,22 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
-using TestCase = Nethermind.Evm.Test.EOF3540Tests.TestCase;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
 namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF4200Tests : EofTestsBase
+    public class EOF4200Tests
     {
+        private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip4200Enabled = true,
+            IsEip4750Enabled = false
+        });
+
         // valid code
         [TestCase("0xEF00010100060060005DFFFB00", true, Description = "valid rjumpi with : offset = -5")]
         [TestCase("0xEF00010100090060005D000300000000", true, Description = "valid rjumpi with : offset = 3")]
@@ -199,20 +206,7 @@ namespace Nethermind.Evm.Test
         public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase)
         {
             var bytecode = testcase.GenerateCode(isEof : true);
-
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
-            {
-                IsEip4200Enabled = true,
-                IsEip4750Enabled = false
-            };
-
-            ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
-            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-
-            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue, Timestamp);
-
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(bytecode);
             receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}, bytecode : {bytecode.ToHexString()}");
         }
     }

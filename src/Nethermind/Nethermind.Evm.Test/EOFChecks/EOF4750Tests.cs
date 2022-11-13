@@ -36,14 +36,22 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
 namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF4750Tests : EofTestsBase
+    public class EOF4750Tests
     {
+        private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip4200Enabled = true,
+            IsEip4750Enabled = true
+        });
+
         public class FunctionCase
         {
             public int InputCount;
@@ -422,13 +430,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eip4750_execution_tests([ValueSource(nameof(Eip4750Scenarios))] TestCase testCase)
         {
-            ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, Shanghai.Instance);
-            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-
-            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, testCase.Code, Int64.MaxValue);
-
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testCase.Code);
             receipts.StatusCode.Should().Be(testCase.ResultIfEOF.Status, receipts.Error);
         }
 
@@ -453,7 +455,7 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance )
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
                 IsEip4750Enabled = true
             };

@@ -44,7 +44,36 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class EofTestsBase : VirtualMachineTestsBase
     {
-        
+        public static EofTestsBase Instance(ISpecProvider provider)
+        {
+            var instance = new EofTestsBase();
+            instance.SpecProvider = provider;
+            instance.Setup();
+            return instance;
+        }
+        public TestAllTracerWithOutput EOF_contract_execution_tests(byte[] testcase)
+        {
+            return Execute(BlockNumber, Timestamp, testcase);
+        }
+        public void EOF_contract_deployment_tests(TestCase testcase, IReleaseSpec spec)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 200.Ether());
+            byte[] createContract = testcase.Code;
+
+            ILogManager logManager = GetLogManager();
+            var customSpecProvider = new TestSpecProvider(Frontier.Instance, spec);
+            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
+
+
+            transaction.GasPrice = 100.GWei();
+            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.Execute(transaction, block.Header, tracer);
+
+            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+        }
+
         public class TestCase
         {
             public int Index;

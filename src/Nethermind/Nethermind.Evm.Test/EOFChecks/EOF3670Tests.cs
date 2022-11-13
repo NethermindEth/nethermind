@@ -36,15 +36,25 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
-using TestCase = Nethermind.Evm.Test.EOF3540Tests.TestCase;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
+using Castle.DynamicProxy.Contributors;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF3670Tests : EofTestsBase
+    public class EOF3670Tests
     {
+        private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip4200Enabled = false,
+            IsEip4750Enabled = false
+        });
+
         public static IEnumerable<TestCase> Eip3670TestCases
         {
             get
@@ -59,10 +69,10 @@ namespace Nethermind.Evm.Test
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Last opcode {opcode} in CodeSection is not a terminating opcode"),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "Last opcode is not a terminating opcode"
                 };
-
 
                 yield return new TestCase
                 {
@@ -531,20 +541,9 @@ namespace Nethermind.Evm.Test
         {
             var bytecode = testcase.GenerateCode(true);
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
-            {
-                IsEip4200Enabled = false,
-                IsEip4750Enabled = false
-            };
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(bytecode);
 
-            ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
-            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-
-            TestAllTracerWithOutput receipts = Execute(BlockNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
-
-            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description}, error : {receipts.Error}");
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description}");
         }
 
         public static IEnumerable<TestCase> Eip3670TxTestCases
@@ -649,7 +648,7 @@ namespace Nethermind.Evm.Test
 
 
         [Test]
-        public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
+        public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
@@ -657,21 +656,7 @@ namespace Nethermind.Evm.Test
                 IsEip4750Enabled = false
             };
 
-            TestState.CreateAccount(TestItem.AddressC, 200.Ether());
-            byte[] createContract = testcase.Code;
-
-            ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, TargetReleaseSpec);
-            Machine = new VirtualMachine(blockhashProvider, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
-
-
-            transaction.GasPrice = 100.GWei();
-            TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
-
-            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
 
     }

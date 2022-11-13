@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ulong Timestamp => 0UL;
-        protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        protected virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
         protected virtual ILogManager GetLogManager()
