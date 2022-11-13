@@ -12,17 +12,18 @@ permissions:
   packages: write
   contents: write
 
+env:
+  RELEASE_PATH: ${{ github.workspace }}
+  LINUX_X64_PKG: nethermind-linux-x64
+  LINUX_ARM64_PKG: nethermind-linux-arm64
+  WIN_X64_PKG: nethermind-win-x64
+  OSX_X64_PKG: nethermind-osx-x64
+  OSX_ARM64_PKG: nethermind-osx-arm64
+
 jobs:
   build-nethermind:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
-    env:      
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
-      LIN_RELEASE: nethermind-lin-x64
-      LIN_ARM64_RELEASE: nethermind-lin-arm64
-      WIN_RELEASE: nethermind-win-x64
-      OSX_RELEASE: nethermind-osx-x64
-      OSX_ARM64_RELEASE: nethermind-osx-arm64
     outputs:
       COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
       BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
@@ -41,19 +42,18 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '14'
-    - name: Set up build environment
-      run: |
-        npm i pkg @vercel/ncc -g
+        node-version: 14
+    - name: Install npm packages
+      run: npm i pkg @vercel/ncc -g
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    - name: Set up packages
-      run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Build Nethermind.Runner
       id: build-runner
       run: |
@@ -67,39 +67,39 @@ jobs:
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Nethermind.Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
-    - name: Build Nethermind.Launcher for ARM64
+    - name: Build Nethermind.Launcher for Linux arm64
       run: |
         cd nethermind/
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-        mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
+        mv Nethermind.Launcher ${{ env.RELEASE_PATH }}/linux-arm64/Nethermind.Launcher
     - name: Archive packages
       run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux package
+      name: Upload Nethermind Linux x64 package
       with:
-        name: nethermind-linux-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
+        name: ${{ env.LINUX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/linux-x64/${{ env.LINUX_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux ARM64 package
+      name: Upload Nethermind Linux arm64 package
       with:
-        name: nethermind-linux-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
+        name: ${{ env.LINUX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/linux-arm64/${{ env.LINUX_ARM64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Windows package
+      name: Upload Nethermind Windows x64 package
       with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+        name: ${{ env.WIN_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/win-x64/${{ env.WIN_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Darwin package
+      name: Upload Nethermind macOS x64 package
       with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+        name: ${{ env.OSX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/osx-x64/${{ env.OSX_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Darwin ARM64 package
+      name: Upload Nethermind macOS arm64 package
       with:
-        name: nethermind-darwin-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
+        name: ${{ env.OSX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/osx-arm64/${{ env.OSX_ARM64_PKG }}-*
     - uses: actions/upload-artifact@v3
       name: Upload update-homebrew.sh
       with:
@@ -111,28 +111,25 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-nethermind
     env:
-      OSX_RELEASE: nethermind-osx-x64
-      OSX_ARM64_RELEASE: nethermind-osx-arm64
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       VERSION: ${{ github.event.inputs.tag }}
       TIMESTAMP: ${{ needs.build-nethermind.outputs.BUILD_TIMESTAMP }}
       HASH: ${{ needs.build-nethermind.outputs.COMMIT_HASH }} 
     steps:
-      - name: Download Nethermind Darwin package
+      - name: Download Nethermind macOS x64 package
         uses: actions/download-artifact@v3
         with:
-          name: nethermind-darwin-package
-          path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
-      - name: Download Nethermind Darwin ARM64 package
+          name: ${{ env.OSX_X64_PKG }}-package
+          path: ${{ env.RELEASE_PATH }}/${{ env.OSX_X64_PKG }}/
+      - name: Download Nethermind macOS arm64 package
         uses: actions/download-artifact@v3
         with:
-          name: nethermind-darwin-arm64-package
-          path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
+          name: ${{ env.OSX_ARM64_PKG }}-package
+          path: ${{ env.RELEASE_PATH }}/${{ env.OSX_ARM64_PKG }}/
       - name: Download update-homebrew.sh
         uses: actions/download-artifact@v3
         with:
           name: update-homebrew-sh
-          path: ${{ env.RELEASE_DIRECTORY }}/          
+          path: ${{ env.RELEASE_PATH }}/          
       - name: Check out homebrew-nethermind repository
         uses: actions/checkout@v3
         with: 
@@ -140,8 +137,8 @@ jobs:
           path: homebrew-nethermind
       - name: Update Homebrew file with new version, commit, and date
         run: | 
-          chmod +x ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
-          bash ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
+          chmod +x ${{ env.RELEASE_PATH }}/update-homebrew.sh
+          bash ${{ env.RELEASE_PATH }}/update-homebrew.sh
       - name: Create pull request
         uses: peter-evans/create-pull-request@v4
         with:
@@ -168,13 +165,6 @@ jobs:
     name: Publish packages to GitHub Releases
     runs-on: ubuntu-latest
     needs: trigger-publish
-    env: 
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
-      LIN_RELEASE: nethermind-lin-x64
-      LIN_ARM64_RELEASE: nethermind-lin-arm64
-      WIN_RELEASE: nethermind-win-x64
-      OSX_RELEASE: nethermind-osx-x64
-      OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
@@ -185,30 +175,31 @@ jobs:
     - uses: actions/download-artifact@v3
       name: Download Nethermind Linux package
       with:
-        name: nethermind-linux-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/
+        name: ${{ env.LINUX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.LINUX_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Linux ARM64 package
+      name: Download Nethermind Linux arm64 package
       with:
-        name: nethermind-linux-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
+        name: ${{ env.LINUX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.LINUX_ARM64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Windows package
+      name: Download Nethermind Windows x64 package
       with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+        name: ${{ env.WIN_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.WIN_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Darwin package
+      name: Download Nethermind macOS x64 package
       with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
+        name: ${{ env.OSX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.OSX_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Darwin ARM64 package
+      name: Download Nethermind macOS arm64 package
       with:
-        name: nethermind-darwin-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
+        name: ${{ env.OSX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.OSX_ARM64_PKG }}/
     - name: Publish
       env:
+        GIT_TAG: ${{ github.event.inputs.tag }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         ./nethermind/scripts/deployment/publish-github.sh
@@ -217,43 +208,36 @@ jobs:
     name: Publish packages to Downloads page
     runs-on: ubuntu-latest
     needs: trigger-publish
-    env: 
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
-      LIN_RELEASE: nethermind-lin-x64
-      LIN_ARM64_RELEASE: nethermind-lin-arm64
-      WIN_RELEASE: nethermind-win-x64
-      OSX_RELEASE: nethermind-osx-x64
-      OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
         path: nethermind
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Linux package
+      name: Download Nethermind Linux x64 package
       with:
-        name: nethermind-linux-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/
+        name: ${{ env.LINUX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.LINUX_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Linux ARM64 package
+      name: Download Nethermind Linux arm64 package
       with:
-        name: nethermind-linux-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
+        name: ${{ env.LINUX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.LINUX_ARM64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Windows package
+      name: Download Nethermind Windows x64 package
       with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/
+        name: ${{ env.WIN_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.WIN_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Darwin package
+      name: Download Nethermind macOS x64 package
       with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
+        name: ${{ env.OSX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.OSX_X64_PKG }}/
     - uses: actions/download-artifact@v3
-      name: Download Nethermind Darwin ARM64 package
+      name: Download Nethermind macOS arm64 package
       with:
-        name: nethermind-darwin-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
+        name: ${{ env.OSX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.OSX_ARM64_PKG }}/
     - name: Configure GPG Key
       run: |
         mkdir -p ~/.gnupg/
@@ -306,7 +290,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: trigger-publish
     env:
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
       VERSION: ${{ github.event.inputs.tag }}
     steps:

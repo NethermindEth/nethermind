@@ -1,9 +1,9 @@
 #!/bin/bash
 #exit when any command fails
 set -e
-RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
-PUBLISH_PATH=bin/release/net7.0
-OUT=out
+
+RUNNER_PATH=$RELEASE_PATH/nethermind/src/Nethermind/Nethermind.Runner
+OUT=publish
 
 cd $RUNNER_PATH
 
@@ -13,57 +13,57 @@ echo with v$1+$2
 echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
-dotnet publish -c release -r $LINUX --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $LINUX_ARM64 -p:PublishSingleFile=true -p:Commit=$2 -p:BuildTimestamp=$3 -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_ARM64_RELEASE
-dotnet publish -c release -r $OSX --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
-dotnet publish -c release -r $WIN10 --self-contained true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
+dotnet publish -c release -r linux-x64 -o $OUT/linux-x64 --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+dotnet publish -c release -r linux-arm64 -o $OUT/linux-arm64 --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+dotnet publish -c release -r win-x64 -o $OUT/win-x64 --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+dotnet publish -c release -r osx-x64 -o $OUT/osx-x64 --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+dotnet publish -c release -r osx-arm64 -o $OUT/osx-arm64 --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
 
-rm -rf $OUT/$LIN_RELEASE/Data
-rm -rf $OUT/$LIN_RELEASE/Hive
-rm $OUT/$LIN_RELEASE/*.pdb
-cp -r configs $OUT/$LIN_RELEASE
-mkdir $OUT/$LIN_RELEASE/Data
-mkdir $OUT/$LIN_RELEASE/keystore
-cp Data/static-nodes.json $OUT/$LIN_RELEASE/Data
+rm -rf $OUT/linux-x64/Data
+rm -rf $OUT/linux-x64/Hive
+rm $OUT/linux-x64/*.pdb
+cp -r configs $OUT/linux-x64
+mkdir $OUT/linux-x64/Data
+mkdir $OUT/linux-x64/keystore
+cp Data/static-nodes.json $OUT/linux-x64/Data
 
-rm -rf $OUT/$OSX_RELEASE/Data
-rm -rf $OUT/$OSX_RELEASE/Hive
-rm $OUT/$OSX_RELEASE/*.pdb
-cp -r configs $OUT/$OSX_RELEASE
-mkdir $OUT/$OSX_RELEASE/Data
-mkdir $OUT/$OSX_RELEASE/keystore
-cp Data/static-nodes.json $OUT/$OSX_RELEASE/Data
+rm -rf $OUT/linux-arm64/Data
+rm -rf $OUT/linux-arm64/Hive
+rm $OUT/linux-arm64/*.pdb
+cp -r configs $OUT/linux-arm64
+mkdir $OUT/linux-arm64/Data
+mkdir $OUT/linux-arm64/keystore
+cp Data/static-nodes.json $OUT/linux-arm64/Data
 
-rm -rf $OUT/$WIN_RELEASE/Data
-rm -rf $OUT/$WIN_RELEASE/Hive
-rm $OUT/$WIN_RELEASE/*.pdb
-cp -r configs $OUT/$WIN_RELEASE
-mkdir $OUT/$WIN_RELEASE/Data
-mkdir $OUT/$WIN_RELEASE/keystore
-cp Data/static-nodes.json $OUT/$WIN_RELEASE/Data
+rm -rf $OUT/win-x64/Data
+rm -rf $OUT/win-x64/Hive
+rm $OUT/win-x64/*.pdb
+cp -r configs $OUT/win-x64
+mkdir $OUT/win-x64/Data
+mkdir $OUT/win-x64/keystore
+cp Data/static-nodes.json $OUT/win-x64/Data
 
-rm -rf $OUT/$LIN_ARM64_RELEASE/Data
-rm -rf $OUT/$LIN_ARM64_RELEASE/Hive
-rm $OUT/$LIN_ARM64_RELEASE/*.pdb
-cp -r configs $OUT/$LIN_ARM64_RELEASE
-mkdir $OUT/$LIN_ARM64_RELEASE/Data
-mkdir $OUT/$LIN_ARM64_RELEASE/keystore
-cp Data/static-nodes.json $OUT/$LIN_ARM64_RELEASE/Data
+rm -rf $OUT/osx-x64/Data
+rm -rf $OUT/osx-x64/Hive
+rm $OUT/osx-x64/*.pdb
+cp -r configs $OUT/osx-x64
+mkdir $OUT/osx-x64/Data
+mkdir $OUT/osx-x64/keystore
+cp Data/static-nodes.json $OUT/osx-x64/Data
 
-rm -rf $OUT/$OSX_ARM64_RELEASE/Data
-rm -rf $OUT/$OSX_ARM64_RELEASE/Hive
-rm $OUT/$OSX_ARM64_RELEASE/*.pdb
-cp -r configs $OUT/$OSX_ARM64_RELEASE
-mkdir $OUT/$OSX_ARM64_RELEASE/Data
-mkdir $OUT/$OSX_ARM64_RELEASE/keystore
-cp Data/static-nodes.json $OUT/$OSX_ARM64_RELEASE/Data
+rm -rf $OUT/osx-arm64/Data
+rm -rf $OUT/osx-arm64/Hive
+rm $OUT/osx-arm64/*.pdb
+cp -r configs $OUT/osx-arm64
+mkdir $OUT/osx-arm64/Data
+mkdir $OUT/osx-arm64/keystore
+cp Data/static-nodes.json $OUT/osx-arm64/Data
 
-mv $OUT/$LIN_RELEASE $RELEASE_DIRECTORY
-mv $OUT/$OSX_RELEASE $RELEASE_DIRECTORY
-mv $OUT/$WIN_RELEASE $RELEASE_DIRECTORY
-mv $OUT/$LIN_ARM64_RELEASE $RELEASE_DIRECTORY
-mv $OUT/$OSX_ARM64_RELEASE $RELEASE_DIRECTORY
+mv $OUT/linux-x64 $RELEASE_PATH
+mv $OUT/linux-arm64 $RELEASE_PATH
+mv $OUT/win-x64 $RELEASE_PATH
+mv $OUT/osx-x64 $RELEASE_PATH
+mv $OUT/osx-arm64 $RELEASE_PATH
 
 rm -rf $OUT
 

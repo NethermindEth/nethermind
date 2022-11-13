@@ -12,12 +12,12 @@ jobs:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     env: 
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
-      LIN_RELEASE: nethermind-lin-x64
-      LIN_ARM64_RELEASE: nethermind-lin-arm64
-      WIN_RELEASE: nethermind-win-x64
-      OSX_RELEASE: nethermind-osx-x64
-      OSX_ARM64_RELEASE: nethermind-osx-arm64
+      RELEASE_PATH: ${{ github.workspace }}
+      LINUX_X64_PKG: nethermind-linux-x64
+      LINUX_ARM64_PKG: nethermind-linux-arm64
+      WIN_X64_PKG: nethermind-win-x64
+      OSX_X64_PKG: nethermind-osx-x64
+      OSX_ARM64_PKG: nethermind-osx-arm64
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
@@ -32,21 +32,18 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '14'
-    - name: Set up build environment
-      run: |
-        npm i pkg @vercel/ncc -g
+        node-version: 14
+    - name: Install npm packages
+      run: npm i pkg @vercel/ncc -g
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        global-json-file: ./nethermind/global.json
+        dotnet-version: 7
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    - name: Set up packages
-      run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Build Nethermind.Runner
       id: build-runner
       run: |
@@ -60,36 +57,36 @@ jobs:
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Nethermind.Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
-    - name: Build Nethermind.Launcher for ARM64
+    - name: Build Nethermind.Launcher for Linux arm64
       run: |
         cd nethermind/
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-        mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
+        mv Nethermind.Launcher ${{ env.RELEASE_PATH }}/linux-arm64/Nethermind.Launcher
     - name: Archive packages
       run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.version }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux package
+      name: Upload Nethermind Linux x64 package
       with:
-        name: nethermind-linux-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
+        name: ${{ env.LINUX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/linux-x64/${{ env.LINUX_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux ARM64 package
+      name: Upload Nethermind Linux arm64 package
       with:
-        name: nethermind-linux-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
+        name: ${{ env.LINUX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/linux-arm64/${{ env.LINUX_ARM64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Windows package
+      name: Upload Nethermind Windows x64 package
       with:
-        name: nethermind-windows-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+        name: ${{ env.WIN_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/win-x64/${{ env.WIN_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Darwin package
+      name: Upload Nethermind macOS x64 package
       with:
-        name: nethermind-darwin-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+        name: ${{ env.OSX_X64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/osx-x64/${{ env.OSX_X64_PKG }}-*
     - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Darwin ARM64 package
+      name: Upload Nethermind macOS arm64 package
       with:
-        name: nethermind-darwin-arm64-package
-        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
+        name: ${{ env.OSX_ARM64_PKG }}-package
+        path: ${{ env.RELEASE_PATH }}/osx-arm64/${{ env.OSX_ARM64_PKG }}-*

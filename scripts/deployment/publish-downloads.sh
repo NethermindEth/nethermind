@@ -2,35 +2,36 @@
 export GPG_TTY=$(tty)
 #exit when any command fails
 set -e
+
 echo =======================================================
 echo Uploading files to Downloads page
 echo =======================================================
 
-cd $RELEASE_DIRECTORY
+cd $RELEASE_PATH
 
-cd $LIN_RELEASE && LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
-cd $OSX_RELEASE && OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
-cd $WIN_RELEASE && WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
-cd $LIN_ARM64_RELEASE && LIN_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
-cd $OSX_ARM64_RELEASE && OSX_ARM64_FILE="$(basename nethermind-darwin-arm64-*)" && cd ..
+cd $LINUX_X64_PKG && LINUX_X64_FILE="$(basename $LINUX_X64_PKG-*)" && cd ..
+cd $LINUX_ARM64_PKG && LINUX_ARM64_FILE="$(basename $LINUX_ARM64_PKG-*)" && cd ..
+cd $WIN_X64_PKG && WIN_X64_FILE="$(basename $WIN_X64_PKG-*)" && cd ..
+cd $OSX_X64_PKG && OSX_X64_FILE="$(basename $OSX_X64_PKG-*)" && cd ..
+cd $OSX_ARM64_PKG && OSX_ARM64_FILE="$(basename $OSX_ARM64_PKG-*)" && cd ..
 
 echo =======================================================
 echo Signing files with gpg
 echo =======================================================
 
-cd $LIN_RELEASE
-gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LIN_FILE
+cd $LINUX_X64_PKG
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LINUX_X64_FILE
 cd ..
-cd $WIN_RELEASE
-gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $WIN_FILE
+cd $LINUX_ARM64_PKG
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LINUX_ARM64_FILE
 cd ..
-cd $OSX_RELEASE
-gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $OSX_FILE
+cd $WIN_X64_PKG
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $WIN_X64_FILE
 cd ..
-cd $LIN_ARM64_RELEASE
-gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LIN_ARM64_FILE
+cd $OSX_X64_PKG
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $OSX_X64_FILE
 cd ..
-cd $OSX_ARM64_RELEASE
+cd $OSX_ARM64_PKG
 gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $OSX_ARM64_FILE
 cd ..
 
@@ -38,42 +39,42 @@ echo =======================================================
 echo Files have been successfully signed
 echo =======================================================
 
-cd $LIN_RELEASE
-filename_lin=${LIN_FILE::-13}
-extension=${LIN_FILE##*.}
+cd $LINUX_X64_PKG
+filename_linux_x64=${LINUX_X64_FILE::-13}
+extension=${LINUX_X64_FILE##*.}
 
-mv $LIN_FILE $filename_lin.$extension
-mv $LIN_FILE.asc $filename_lin.$extension.asc
-curl --fail -# -F "files=@${PWD}/${filename_lin}.${extension}" -F "files=@${PWD}/${filename_lin}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+mv $LINUX_X64_FILE filename_linux_x64.$extension
+mv $LINUX_X64_FILE.asc filename_linux_x64.$extension.asc
+curl --fail -# -F "files=@${PWD}/${filename_linux_x64}.${extension}" -F "files=@${PWD}/${filename_linux_x64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
-cd $WIN_RELEASE
-filename_win=${WIN_FILE::-13}
+cd $LINUX_ARM64_PKG
+filename_linux_arm64=${LINUX_ARM64_FILE::-13}
 
-mv $WIN_FILE $filename_win.$extension
-mv $WIN_FILE.asc $filename_win.$extension.asc
-
-curl --fail -# -F "files=@${PWD}/${filename_win}.${extension}" -F "files=@${PWD}/${filename_win}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+mv $LINUX_ARM64_FILE $filename_linux_arm64.$extension
+mv $LINUX_ARM64_FILE.asc $filename_linux_arm64.$extension.asc
+curl --fail -# -F "files=@${PWD}/${filename_linux_arm64}.${extension}" -F "files=@${PWD}/${filename_linux_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
-cd $OSX_RELEASE
-filename_osx=${OSX_FILE::-13}
+cd $WIN_X64_PKG
+filename_win_x64=${WIN_X64_FILE::-13}
 
-mv $OSX_FILE $filename_osx.$extension
-mv $OSX_FILE.asc $filename_osx.$extension.asc
+mv $WIN_X64_FILE $filename_win_x64.$extension
+mv $WIN_X64_FILE.asc $filename_win_x64.$extension.asc
 
-curl --fail -# -F "files=@${PWD}/${filename_osx}.${extension}" -F "files=@${PWD}/${filename_osx}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+curl --fail -# -F "files=@${PWD}/${filename_win_x64}.${extension}" -F "files=@${PWD}/${filename_win_x64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
-cd $LIN_ARM64_RELEASE
-filename_lin_arm64=${LIN_ARM64_FILE::-13}
+cd $OSX_X64_PKG
+filename_osx_x64=${OSX_X64_FILE::-13}
 
-mv $LIN_ARM64_FILE $filename_lin_arm64.$extension
-mv $LIN_ARM64_FILE.asc $filename_lin_arm64.$extension.asc
-curl --fail -# -F "files=@${PWD}/${filename_lin_arm64}.${extension}" -F "files=@${PWD}/${filename_lin_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+mv $OSX_X64_FILE $filename_osx_x64.$extension
+mv $OSX_X64_FILE.asc $filename_osx_x64.$extension.asc
+
+curl --fail -# -F "files=@${PWD}/${filename_osx_x64}.${extension}" -F "files=@${PWD}/${filename_osx_x64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
-cd $OSX_ARM64_RELEASE
+cd $OSX_ARM64_PKG
 filename_osx_arm64=${OSX_ARM64_FILE::-13}
 
 mv $OSX_ARM64_FILE $filename_osx_arm64.$extension

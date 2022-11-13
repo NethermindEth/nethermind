@@ -35,29 +35,29 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        global-json-path: ./nethermind/global.json
+        dotnet-version: 7
     - name: Build Nethermind
       run: |
         cd nethermind
         mkdir bin
         cd src/Nethermind
         dotnet build Nethermind.sln -c release
-        cp -r Nethermind.Runner/bin/release/net7.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
-    - name: Set up Node.js (v12)
+        cp -r Nethermind.Runner/bin/Release/net7.0/* $GITHUB_WORKSPACE/nethermind/bin/
+    - name: Set up Node.js v12
       if: ${{ !contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '12'
-    - name: Set up Node.js (v16)
+        node-version: 12
+    - name: Set up Node.js v16
       if: ${{ contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '16'
+        node-version: 16
     - name: Run tests
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
-    - name: Collect logs if workflow cancelled # otherwise it's collected in the test step
+    - name: Collect logs if workflow canceled # otherwise it's collected in the test step
       if: cancelled()
       run: cd posdao-test-setup && bash scripts/collect-logs
     - name: Move logs to different dir

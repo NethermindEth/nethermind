@@ -24,6 +24,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -53,6 +55,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -100,6 +104,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -144,6 +150,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -164,6 +172,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -199,6 +209,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -228,6 +240,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -260,6 +274,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -283,6 +299,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Ethereum.Blockchain.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
@@ -296,6 +314,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Ethereum.Trie.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Trie.Test -c ${{ env.BUILD_CONFIG }}
@@ -312,6 +332,8 @@ jobs:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
     - name: Ethereum.Basic.Test
       run: |
         dotnet test src/Nethermind/Ethereum.Basic.Test -c ${{ env.BUILD_CONFIG }}
