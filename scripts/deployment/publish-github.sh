@@ -23,50 +23,50 @@ cd $OSX_ARM64_PKG && OSX_ARM64_FILE="$(basename $OSX_ARM64_PKG-*)" && cd ..
 
 if [[ ! -z $GIT_TAG ]] && [[ $GIT_TAG =~ ^$GIT_TAG_3\d* ]] && [[ $STATUS != 200 ]]; then
 
-API_JSON=$(printf '{"tag_name": "%s", "target_commitish": "master", "name": "v%s", "body": "### Release notes\\n\\n", "draft": true, "prerelease": false}' $GIT_TAG $GIT_TAG)
+  API_JSON=$(printf '{"tag_name": "%s", "target_commitish": "master", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": false}' $GIT_TAG $GIT_TAG)
 
-curl --data "$API_JSON" -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$GH_OWNER/$GH_REPO/releases
-RELEASE_URL=https://github.com/$GH_OWNER/$GH_REPO/releases/tag/$GIT_TAG
+  curl --data "$API_JSON" -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$GH_OWNER/$GH_REPO/releases
+  RELEASE_URL=https://github.com/$GH_OWNER/$GH_REPO/releases/tag/$GIT_TAG
 
-echo =======================================================
-echo Uploading Linux releases
-echo =======================================================
+  echo =======================================================
+  echo Uploading Linux releases
+  echo =======================================================
 
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$LINUX_X64_PKG/$LINUX_X64_FILE
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$LINUX_ARM64_PKG/$LINUX_ARM64_FILE
+  ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$LINUX_X64_PKG/$LINUX_X64_FILE
+  ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$LINUX_ARM64_PKG/$LINUX_ARM64_FILE
 
-echo =======================================================
-echo Finished uploading Linux release
-echo =======================================================
+  echo =======================================================
+  echo Finished uploading Linux release
+  echo =======================================================
 
-echo =======================================================
-echo Uploading Windows release
-echo =======================================================
+  echo =======================================================
+  echo Uploading Windows release
+  echo =======================================================
 
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$WIN_X64_PKG/$WIN_X64_FILE
+  ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$WIN_X64_PKG/$WIN_X64_FILE
 
-echo =======================================================
-echo Finished uploading Windows release
-echo =======================================================
+  echo =======================================================
+  echo Finished uploading Windows release
+  echo =======================================================
 
-echo =======================================================
-echo Uploading macOS release
-echo ======================================================
+  echo =======================================================
+  echo Uploading macOS release
+  echo ======================================================
 
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$OSX_X64_PKG/$OSX_X64_FILE
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$OSX_ARM64_PKG/$OSX_ARM64_FILE
+  ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$OSX_X64_PKG/$OSX_X64_FILE
+  ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_TAG filename=$RELEASE_PATH/$OSX_ARM64_PKG/$OSX_ARM64_FILE
 
-echo =======================================================
-echo Finished uploading macOS release
-echo =======================================================
+  echo =======================================================
+  echo Finished uploading macOS release
+  echo =======================================================
 
-echo =======================================================
-echo Packages have been successfully published on $RELEASE_URL
-echo =======================================================
+  echo =======================================================
+  echo Packages have been successfully published on $RELEASE_URL
+  echo =======================================================
 
 else
-    echo =======================================================
-    echo Incorrect tag or release already exists in repository
-    echo =======================================================
-    exit 1
+  echo =======================================================
+  echo Incorrect tag or release already exists in repository
+  echo =======================================================
+  exit 1
 fi
