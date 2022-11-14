@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -33,7 +32,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
-using Org.BouncyCastle.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
