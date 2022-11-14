@@ -63,7 +63,7 @@ public class DeserializeBenchmarks
     }
 
     [RpcModule(ModuleType.Engine)]
-    public interface ITestRpcModule: IRpcModule
+    public interface ITestRpcModule : IRpcModule
     {
         [JsonRpcMethod(
             Description = "Just a test. Does nothing.",
