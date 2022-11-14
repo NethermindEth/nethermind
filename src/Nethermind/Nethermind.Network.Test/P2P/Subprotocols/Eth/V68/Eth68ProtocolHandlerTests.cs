@@ -130,6 +130,24 @@ public class Eth68ProtocolHandlerTests
         action.Should().Throw<SubprotocolException>();
     }
 
+    [Test]
+    public void Should_process_huge_transaction()
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
+            .WithHash(TestItem.KeccakA).TestObject;
+
+        TxDecoder txDecoder = new();
+
+        var msg = new NewPooledTransactionHashesMessage68(new[] {tx.Type},
+            new[] {txDecoder.GetLength(tx, RlpBehaviors.None)}, new[] {tx.Hash});
+
+        HandleIncomingStatusMessage();
+
+        HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+        _pooledTxsRequestor.Received().RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<TxType>>());
+    }
+
     private void HandleIncomingStatusMessage()
     {
         var statusMsg = new StatusMessage();
