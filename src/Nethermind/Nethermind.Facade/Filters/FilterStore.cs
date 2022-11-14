@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
-            if (topics == null)
+            if (topics is null)
             {
                 return SequenceTopicsFilter.AnyTopic;
             }
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
-            if (filterTopic == null)
+            if (filterTopic is null)
             {
                 return AnyTopic.Instance;
             }
@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = obj as IEnumerable<string>;
-            if (topics == null)
+            if (topics is null)
             {
                 return null;
             }

@@ -97,7 +97,7 @@ namespace Nethermind.State
                 return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
             }
 
-            return GetAndAddToCache(address) != null;
+            return GetAndAddToCache(address) is not null;
         }
 
         public bool IsEmptyAccount(Address address)
@@ -452,7 +452,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
             }
 
-            if (_changes[_currentPosition + 1] != null)
+            if (_changes[_currentPosition + 1] is not null)
             {
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
             }
@@ -668,7 +668,7 @@ namespace Nethermind.State
         private Account? GetAndAddToCache(Address address)
         {
             Account? account = GetState(address);
-            if (account != null)
+            if (account is not null)
             {
                 PushJustCache(address, account);
             }

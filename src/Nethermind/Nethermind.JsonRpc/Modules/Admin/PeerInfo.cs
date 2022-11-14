@@ -42,14 +42,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public PeerInfo(Peer peer, bool includeDetails)
         {
-            if (peer.Node == null)
+            if (peer.Node is null)
             {
                 throw new ArgumentException(
                     $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
             }
 
             ClientId = peer.Node.ClientId;
-            Host = peer.Node.Host == null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
+            Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;

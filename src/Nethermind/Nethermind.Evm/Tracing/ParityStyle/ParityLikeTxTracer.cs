@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash,
-                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                TransactionPosition = tx is null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
                 BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         private void PushAction(ParityTraceAction action)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 action.TraceAddress = new int[_currentAction.TraceAddress.Length + 1];
                 for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
@@ -203,7 +203,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             if (IsTracingInstructions)
             {
                 (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(), new List<ParityVmOperationTrace>());
-                if (_currentOperation != null)
+                if (_currentOperation is not null)
                 {
                     if (action.Type != "suicide")
                     {
@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
@@ -254,7 +254,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
@@ -262,7 +262,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Output = output;
 
             // quick tx fail (before execution)
-            if (_trace.Action == null)
+            if (_trace.Action is null)
             {
                 _trace.Action = new ParityTraceAction();
                 _trace.Action.From = _tx.SenderAddress;
@@ -436,7 +436,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             action.Type = GetActionType(callType);
             action.CreationMethod = GetCreateMethod(callType);
 
-            if (_currentOperation != null && callType.IsAnyCreate())
+            if (_currentOperation is not null && callType.IsAnyCreate())
             {
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;

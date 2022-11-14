@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public byte[] GetBlockRlp(long number)
         {
             Keccak hash = _blockTree.FindHash(number);
-            return hash == null ? null : _dbMappings[DbNames.Blocks].Get(hash);
+            return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
         }
 
         public object GetConfigValue(string category, string name)

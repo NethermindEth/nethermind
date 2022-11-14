@@ -204,6 +204,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            {
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                return;
+            }
+
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
@@ -228,7 +235,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
-                if (transaction.Signature != null)
+                if (transaction.Signature is not null)
                 {
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 }
@@ -318,7 +325,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     PrepareAccountForContractDeployment(contractAddress!, spec);
                 }
 
-                if (recipient == null)
+                if (recipient is null)
                 {
                     // this transaction is not a contract creation so it should have the recipient known and not null
                     throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
@@ -334,7 +341,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 env.CodeSource = recipient;
                 env.ExecutingAccount = recipient;
                 env.InputData = data ?? Array.Empty<byte>();
-                env.CodeInfo = machineCode == null
+                env.CodeInfo = machineCode is null
                     ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
                     : new CodeInfo(machineCode);
 

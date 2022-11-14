@@ -87,7 +87,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsError => Error != null && !ShouldRevert;
+        public bool IsError => Error is not null && !ShouldRevert;
 
         public string Error { get; }
 

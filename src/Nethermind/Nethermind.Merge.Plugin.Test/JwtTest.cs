@@ -43,8 +43,8 @@ public class JwtTest
     public void long_key_tests(string token, bool expected)
     {
         ManualTimestamper manualTimestamper = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(1644994971).UtcDateTime };
-        IRpcAuthentication authentication = MicrosoftJwtAuthentication.CreateFromHexSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
-        IRpcAuthentication authenticationWithPrefix = MicrosoftJwtAuthentication.CreateFromHexSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
+        IRpcAuthentication authentication = JwtAuthentication.FromSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
+        IRpcAuthentication authenticationWithPrefix = JwtAuthentication.FromSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
         actual = authenticationWithPrefix.Authenticate(token);

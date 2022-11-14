@@ -80,6 +80,7 @@ namespace Nethermind.Specs
         public bool IsEip3675Enabled { get; set; }
         public bool IsEip3651Enabled { get; set; }
         public bool IsEip3855Enabled { get; set; }
+        public bool IsEip3860Enabled { get; set; }
         public bool IsEip4758Enabled { get; set; }
     }
 }

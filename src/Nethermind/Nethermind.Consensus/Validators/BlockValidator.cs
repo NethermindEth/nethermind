@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Validators
 
                 for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {
-                    if (receipts[i].Error != null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                    if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
                     {
                         if (_logger.IsError) _logger.Error($"  invalid transaction {i}");
                     }

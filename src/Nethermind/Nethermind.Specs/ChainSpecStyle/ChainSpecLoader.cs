@@ -77,7 +77,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
             {
                 var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-                if (allocation == null) return null;
+                if (allocation is null) return null;
                 KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
                 if (pricing.Length > 0)
                 {
@@ -96,7 +96,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
             {
-                bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) != null;
+                bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) is not null;
                 return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
@@ -194,7 +194,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Engine?.Ethash != null)
+            if (chainSpecJson.Engine?.Ethash is not null)
             {
                 chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
                 chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
@@ -208,7 +208,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
             chainSpec.ConstantinopleBlockNumber =
-                chainSpec.Parameters.Eip1283DisableTransition == null
+                chainSpec.Parameters.Eip1283DisableTransition is null
                     ? null
                     : chainSpec.Parameters.Eip145Transition;
             chainSpec.ConstantinopleFixBlockNumber =
@@ -263,7 +263,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 return validator;
             }
 
-            if (chainSpecJson.Engine?.AuthorityRound != null)
+            if (chainSpecJson.Engine?.AuthorityRound is not null)
             {
                 chainSpec.SealEngineType = SealEngineType.AuRa;
                 chainSpec.AuRa = new AuRaParameters
@@ -285,7 +285,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     RewriteBytecode = chainSpecJson.Engine.AuthorityRound.RewriteBytecode,
                 };
             }
-            else if (chainSpecJson.Engine?.Clique != null)
+            else if (chainSpecJson.Engine?.Clique is not null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
                 chainSpec.Clique = new CliqueParameters
@@ -295,7 +295,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
                 };
             }
-            else if (chainSpecJson.Engine?.Ethash != null)
+            else if (chainSpecJson.Engine?.Ethash is not null)
             {
                 chainSpec.SealEngineType = SealEngineType.Ethash;
                 chainSpec.Ethash = new EthashParameters
@@ -313,7 +313,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 };
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays != null)
+                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
                 {
                     foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
                     {
@@ -321,7 +321,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     }
                 }
             }
-            else if (chainSpecJson.Engine?.NethDev != null)
+            else if (chainSpecJson.Engine?.NethDev is not null)
             {
                 chainSpec.SealEngineType = SealEngineType.NethDev;
             }
@@ -341,7 +341,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Genesis == null)
+            if (chainSpecJson.Genesis is null)
             {
                 return;
             }
@@ -359,7 +359,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
             UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
-            if (chainSpecJson.Params.Eip1559Transition != null)
+            if (chainSpecJson.Params.Eip1559Transition is not null)
                 baseFee = chainSpecJson.Params.Eip1559Transition == 0
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                     : UInt256.Zero;
@@ -394,7 +394,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Accounts == null)
+            if (chainSpecJson.Accounts is null)
             {
                 return;
             }
@@ -402,7 +402,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
-                if (account.Value.BuiltIn != null && account.Value.Balance == null)
+                if (account.Value.BuiltIn is not null && account.Value.Balance is null)
                 {
                     continue;
                 }
@@ -418,7 +418,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            if (chainSpecJson.Nodes == null)
+            if (chainSpecJson.Nodes is null)
             {
                 chainSpec.Bootnodes = Array.Empty<NetworkNode>();
                 return;

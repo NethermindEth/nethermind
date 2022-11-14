@@ -101,12 +101,17 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected TestAllTracerWithOutput Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
+        }
+
+        protected TestAllTracerWithOutput Execute(params byte[] code)
+        {
+            return Execute(BlockNumber, Timestamp, code);
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
@@ -212,7 +217,7 @@ namespace Nethermind.Evm.Test
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(blockNumber)
-                .WithTransactions(tx == null ? new Transaction[0] : new[] { tx })
+                .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
                 .WithGasLimit(blockGasLimit)
                 .WithBeneficiary(senderRecipientAndMiner.Miner)
                 .WithTimestamp(timestamp)

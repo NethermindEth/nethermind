@@ -500,7 +500,7 @@ public partial class EthRpcModuleTests
 
         var newFilterResp = RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
-        Assert.IsTrue(newFilterResp != null && newFilterResp is JsonRpcSuccessResponse);
+        Assert.IsTrue(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse);
 
         string getFilterLogsSerialized = test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 
@@ -1040,7 +1040,6 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction.WithValue(10000).SignedAndResolved(new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001")).WithNonce(0).TestObject;
         TransactionForRpc txForRpc = new(tx);
-
         string serialized = ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Account balance: 0, cumulative cost: 31000\"},\"id\":67}", serialized);

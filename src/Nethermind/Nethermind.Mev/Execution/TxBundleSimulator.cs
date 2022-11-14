@@ -71,7 +71,8 @@ namespace Nethermind.Mev.Execution
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];
-
+                if (tx.Hash is null)
+                    throw new ArgumentException("transaction hash was unexpectedly null while processing bundle!");
                 tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
 
                 success &= tracer.TransactionResults[i];
