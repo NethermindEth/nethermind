@@ -154,33 +154,6 @@ namespace Nethermind.JsonRpc
             return jsonRpcRequest;
         }
 
-        private void UpdateParams(JToken token)
-        {
-            var paramsToken = token.SelectToken("params");
-            if (paramsToken is null)
-            {
-                paramsToken = token.SelectToken("Params");
-                if (paramsToken is null)
-                {
-                    return;
-                }
-            }
-
-            if (paramsToken is JValue)
-            {
-                return; // null
-            }
-
-            JArray arrayToken = (JArray)paramsToken;
-            for (int i = 0; i < arrayToken.Count; i++)
-            {
-                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
-                {
-                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
-                }
-            }
-        }
-
         public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
         {
             request = await RecordRequest(request);
