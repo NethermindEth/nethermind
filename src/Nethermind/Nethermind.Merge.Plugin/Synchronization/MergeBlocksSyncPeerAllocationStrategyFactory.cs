@@ -43,7 +43,7 @@ public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrat
     public IPeerAllocationStrategy Create(BlocksRequest? request)
     {
         // because of the way the generics cannot handle T / T?
-        if (request == null)
+        if (request is null)
         {
             throw new ArgumentNullException(
                 $"NULL received for allocation in {nameof(MergeBlocksSyncPeerAllocationStrategyFactory)}");

@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain
         public int DeleteChainSlice(in long startNumber, long? endNumber = null)
         {
             var bestKnownNumber = BestKnownNumber;
-            if (endNumber == null || endNumber == bestKnownNumber)
+            if (endNumber is null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)
                 {
@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain
                             }
                         }
 
-                        if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b == null))
+                        if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b is null))
                         {
                             return _wrapped.DeleteChainSlice(startNumber);
                         }

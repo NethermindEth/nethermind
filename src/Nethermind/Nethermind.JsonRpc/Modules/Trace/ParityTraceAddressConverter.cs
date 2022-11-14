@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         public override void WriteJson(JsonWriter writer, int[] value, JsonSerializer serializer)
         {
-            if (value == null)
+            if (value is null)
             {
                 writer.WriteNull();
             }
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     result.Add(pathPart.Value);
                 }
-            } while (pathPart != null);
+            } while (pathPart is not null);
 
             return result.ToArray();
         }

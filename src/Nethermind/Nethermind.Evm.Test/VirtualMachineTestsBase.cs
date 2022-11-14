@@ -217,7 +217,7 @@ namespace Nethermind.Evm.Test
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(blockNumber)
-                .WithTransactions(tx == null ? new Transaction[0] : new[] { tx })
+                .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
                 .WithGasLimit(blockGasLimit)
                 .WithBeneficiary(senderRecipientAndMiner.Miner)
                 .WithTimestamp(timestamp)

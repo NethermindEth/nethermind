@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetNext(out TxReceiptStructRef current)
         {
-            if (_receipts == null)
+            if (_receipts is null)
             {
                 if (_decoderContext.Position < _length)
                 {
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Reset()
         {
-            if (_receipts != null)
+            if (_receipts is not null)
             {
                 _position = 0;
             }
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Dispose()
         {
-            if (_receipts == null && !_decoderContext.Data.IsEmpty)
+            if (_receipts is null && !_decoderContext.Data.IsEmpty)
             {
                 _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }

@@ -70,11 +70,11 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
-        public Block? FindPendingBlock() => PendingHash == null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
+        public Block? FindPendingBlock() => PendingHash is null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
 
-        public Block? FindFinalizedBlock() => FinalizedHash == null ? null : FindBlock(FinalizedHash, BlockTreeLookupOptions.None);
+        public Block? FindFinalizedBlock() => FinalizedHash is null ? null : FindBlock(FinalizedHash, BlockTreeLookupOptions.None);
 
-        public Block? FindSafeBlock() => SafeHash == null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
+        public Block? FindSafeBlock() => SafeHash is null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
         public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
 
@@ -86,17 +86,17 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader? FindLatestHeader() => Head?.Header;
 
-        public BlockHeader? FindPendingHeader() => PendingHash == null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindPendingHeader() => PendingHash is null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindFinalizedHeader() => FinalizedHash == null ? null : FindHeader(FinalizedHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindFinalizedHeader() => FinalizedHash is null ? null : FindHeader(FinalizedHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindSafeHeader() => SafeHash == null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindSafeHeader() => SafeHash is null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
 
         BlockHeader FindBestSuggestedHeader();
 
         public Block? FindBlock(BlockParameter? blockParameter, bool headLimit = false)
         {
-            if (blockParameter == null)
+            if (blockParameter is null)
             {
                 return FindLatestBlock();
             }
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader? FindHeader(BlockParameter? blockParameter, bool headLimit = false)
         {
-            if (blockParameter == null)
+            if (blockParameter is null)
             {
                 return FindLatestHeader();
             }

@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            if (block.Transactions.Length == 0 || block.Transactions[0].SenderAddress != null)
+            if (block.Transactions.Length == 0 || block.Transactions[0].SenderAddress is not null)
             {
                 return;
             }

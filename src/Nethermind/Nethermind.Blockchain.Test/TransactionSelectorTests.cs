@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain.Test
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t?.SenderAddress != null)
+                .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key,

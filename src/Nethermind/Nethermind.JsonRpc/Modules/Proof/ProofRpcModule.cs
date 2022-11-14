@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash == null)
+            if (blockHash is null)
             {
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash == null)
+            if (blockHash is null)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
             }
