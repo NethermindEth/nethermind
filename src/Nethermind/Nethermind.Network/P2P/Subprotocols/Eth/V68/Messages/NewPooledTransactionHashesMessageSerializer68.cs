@@ -38,11 +38,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
             byte[] types = message.Types.Select(v => (byte)v).ToArray();
-            int typesLength = Rlp.LengthOf(types);
             int sizesLength = message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u));
             int hashesLength = message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak));
 
-            int totalSize = Rlp.LengthOfSequence(typesLength) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
+            int totalSize = Rlp.LengthOf(types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
             byteBuffer.EnsureWritable(totalSize, true);
 

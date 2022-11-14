@@ -41,7 +41,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         TxType[] types = { TxType.EIP1559 };
         int[] sizes = { 10 };
         Keccak[] hashes = { };
-        Test(types, sizes, hashes, "c502c10ac0");
+        Test(types, sizes, hashes, "c402c10ac0");
     }
 
     [Test]
@@ -51,7 +51,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         int[] sizes = { 2 };
         Keccak[] hashes = { TestItem.KeccakA };
         Test(types, sizes, hashes,
-            "e6" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
+            "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
     }
 
     [Test]
