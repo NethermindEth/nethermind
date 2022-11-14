@@ -271,10 +271,9 @@ namespace Nethermind.Init.Steps
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            TxSealer standardSealer = new(txSigner, getApi.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper, txPool);
-            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
+            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();

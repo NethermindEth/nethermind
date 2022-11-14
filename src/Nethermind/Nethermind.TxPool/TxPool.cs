@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -32,6 +33,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using Org.BouncyCastle.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
@@ -56,6 +58,7 @@ namespace Nethermind.TxPool
         private readonly TxDistinctSortedPool _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
+        private readonly IEthereumEcdsa _ecdsa;
 
         private readonly IAccountStateProvider _accounts;
 
@@ -98,6 +101,7 @@ namespace Nethermind.TxPool
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
+            _ecdsa = ecdsa;
 
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -507,12 +511,15 @@ namespace Nethermind.TxPool
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
-        public UInt256 ReserveOwnTransactionNonce(Address address)
+        public UInt256 ReserveOwnTransactionNonce(Transaction tx)
         {
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+            if (tx.SenderAddress is null)
+                throw new ArgumentNullException(nameof(tx.SenderAddress));
             UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(address, a =>
+            _nonces.AddOrUpdate(tx.SenderAddress, a =>
             {
-                currentNonce = _accounts.GetAccount(address).Nonce;
+                currentNonce = _accounts.GetAccount(tx.SenderAddress).Nonce;
                 return new AddressNonces(currentNonce);
             }, (a, n) =>
             {
