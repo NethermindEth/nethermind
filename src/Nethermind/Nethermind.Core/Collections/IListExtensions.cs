@@ -124,19 +124,5 @@ namespace Nethermind.Core.Collections
                 }
             }
         }
-
-        public static int FindIndex<T>(this IReadOnlyList<T> list, Predicate<T> match, int startIndex = 0, int? endIndex = null)
-        {
-            endIndex ??= list.Count - startIndex;
-            for (int i = startIndex; i < endIndex; i++)
-            {
-                if (match(list[i]))
-                {
-                    return i;
-                }
-            }
-
-            return -1;
-        }
     }
 }
