@@ -24,31 +24,16 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Reporting
 {
-    public class ProgressStage
-    {
-        public string SyncMode { get; set; }
-        public DateTime StartTime { get; set; }
-        public DateTime? FinishTime { get; set; }
-        public TimeSpan Duration => FinishTime is null
-                                        ? DateTime.UtcNow - StartTime
-                                        : FinishTime.Value - StartTime;
-        public long? Current { get; set; }
-        public long? Total { get; set; }
-        public double? Progress => 100 * (double)Current / Total;
-    }
     public class SyncReportSymmary
     {
         public string CurrentStage { get; set; }
-        public IEnumerable<ProgressStage> Progress { get; set; }
     }
     public static class ReportSink
     {
-        public static SyncMode CurrentStage { get; set; } = new();
-        public static ConcurrentDictionary<SyncMode, ProgressStage> Progress { get; set; } = new();
+        public static SyncMode CurrentStage { get; set; } = SyncMode.None;
         public static SyncReportSymmary Snapshot => new SyncReportSymmary
         {
             CurrentStage = CurrentStage.ToString(),
-            Progress = Progress.Values
         };
     }
 }

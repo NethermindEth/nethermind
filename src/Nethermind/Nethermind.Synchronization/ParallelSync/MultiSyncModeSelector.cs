@@ -122,14 +122,6 @@ namespace Nethermind.Synchronization.ParallelSync
             Changed += (src, args) =>
             {
                 ReportSink.CurrentStage = args.Current;
-
-                if(ReportSink.Progress.TryGetValue(args.Previous & ~args.Current, out var oldStage))
-                {
-                    lock (oldStage)
-                    {
-                        oldStage.FinishTime = DateTime.UtcNow;
-                    }
-                }
             };
 
             _ = StartAsync(_cancellation.Token);

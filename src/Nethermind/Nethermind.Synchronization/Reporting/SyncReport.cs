@@ -290,7 +290,6 @@ namespace Nethermind.Synchronization.Reporting
             }
 
             _logger.Info($"Downloaded {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)}bps");
-            UpdateReportSink(SyncMode.Full, FullSyncBlocksDownloaded.CurrentValue, FullSyncBlocksKnown);
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
@@ -299,21 +298,18 @@ namespace Nethermind.Synchronization.Reporting
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
                 _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
-                UpdateReportSink(SyncMode.FastHeaders, FastBlocksHeaders.CurrentValue, _fastBlocksPivotNumber);
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
             {
                 _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)}bps");
-                UpdateReportSink(SyncMode.FastBodies, FastBlocksBodies.CurrentValue, _fastBlocksPivotNumber - _syncConfig.AncientBodiesBarrier);
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
             {
                 _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)}bps");
-                UpdateReportSink(SyncMode.FastReceipts, FastBlocksReceipts.CurrentValue, _fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier);
                 FastBlocksReceipts.SetMeasuringPoint();
             }
         }
@@ -324,30 +320,7 @@ namespace Nethermind.Synchronization.Reporting
             int paddingLength = numHeadersToDownload.ToString().Length;
             _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
                          + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
-            UpdateReportSink(SyncMode.BeaconHeaders, BeaconHeaders.CurrentValue, _pivot.PivotDestinationNumber);
             BeaconHeaders.SetMeasuringPoint();
-        }
-
-        private void UpdateReportSink(SyncMode mode, long current, long target)
-        {
-            var stage = new ProgressStage
-            {
-                SyncMode = mode.ToString(),
-                Current = current,
-                Total = target,
-            };
-
-            ReportSink.Progress.AddOrUpdate(
-                mode,
-                (_) => {
-                    stage.StartTime = DateTime.UtcNow;
-                    return stage;
-                },
-                (_, old) =>
-                {
-                    stage.StartTime = old.StartTime;
-                    return stage;
-            });
         }
 
         public void Dispose()
