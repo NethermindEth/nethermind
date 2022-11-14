@@ -62,14 +62,14 @@ namespace Nethermind.Synchronization.Witness
             if (toPrune > 0)
             {
                 var level = _blockTree.FindLevel(toPrune);
-                if (level != null)
+                if (level is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Pruning witness from blocks with number {toPrune}");
 
                     for (int i = 0; i < level.BlockInfos.Length; i++)
                     {
                         var blockInfo = level.BlockInfos[i];
-                        if (blockInfo.BlockHash != null)
+                        if (blockInfo.BlockHash is not null)
                         {
                             _witnessRepository.Delete(blockInfo.BlockHash);
                         }

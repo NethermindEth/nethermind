@@ -24,6 +24,6 @@ namespace Nethermind.Network
     public static class NodeStatsManagerExtension
     {
         public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, IEnumerable<Peer> peers) =>
-            nodeStatsManager.UpdateCurrentReputation(peers.Where(p => p?.Node != null).Select(p => p.Node));
+            nodeStatsManager.UpdateCurrentReputation(peers.Where(p => p?.Node is not null).Select(p => p.Node));
     }
 }

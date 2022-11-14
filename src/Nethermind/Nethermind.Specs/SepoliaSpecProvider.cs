@@ -30,9 +30,9 @@ public class SepoliaSpecProvider : ISpecProvider
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
-        if (blockNumber != null)
+        if (blockNumber is not null)
             _theMergeBlock = blockNumber;
-        if (terminalTotalDifficulty != null)
+        if (terminalTotalDifficulty is not null)
             _terminalTotalDifficulty = terminalTotalDifficulty;
     }
 

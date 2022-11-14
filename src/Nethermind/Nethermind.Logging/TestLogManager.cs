@@ -98,7 +98,7 @@ namespace Nethermind.Logging
             {
                 Console.WriteLine(text);
 
-                if (ex != null)
+                if (ex is not null)
                 {
                     Console.WriteLine(ex.ToString());
                 }

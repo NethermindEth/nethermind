@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing
 
         public CompositeBlockPreprocessorStep(params IBlockPreprocessorStep[] recoverySteps)
         {
-            if (recoverySteps == null) throw new ArgumentNullException(nameof(recoverySteps));
+            if (recoverySteps is null) throw new ArgumentNullException(nameof(recoverySteps));
 
             _recoverySteps = new LinkedList<IBlockPreprocessorStep>();
             for (int i = 0; i < recoverySteps.Length; i++)

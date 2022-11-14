@@ -45,11 +45,11 @@ namespace Nethermind.Merge.Plugin.Test
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {
-                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+                string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
                     await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
-                if (currentHash != null)
+                if (currentHash is not null)
                 {
                     Assert.AreEqual(currentHash, block.Hash, $"incorrect block hash found {block}");
                 }
@@ -70,11 +70,11 @@ namespace Nethermind.Merge.Plugin.Test
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {
-                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+                string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
                     await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
-                if (childTimestamp != null)
+                if (childTimestamp is not null)
                 {
                     Assert.True(childTimestamp > block.Timestamp, $"incorrect timestamp for block {block}");
                 }

@@ -402,11 +402,11 @@ namespace Nethermind.Evm
 
             Keccak codeHash = state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo == null)
+            if (cachedCodeInfo is null)
             {
                 byte[] code = state.GetCode(codeHash);
 
-                if (code == null)
+                if (code is null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
@@ -725,7 +725,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (previousCallResult != null)
+            if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
@@ -1610,7 +1610,7 @@ namespace Nethermind.Evm
 
                             if (isTrace)
                             {
-                                if (_txTracer.IsTracingBlockHash && blockHash != null)
+                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
                                 {
                                     _txTracer.ReportBlockHash(blockHash);
                                 }
@@ -3063,7 +3063,7 @@ namespace Nethermind.Evm
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }
             public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute == null;
+            public bool IsReturn => StateToExecute is null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
         }
     }

@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ILogManager logManager,
             bool forSealing = false)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
+            if (validator is null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                             {
                                 SetCurrentValidator(previousValidatorInfo, parentHeader);
                                 finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizationLevel(validatorInfo.Key);
-                                canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
+                                canSetValidatorAsCurrent = finalizedAtBlockNumber is not null;
                             }
 
                             if (canSetValidatorAsCurrent)
@@ -206,11 +206,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 if (!_forSealing)
                 {
-                    if (_currentValidator.Validators != null)
+                    if (_currentValidator.Validators is not null)
                     {
                         _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
                     }
-                    else if (_blockTree.Head != null)
+                    else if (_blockTree.Head is not null)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Validators not found in validator initialized at block {finalizedAtBlockNumber}, even after genesis block loaded.");
                     }

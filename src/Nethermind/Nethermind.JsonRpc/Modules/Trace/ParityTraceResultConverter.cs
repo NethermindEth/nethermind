@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             writer.WriteStartObject();
 
-            if (value.Address != null)
+            if (value.Address is not null)
             {
                 writer.WriteProperty("address", value.Address, serializer);
                 writer.WriteProperty("code", value.Code, serializer);
@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteProperty("gasUsed", string.Concat("0x", value.GasUsed.ToString("x")));
 
-            if (value.Address == null)
+            if (value.Address is null)
             {
                 writer.WriteProperty("output", value.Output, serializer);
             }

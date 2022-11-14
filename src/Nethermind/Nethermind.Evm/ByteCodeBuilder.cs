@@ -120,7 +120,7 @@ namespace Nethermind.Evm
 
         public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
         {
-            if (input != null)
+            if (input is not null)
             {
                 StoreDataInMemory(0, input);
             }
@@ -131,7 +131,7 @@ namespace Nethermind.Evm
             }
             PushData(0);
             PushData(0);
-            PushData(input != null ? input.Length : 32);
+            PushData(input is not null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);
@@ -207,7 +207,7 @@ namespace Nethermind.Evm
             {
                 throw new Exception($"Unexpected call type {callType}");
             }
-            if (input != null)
+            if (input is not null)
             {
                 StoreDataInMemory(0, input);
             }
@@ -218,7 +218,7 @@ namespace Nethermind.Evm
             }
             PushData(0);
             PushData(0);
-            PushData(input != null ? input.Length : 32);
+            PushData(input is not null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);

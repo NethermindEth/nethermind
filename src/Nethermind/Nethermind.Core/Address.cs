@@ -75,7 +75,7 @@ namespace Nethermind.Core
 
         public static bool TryParse(string? value, out Address? address)
         {
-            if (value != null)
+            if (value is not null)
             {
                 try
                 {
@@ -185,7 +185,7 @@ namespace Nethermind.Core
                 value is string stringValue ? new Address(stringValue) : base.ConvertFrom(context, culture, value);
 
             public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType) =>
-                destinationType == typeof(string) && value != null
+                destinationType == typeof(string) && value is not null
                     ? ((Address)value).ToString()
                     : base.ConvertTo(context, culture, value, destinationType);
 

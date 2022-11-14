@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_dbBatchProcessed != null)
+            if (_dbBatchProcessed is not null)
             {
                 if (e.Block.Number == _currentDbLoadBatchEnd)
                 {

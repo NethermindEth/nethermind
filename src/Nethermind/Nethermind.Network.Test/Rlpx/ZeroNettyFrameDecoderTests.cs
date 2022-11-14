@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteByte(frame[i]);
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }
@@ -139,7 +139,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteBytes(frame.Slice(i, 16));
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }

@@ -17,14 +17,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
@@ -51,9 +54,10 @@ public class StartMonitoring : IStep
 
         if (metricsConfig.Enabled)
         {
-            Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
-            MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
-            _api.MonitoringService = new MonitoringService(metricsUpdater, metricsConfig, _api.LogManager);
+            PrepareProductInfoMetrics();
+            MetricsController metricsController = new(metricsConfig);
+
+            _api.MonitoringService = new MonitoringService(metricsController, metricsConfig, _api.LogManager);
             IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
@@ -73,6 +77,11 @@ public class StartMonitoring : IStep
             if (logger.IsInfo)
                 logger.Info("Grafana / Prometheus metrics are disabled in configuration");
         }
+    }
+
+    private static void PrepareProductInfoMetrics()
+    {
+        Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
     }
 
     public bool MustInitialize => false;

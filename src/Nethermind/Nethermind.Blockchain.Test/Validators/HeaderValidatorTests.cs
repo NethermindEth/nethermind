@@ -285,7 +285,7 @@ namespace Nethermind.Blockchain.Test.Validators
         public void When_total_difficulty_0_or_null_we_should_skip_total_difficulty_validation(long? totalDifficulty)
         {
             _block.Header.Difficulty = 1;
-            _block.Header.TotalDifficulty = totalDifficulty == null ? null : (UInt256)totalDifficulty;
+            _block.Header.TotalDifficulty = totalDifficulty is null ? null : (UInt256)totalDifficulty;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
 

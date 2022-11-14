@@ -37,11 +37,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
         {
             Rlp rlp = Rlp.Encode(message.TxReceipts.Select(
-                b => b == null
+                b => b is null
                     ? Rlp.OfEmptySequence
                     : Rlp.Encode(
                         b.Select(
-                            n => n == null
+                            n => n is null
                                 ? Rlp.OfEmptySequence
                                 : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
 

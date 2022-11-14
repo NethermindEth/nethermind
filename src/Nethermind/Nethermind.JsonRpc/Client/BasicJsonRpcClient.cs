@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Client
                 if (_logger.IsTrace) _logger.Trace(responseString);
 
                 JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
-                if (jsonResponse.Error != null)
+                if (jsonResponse.Error is not null)
                 {
                     if (_logger.IsError) _logger.Error(string.Concat(jsonResponse.Error.Message, " | ", jsonResponse.Error.Data));
                 }

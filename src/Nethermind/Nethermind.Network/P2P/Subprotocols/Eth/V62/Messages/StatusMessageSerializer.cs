@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.TotalDifficulty);
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);
-            if (message.ForkId != null)
+            if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
                 rlpStream.StartSequence(forkIdContentLength);
