@@ -3032,7 +3032,8 @@ namespace Nethermind.Evm
 
                                 stack.EnsureDepth(inputCount);
                                 programCounter = CodeInfo.Header[index].Start;
-                            } else
+                            }
+                            else
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
@@ -3053,16 +3054,18 @@ namespace Nethermind.Evm
                                 var outputCount = typeSection[index * 2 + 1];
 
                                 var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
-                                if(stack.Head == stackFrame.Height + outputCount)
+                                if (stack.Head == stackFrame.Height + outputCount)
                                 {
                                     CodeInfo.SectionId = stackFrame.Index;
                                     programCounter = stackFrame.Offset;
-                                } else
+                                }
+                                else
                                 {
                                     EndInstructionTraceError(EvmExceptionType.InvalidStackState);
                                     return CallResult.AccessViolationException;
-                                } 
-                            } else
+                                }
+                            }
+                            else
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;

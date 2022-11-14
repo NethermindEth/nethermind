@@ -41,18 +41,19 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-            if(IsEOF is null && Header is null)
+            if (IsEOF is null && Header is null)
             {
                 IsEOF = ByteCodeValidator.ValidateEofStrucutre(Container, spec, out _header);
             }
 
             if (IsEOF.Value && (Header is not null))
             {
-                var offsets = new [] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
+                var offsets = new[] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
                 if (spec.IsEip4750Enabled)
                 {
                     TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);
-                } else
+                }
+                else
                 {
                     TypeSection = Span<byte>.Empty;
                 }

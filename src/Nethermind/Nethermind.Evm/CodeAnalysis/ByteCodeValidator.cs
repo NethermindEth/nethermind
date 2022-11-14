@@ -34,7 +34,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public static bool ValidateByteCode(this ReadOnlySpan<byte> code, IReleaseSpec _spec)
                 => ValidateByteCode(code, _spec, out _);
 
-        public static bool ValidateEofStrucutre(ReadOnlySpan<byte> machineCode,IReleaseSpec _spec, out EofHeader header)
+        public static bool ValidateEofStrucutre(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
             => EofFormatChecker.ValidateInstructions(machineCode, out header, _spec);
     }
 }

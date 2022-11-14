@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Test
 
                 return bytes;
             }
-            public byte[] GenerateCode(bool  isEof)
+            public byte[] GenerateCode(bool isEof)
             {
                 return isEof ? EofBytecode(Code, Data) : Classicalcode(Code, Data);
             }

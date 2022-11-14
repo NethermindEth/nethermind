@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
                 get
                 {
                     yield return Main;
-                    foreach(var functionDef in Functions)
+                    foreach (var functionDef in Functions)
                     {
                         yield return functionDef.Body;
                     }
@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
 
                     // set type section
                     byte[] lenBytes;
-                    if(!misplaceTypeSection)
+                    if (!misplaceTypeSection)
                     {
                         if (!ommitTypeSection)
                         {
@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
                             bytes[i++] = 0x03; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
                         }
                     }
-                    
+
                     // set code section
                     bytes[i++] = 0x01;
 
@@ -147,7 +147,7 @@ namespace Nethermind.Evm.Test
                     bytes[i++] = 0x00;
 
                     //set typesection
-                    if(!ommitTypeSection)
+                    if (!ommitTypeSection)
                     {
                         bytes[i++] = (byte)0; bytes[i++] = (byte)0;
                         foreach (var functionDef in Functions)
@@ -170,10 +170,10 @@ namespace Nethermind.Evm.Test
                     return bytes;
                 }
 
-                for(int i = 3; i <= 3; i++)
+                for (int i = 3; i <= 3; i++)
                 {
                     var scenario = (Scenario)i;
-                    switch(scenario)
+                    switch (scenario)
                     {
                         case Scenario.OmitSection:
                             yield return new TestCase

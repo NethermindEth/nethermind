@@ -118,7 +118,7 @@ namespace Nethermind.Evm.Test
                 IsEip4750Enabled = false,
                 IsEip4200Enabled = false,
             };
-            
+
 
             var expectedHeader = codeSize == 0 && dataSize == 0
                 ? null

@@ -15,7 +15,7 @@ namespace Nethermind.Evm
 {
     enum SectionDividor : byte
     {
-        Terminator  = 0,
+        Terminator = 0,
         CodeSection = 1,
         DataSection = 2,
         TypeSection = 3,
@@ -29,7 +29,7 @@ namespace Nethermind.Evm
         public int DataSize { get; set; }
         public byte Version { get; set; }
         public int HeaderSize => 2 + 1 + (DataSize == 0 ? 0 : (1 + 2)) + (TypeSize == 0 ? 0 : (1 + 2)) + 1 + 2 * CodeSize.Length + 1;
-                                // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
+        // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
         public int ContainerSize => TypeSize + CodesSize + DataSize;
         #endregion
 
@@ -147,7 +147,7 @@ namespace Nethermind.Evm
                         }
                     case SectionDividor.TypeSection:
                         {
-                            if(spec.IsEip4750Enabled)
+                            if (spec.IsEip4750Enabled)
                             {
                                 if (DataSections is not null || CodeSections.Count != 0)
                                 {
@@ -178,7 +178,8 @@ namespace Nethermind.Evm
 
                                 var typeSectionSize = code.Slice(i, 2).ReadEthInt16();
                                 TypeSections = typeSectionSize;
-                            } else
+                            }
+                            else
                             {
                                 if (LoggingEnabled)
                                 {
@@ -249,7 +250,7 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var dataSectionSize= code.Slice(i, 2).ReadEthInt16();
+                            var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
                             DataSections = dataSectionSize;
 
                             if (dataSectionSize == 0) // if declared data section must be non-empty
@@ -278,7 +279,8 @@ namespace Nethermind.Evm
             var contractBody = code[i..];
 
             var calculatedCodeLen = header.TypeSize + header.CodesSize + header.DataSize;
-            if(spec.IsEip4750Enabled && header.TypeSize != 0 && (contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0)) {
+            if (spec.IsEip4750Enabled && header.TypeSize != 0 && (contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0))
+            {
                 if (LoggingEnabled)
                 {
                     _logger.Trace($"EIP-4750: Invalid Type Section expected {(0, 0)} but found {(contractBody[0], contractBody[1])}");
@@ -301,7 +303,7 @@ namespace Nethermind.Evm
         public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header, IReleaseSpec spec)
         {
             // check if code is EOF compliant
-            if(!spec.IsEip3540Enabled)
+            if (!spec.IsEip3540Enabled)
             {
                 header = null;
                 return false;
@@ -310,7 +312,7 @@ namespace Nethermind.Evm
             if (ExtractHeader(code, spec, out header))
             {
                 bool valid = true;
-                for(int i = 0; i < header.CodeSize.Length; i++)
+                for (int i = 0; i < header.CodeSize.Length; i++)
                 {
                     valid &= ValidateSectionInstructions(ref code, i, header, spec);
                 }

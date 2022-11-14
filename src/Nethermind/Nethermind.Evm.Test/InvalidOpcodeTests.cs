@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test
                 Instruction instruction = (Instruction)i;
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
-                if(InstructionsWithImmediates.Contains(instruction))
+                if (InstructionsWithImmediates.Contains(instruction))
                 {
                     var immediateArgs = instruction switch
                     {
@@ -215,7 +215,7 @@ namespace Nethermind.Evm.Test
                         Instruction.CALLF => Enumerable.Range(0, 2).Select(i => (byte)i),
                         _ => Enumerable.Empty<byte>()
                     };
-                    foreach(byte arg in immediateArgs)
+                    foreach (byte arg in immediateArgs)
                     {
                         prepCode.Data(arg);
                     }

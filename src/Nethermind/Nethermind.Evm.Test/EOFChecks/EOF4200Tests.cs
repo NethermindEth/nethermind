@@ -205,7 +205,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void RelativeStaticJumps_execution_tests([ValueSource(nameof(Eip4200TestCases))] TestCase testcase)
         {
-            var bytecode = testcase.GenerateCode(isEof : true);
+            var bytecode = testcase.GenerateCode(isEof: true);
             TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(bytecode);
             receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description} failed with error : {receipts.Error}, bytecode : {bytecode.ToHexString()}");
         }
