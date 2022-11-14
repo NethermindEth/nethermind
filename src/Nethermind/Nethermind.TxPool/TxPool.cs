@@ -113,11 +113,11 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _accounts, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
+            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
+            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -161,7 +161,7 @@ namespace Nethermind.TxPool
             {
                 while (await _headBlocksChannel.Reader.WaitToReadAsync())
                 {
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs args))
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
                         try
                         {
@@ -209,7 +209,7 @@ namespace Nethermind.TxPool
 
             for (int i = 0; i < transactionsInBlock; i++)
             {
-                Keccak txHash = blockTransactions[i].Hash;
+                Keccak txHash = blockTransactions[i].Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
                 if (!IsKnown(txHash!))
                 {
@@ -265,6 +265,9 @@ namespace Nethermind.TxPool
         {
             Metrics.PendingTransactionsReceived++;
 
+            if (tx.Hash is null)
+                return AcceptTxResult.Invalid;
+
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
@@ -279,10 +282,11 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
+            TxFilteringState state = new(tx, _accounts);
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, state, handlingOptions);
                 if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
@@ -300,7 +304,7 @@ namespace Nethermind.TxPool
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
 
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
+                bool inserted = _transactions.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 if (inserted)
                 {
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
@@ -413,7 +417,7 @@ namespace Nethermind.TxPool
                 Account? account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
-                Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                Transaction? tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
                 bool shouldBeDumped = false;
 
                 if (tx is null)
@@ -461,11 +465,14 @@ namespace Nethermind.TxPool
             bool hasBeenRemoved;
             lock (_locker)
             {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction transaction);
+                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
+                if (transaction is null || !hasBeenRemoved)
+                    return false;
                 if (hasBeenRemoved)
                 {
-                    Address address = transaction.SenderAddress;
-                    if (_nonces.TryGetValue(address!, out AddressNonces addressNonces))
+                    Address? address = transaction.SenderAddress;
+
+                    if (address != null && _nonces.TryGetValue(address, out AddressNonces? addressNonces))
                     {
                         addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
@@ -485,7 +492,7 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             lock (_locker)
             {
@@ -563,7 +570,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
+        public bool IsKnown(Keccak? hash) => hash != null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
