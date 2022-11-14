@@ -54,7 +54,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
+        public UInt256 ReserveOwnTransactionNonce(Transaction tx) => UInt256.Zero;
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
 

@@ -36,13 +36,8 @@ namespace Nethermind.TxPool
         public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             _sealer.Seal(tx, txHandlingOptions);
-
-            if (tx.Hash is null) // putting the check here becasue the sealer calculates the hash for the transaction
-                throw new ArgumentNullException(nameof(tx.Hash));
-
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
-
-            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash, result));
+            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
     }
 }

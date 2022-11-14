@@ -989,13 +989,14 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
         {
+            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
             _txPool = CreatePool();
-            var nonceA1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceB1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+            var nonceA1 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressA).TestObject);
+            var nonceA2 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressA).TestObject);
+            var nonceA3 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressA).TestObject);
+            var nonceB1 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressB).TestObject);
+            var nonceB2 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressB).TestObject);
+            var nonceB3 = _txPool.ReserveOwnTransactionNonce(builder.WithSenderAddress(TestItem.AddressB).TestObject);
 
             nonceA1.Should().Be(0);
             nonceA2.Should().Be(1);
@@ -1008,18 +1009,19 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
         {
-            var address = TestItem.AddressA;
+            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
+            var tx = builder.WithSenderAddress(TestItem.AddressA).TestObject;
             const int reservationsCount = 1000;
             _txPool = CreatePool();
             ConcurrentQueue<UInt256> nonces = new();
 
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(address));
+                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(tx));
             });
 
             result.IsCompleted.Should().BeTrue();
-            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
+            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(tx);
             nonces.Enqueue(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
             nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
