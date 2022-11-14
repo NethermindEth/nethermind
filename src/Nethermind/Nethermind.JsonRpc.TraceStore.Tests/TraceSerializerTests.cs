@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -13,23 +14,22 @@ public class TraceSerializerTests
     [Test]
     public void can_deserialize_deep_graph()
     {
-        List<ParityLikeTxTrace>? traces = Deserialize();
+        List<ParityLikeTxTrace>? traces = Deserialize(new TraceSerializer(LimboLogs.Instance));
         traces?.Count.Should().Be(36);
     }
 
     [Test]
     public void cant_deserialize_deep_graph()
     {
-        TraceSerializer.MaxDepth = 128;
-        Func<List<ParityLikeTxTrace>?> traces = Deserialize;
+        Func<List<ParityLikeTxTrace>?> traces = () => Deserialize(new TraceSerializer(LimboLogs.Instance, 128));
         traces.Should().Throw<JsonReaderException>();
     }
 
-    private List<ParityLikeTxTrace>? Deserialize()
+    private List<ParityLikeTxTrace>? Deserialize(ITraceSerializer serializer)
     {
         Type type = GetType();
         using Stream stream = type.Assembly.GetManifestResourceStream(type.Namespace + ".xdai-17600039.json")!;
-        List<ParityLikeTxTrace>? traces = TraceSerializer.Deserialize(stream);
+        List<ParityLikeTxTrace>? traces = serializer.Deserialize(stream);
         return traces;
     }
 }

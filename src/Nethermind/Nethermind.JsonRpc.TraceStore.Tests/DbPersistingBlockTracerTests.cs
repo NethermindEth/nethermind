@@ -19,8 +19,9 @@ public class DbPersistingBlockTracerTests
     {
         ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace);
         MemDb memDb = new();
+        TraceSerializer serializer = new(LimboLogs.Instance);
         DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-            new(parityTracer, memDb, static t => TraceSerializer.Serialize(t), LimboLogs.Instance);
+            new(parityTracer, memDb, t => serializer.Serialize(t), LimboLogs.Instance);
 
         Block block = Build.A.Block.TestObject;
         dbPersistingTracer.StartNewBlockTrace(block);
@@ -28,7 +29,7 @@ public class DbPersistingBlockTracerTests
         dbPersistingTracer.EndTxTrace();
         dbPersistingTracer.EndBlockTrace();
 
-        List<ParityLikeTxTrace>? traces = TraceSerializer.Deserialize(memDb.Get(block.Hash!));
+        List<ParityLikeTxTrace>? traces = serializer.Deserialize(memDb.Get(block.Hash!));
         traces.Should().BeEquivalentTo(new ParityLikeTxTrace[] { new() { BlockHash = new Keccak("0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6"), TransactionPosition = -1 } });
 
     }

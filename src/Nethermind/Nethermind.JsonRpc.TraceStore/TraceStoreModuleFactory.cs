@@ -30,16 +30,24 @@ public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     private readonly IDbWithSpan _traceStore;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
+    private readonly ITraceSerializer _traceSerializer;
     private readonly ILogManager _logManager;
 
-    public TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFactory, IDbWithSpan traceStore, IBlockFinder blockFinder, IReceiptFinder receiptFinder, ILogManager logManager)
+    public TraceStoreModuleFactory(
+        IRpcModuleFactory<ITraceRpcModule> innerFactory,
+        IDbWithSpan traceStore,
+        IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
+        ITraceSerializer traceSerializer,
+        ILogManager logManager)
     {
         _innerFactory = innerFactory;
         _traceStore = traceStore;
         _blockFinder = blockFinder;
         _receiptFinder = receiptFinder;
+        _traceSerializer = traceSerializer;
         _logManager = logManager;
     }
 
-    public override ITraceRpcModule Create() => new TraceStoreRpcModule(_innerFactory.Create(), _traceStore, _blockFinder, _receiptFinder, _logManager);
+    public override ITraceRpcModule Create() => new TraceStoreRpcModule(_innerFactory.Create(), _traceStore, _blockFinder, _receiptFinder, _traceSerializer, _logManager);
 }

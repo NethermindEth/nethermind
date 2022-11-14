@@ -23,36 +23,23 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public static class TraceSerializer
+public class TraceSerializer : ITraceSerializer
 {
-    public static bool VerifySerialized { get; set; } = false;
-
-    public static int MaxDepth
-    {
-        get => _maxDepth;
-        set
-        {
-            if (value < 1)
-            {
-                throw new ArgumentException("Value has to be > 0", nameof(MaxDepth));
-            }
-
-            if (_maxDepth != value)
-            {
-                _maxDepth = value;
-                _jsonSerializer = new EthereumJsonSerializer(_maxDepth);
-            }
-        }
-    }
-
-    public static ILogger? Logger { get; set; }
-
-    private static int _maxDepth = 1024;
-    private static IJsonSerializer _jsonSerializer = new EthereumJsonSerializer(MaxDepth);
     private static readonly byte[] _emptyBytes = { 0 };
     private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
 
-    public static unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
+    private readonly ILogger? _logger;
+    private readonly IJsonSerializer _jsonSerializer;
+    private readonly bool _verifySerialized;
+
+    public TraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
+    {
+        _jsonSerializer = new EthereumJsonSerializer(maxDepth);
+        _verifySerialized = verifySerialized;
+        _logger = logManager?.GetClassLogger<TraceSerializer>();
+    }
+
+    public unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
     {
         if (serialized.Length == 1) return _emptyTraces;
 
@@ -63,13 +50,13 @@ public static class TraceSerializer
         }
     }
 
-    public static List<ParityLikeTxTrace>? Deserialize(Stream serialized)
+    public List<ParityLikeTxTrace>? Deserialize(Stream serialized)
     {
         using GZipStream compressionStream = new(serialized, CompressionMode.Decompress);
         return _jsonSerializer.Deserialize<List<ParityLikeTxTrace>>(compressionStream);
     }
 
-    public static byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    public byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces)
     {
         if (traces.Count == 0) return _emptyBytes;
 
@@ -82,7 +69,7 @@ public static class TraceSerializer
         byte[] result = output.ToArray();
 
         // This is for testing
-        if (VerifySerialized)
+        if (_verifySerialized)
         {
             Task.Run(() =>
             {
@@ -94,7 +81,7 @@ public static class TraceSerializer
                 {
                     ParityLikeTxTrace? trace = traces.FirstOrDefault();
                     string tracesWrittenToPath = Path.Combine(Path.GetTempPath(), $"{trace?.BlockNumber}-{trace?.BlockHash}.zip");
-                    if (Logger?.IsError == true) Logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
+                    if (_logger?.IsError == true) _logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
                     File.WriteAllBytes(tracesWrittenToPath, result);
                 }
             });

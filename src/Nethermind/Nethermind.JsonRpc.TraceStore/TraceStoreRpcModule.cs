@@ -38,6 +38,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     private readonly ITraceRpcModule _traceModule;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
+    private readonly ITraceSerializer _traceSerializer;
     private readonly ILogger _logger;
 
     private static readonly IDictionary<ParityTraceTypes, Action<ParityLikeTxTrace>> _filters = new Dictionary<ParityTraceTypes, Action<ParityLikeTxTrace>>
@@ -47,12 +48,19 @@ public class TraceStoreRpcModule : ITraceRpcModule
         { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
     };
 
-    public TraceStoreRpcModule(ITraceRpcModule traceModule, IDbWithSpan traceStore, IBlockFinder blockFinder, IReceiptFinder receiptFinder, ILogManager logManager)
+    public TraceStoreRpcModule(
+        ITraceRpcModule traceModule,
+        IDbWithSpan traceStore,
+        IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
+        ITraceSerializer traceSerializer,
+        ILogManager logManager)
     {
         _traceStore = traceStore;
         _traceModule = traceModule;
         _blockFinder = blockFinder;
         _receiptFinder = receiptFinder;
+        _traceSerializer = traceSerializer;
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
@@ -210,7 +218,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         {
             if (!tracesSerialized.IsEmpty)
             {
-                List<ParityLikeTxTrace>? tracesDeserialized = TraceSerializer.Deserialize(tracesSerialized);
+                List<ParityLikeTxTrace>? tracesDeserialized = _traceSerializer.Deserialize(tracesSerialized);
                 if (tracesDeserialized is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Found persisted traces for block {block.ToString(BlockHeader.Format.FullHashAndNumber)}");
