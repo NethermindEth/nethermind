@@ -241,7 +241,7 @@ namespace Nethermind.Evm
         public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header, IReleaseSpec spec)
         {
             // check if code is EOF compliant
-            if(!spec.IsEip3540Enabled)
+            if (!spec.IsEip3540Enabled)
             {
                 header = null;
                 return false;
@@ -249,7 +249,7 @@ namespace Nethermind.Evm
 
             if (ExtractHeader(code, out header))
             {
-                if(!spec.IsEip3670Enabled)
+                if (!spec.IsEip3670Enabled)
                 {
                     return true;
                 }
