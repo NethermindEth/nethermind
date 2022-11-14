@@ -138,8 +138,8 @@ public class Eth68ProtocolHandlerTests
 
         TxDecoder txDecoder = new();
 
-        var msg = new NewPooledTransactionHashesMessage68(new[] {tx.Type},
-            new[] {txDecoder.GetLength(tx, RlpBehaviors.None)}, new[] {tx.Hash});
+        var msg = new NewPooledTransactionHashesMessage68(new[] { tx.Type },
+            new[] { txDecoder.GetLength(tx, RlpBehaviors.None) }, new[] { tx.Hash });
 
         HandleIncomingStatusMessage();
 
