@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Test
 
             JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
             if (module is IContextAwareRpcModule contextAwareModule
-                && contextAwareModule.Context != null)
+                && contextAwareModule.Context is not null)
             {
                 context = contextAwareModule.Context;
             }

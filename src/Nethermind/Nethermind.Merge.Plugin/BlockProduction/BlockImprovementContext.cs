@@ -52,7 +52,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     {
         if (task.IsCompletedSuccessfully)
         {
-            if (task.Result != null)
+            if (task.Result is not null)
             {
                 CurrentBestBlock = task.Result;
             }

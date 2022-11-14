@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo peer = null)
             {
-                if (response.Result == null)
+                if (response.Result is null)
                 {
                     Console.WriteLine("Handling failed response");
                     _returned.Enqueue(response);

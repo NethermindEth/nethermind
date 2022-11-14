@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain.Test
                 public void RecoverData(Block block)
                 {
                     _logger.Info($"Recovering data for {block.ToString(Block.Format.Short)}");
-                    if (block.Author != null)
+                    if (block.Author is not null)
                     {
                         _logger.Info($"Data was already there for {block.ToString(Block.Format.Short)}");
                         return;

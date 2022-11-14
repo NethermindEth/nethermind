@@ -92,7 +92,7 @@ namespace Nethermind.Logging
 
         public void Error(string text, Exception ex = null)
         {
-            Log(ex != null ? $"{text}, Exception: {ex}" : text);
+            Log(ex is not null ? $"{text}, Exception: {ex}" : text);
         }
 
         public bool IsInfo => (int)_logLevel >= 2;

@@ -67,12 +67,12 @@ namespace Nethermind.Consensus.Ethash
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
-            if (processed.Header.TxRoot == null ||
-                processed.Header.StateRoot == null ||
-                processed.Header.ReceiptsRoot == null ||
-                processed.Header.UnclesHash == null ||
-                processed.Header.Bloom == null ||
-                processed.Header.ExtraData == null)
+            if (processed.Header.TxRoot is null ||
+                processed.Header.StateRoot is null ||
+                processed.Header.ReceiptsRoot is null ||
+                processed.Header.UnclesHash is null ||
+                processed.Header.Bloom is null ||
+                processed.Header.ExtraData is null)
             {
                 throw new InvalidOperationException($"Requested to mine an invalid block {processed.Header}");
             }

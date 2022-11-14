@@ -218,7 +218,7 @@ namespace Nethermind.Init.Steps.Migrations
                     {
                         using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
-                        if (level != null)
+                        if (level is not null)
                         {
                             if (!level.HasBlockOnMainChain)
                             {
@@ -230,7 +230,7 @@ namespace Nethermind.Init.Steps.Migrations
                             }
 
                             blockHash = level.MainChainBlock?.BlockHash;
-                            return blockHash != null;
+                            return blockHash is not null;
                         }
                         else
                         {

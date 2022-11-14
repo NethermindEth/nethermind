@@ -93,12 +93,12 @@ namespace Nethermind.Synchronization.FastSync
         {
             StateItemsPriority0.TryPeek(out StateSyncItem? node);
 
-            if (node == null)
+            if (node is null)
             {
                 StateItemsPriority1.TryPeek(out node);
             }
 
-            if (node == null)
+            if (node is null)
             {
                 StateItemsPriority2.TryPeek(out node);
             }

@@ -93,7 +93,7 @@ namespace Nethermind.Crypto
         /// <returns></returns>
         public Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
-            if (tx.Signature == null)
+            if (tx.Signature is null)
             {
                 throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
             }

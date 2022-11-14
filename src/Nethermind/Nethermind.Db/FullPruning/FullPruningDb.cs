@@ -74,7 +74,7 @@ namespace Nethermind.Db.FullPruning
             {
                 _currentDb[key] = value; // we are writing to the main DB
                 IDb? cloningDb = _pruningContext?.CloningDb;
-                if (cloningDb != null) // if pruning is in progress we are also writing to the secondary, copied DB
+                if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
                 {
                     Duplicate(cloningDb, key, value);
                 }

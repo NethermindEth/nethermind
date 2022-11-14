@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Logging
                 return;
             }
 
-            if (formatter == null)
+            if (formatter is null)
             {
                 throw new ArgumentNullException(nameof(formatter));
             }

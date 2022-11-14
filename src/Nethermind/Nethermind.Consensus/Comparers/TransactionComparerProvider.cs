@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Comparers
 
         public IComparer<Transaction> GetDefaultComparer()
         {
-            if (_defaultComparer == null)
+            if (_defaultComparer is null)
             {
                 IComparer<Transaction> gasPriceComparer = new GasPriceTxComparer(_blockFinder, _specProvider);
                 _defaultComparer = gasPriceComparer

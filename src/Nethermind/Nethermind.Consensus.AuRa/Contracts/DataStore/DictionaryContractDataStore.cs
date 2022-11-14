@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource)
-            : this(localDataSource == null
+            : this(localDataSource is null
                 ? CreateContractDataStore(collection, dataContract, blockTree, receiptFinder, logManager)
                 : CreateContractDataStoreWithLocalData(collection, dataContract, blockTree, receiptFinder, logManager, localDataSource))
         {
