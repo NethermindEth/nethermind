@@ -34,8 +34,6 @@ namespace Nethermind.TxPool
 
         public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (tx.SenderAddress is null)
-                throw new ArgumentNullException(nameof(tx.SenderAddress));
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {

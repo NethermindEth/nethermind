@@ -118,7 +118,7 @@ namespace Nethermind.TxPool.Collections
         public TValue[] GetBucketSnapshot(TGroupKey group)
         {
             if (group is null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue> bucket) ? bucket.ToArray() : Array.Empty<TValue>();
         }
 
         /// <summary>
@@ -128,19 +128,16 @@ namespace Nethermind.TxPool.Collections
         public int GetBucketCount(TGroupKey group)
         {
             if (group is null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue> bucket) ? bucket.Count : 0;
         }
 
         /// <summary>
         /// Takes first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryTakeFirst(out TValue? first)
+        public bool TryTakeFirst(out TValue first)
         {
-            if (GetFirsts().Min is TValue min)
-                return TryRemove(GetKey(min), out first);
-            first = default;
-            return false;
+            return TryRemove(GetKey(GetFirsts().Min), out first);
         }
 
         /// <summary>
@@ -176,17 +173,17 @@ namespace Nethermind.TxPool.Collections
         /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket) =>
+        public bool TryRemove(TKey key, out TValue value, [MaybeNullWhen(false)] out ICollection<TValue>? bucket) =>
             TryRemove(key, false, out value, out bucket);
 
-        private bool TryRemove(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
+        private bool TryRemove(TKey key, bool evicted, out TValue value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value) && value != null)
+            if (_cacheMap.TryGetValue(key, out value))
             {
                 if (Remove(key, value))
                 {
                     TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucketSet))
+                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue> bucketSet))
                     {
                         bucket = bucketSet;
                         TValue? last = bucketSet.Max;
@@ -195,8 +192,7 @@ namespace Nethermind.TxPool.Collections
                             if (bucket.Count == 0)
                             {
                                 _buckets.Remove(groupMapping);
-                                if (last is not null)
-                                    _worstSortedValues.Remove(last);
+                                _worstSortedValues.Remove(last);
                             }
                             else
                             {
@@ -219,7 +215,7 @@ namespace Nethermind.TxPool.Collections
         protected abstract TKey GetKey(TValue value);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, [NotNullWhen(true)] out TValue? value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
@@ -261,9 +257,10 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
+        public bool TryGetValue(TKey key, out TValue value)
         {
-            return _cacheMap.TryGetValue(key, out value) && value != null;
+            value = default;
+            return _cacheMap.TryGetValue(key, out value);
         }
 
         /// <summary>
@@ -325,7 +322,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
-            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
             {
                 _buckets[groupKey] = bucket = new EnhancedSortedSet<TValue>(_groupComparer);
             }
@@ -348,8 +345,8 @@ namespace Nethermind.TxPool.Collections
                 {
                     _worstSortedValues.Remove(previousLast);
                 }
-                if (newLast is not null)
-                    _worstSortedValues.Add(newLast, GetKey(newLast));
+
+                _worstSortedValues.Add(newLast, GetKey(newLast));
             }
         }
 
@@ -366,7 +363,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
         {
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
             {
                 items = bucket.ToArray();
                 return true;
@@ -390,7 +387,7 @@ namespace Nethermind.TxPool.Collections
         public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
             if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
@@ -400,7 +397,7 @@ namespace Nethermind.TxPool.Collections
         {
             foreach ((TValue value, Action<TValue>? change) in changingElements(groupKey, bucket))
             {
-                change?.Invoke(value);
+                change(value);
             }
         }
     }
