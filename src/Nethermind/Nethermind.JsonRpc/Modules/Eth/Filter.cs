@@ -50,7 +50,7 @@ public class Filter : IJsonRpcParam
 
         var topics = filter["topics"] as JArray;
 
-        Topics = topics == null ? null : GetTopics(filter["topics"] as JArray);
+        Topics = topics is null ? null : GetTopics(filter["topics"] as JArray);
     }
 
     private static object? GetAddress(JToken? token) => GetSingleOrMany(token);

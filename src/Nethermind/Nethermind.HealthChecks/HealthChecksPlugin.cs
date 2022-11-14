@@ -128,7 +128,7 @@ namespace Nethermind.HealthChecks
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             }
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty != null)
+            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
             {
                 _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);

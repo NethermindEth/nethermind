@@ -49,13 +49,13 @@ namespace Nethermind.JsonRpc.Modules.Parity
             EthProtocolInfo ethProtocolInfo = new();
             Caps = new List<string>();
 
-            if (peer.Node != null)
+            if (peer.Node is not null)
             {
                 Name = peer.Node.ClientId;
                 peerNetworkInfo.LocalAddress = peer.Node.Host;
             }
 
-            if (session != null)
+            if (session is not null)
             {
                 Id = session.RemoteNodeId.ToString();
                 peerNetworkInfo.RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake";

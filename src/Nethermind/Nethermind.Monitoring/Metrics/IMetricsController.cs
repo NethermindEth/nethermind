@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Monitoring.Metrics
 {
-    public interface IMetricsUpdater
+    public interface IMetricsController
     {
         void RegisterMetrics(Type type);
         void StartUpdating();

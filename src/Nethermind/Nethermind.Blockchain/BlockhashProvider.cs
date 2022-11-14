@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
             bool isFastSyncSearch = false;
 
             BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header == null)
+            if (header is null)
             {
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
             }
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain
                 }
 
                 header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (header == null)
+                if (header is null)
                 {
                     throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
                 }
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain
                     {
                         BlockHeader currentHeader = header;
                         header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header == null)
+                        if (header is null)
                         {
                             isFastSyncSearch = true;
                             header = currentHeader;

@@ -58,7 +58,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (_parent == null)
+            if (_parent is null)
             {
                 _pooled.Dispose();
             }

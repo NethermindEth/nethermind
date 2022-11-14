@@ -109,7 +109,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
+                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
 
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }

@@ -147,7 +147,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
 
-        if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader == null)
+        if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
             _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU no finalized block header");
             return;

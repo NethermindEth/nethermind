@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Data
                 return parameter;
             }
 
-            if (reader.Value == null)
+            if (reader.Value is null)
             {
                 return BlockParameter.Latest;
             }

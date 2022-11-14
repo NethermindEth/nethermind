@@ -268,13 +268,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             Keccak startingHash = msg.StartBlockHash;
-            if (startingHash == null)
+            if (startingHash is null)
             {
                 startingHash = SyncServer.FindHash(msg.StartBlockNumber);
             }
 
             BlockHeader[] headers =
-                startingHash == null
+                startingHash is null
                     ? Array.Empty<BlockHeader>()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
@@ -374,7 +374,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             int emptyBlocksAtTheEnd = 0;
             for (int i = 0; i < headers.Length; i++)
             {
-                if (headers[headers.Length - 1 - i] == null)
+                if (headers[headers.Length - 1 - i] is null)
                 {
                     emptyBlocksAtTheEnd++;
                 }
@@ -445,7 +445,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if (ProtocolHandlers.TryGetValue(protocol, out object handler))
             {
                 protocolHandler = handler as T;
-                return protocolHandler != null;
+                return protocolHandler is not null;
             }
 
             protocolHandler = null;

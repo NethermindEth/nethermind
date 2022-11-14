@@ -257,7 +257,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         TaskCompletionSource<Packet> previousSource =
             Interlocked.CompareExchange(ref _pongCompletionSource, new TaskCompletionSource<Packet>(), null);
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        if (previousSource != null)
+        if (previousSource is not null)
         {
             if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.Node:c}");
             return true;
