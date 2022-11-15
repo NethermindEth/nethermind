@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// Copyright 2022 Demerzel Solutions Limited
+// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 
 using System;
 using System.Diagnostics;
@@ -32,7 +18,7 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1;
         private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
-        private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
+        private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
         private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
@@ -43,7 +29,7 @@ namespace Nethermind.Merge.Plugin
         public EngineRpcModule(
             IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
-            IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
+            IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
             IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
