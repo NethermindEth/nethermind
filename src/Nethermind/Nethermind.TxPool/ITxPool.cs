@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
         void RemovePeer(PublicKey nodeId);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Keccak? hash);
-        bool IsKnown(Keccak hash);
+        bool IsKnown(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
         UInt256 ReserveOwnTransactionNonce(Address address); // TODO: this should be moved to a signer component, outside of TX pool
         UInt256 GetLatestPendingNonce(Address address);
