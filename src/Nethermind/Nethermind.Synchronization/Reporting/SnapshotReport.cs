@@ -28,12 +28,4 @@ namespace Nethermind.Synchronization.Reporting
     {
         public string CurrentStage { get; set; }
     }
-    public static class ReportSink
-    {
-        public static SyncMode CurrentStage { get; set; } = SyncMode.None;
-        public static SyncReportSymmary Snapshot => new SyncReportSymmary
-        {
-            CurrentStage = CurrentStage.ToString(),
-        };
-    }
 }

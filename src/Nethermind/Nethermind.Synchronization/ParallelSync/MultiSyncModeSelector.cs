@@ -119,11 +119,6 @@ namespace Nethermind.Synchronization.ParallelSync
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            Changed += (src, args) =>
-            {
-                ReportSink.CurrentStage = args.Current;
-            };
-
             _ = StartAsync(_cancellation.Token);
         }
 
