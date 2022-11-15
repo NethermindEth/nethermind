@@ -16,7 +16,9 @@
 // 
 
 using FluentAssertions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -27,6 +29,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Validate_CodeBitmap_With_Push10()
         {
+            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH10,
@@ -34,7 +37,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code, spec);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(224);
         }
@@ -42,6 +45,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Validate_CodeBitmap_With_Push30()
         {
+            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH30,
@@ -49,7 +53,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code, spec);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(255);
             bitmap[2].Should().Be(255);

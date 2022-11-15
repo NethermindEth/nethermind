@@ -17,6 +17,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -24,15 +25,16 @@ namespace Nethermind.Evm.CodeAnalysis
     {
         private byte[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
-
-        public CodeDataAnalyzer(byte[] code)
+        private IReleaseSpec _releaseSpec;
+        public CodeDataAnalyzer(byte[] code, IReleaseSpec spec)
         {
             MachineCode = code;
+            _releaseSpec = spec;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
+            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode, _releaseSpec);
 
             if (destination < 0 || destination >= MachineCode.Length)
             {
@@ -44,7 +46,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 return false;
             }
 
-            if (isSubroutine)
+            if (_releaseSpec.SubroutinesEnabled && isSubroutine)
             {
                 return MachineCode[destination] == 0x5c;
             }
@@ -68,7 +70,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code)
+        public static byte[] CreateCodeBitmap(byte[] code, IReleaseSpec spec)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the
@@ -92,6 +94,12 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
 
                 bool isPushInstr = op >= push1 && op <= push32;
+
+                if(!spec.StaticRelativeJumpsEnabled && !isPushInstr)
+                {
+                    continue;
+                }
+
                 int numbits = isPushInstr ? op - push1 + 1 : 2;
 
                 if (numbits >= 8)

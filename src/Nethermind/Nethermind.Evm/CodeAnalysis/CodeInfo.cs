@@ -75,11 +75,11 @@ namespace Nethermind.Evm.CodeAnalysis
             MachineCode = Array.Empty<byte>();
         }
 
-        public bool ValidateJump(int destination, bool isSubroutine)
+        public bool ValidateJump(int destination, bool isSubroutine, IReleaseSpec spec)
         {
             if (_analyzer is null)
             {
-                CreateAnalyzer();
+                CreateAnalyzer(spec);
             }
 
             return _analyzer.ValidateJump(destination, isSubroutine);
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Do sampling to choose an algo when the code is big enough.
         /// When the code size is small we can use the default analyzer.
         /// </summary>
-        private void CreateAnalyzer()
+        private void CreateAnalyzer(IReleaseSpec spec)
         {
             var codeToBeAnalyzed = isEof.HasValue && isEof.Value == true ? MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize) : MachineCode;
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
@@ -111,11 +111,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 // If there are many PUSH1 ops then use the JUMPDEST analyzer.
                 // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
                 // in a scenario when the code consists only of PUSH1 instructions.
-                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(codeToBeAnalyzed) : new CodeDataAnalyzer(codeToBeAnalyzed);
+                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(codeToBeAnalyzed, spec) : new CodeDataAnalyzer(codeToBeAnalyzed, spec);
             }
             else
             {
-                _analyzer = new CodeDataAnalyzer(codeToBeAnalyzed);
+                _analyzer = new CodeDataAnalyzer(codeToBeAnalyzed, spec);
             }
         }
     }

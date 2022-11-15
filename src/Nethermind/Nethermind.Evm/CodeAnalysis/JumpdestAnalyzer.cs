@@ -18,6 +18,7 @@
 using System;
 using System.Collections;
 using System.Threading;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -28,10 +29,11 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private BitArray? _validJumpDestinations;
         private BitArray? _validJumpSubDestinations;
-
-        public JumpdestAnalyzer(byte[] code)
+        private IReleaseSpec _releaseSpec;
+        public JumpdestAnalyzer(byte[] code, IReleaseSpec spec)
         {
             MachineCode = code;
+            _releaseSpec = spec;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
@@ -66,7 +68,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     _validJumpDestinations.Set(index, true);
                 }
                 // BEGINSUB
-                else if (instruction == 0x5c)
+                else if (_releaseSpec.SubroutinesEnabled && instruction == 0x5c)
                 {
                     _validJumpSubDestinations.Set(index, true);
                 }
@@ -77,7 +79,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
                 }
-                else if (instruction == 0x5c || instruction == 0x5d)
+                else if (_releaseSpec.StaticRelativeJumpsEnabled && (instruction == 0x5c || instruction == 0x5d))
                 {
                     index += 3;
                 }
