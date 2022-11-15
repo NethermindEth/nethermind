@@ -182,6 +182,7 @@ public class DbOnTheRocks : IDbWithSpan
         if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
         _rocksDbNative.rocksdb_repair_db(dbOptions.Handle, _fullPath);
 
+        if (_logger.IsWarn) _logger.Warn($"Repair completed. Some data may be lost. Consider a full resync.");
         _fileSystem.File.Delete(corruptMarker);
     }
 
