@@ -62,8 +62,8 @@ namespace Nethermind.Merge.Plugin
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
         private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
-        public string Name => "Merge";
-        public string Description => "Merge plugin for ETH1-ETH2";
+        public virtual string Name => "Merge";
+        public virtual string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
         public virtual bool MergeEnabled => _mergeConfig.Enabled &&
