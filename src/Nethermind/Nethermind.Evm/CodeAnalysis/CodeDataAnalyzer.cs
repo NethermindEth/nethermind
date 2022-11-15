@@ -16,40 +16,60 @@
 // 
 
 using System;
+using System.Collections;
 using System.Threading;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
-        private byte[]? _codeBitmap;
-        public byte[] MachineCode { get; set; }
-
-        public CodeDataAnalyzer(byte[] code)
+        internal class DataAnalysisResult
         {
-            MachineCode = code;
+            public byte[]? _codeBitmap;
         }
 
-        public bool ValidateJump(int destination, bool isSubroutine)
-        {
-            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
+        private DataAnalysisResult[] _analysisResults;
+        public byte[] MachineCode { get; set; }
+        public EofHeader Header { get; set; }
 
-            if (destination < 0 || destination >= MachineCode.Length)
+        public CodeDataAnalyzer(byte[] code, EofHeader? header)
+        {
+            MachineCode = code;
+            Header = header;
+            _analysisResults = new DataAnalysisResult[Header?.CodeSize?.Length ?? 1];
+        }
+
+        public bool ValidateJump(int destination, bool isSubroutine, int sectionId = 0)
+        {
+            var (sectionStart, sectionSize) = Header is null ? (0, MachineCode.Length) : Header[sectionId];
+            var codeSection = MachineCode.Slice(sectionStart, sectionSize);
+
+            if (_analysisResults[sectionId] is null) {
+                _analysisResults[sectionId] = new DataAnalysisResult
+                {
+                    _codeBitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(codeSection)
+                };
+            }
+
+            var codeBitmap = _analysisResults[sectionId]._codeBitmap;
+
+            if (destination < 0 || destination >= codeSection.Length)
             {
                 return false;
             }
 
-            if (!CodeDataAnalyzerHelper.IsCodeSegment(_codeBitmap, destination))
+            if (!CodeDataAnalyzerHelper.IsCodeSegment(codeBitmap, destination))
             {
                 return false;
             }
 
             if (isSubroutine)
             {
-                return MachineCode[destination] == 0x5c;
+                return codeSection[destination] == 0x5c;
             }
 
-            return MachineCode[destination] == 0x5b;
+            return codeSection[destination] == 0x5b;
         }
     }
 
@@ -75,20 +95,27 @@ namespace Nethermind.Evm.CodeAnalysis
             // bitvector outside the bounds of the actual code.
             byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
 
-            byte push1 = 0x60;
-            byte push32 = 0x7f;
+            byte push1 = (byte)Instruction.PUSH1;
+            byte push32 = (byte)Instruction.PUSH32;
+
+            byte rjumpi = (byte)Instruction.RJUMPI;
+            byte rjump = (byte)Instruction.RJUMP;
+
+            byte callf = (byte)Instruction.CALLF;
 
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if (op < push1 || op > push32)
+                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi) && op != callf)
                 {
                     continue;
                 }
 
-                int numbits = op - push1 + 1;
+                int numbits = op < push1 || op > push32  
+                    ? op - push1 + 1
+                    : 2;
 
                 if (numbits >= 8)
                 {
