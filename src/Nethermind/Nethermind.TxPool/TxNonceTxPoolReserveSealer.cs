@@ -18,6 +18,9 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool
 {
@@ -25,19 +28,28 @@ namespace Nethermind.TxPool
     public class NonceReservingTxSealer : TxSealer
     {
         private readonly ITxPool _txPool;
+        private readonly IEthereumEcdsa _ecdsa;
 
-        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool)
+        public NonceReservingTxSealer(ITxSigner txSigner,
+            ITimestamper timestamper,
+            ITxPool txPool,
+            ISpecProvider specProvider,
+            ILogManager logManager)
             : base(txSigner, timestamper)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
         public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+            if (tx.SenderAddress is null)
+                throw new ArgumentNullException(nameof(tx.SenderAddress));
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {
-                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx);
+                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
                 txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             }
 

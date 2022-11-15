@@ -515,15 +515,12 @@ namespace Nethermind.TxPool
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
-        public UInt256 ReserveOwnTransactionNonce(Transaction tx)
+        public UInt256 ReserveOwnTransactionNonce(Address address)
         {
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
-            if (tx.SenderAddress is null)
-                throw new ArgumentNullException(nameof(tx.SenderAddress));
             UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(tx.SenderAddress, a =>
+            _nonces.AddOrUpdate(address, a =>
             {
-                currentNonce = _accounts.GetAccount(tx.SenderAddress).Nonce;
+                currentNonce = _accounts.GetAccount(address).Nonce;
                 return new AddressNonces(currentNonce);
             }, (a, n) =>
             {
