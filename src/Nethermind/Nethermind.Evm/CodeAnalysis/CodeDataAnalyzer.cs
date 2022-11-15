@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -31,12 +32,14 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private DataAnalysisResult[] _analysisResults;
         public byte[] MachineCode { get; set; }
+        private IReleaseSpec _releaseSpec;
         public EofHeader Header { get; set; }
 
-        public CodeDataAnalyzer(byte[] code, EofHeader? header)
+        public CodeDataAnalyzer(byte[] code, EofHeader? header, IReleaseSpec spec)
         {
             MachineCode = code;
             Header = header;
+            _releaseSpec = spec;
             _analysisResults = new DataAnalysisResult[Header?.CodeSize?.Length ?? 1];
         }
 
@@ -49,7 +52,7 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 _analysisResults[sectionId] = new DataAnalysisResult
                 {
-                    _codeBitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(codeSection)
+                    _codeBitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(codeSection, _releaseSpec)
                 };
             }
 
@@ -65,7 +68,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 return false;
             }
 
-            if (isSubroutine)
+            if (_releaseSpec.SubroutinesEnabled && isSubroutine)
             {
                 return codeSection[destination] == 0x5c;
             }
@@ -89,7 +92,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code)
+        public static byte[] CreateCodeBitmap(byte[] code, IReleaseSpec spec)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the
@@ -109,12 +112,18 @@ namespace Nethermind.Evm.CodeAnalysis
                 byte op = code[pc];
                 pc++;
 
-                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi) && op != callf)
+                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi) && (op != callf))
                 {
                     continue;
                 }
 
-                int numbits = op < push1 || op > push32
+                if ((!spec.StaticRelativeJumpsEnabled && (op == rjump || op == rjumpi))
+                ||  (!spec.FunctionSections && op == callf))
+                {
+                    continue;
+                }
+
+                int numbits = op >= push1 && op <= push32
                     ? op - push1 + 1
                     : 2;
 

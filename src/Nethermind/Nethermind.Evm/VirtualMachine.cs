@@ -696,7 +696,7 @@ namespace Nethermind.Evm
 
                 int jumpDestInt = (int)jumpDest;
 
-                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
+                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine, spec))
                 {
                     EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                     // https://github.com/NethermindEth/nethermind/issues/140

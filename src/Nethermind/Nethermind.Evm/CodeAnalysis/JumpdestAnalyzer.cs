@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -32,13 +33,14 @@ namespace Nethermind.Evm.CodeAnalysis
         }
         private byte[] MachineCode { get; set; }
         private EofHeader? Header { get; set; }
-
+        private IReleaseSpec _releaseSpec;
         private JumpAnalysisResult[] _analysisResults;
 
-        public JumpdestAnalyzer(byte[] code, EofHeader? header)
+        public JumpdestAnalyzer(byte[] code, EofHeader? header, IReleaseSpec spec)
         {
             MachineCode = code;
             Header = header;
+            _releaseSpec = spec;
             _analysisResults = new JumpAnalysisResult[Header?.CodeSize?.Length ?? 1];
         }
 
@@ -83,7 +85,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     analysisResults._validJumpDestinations.Set(index, true);
                 }
                 // BEGINSUB
-                else if (instruction == 0x5c)
+                else if (_releaseSpec.SubroutinesEnabled && instruction == 0x5c)
                 {
                     analysisResults._validJumpSubDestinations.Set(index, true);
                 }
@@ -94,7 +96,11 @@ namespace Nethermind.Evm.CodeAnalysis
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
                 }
-                else if (instruction == (byte)Instruction.CALLF || instruction == 0x5c || instruction == 0x5d)
+                else if (_releaseSpec.StaticRelativeJumpsEnabled && instruction == 0x5c || instruction == 0x5d)
+                {
+                    index += 3;
+                }
+                else if (_releaseSpec.FunctionSections && instruction == (byte)Instruction.CALLF)
                 {
                     index += 3;
                 }
