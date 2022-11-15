@@ -99,7 +99,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 // we check (by sampling randomly) how many PUSH1 instructions are in the code
                 for (int i = 0; i < NumberOfSamples; i++)
                 {
-                    byte instruction = MachineCode[_rand.Next(0, codeToBeAnalyzed.Length)];
+                    byte instruction = codeToBeAnalyzed[_rand.Next(0, codeToBeAnalyzed.Length)];
 
                     // PUSH1
                     if (instruction == 0x60)

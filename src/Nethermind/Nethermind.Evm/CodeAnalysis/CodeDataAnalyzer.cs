@@ -75,20 +75,24 @@ namespace Nethermind.Evm.CodeAnalysis
             // bitvector outside the bounds of the actual code.
             byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
 
-            byte push1 = 0x60;
-            byte push32 = 0x7f;
+            byte push1 = (byte)Instruction.PUSH1;
+            byte push32 = (byte)Instruction.PUSH32;
+
+            byte rjump = (byte)Instruction.RJUMP;
+            byte rjumpi = (byte)Instruction.RJUMPI;
 
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if (op < push1 || op > push32)
+                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi))
                 {
                     continue;
                 }
 
-                int numbits = op - push1 + 1;
+                bool isPushInstr = op >= push1 && op <= push32;
+                int numbits = isPushInstr ? op - push1 + 1 : 2;
 
                 if (numbits >= 8)
                 {

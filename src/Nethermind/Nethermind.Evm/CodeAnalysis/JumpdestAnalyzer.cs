@@ -77,6 +77,10 @@ namespace Nethermind.Evm.CodeAnalysis
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
                 }
+                else if (instruction == 0x5c || instruction == 0x5d)
+                {
+                    index += 3;
+                }
                 else
                 {
                     index++;
