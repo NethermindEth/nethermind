@@ -71,7 +71,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 _validJumpDestinations = new BitArray(codeSection.Length),
                 _validJumpSubDestinations = new BitArray(codeSection.Length)
             };
-            
+
             int index = 0;
             while (index < codeSection.Length)
             {
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
                 }
-                else if (instruction == (byte)Instruction.CALLF || instruction == 0x5c || instruction == 0x5d) 
+                else if (instruction == (byte)Instruction.CALLF || instruction == 0x5c || instruction == 0x5d)
                 {
                     index += 3;
                 }

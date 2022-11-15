@@ -45,7 +45,8 @@ namespace Nethermind.Evm.CodeAnalysis
             var (sectionStart, sectionSize) = Header is null ? (0, MachineCode.Length) : Header[sectionId];
             var codeSection = MachineCode.Slice(sectionStart, sectionSize);
 
-            if (_analysisResults[sectionId] is null) {
+            if (_analysisResults[sectionId] is null)
+            {
                 _analysisResults[sectionId] = new DataAnalysisResult
                 {
                     _codeBitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(codeSection)
@@ -113,7 +114,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     continue;
                 }
 
-                int numbits = op < push1 || op > push32  
+                int numbits = op < push1 || op > push32
                     ? op - push1 + 1
                     : 2;
 
