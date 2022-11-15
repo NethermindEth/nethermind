@@ -31,6 +31,8 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -42,6 +44,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
         private readonly ISpecProvider _specProvider;
+        private readonly ISyncModeSelector _syncModeSelector;
         private readonly Dictionary<string, IDb> _dbMappings;
 
         public DebugBridge(
@@ -51,7 +54,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            ISyncModeSelector syncModeSelector)
         {
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -59,6 +63,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -171,6 +176,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public object GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);
+        }
+
+        public SyncReportSymmary GetCurrentSyncStage()
+        {
+            return new SyncReportSymmary
+            {
+                CurrentStage = _syncModeSelector.Current.ToString()
+            };
         }
     }
 }
