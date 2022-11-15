@@ -104,7 +104,7 @@ namespace Nethermind.Facade
                     TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
                     int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                     Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                     return (txReceipt, effectiveGasPrice, logIndexStart);
                 }

@@ -48,6 +48,6 @@ namespace Nethermind.Core.Test
 
         public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
 
-        public IReleaseSpec GetCurrentHeadSpec() => GetSpec(_fixedBlock);
+        public IReleaseSpec GetCurrentHeadSpec() => GetSpec((ForkActivation)_fixedBlock);
     }
 }

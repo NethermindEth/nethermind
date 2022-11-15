@@ -30,7 +30,7 @@ namespace Nethermind.Core.Extensions
         /// <returns>ReleaseSpec that has the values for EIP1559 correct but not the rest.</returns>
         public static IReleaseSpec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
         {
-            return specProvider.GetSpec(blockNumber);
+            return specProvider.GetSpec(blockNumber, null);
         }
     }
 }

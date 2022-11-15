@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Spec
                 _lastHeader = headerNumber;
                 if (header is not null)
                     return _headerSpec = _specProvider.GetSpec(header);
-                return _headerSpec = GetSpec(headerNumber);
+                return _headerSpec = GetSpec((ForkActivation)headerNumber);
             }
         }
     }

@@ -17,6 +17,7 @@
 
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -55,9 +56,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         Assert.AreEqual((UInt256)10, chainSpec.TerminalTotalDifficulty);
         Assert.AreEqual(72, chainSpec.MergeForkIdBlockNumber);
 
-        Assert.True(provider.TransitionBlocks.ToList().Contains(72)); // MergeForkIdBlockNumber should affect transition blocks
-        Assert.False(provider.TransitionBlocks.ToList().Contains(100)); // merge block number shouldn't affect transition blocks
-        Assert.False(provider.TransitionBlocks.ToList().Contains(101)); // merge block number shouldn't affect transition blocks
+        Assert.True(provider.TransitionBlocks.ToList().Contains((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+        Assert.False(provider.TransitionBlocks.ToList().Contains((ForkActivation)100)); // merge block number shouldn't affect transition blocks
+        Assert.False(provider.TransitionBlocks.ToList().Contains((ForkActivation)101)); // merge block number shouldn't affect transition blocks
     }
 
     [Test]

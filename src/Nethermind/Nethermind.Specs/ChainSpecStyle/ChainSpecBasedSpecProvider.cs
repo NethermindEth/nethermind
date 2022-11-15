@@ -127,7 +127,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 ReleaseSpec releaseSpec = new();
                 FillReleaseSpec(releaseSpec, releaseStartBlock, 0);
-                _transitions[index] = (releaseStartBlock, releaseSpec);
+                _transitions[index] = ((ForkActivation)releaseStartBlock, releaseSpec);
                 index++;
             }
 
@@ -138,8 +138,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;
             }
-
-            MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
+            if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
+                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPowBlockNumber + 1);
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                MergeBlockNumber = blockNumber;
+                MergeBlockNumber = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
