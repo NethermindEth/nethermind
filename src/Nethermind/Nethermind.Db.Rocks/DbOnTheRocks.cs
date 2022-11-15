@@ -447,7 +447,8 @@ public class DbOnTheRocks : IDbWithSpan
         ReadOptions readOptions = new();
         readOptions.SetTailing(!ordered);
 
-        try {
+        try
+        {
             return _db.NewIterator(ch, readOptions);
         }
         catch (RocksDbSharpException e)
@@ -470,7 +471,8 @@ public class DbOnTheRocks : IDbWithSpan
 
     internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
     {
-        try {
+        try
+        {
             iterator.SeekToFirst();
         }
         catch (RocksDbSharpException e)
@@ -482,7 +484,8 @@ public class DbOnTheRocks : IDbWithSpan
         while (iterator.Valid())
         {
             yield return iterator.Value();
-            try {
+            try
+            {
                 iterator.Next();
             }
             catch (RocksDbSharpException e)
@@ -492,7 +495,8 @@ public class DbOnTheRocks : IDbWithSpan
             }
         }
 
-        try {
+        try
+        {
             iterator.Dispose();
         }
         catch (RocksDbSharpException e)
@@ -509,7 +513,8 @@ public class DbOnTheRocks : IDbWithSpan
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
 
-        try {
+        try
+        {
             iterator.SeekToFirst();
         }
         catch (RocksDbSharpException e)
@@ -522,7 +527,8 @@ public class DbOnTheRocks : IDbWithSpan
         {
             yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
 
-            try {
+            try
+            {
                 iterator.Next();
             }
             catch (RocksDbSharpException e)
@@ -532,7 +538,8 @@ public class DbOnTheRocks : IDbWithSpan
             }
         }
 
-        try {
+        try
+        {
             iterator.Dispose();
         }
         catch (RocksDbSharpException e)
@@ -549,7 +556,8 @@ public class DbOnTheRocks : IDbWithSpan
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
 
-        try {
+        try
+        {
             // seems it has no performance impact
             return _db.Get(key) is not null;
             // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
