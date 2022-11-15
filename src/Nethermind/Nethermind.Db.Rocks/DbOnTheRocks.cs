@@ -26,7 +26,6 @@ using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
-using Org.BouncyCastle.Crypto.Digests;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -67,6 +66,8 @@ public class DbOnTheRocks : IDbWithSpan
 
     private readonly RocksDbSharp.Native _rocksDbNative;
 
+    private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+
     protected static void InitCache(IDbConfig dbConfig)
     {
         if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
@@ -103,7 +104,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     private RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
     {
-        RepairIfCorrupted(path, db.Options);
+        RepairIfCorrupted(db.Options);
 
         return _rocksDbFactory.Invoke(path, db);
     }
@@ -165,21 +166,21 @@ public class DbOnTheRocks : IDbWithSpan
         if (rocksDbException.Message.Contains("Corruption:"))
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
-            _fileSystem.File.WriteAllText(Path.Join(_fullPath, "corrupt.marker"), "marker");
+            _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
         }
     }
 
-    private void RepairIfCorrupted(string dbPath, DbOptions dbOptions)
+    private void RepairIfCorrupted(DbOptions dbOptions)
     {
-        string corruptMarker = Path.Join(dbPath, "corrupt.marker");
+        string corruptMarker = CorruptMarkerPath;
 
         if (!_fileSystem.File.Exists(corruptMarker))
         {
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {dbPath}. Attempting repair...");
-        _rocksDbNative.rocksdb_repair_db(dbOptions.Handle, dbPath);
+        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
+        _rocksDbNative.rocksdb_repair_db(dbOptions.Handle, _fullPath);
 
         _fileSystem.File.Delete(corruptMarker);
     }
