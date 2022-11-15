@@ -101,38 +101,13 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     StartNewBeaconHeaderSync(forkchoiceState, block, requestStr);
-
-                    return ForkchoiceUpdatedV1Result.Syncing;
                 }
-
-                if (_logger.IsInfo)
+                else if (_logger.IsInfo)
                 {
                     _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
                 }
+
                 return ForkchoiceUpdatedV1Result.Syncing;
-            }
-            else if (payloadAttributes is not null)
-            {
-                // ToDo this validation is incorrect, we need think about payloadAttributes timestamp and newHeadBlock.Timestamp
-                // var spec = _specProvider.GetSpec(newHeadBlock.Number, newHeadBlock.Timestamp);
-                //
-                // if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
-                // {
-                //     var error = "Withdrawals are null with EIP-4895 activated.";
-                //
-                //     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
-                //
-                //     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-                // }
-                //
-                // if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
-                // {
-                //     var error = "Withdrawals are not null with EIP-4895 not activated.";
-                //
-                //     if (_logger.IsInfo) _logger.Info($"Invalid payload attributes: {error}");
-                //
-                //     return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-                // }
             }
 
             BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
@@ -262,19 +237,37 @@ namespace Nethermind.Merge.Plugin.Handlers
             string? payloadId = null;
             if (payloadAttributes is not null)
             {
-                payloadAttributes.GasLimit = null;
                 if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock.Timestamp}. Request: {requestStr}.");
+                    var error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
 
-                    return ForkchoiceUpdatedV1Result.Error(
-                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock.Timestamp}. Request: {requestStr}",
-                        MergeErrorCodes.InvalidPayloadAttributes);
+                    if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {error}");
+
+                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                 }
-                else
+
+                var spec = _specProvider.GetSpec(newHeadBlock.Number, payloadAttributes.Timestamp);
+
+                if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
                 {
-                    payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
+                    var error = "Withdrawals are null with EIP-4895 activated.";
+
+                    if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
+
+                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                 }
+
+                if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
+                {
+                    var error = "Withdrawals are not null with EIP-4895 not activated.";
+
+                    if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
+
+                    return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                }
+
+                payloadAttributes.GasLimit = null;
+                payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
             }
 
             if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
