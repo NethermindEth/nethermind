@@ -95,7 +95,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
                 bool isPushInstr = op >= push1 && op <= push32;
 
-                if(!spec.StaticRelativeJumpsEnabled && !isPushInstr)
+                if (!spec.StaticRelativeJumpsEnabled && !isPushInstr)
                 {
                     continue;
                 }
