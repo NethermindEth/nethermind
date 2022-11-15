@@ -33,12 +33,11 @@ namespace Nethermind.TxPool
         public NonceReservingTxSealer(ITxSigner txSigner,
             ITimestamper timestamper,
             ITxPool txPool,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            IEthereumEcdsa ecdsa)
             : base(txSigner, timestamper)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         }
 
         public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
