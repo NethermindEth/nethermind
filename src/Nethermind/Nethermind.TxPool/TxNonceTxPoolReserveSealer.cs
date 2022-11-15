@@ -43,12 +43,12 @@ namespace Nethermind.TxPool
 
         public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
-            if (tx.SenderAddress is null)
-                throw new ArgumentNullException(nameof(tx.SenderAddress));
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {
+                tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+                if (tx.SenderAddress is null)
+                    throw new ArgumentNullException(nameof(tx.SenderAddress));
                 tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
                 txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             }
