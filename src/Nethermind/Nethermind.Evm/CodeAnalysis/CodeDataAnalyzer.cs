@@ -118,7 +118,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
 
                 if ((!spec.StaticRelativeJumpsEnabled && (op == rjump || op == rjumpi))
-                ||  (!spec.FunctionSections && op == callf))
+                || (!spec.FunctionSections && op == callf))
                 {
                     continue;
                 }
