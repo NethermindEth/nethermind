@@ -17,8 +17,11 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -44,7 +47,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public bool Current()
         {
-            return _codeInfo.ValidateJump(0, false);
+            return _codeInfo.ValidateJump(0, false, GrayGlacier.Instance);
         }
     }
 }
