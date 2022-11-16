@@ -20,6 +20,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -55,7 +56,7 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
     {
         if (_requestCount >= MaxConcurrentRequest)
         {
-            throw new InvalidOperationException("Concurrent request limit reached");
+            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(TMsg)}");
         }
 
         if (_requests.TryAdd(request.Message.RequestId, request))

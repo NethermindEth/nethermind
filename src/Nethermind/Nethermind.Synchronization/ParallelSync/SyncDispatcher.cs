@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -98,40 +99,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         if (allocatedPeer is not null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
-                            Task task = Dispatch(allocatedPeer, request, cancellationToken)
-                                .ContinueWith(t =>
-                            {
-                                if (t.IsFaulted)
-                                {
-                                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
-                                }
-
-                                try
-                                {
-                                    if (cancellationToken.IsCancellationRequested)
-                                    {
-                                        if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
-                                        return;
-                                    }
-
-                                    SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
-                                    ReactToHandlingResult(request, result, allocatedPeer);
-                                }
-                                catch (ObjectDisposedException)
-                                {
-                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
-                                }
-                                catch (Exception e)
-                                {
-                                    // possibly clear the response and handle empty response batch here (to avoid missing parts)
-                                    // this practically corrupts sync
-                                    if (Logger.IsError) Logger.Error("Error when handling response", e);
-                                }
-                                finally
-                                {
-                                    Free(allocation);
-                                }
-                            }, cancellationToken);
+                            Task task = DoDispatch(cancellationToken, allocatedPeer, request, allocation);
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -157,6 +125,49 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     Feed.Finish();
                 }
+            }
+        }
+
+        private async Task DoDispatch(CancellationToken cancellationToken, PeerInfo? allocatedPeer, T request,
+            SyncPeerAllocation allocation)
+        {
+            try
+            {
+                await Dispatch(allocatedPeer, request, cancellationToken);
+            }
+            catch (ConcurrencyLimitReachedException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
+            }
+
+            try
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
+                    return;
+                }
+
+                SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
+                ReactToHandlingResult(request, result, allocatedPeer);
+            }
+            catch (ObjectDisposedException)
+            {
+                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
+            }
+            catch (Exception e)
+            {
+                // possibly clear the response and handle empty response batch here (to avoid missing parts)
+                // this practically corrupts sync
+                if (Logger.IsError) Logger.Error("Error when handling response", e);
+            }
+            finally
+            {
+                Free(allocation);
             }
         }
 
