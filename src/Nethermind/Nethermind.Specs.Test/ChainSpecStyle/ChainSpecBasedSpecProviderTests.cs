@@ -246,7 +246,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                                      p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-                         .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
+                         .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
                     activation + "." + propertyInfo.Name);
