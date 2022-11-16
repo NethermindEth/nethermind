@@ -340,7 +340,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (log.Topics[0] == _userOperationEventTopic)
                 {
                     Keccak requestId = log.Topics[1];
-                    if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation op))
+                    if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation? op))
                     {
                         if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} removed from pool after being included by miner");
                         Metrics.UserOperationsIncluded++;

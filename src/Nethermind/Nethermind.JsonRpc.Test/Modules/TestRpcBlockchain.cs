@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthRpcModule EthRpcModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
+        public ITxSealer TxSealer { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
 
@@ -143,10 +144,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
 
-            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
-            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
-            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
-            TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
+            TxSealer = new NonceReservingTxSealer(txSigner, Timestamper, TxPool, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId, LogManager));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();

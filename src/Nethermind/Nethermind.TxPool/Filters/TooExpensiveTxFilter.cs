@@ -48,8 +48,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
-
-            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress);
+            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
 
             for (int i = 0; i < transactions.Length; i++)
             {
