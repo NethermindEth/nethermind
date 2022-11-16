@@ -20,21 +20,25 @@ namespace Nethermind.HealthChecks
 {
     public interface IAvailableSpaceGetter
     {
-        (long, double) GetAvailableSpace(string location);
+        (long, double) GetAvailableSpace();
     }
 
     public class AvailableSpaceGetter : IAvailableSpaceGetter
     {
-        /// <summary>
-        /// Returns free space in bytes and as percentage of total space on disk derived from the passed location
-        /// </summary>
-        /// <param name="location">Storage path to check</param>
-        /// <returns></returns>
-        public (long, double) GetAvailableSpace(string location)
+        private readonly DriveInfo _driveInfo;
+        public AvailableSpaceGetter(string location)
         {
-            DriveInfo di = new(location);
-            double freeSpacePcnt = (double)di.AvailableFreeSpace / di.TotalSize * 100;
-            return new(di.AvailableFreeSpace, freeSpacePcnt);
+            _driveInfo = new(location);
+        }
+
+        /// <summary>
+        /// Returns free space in bytes and as percentage of total space on disk derived from the location used to construct
+        /// </summary>
+        /// <returns></returns>
+        public (long, double) GetAvailableSpace()
+        {
+            double freeSpacePcnt = (double)_driveInfo.AvailableFreeSpace / _driveInfo.TotalSize * 100;
+            return new(_driveInfo.AvailableFreeSpace, freeSpacePcnt);
         }
     }
 }

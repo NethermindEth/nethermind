@@ -18,11 +18,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.Synchronization;
 
@@ -130,10 +130,10 @@ namespace Nethermind.HealthChecks
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
             {
-                (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace(_initConfig.BaseDbPath);
+                (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace();
                 if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
-                    double freeSpaceGB = (double)freeSpace / FreeDiskSpaceChecker.BytesToGB;
+                    double freeSpaceGB = (double)freeSpace / 1.GB();
                     AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
                     healthy &= false;
                 }

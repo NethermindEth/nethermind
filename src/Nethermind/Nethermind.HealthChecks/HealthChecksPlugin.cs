@@ -37,7 +37,7 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
-        private IAvailableSpaceGetter _availableSpaceGetter => new AvailableSpaceGetter();
+        private IAvailableSpaceGetter _availableSpaceGetter;
 
         private ClHealthLogger _clHealthLogger;
         private FreeDiskSpaceChecker _freeDiskSpaceChecker;
@@ -70,6 +70,7 @@ namespace Nethermind.HealthChecks
             _initConfig = _api.Config<IInitConfig>();
 
             _logger = api.LogManager.GetClassLogger();
+            _availableSpaceGetter = new AvailableSpaceGetter(_initConfig.BaseDbPath);
 
             return Task.CompletedTask;
         }
@@ -142,7 +143,7 @@ namespace Nethermind.HealthChecks
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {
-                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_api.MessageBus, _initConfig, _healthChecksConfig, _logger, _availableSpaceGetter);
+                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_initConfig, _healthChecksConfig, _logger, _availableSpaceGetter, _api.TimerFactory);
                 _freeDiskSpaceChecker.StartAsync(default);
             }
 

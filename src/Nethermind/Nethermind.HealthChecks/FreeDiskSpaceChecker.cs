@@ -15,99 +15,69 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
-using Nethermind.Core.MessageBus;
+using Nethermind.Config;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
-    public readonly struct LowDiskSpaceMessage : IMessage
-    {
-        public LowDiskSpaceMessage(long freeDiskSpace)
-        {
-            AvailableDiskSpce = freeDiskSpace;
-        }
-        public long AvailableDiskSpce { get; init; }
-    }
-
     public class FreeDiskSpaceChecker : IHostedService, IAsyncDisposable
     {
-        private readonly ISimpleMessageBus _messageBus;
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
         private readonly IAvailableSpaceGetter _availableSpaceGetter;
-        private readonly PeriodicTimer _timer;
-        private Task _timerTask;
-        public static readonly int BytesToGB = 1024 << 20;
-        private static readonly int CheckPeriodMinutes = 5;
+        private readonly ITimer _timer;
+        private static readonly int CheckPeriodMinutes = 1;
 
-        public FreeDiskSpaceChecker(ISimpleMessageBus messageBus, IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter)
+        public FreeDiskSpaceChecker(IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter, ITimerFactory timerFactory)
         {
-            _messageBus = messageBus;
             _healthChecksConfig = healthChecksConfig;
             _initConfig = initConfig;
             _logger = logger;
             _availableSpaceGetter = availableSpaceGetter;
-
-            _timer = new PeriodicTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+            _timer.Elapsed += CheckDiskSpace;
         }
 
-        private async Task CheckDiskSpace(CancellationToken cancellationToken)
+        private void CheckDiskSpace(object sender, EventArgs e)
         {
-            try
-            {
-                while (await _timer.WaitForNextTickAsync(cancellationToken))
-                {
-                    (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace(_initConfig.BaseDbPath);
-                    if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
-                    {
-                        if (_logger.IsError)
-                            _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
-                        await _messageBus.Publish(new LowDiskSpaceMessage(freeSpace));
-                        _timer.Dispose();
-                        break;
-                    }
-                    if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
-                    {
-                        double freeSpaceGB = (double)freeSpace / BytesToGB;
-                        if (_logger.IsWarn)
-                            _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException ex)
+            (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace();
+            if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
             {
                 if (_logger.IsError)
-                    _logger.Error($"Failed to monitor free disk space", ex);
-                _timer.Dispose();
+                    _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
+                Environment.Exit(ExitCodes.LowDiskSpace);
+            }
+            if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+            {
+                double freeSpaceGB = (double)freeSpace / 1.GiB();
+                if (_logger.IsWarn)
+                    _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
             }
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            return _timerTask = CheckDiskSpace(cancellationToken);
+            _timer.Start();
+            return Task.CompletedTask;
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        public Task StopAsync(CancellationToken cancellationToken)
         {
-            if (_timerTask == null)
-                return;
-            _timer.Dispose();
-            await _timerTask;
-            _timerTask = null;
+            _timer.Stop();
+            return Task.CompletedTask;
         }
 
         public async ValueTask DisposeAsync()
         {
             await StopAsync(default);
+            _timer.Dispose();
         }
     }
 }

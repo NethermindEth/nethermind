@@ -64,7 +64,6 @@ namespace Nethermind.Runner
         private static readonly CancellationTokenSource _processCloseCancellationSource = new();
         private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
         private static readonly TaskCompletionSource<object?> _processExit = new();
-        private static readonly TaskCompletionSource<object?> _lowDiskSpaceExit = new();
         private static readonly ManualResetEventSlim _appClosed = new(true);
 
         public static void Main(string[] args)
@@ -200,8 +199,6 @@ namespace Nethermind.Runner
                 INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
-                nethermindApi.MessageBus.Subscribe<HealthChecks.LowDiskSpaceMessage>(_ => ExitOnLowDiskSpace());
-
                 _appClosed.Reset();
                 EthereumRunner ethereumRunner = new(nethermindApi);
                 int exitCode = ExitCodes.Ok;
@@ -209,7 +206,7 @@ namespace Nethermind.Runner
                 {
                     await ethereumRunner.Start(_processCloseCancellationSource.Token);
 
-                    _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task, _lowDiskSpaceExit.Task);
+                    _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
                 }
                 catch (Exception e)
                 {
@@ -469,13 +466,6 @@ namespace Nethermind.Runner
             _processCloseCancellationSource.Cancel();
             _processExit.SetResult(null);
             _appClosed.Wait();
-        }
-
-        private static Task ExitOnLowDiskSpace()
-        {
-            _processCloseCancellationSource.Cancel();
-            _ = _lowDiskSpaceExit.TrySetResult(null);
-            return Task.CompletedTask;
         }
 
         private static void LogMemoryConfiguration()

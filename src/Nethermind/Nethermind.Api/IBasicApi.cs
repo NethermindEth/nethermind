@@ -23,7 +23,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.MessageBus;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -73,7 +72,5 @@ namespace Nethermind.Api
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
-
-        public ISimpleMessageBus MessageBus { get; }
     }
 }

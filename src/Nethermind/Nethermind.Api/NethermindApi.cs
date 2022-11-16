@@ -69,7 +69,6 @@ using Nethermind.Sockets;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Core.MessageBus;
 
 namespace Nethermind.Api
 {
@@ -238,6 +237,5 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider SnapProvider { get; set; }
-        public ISimpleMessageBus MessageBus { get; } = new SimpleInMemoryMessageBus();
     }
 }
