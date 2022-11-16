@@ -62,8 +62,6 @@ public class DbOnTheRocks : IDbWithSpan
 
     private readonly IFileSystem _fileSystem;
 
-    private readonly Func<string, (DbOptions Options, ColumnFamilies? Families), RocksDb> _rocksDbFactory;
-
     private readonly RocksDbSharp.Native _rocksDbNative;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
@@ -83,7 +81,6 @@ public class DbOnTheRocks : IDbWithSpan
         IDbConfig dbConfig,
         ILogManager logManager,
         ColumnFamilies? columnFamilies = null,
-        Func<string, (DbOptions Options, ColumnFamilies? Families), RocksDb>? rocksDbFactory = null,
         RocksDbSharp.Native? rocksDbNative = null,
         IFileSystem? fileSystem = null)
     {
@@ -91,12 +88,11 @@ public class DbOnTheRocks : IDbWithSpan
         _settings = rocksDbSettings;
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
-        _rocksDbFactory = rocksDbFactory ?? DefaultFactory;
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
     }
 
-    private static RocksDb DefaultFactory(string path, (DbOptions Options, ColumnFamilies? Families) db)
+    protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
     {
         (DbOptions options, ColumnFamilies? families) = db;
         return families is null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
@@ -106,7 +102,7 @@ public class DbOnTheRocks : IDbWithSpan
     {
         RepairIfCorrupted(db.Options);
 
-        return _rocksDbFactory.Invoke(path, db);
+        return DoOpen(path, db);
     }
 
     private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,

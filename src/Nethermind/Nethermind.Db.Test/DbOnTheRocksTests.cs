@@ -126,10 +126,9 @@ namespace Nethermind.Db.Test
             bool exceptionThrown = false;
             try
             {
-                DbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
                     LimboLogs.Instance,
-                    fileSystem: fileSystem,
-                    rocksDbFactory: (name, conf) => throw new RocksDbSharpException("Corruption: test corruption"));
+                    fileSystem: fileSystem);
             }
             catch (RocksDbSharpException)
             {
@@ -159,8 +158,7 @@ namespace Nethermind.Db.Test
                 DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
-                    rocksDbNative: native,
-                    rocksDbFactory: (name, conf) => throw new Exception("not actually opening"));
+                    rocksDbNative: native);
             }
             catch (Exception)
             {
@@ -179,6 +177,26 @@ namespace Nethermind.Db.Test
                 WriteBufferNumber = 4,
                 WriteBufferSize = (ulong)1.KiB()
             };
+        }
+    }
+
+    class CorruptedDbOnTheRocks : DbOnTheRocks
+    {
+        public CorruptedDbOnTheRocks(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig,
+            ILogManager logManager,
+            ColumnFamilies? columnFamilies = null,
+            RocksDbSharp.Native? rocksDbNative = null,
+            IFileSystem? fileSystem = null
+        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        {
+        }
+
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
+        {
+            throw new RocksDbSharpException("Corruption: test corruption");
         }
     }
 }
