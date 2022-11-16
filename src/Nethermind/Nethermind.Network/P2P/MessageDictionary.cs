@@ -38,7 +38,7 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
 
     // It could be that we had some kind of temporary connection loss, so once in a while we need to check really old
     // request. This is to prevent getting stuck on concurrent request limit and prevent potential memory leak.
-    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultOldRequestThreshold = Timeouts.Eth;
 
     private readonly TimeSpan _oldRequestThreshold;
 
