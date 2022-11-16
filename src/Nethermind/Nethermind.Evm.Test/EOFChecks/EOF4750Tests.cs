@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test
                     var bytecodeSize = 3;
                     bytecodeSize += ommitTypeSection ? 0 : 3; // typesectionHeader
                     bytecodeSize += ommitTypeSection ? 0 : 2 * (Functions.Length + 1 /*Main Code*/); // typesection
-                    bytecodeSize += 1 + 2 * (Functions.Length + 1 /*Main Code*/); // codesectionHeader 
+                    bytecodeSize += 3 * (Functions.Length + 1 /*Main Code*/); // codesectionHeader 
                     bytecodeSize += Main.Length + Functions.Aggregate(0, (acc, funcCase) => acc + funcCase.Body.Length); // codesection 
                     bytecodeSize += (Data is not null && Data.Length > 0 ? 3 : 0); // datasectionHeader 
                     bytecodeSize += (Data is not null && Data.Length > 0 ? Data.Length : 0); // datasection
@@ -116,15 +116,10 @@ namespace Nethermind.Evm.Test
                     }
 
                     // set code section
-                    bytes[i++] = 0x01;
-
-                    lenBytes = Main.Length.ToByteArray();
-                    bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-
-                    foreach (var functionCase in Functions)
+                    foreach (var functionCase in Routines)
                     {
-                        lenBytes = functionCase.Body.Length.ToByteArray();
-                        bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
+                        lenBytes = functionCase.Length.ToByteArray();
+                        bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
                     }
 
                     if (misplaceTypeSection)
