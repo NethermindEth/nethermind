@@ -156,16 +156,16 @@ namespace Nethermind.Evm.Test
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
-                {0, FrontierInstructions},
-                {MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
-                {MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
-                {MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
-                {MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
-                {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
+                {(ForkActivation)0, FrontierInstructions},
+                {(ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
+                {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
+                {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
+                {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {(long.MaxValue, ulong.MaxValue), CancunInstructions}

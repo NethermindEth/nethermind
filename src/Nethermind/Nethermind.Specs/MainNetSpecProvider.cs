@@ -29,7 +29,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -84,9 +84,9 @@ namespace Nethermind.Specs
 
         public ForkActivation[] TransitionBlocks { get; } =
         {
-            HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
-            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber,
+            (ForkActivation)HomesteadBlockNumber, (ForkActivation)DaoBlockNumberConst, (ForkActivation)TangerineWhistleBlockNumber, (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber, (ForkActivation)ConstantinopleFixBlockNumber, (ForkActivation)IstanbulBlockNumber, (ForkActivation)MuirGlacierBlockNumber,
+            (ForkActivation)BerlinBlockNumber, (ForkActivation)LondonBlockNumber, (ForkActivation)ArrowGlacierBlockNumber, (ForkActivation)GrayGlacierBlockNumber,
             //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
             //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };

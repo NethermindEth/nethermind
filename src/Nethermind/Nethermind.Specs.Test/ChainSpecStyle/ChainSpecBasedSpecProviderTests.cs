@@ -60,11 +60,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                0,
+                (ForkActivation)0,
                 (0, 0),
                 (0, null),
-                1,
-                999_999_999, // far in the future
+                (ForkActivation)1,
+                (ForkActivation)999_999_999, // far in the future
             };
 
             CompareSpecProviders(testProvider, provider, blockNumbersToTest);
@@ -86,7 +86,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                120_000_000, // far in the future
+                (ForkActivation)120_000_000, // far in the future
             };
 
             CompareSpecProviders(sepolia, provider, blockNumbersToTest);
@@ -108,16 +108,16 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                RinkebySpecProvider.ByzantiumBlockNumber,
-                RinkebySpecProvider.ConstantinopleFixBlockNumber - 1,
-                RinkebySpecProvider.ConstantinopleFixBlockNumber,
-                RinkebySpecProvider.IstanbulBlockNumber - 1,
-                RinkebySpecProvider.IstanbulBlockNumber,
-                RinkebySpecProvider.BerlinBlockNumber - 1,
-                RinkebySpecProvider.BerlinBlockNumber,
-                RinkebySpecProvider.LondonBlockNumber - 1,
-                RinkebySpecProvider.LondonBlockNumber,
-                120_000_000, // far in the future
+                (ForkActivation)RinkebySpecProvider.ByzantiumBlockNumber,
+                (ForkActivation)(RinkebySpecProvider.ConstantinopleFixBlockNumber - 1),
+                (ForkActivation)RinkebySpecProvider.ConstantinopleFixBlockNumber,
+                (ForkActivation)(RinkebySpecProvider.IstanbulBlockNumber - 1),
+                (ForkActivation)RinkebySpecProvider.IstanbulBlockNumber,
+                (ForkActivation)(RinkebySpecProvider.BerlinBlockNumber - 1),
+                (ForkActivation)RinkebySpecProvider.BerlinBlockNumber,
+                (ForkActivation)(RinkebySpecProvider.LondonBlockNumber - 1),
+                (ForkActivation)RinkebySpecProvider.LondonBlockNumber,
+                (ForkActivation)120_000_000, // far in the future
             };
 
             CompareSpecProviders(rinkeby, provider, blockNumbersToTest);
@@ -137,15 +137,15 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                0,
-                1,
-                GoerliSpecProvider.IstanbulBlockNumber - 1,
-                GoerliSpecProvider.IstanbulBlockNumber,
-                GoerliSpecProvider.BerlinBlockNumber - 1,
-                GoerliSpecProvider.BerlinBlockNumber,
-                GoerliSpecProvider.LondonBlockNumber - 1,
-                GoerliSpecProvider.LondonBlockNumber,
-                100000000, // far in the future
+                (ForkActivation)0,
+                (ForkActivation)1,
+                (ForkActivation)(GoerliSpecProvider.IstanbulBlockNumber - 1),
+                (ForkActivation)GoerliSpecProvider.IstanbulBlockNumber,
+                (ForkActivation)(GoerliSpecProvider.BerlinBlockNumber - 1),
+                (ForkActivation)GoerliSpecProvider.BerlinBlockNumber,
+                (ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1),
+                (ForkActivation)GoerliSpecProvider.LondonBlockNumber,
+                (ForkActivation)100000000, // far in the future
             };
 
             CompareSpecProviders(goerli, provider, blockNumbersToTest);
@@ -166,53 +166,53 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                0,
+                (ForkActivation)0,
                 (0, 0),
                 (0, null),
-                1,
-                MainnetSpecProvider.HomesteadBlockNumber - 1,
-                MainnetSpecProvider.HomesteadBlockNumber,
-                MainnetSpecProvider.TangerineWhistleBlockNumber - 1,
-                MainnetSpecProvider.TangerineWhistleBlockNumber,
-                MainnetSpecProvider.SpuriousDragonBlockNumber - 1,
-                MainnetSpecProvider.SpuriousDragonBlockNumber,
-                MainnetSpecProvider.ByzantiumBlockNumber - 1,
-                MainnetSpecProvider.ByzantiumBlockNumber,
-                MainnetSpecProvider.ConstantinopleFixBlockNumber - 1,
-                MainnetSpecProvider.ConstantinopleFixBlockNumber,
-                MainnetSpecProvider.IstanbulBlockNumber - 1,
-                MainnetSpecProvider.IstanbulBlockNumber,
-                MainnetSpecProvider.MuirGlacierBlockNumber - 1,
-                MainnetSpecProvider.MuirGlacierBlockNumber,
-                MainnetSpecProvider.BerlinBlockNumber - 1,
-                MainnetSpecProvider.BerlinBlockNumber,
-                MainnetSpecProvider.LondonBlockNumber - 1,
-                MainnetSpecProvider.LondonBlockNumber,
-                MainnetSpecProvider.ArrowGlacierBlockNumber - 1,
-                MainnetSpecProvider.ArrowGlacierBlockNumber,
-                MainnetSpecProvider.GrayGlacierBlockNumber - 1,
-                MainnetSpecProvider.GrayGlacierBlockNumber,
-                99_000_000, // far in the future
+                (ForkActivation)1,
+                (ForkActivation)(MainnetSpecProvider.HomesteadBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.TangerineWhistleBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.SpuriousDragonBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.ByzantiumBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.ConstantinopleFixBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.IstanbulBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.IstanbulBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.MuirGlacierBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.BerlinBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.BerlinBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.LondonBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.LondonBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.ArrowGlacierBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber,
+                (ForkActivation)(MainnetSpecProvider.GrayGlacierBlockNumber - 1),
+                (ForkActivation)MainnetSpecProvider.GrayGlacierBlockNumber,
+                (ForkActivation)99_000_000, // far in the future
             };
 
             CompareSpecProviders(mainnet, provider, blockNumbersToTest);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
-            Assert.AreEqual(0_000_000, provider.GetSpec(4_369_999).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.GetSpec(4_370_000).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
-            Assert.AreEqual(5_000_000, provider.GetSpec(7_280_000).DifficultyBombDelay);
-            Assert.AreEqual(5_000_000, provider.GetSpec(9_199_999).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.GetSpec(9_200_000).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.GetSpec(12_000_000).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.GetSpec(12_964_999).DifficultyBombDelay);
-            Assert.AreEqual(9_700_000, provider.GetSpec(12_965_000).DifficultyBombDelay);
-            Assert.AreEqual(9_700_000, provider.GetSpec(13_772_999).DifficultyBombDelay);
-            Assert.AreEqual(10_700_000, provider.GetSpec(13_773_000).DifficultyBombDelay);
-            Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
-            Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
-            Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec((ForkActivation)7_280_000).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec((ForkActivation)9_199_999).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)9_200_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)12_000_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)12_964_999).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec((ForkActivation)12_965_000).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec((ForkActivation)13_772_999).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec((ForkActivation)13_773_000).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec((ForkActivation)15_049_999).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay);
             Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
 
@@ -267,23 +267,23 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                0,
-                1,
-                RopstenSpecProvider.SpuriousDragonBlockNumber - 1,
-                RopstenSpecProvider.SpuriousDragonBlockNumber,
-                RopstenSpecProvider.ByzantiumBlockNumber - 1,
-                RopstenSpecProvider.ByzantiumBlockNumber,
-                RopstenSpecProvider.ConstantinopleFixBlockNumber - 1,
-                RopstenSpecProvider.ConstantinopleFixBlockNumber,
-                RopstenSpecProvider.IstanbulBlockNumber - 1,
-                RopstenSpecProvider.IstanbulBlockNumber,
-                RopstenSpecProvider.MuirGlacierBlockNumber - 1,
-                RopstenSpecProvider.MuirGlacierBlockNumber,
-                RopstenSpecProvider.BerlinBlockNumber - 1,
-                RopstenSpecProvider.BerlinBlockNumber,
-                RopstenSpecProvider.LondonBlockNumber - 1,
-                RopstenSpecProvider.LondonBlockNumber,
-                999_999_999, // far in the future
+                (ForkActivation)0,
+                (ForkActivation)1,
+                (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
+                (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
+                (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
+                (ForkActivation)999_999_999, // far in the future
             };
 
             CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);
@@ -345,11 +345,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(100, provider.GetSpec(3).DifficultyBombDelay);
-            Assert.AreEqual(300, provider.GetSpec(7).DifficultyBombDelay);
-            Assert.AreEqual(600, provider.GetSpec(13).DifficultyBombDelay);
-            Assert.AreEqual(1000, provider.GetSpec(17).DifficultyBombDelay);
-            Assert.AreEqual(1500, provider.GetSpec(19).DifficultyBombDelay);
+            Assert.AreEqual(100, provider.GetSpec((ForkActivation)3).DifficultyBombDelay);
+            Assert.AreEqual(300, provider.GetSpec((ForkActivation)7).DifficultyBombDelay);
+            Assert.AreEqual(600, provider.GetSpec((ForkActivation)13).DifficultyBombDelay);
+            Assert.AreEqual(1000, provider.GetSpec((ForkActivation)17).DifficultyBombDelay);
+            Assert.AreEqual(1500, provider.GetSpec((ForkActivation)19).DifficultyBombDelay);
         }
 
         [Test]
@@ -368,9 +368,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
-            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
-            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
+            Assert.AreEqual(long.MaxValue, provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, "one before");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, "at transition");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, "one after");
         }
 
         [Test]
@@ -379,7 +379,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = new() { Parameters = new ChainParameters { Eip2200Transition = 5 } };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -389,7 +389,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 new() { Parameters = new ChainParameters { Eip1706Transition = 5, Eip1283Transition = 5 } };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -407,7 +407,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -424,7 +424,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.GetSpec(5).IsEip2200Enabled.Should().BeFalse();
+            provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeFalse();
         }
 
         [Test]
@@ -491,20 +491,20 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
-            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
-            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
+            Assert.AreEqual(long.MaxValue, provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, "one before");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, "at transition");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, "one after");
 
             ReleaseSpec expected = new();
 
-            void TestTransitions(long blockNumber, Action<ReleaseSpec> changes)
+            void TestTransitions(ForkActivation activation, Action<ReleaseSpec> changes)
             {
                 changes(expected);
-                IReleaseSpec underTest = provider.GetSpec(blockNumber);
+                IReleaseSpec underTest = provider.GetSpec(activation);
                 expected.Should().BeEquivalentTo(underTest);
             }
 
-            TestTransitions(0L, r =>
+            TestTransitions((ForkActivation)0L, r =>
             {
                 r.MinGasLimit = 11L;
                 r.GasLimitBoundDivisor = 13L;
@@ -515,44 +515,44 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.MaximumUncleCount = 2;
             });
 
-            TestTransitions(1L, r =>
+            TestTransitions((ForkActivation)1L, r =>
             {
                 r.MaxCodeSize = maxCodeSize;
                 r.IsEip170Enabled = true;
             });
-            TestTransitions(70L, r => { r.IsEip2Enabled = r.IsEip7Enabled = true; });
-            TestTransitions(1000L, r => { r.IsEip100Enabled = true; });
-            TestTransitions(1400L, r => { r.IsEip140Enabled = true; });
-            TestTransitions(1450L, r => { r.IsEip145Enabled = true; });
-            TestTransitions(1500L, r => { r.IsEip150Enabled = true; });
-            TestTransitions(1520L, r => { r.IsEip152Enabled = true; });
-            TestTransitions(1550L, r => { r.IsEip155Enabled = true; });
-            TestTransitions(1580L, r => { r.IsEip158Enabled = true; });
-            TestTransitions(1600L, r => { r.IsEip160Enabled = true; });
-            TestTransitions(1960L,
+            TestTransitions((ForkActivation)70L, r => { r.IsEip2Enabled = r.IsEip7Enabled = true; });
+            TestTransitions((ForkActivation)1000L, r => { r.IsEip100Enabled = true; });
+            TestTransitions((ForkActivation)1400L, r => { r.IsEip140Enabled = true; });
+            TestTransitions((ForkActivation)1450L, r => { r.IsEip145Enabled = true; });
+            TestTransitions((ForkActivation)1500L, r => { r.IsEip150Enabled = true; });
+            TestTransitions((ForkActivation)1520L, r => { r.IsEip152Enabled = true; });
+            TestTransitions((ForkActivation)1550L, r => { r.IsEip155Enabled = true; });
+            TestTransitions((ForkActivation)1580L, r => { r.IsEip158Enabled = true; });
+            TestTransitions((ForkActivation)1600L, r => { r.IsEip160Enabled = true; });
+            TestTransitions((ForkActivation)1960L,
                 r => { r.IsEip196Enabled = r.IsEip197Enabled = r.IsEip198Enabled = r.IsEip649Enabled = true; });
-            TestTransitions(2110L, r => { r.IsEip211Enabled = true; });
-            TestTransitions(2140L, r => { r.IsEip214Enabled = true; });
-            TestTransitions(6580L, r => { r.IsEip658Enabled = r.IsEip1234Enabled = true; });
-            TestTransitions(10140L, r => { r.IsEip1014Enabled = true; });
-            TestTransitions(10520L, r => { r.IsEip1052Enabled = true; });
-            TestTransitions(11180L, r => { r.IsEip1108Enabled = true; });
-            TestTransitions(12830L, r => { r.IsEip1283Enabled = true; });
-            TestTransitions(12831L, r => { r.IsEip1283Enabled = false; });
-            TestTransitions(13440L, r => { r.IsEip1344Enabled = true; });
-            TestTransitions(15590L, r => { r.IsEip1559Enabled = true; });
-            TestTransitions(15591L, r => { r.Eip1559FeeCollector = Address.SystemUser; });
-            TestTransitions(15592L, r => { r.Eip1559BaseFeeMinValue = UInt256.UInt128MaxValue; });
-            TestTransitions(18840L, r => { r.IsEip1884Enabled = true; });
-            TestTransitions(20280L, r => { r.IsEip2028Enabled = true; });
-            TestTransitions(22000L, r => { r.IsEip2200Enabled = true; });
-            TestTransitions(23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
-            TestTransitions(24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
-            TestTransitions(29290L, r => { r.IsEip2929Enabled = r.IsEip2537Enabled = r.IsEip2565Enabled = true; });
-            TestTransitions(29300L, r => { r.IsEip2930Enabled = true; });
-            TestTransitions(31980L, r => { r.IsEip3198Enabled = true; });
-            TestTransitions(35290L, r => { r.IsEip3529Enabled = true; });
-            TestTransitions(35410L, r => { r.IsEip3541Enabled = true; });
+            TestTransitions((ForkActivation)2110L, r => { r.IsEip211Enabled = true; });
+            TestTransitions((ForkActivation)2140L, r => { r.IsEip214Enabled = true; });
+            TestTransitions((ForkActivation)6580L, r => { r.IsEip658Enabled = r.IsEip1234Enabled = true; });
+            TestTransitions((ForkActivation)10140L, r => { r.IsEip1014Enabled = true; });
+            TestTransitions((ForkActivation)10520L, r => { r.IsEip1052Enabled = true; });
+            TestTransitions((ForkActivation)11180L, r => { r.IsEip1108Enabled = true; });
+            TestTransitions((ForkActivation)12830L, r => { r.IsEip1283Enabled = true; });
+            TestTransitions((ForkActivation)12831L, r => { r.IsEip1283Enabled = false; });
+            TestTransitions((ForkActivation)13440L, r => { r.IsEip1344Enabled = true; });
+            TestTransitions((ForkActivation)15590L, r => { r.IsEip1559Enabled = true; });
+            TestTransitions((ForkActivation)15591L, r => { r.Eip1559FeeCollector = Address.SystemUser; });
+            TestTransitions((ForkActivation)15592L, r => { r.Eip1559BaseFeeMinValue = UInt256.UInt128MaxValue; });
+            TestTransitions((ForkActivation)18840L, r => { r.IsEip1884Enabled = true; });
+            TestTransitions((ForkActivation)20280L, r => { r.IsEip2028Enabled = true; });
+            TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
+            TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
+            TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
+            TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2537Enabled = r.IsEip2565Enabled = true; });
+            TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
+            TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
+            TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
+            TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
         }
     }
 }

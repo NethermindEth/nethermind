@@ -28,7 +28,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -42,7 +42,7 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber => 0L;
 
         public ulong ChainId => Core.ChainId.Olympic;
-        public ForkActivation[] TransitionBlocks { get; } = { 0 };
+        public ForkActivation[] TransitionBlocks { get; } = { (ForkActivation)0 };
 
         private OlympicSpecProvider() { }
 

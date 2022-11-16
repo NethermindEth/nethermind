@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                             n => n is null
                                 ? Rlp.OfEmptySequence
                                 // for TxReceipt there is no timestamp, as such, we are keeping the old implementation. wonder how we can metigate this later if future EIPs affecting this are added. 
-                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
+                                : _decoder.Encode(n, _specProvider.GetSpec((ForkActivation)n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.Encode(rlp);
@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         else
                         {
                             // same as above comment. TxReceipt has no timestamp
-                            contentLength += Rlp.LengthOfSequence(_decoder.GetLength(txReceipt, _specProvider.GetSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                            contentLength += Rlp.LengthOfSequence(_decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
                         }
                     }
                 }
