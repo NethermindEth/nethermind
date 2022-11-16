@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.ComponentModel;
-using Nethermind.Monitoring.Metrics;
+using System.Runtime.Serialization;
 
 namespace Nethermind.Network
 {
@@ -261,12 +261,13 @@ namespace Nethermind.Network
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
-        [MetricsManualNamed("ethereum_peer_count")]
+        [DataMember(Name="ethereum_peer_count")]
+        //The current number of peers connected changed by threadsafe atomic increment/decrement
         public static long PeerCount;
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The maximum number of peers this node allows to connect.")]
-        [MetricsManualNamed("ethereum_peer_limit")]
+        [DataMember(Name = "ethereum_peer_limit")]
         public static long PeerLimit { get; set; }
     }
 }
