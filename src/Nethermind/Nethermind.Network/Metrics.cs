@@ -261,7 +261,7 @@ namespace Nethermind.Network
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
-        [DataMember(Name="ethereum_peer_count")]
+        [DataMember(Name = "ethereum_peer_count")]
         //The current number of peers connected changed by threadsafe atomic increment/decrement
         public static long PeerCount;
 
