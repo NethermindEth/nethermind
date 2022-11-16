@@ -13,20 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using Microsoft.VisualBasic;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Synchronization.Reporting
 {
-    public class NullTxSender : ITxSender
+    public class SyncReportSymmary
     {
-        public static ITxSender Instance { get; } = new NullTxSender();
-
-        public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
-            => new((tx.Hash!, null));
-
+        public string CurrentStage { get; set; }
     }
 }

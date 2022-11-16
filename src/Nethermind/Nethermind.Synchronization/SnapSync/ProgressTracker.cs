@@ -82,6 +82,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (AccountsToRefresh.Count > 0)
             {
+                Interlocked.Increment(ref _activeAccRefreshRequests);
+
                 LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
 
                 int queueLength = AccountsToRefresh.Count;
@@ -92,8 +94,6 @@ namespace Nethermind.Synchronization.SnapSync
                     paths[i] = acc;
                 }
 
-                Interlocked.Increment(ref _activeAccRefreshRequests);
-
                 request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
 
                 return (request, false);
@@ -101,24 +101,22 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
+                Interlocked.Increment(ref _activeAccountRequests);
+
                 AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
                 LogRequest("AccountRange");
-
-                Interlocked.Increment(ref _activeAccountRequests);
 
                 request.AccountRangeRequest = range;
 
                 return (request, false);
             }
-            else if (NextSlotRange.TryDequeue(out StorageRange slotRange))
+            else if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
                 slotRange.RootHash = rootHash;
                 slotRange.BlockNumber = blockNumber;
 
                 LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
-
-                Interlocked.Increment(ref _activeStorageRequests);
 
                 request.StorageRangeRequest = slotRange;
 
@@ -126,9 +124,10 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (StoragesToRetrieve.Count > 0)
             {
+                Interlocked.Increment(ref _activeStorageRequests);
+
                 // TODO: optimize this
                 List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
-
                 for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
                 {
                     storagesToQuery.Add(storage);
@@ -144,25 +143,22 @@ namespace Nethermind.Synchronization.SnapSync
 
                 LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
 
-                Interlocked.Increment(ref _activeStorageRequests);
-
                 request.StorageRangeRequest = storageRange;
 
                 return (request, false);
             }
             else if (CodesToRetrieve.Count > 0)
             {
+                Interlocked.Increment(ref _activeCodeRequests);
+
                 // TODO: optimize this
                 List<Keccak> codesToQuery = new(CODES_BATCH_SIZE);
-
                 for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out Keccak codeHash); i++)
                 {
                     codesToQuery.Add(codeHash);
                 }
 
                 LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
-
-                Interlocked.Increment(ref _activeCodeRequests);
 
                 request.CodesRequest = codesToQuery.ToArray();
 
@@ -308,6 +304,18 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Info(
                     $"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
             }
+        }
+
+        private bool TryDequeNextSlotRange(out StorageRange item)
+        {
+            Interlocked.Increment(ref _activeStorageRequests);
+            if (!NextSlotRange.TryDequeue(out item))
+            {
+                Interlocked.Decrement(ref _activeStorageRequests);
+                return false;
+            }
+
+            return true;
         }
     }
 }
