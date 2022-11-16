@@ -90,4 +90,18 @@ public partial class EngineModuleTests
 
         (finalBalance - startingBalance).Should().Be(getPayloadResult.BlockValue);
     }
+
+    [Test]
+    public async Task getPayloadV2_request_unknown_payload()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        byte[] payloadId = Bytes.FromHexString("0x0");
+        ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
+        responseFirst.Should().NotBeNull();
+        responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
+        responseFirst.ErrorCode.Should().Be(-38001);
+    }
 }

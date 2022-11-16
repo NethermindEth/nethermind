@@ -32,7 +32,5 @@ public class GetPayloadV2Result
         BlockValue = block.Header.Fees;
     }
 
-    public override string ToString() => ExecutionPayloadV1.BlockHash == null
-        ? $"{ExecutionPayloadV1.BlockNumber} null"
-        : $"{ExecutionPayloadV1.BlockNumber} ({ExecutionPayloadV1.BlockHash}) Fees: {BlockValue}";
+    public override string ToString() => $"ExecutionPayloadV1: {ExecutionPayloadV1}, Fees: {BlockValue}";
 }
