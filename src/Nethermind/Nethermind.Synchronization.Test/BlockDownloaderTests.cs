@@ -483,6 +483,13 @@ namespace Nethermind.Synchronization.Test
                 Thread.Sleep(1000);
                 return true;
             }
+
+            public bool ValidateWithdrawals(Block block, out string? error)
+            {
+                Thread.Sleep(1000);
+                error = string.Empty;
+                return true;
+            }
         }
 
         [Test, MaxTime(7000)]
