@@ -114,7 +114,7 @@ public class JsonRpcService : IJsonRpcService
         string methodName = rpcRequest.Method.Trim();
 
         (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo != null
+        return result.MethodInfo is not null
             ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
@@ -170,7 +170,7 @@ public class JsonRpcService : IJsonRpcService
         if (expectedParameters.Length > 0)
         {
             parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
-            if (parameters == null)
+            if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
@@ -233,7 +233,7 @@ public class JsonRpcService : IJsonRpcService
         }
 
         Result? result = resultWrapper.GetResult();
-        if (result == null)
+        if (result is null)
         {
             if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
             return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
@@ -307,7 +307,7 @@ public class JsonRpcService : IJsonRpcService
 
                 if (string.IsNullOrWhiteSpace(providedParameter))
                 {
-                    if (providedParameter == null && IsNullableParameter(expectedParameter))
+                    if (providedParameter is null && IsNullableParameter(expectedParameter))
                     {
                         executionParameters.Add(null);
                     }
@@ -367,12 +367,12 @@ public class JsonRpcService : IJsonRpcService
         Type parameterType = parameterInfo.ParameterType;
         if (parameterType.IsValueType)
         {
-            return Nullable.GetUnderlyingType(parameterType) != null;
+            return Nullable.GetUnderlyingType(parameterType) is not null;
         }
 
         CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
             .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-        if (nullableAttribute != null)
+        if (nullableAttribute is not null)
         {
             CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
             if (attributeArgument.ArgumentType == typeof(byte))
@@ -420,7 +420,7 @@ public class JsonRpcService : IJsonRpcService
 
     private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
-        if (rpcRequest == null)
+        if (rpcRequest is null)
         {
             return (ErrorCodes.InvalidRequest, "Invalid request");
         }

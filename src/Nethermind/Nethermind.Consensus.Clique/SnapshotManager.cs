@@ -56,9 +56,9 @@ namespace Nethermind.Consensus.Clique
 
         public Address GetBlockSealer(BlockHeader header)
         {
-            if (header.Author != null) return header.Author;
+            if (header.Author is not null) return header.Author;
             if (header.Number == UInt256.Zero) return Address.Zero;
-            if (_signatures.Get(header.Hash) != null) return _signatures.Get(header.Hash);
+            if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
 
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Clique
                 while (true)
                 {
                     snapshot = GetSnapshot(number, hash);
-                    if (snapshot != null) break;
+                    if (snapshot is not null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Clique
                         throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
                     }
 
-                    if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -141,7 +141,7 @@ namespace Nethermind.Consensus.Clique
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -218,13 +218,13 @@ namespace Nethermind.Consensus.Clique
             if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
             Snapshot? cachedSnapshot = _snapshotCache.Get(hash);
-            if (cachedSnapshot != null) return cachedSnapshot;
+            if (cachedSnapshot is not null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that
             if ((ulong)number % Clique.CheckpointInterval == 0)
             {
                 Snapshot? persistedSnapshot = LoadSnapshot(hash);
-                if (persistedSnapshot != null) return persistedSnapshot;
+                if (persistedSnapshot is not null) return persistedSnapshot;
             }
 
             return null;
@@ -246,7 +246,7 @@ namespace Nethermind.Consensus.Clique
         {
             Keccak key = GetSnapshotKey(hash);
             byte[]? bytes = _blocksDb.Get(key);
-            if (bytes == null) return null;
+            if (bytes is null) return null;
 
             return _decoder.Decode(bytes.AsRlpStream());
         }

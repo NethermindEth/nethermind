@@ -500,7 +500,7 @@ public partial class EthRpcModuleTests
 
         var newFilterResp = RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
-        Assert.IsTrue(newFilterResp != null && newFilterResp is JsonRpcSuccessResponse);
+        Assert.IsTrue(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse);
 
         string getFilterLogsSerialized = test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 

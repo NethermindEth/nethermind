@@ -24,21 +24,21 @@ namespace Nethermind.Consensus.Producers
     {
         public static IBlockProductionTrigger IfPoolIsNotEmpty(this IBlockProductionTrigger? trigger, ITxPool? txPool)
         {
-            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
-            if (txPool == null) throw new ArgumentNullException(nameof(txPool));
+            if (trigger is null) throw new ArgumentNullException(nameof(trigger));
+            if (txPool is null) throw new ArgumentNullException(nameof(txPool));
             return trigger.ButOnlyWhen(() => txPool.GetPendingTransactionsCount() > 0);
         }
 
         public static IBlockProductionTrigger ButOnlyWhen(this IBlockProductionTrigger? trigger, Func<bool> condition)
         {
-            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
+            if (trigger is null) throw new ArgumentNullException(nameof(trigger));
             return new TriggerWithCondition(trigger, condition);
         }
 
         public static IBlockProductionTrigger Or(this IBlockProductionTrigger? trigger, IBlockProductionTrigger? alternative)
         {
-            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
-            if (alternative == null) throw new ArgumentNullException(nameof(alternative));
+            if (trigger is null) throw new ArgumentNullException(nameof(trigger));
+            if (alternative is null) throw new ArgumentNullException(nameof(alternative));
 
             if (trigger is CompositeBlockProductionTrigger composite1)
             {

@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
             {
                 return;
             }
@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Array.Empty<byte>())
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == Array.Empty<byte>())
             {
                 return;
             }
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
             {
                 return;
             }

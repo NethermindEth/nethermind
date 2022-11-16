@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
-            if (filter != null)
+            if (filter is not null)
             {
                 _filter = filterStore.CreateLogFilter(
                     filter.FromBlock,

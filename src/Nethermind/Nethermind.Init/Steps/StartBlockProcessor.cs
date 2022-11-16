@@ -32,7 +32,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (_api.BlockchainProcessor == null)
+            if (_api.BlockchainProcessor is null)
             {
                 throw new StepDependencyException(nameof(_api.BlockchainProcessor));
             }

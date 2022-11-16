@@ -117,7 +117,7 @@ public class DiscoveryApp : IDiscoveryApp
         StopDiscoveryTimer();
         StopDiscoveryPersistenceTimer();
 
-        if (_storageCommitTask != null)
+        if (_storageCommitTask is not null)
         {
             await _storageCommitTask.ContinueWith(x =>
             {
@@ -283,7 +283,7 @@ public class DiscoveryApp : IDiscoveryApp
             }
 
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node, true);
-            if (manager == null)
+            if (manager is null)
             {
                 if (_logger.IsDebug)
                 {
@@ -390,18 +390,18 @@ public class DiscoveryApp : IDiscoveryApp
     {
         try
         {
-            if (_discoveryHandler != null)
+            if (_discoveryHandler is not null)
             {
                 _discoveryHandler.OnChannelActivated -= OnChannelActivated;
             }
 
-            if (_bindingTask != null)
+            if (_bindingTask is not null)
             {
                 await _bindingTask; // if we are still starting
             }
 
             _logger.Info("Stopping discovery udp channel");
-            if (_channel == null)
+            if (_channel is null)
             {
                 return;
             }
@@ -445,7 +445,7 @@ public class DiscoveryApp : IDiscoveryApp
 
             Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager != null)
+            if (manager is not null)
             {
                 managers.Add(manager);
             }

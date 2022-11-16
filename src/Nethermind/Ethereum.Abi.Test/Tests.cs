@@ -38,11 +38,11 @@ namespace Ethereum.Abi.Test
 
         private static Dictionary<string, AbiType> _abiTypes = new()
         {
-            {"uint256", AbiType.UInt256},
-            {"uint32[]", new AbiArray(AbiType.UInt32)},
-            {"bytes10", new AbiBytes(10)},
-            {"bytes", AbiType.DynamicBytes},
-            {"address", AbiType.Address},
+            { "uint256", AbiType.UInt256 },
+            { "uint32[]", new AbiArray(AbiType.UInt32) },
+            { "bytes10", new AbiBytes(10) },
+            { "bytes", AbiType.DynamicBytes },
+            { "address", AbiType.Address },
         };
 
         [Test]

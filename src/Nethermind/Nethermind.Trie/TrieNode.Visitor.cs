@@ -56,7 +56,7 @@ namespace Nethermind.Trie
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                         {
-                            if (child != null)
+                            if (child is not null)
                             {
                                 child.ResolveKey(resolver, false);
                                 if (v.ShouldVisit(child.Keccak!))
@@ -137,7 +137,7 @@ namespace Nethermind.Trie
                     {
                         visitor.VisitExtension(this, trieVisitContext);
                         TrieNode child = GetChild(nodeResolver, 0);
-                        if (child == null)
+                        if (child is null)
                         {
                             throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         }
