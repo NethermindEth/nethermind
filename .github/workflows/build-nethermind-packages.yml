@@ -3,21 +3,17 @@ name: '[BUILD] Nethermind packages'
 on: 
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version'
+      tag:
+        description: 'Version tag'
         required: true
 
 jobs:
-  build-nethermind:
+  build:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     env: 
       RELEASE_PATH: ${{ github.workspace }}
-      LINUX_X64_PKG: nethermind-linux-x64
-      LINUX_ARM64_PKG: nethermind-linux-arm64
-      WIN_X64_PKG: nethermind-win-x64
-      OSX_X64_PKG: nethermind-osx-x64
-      OSX_ARM64_PKG: nethermind-osx-arm64
+      PACKAGE_DIR: pkg
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
@@ -52,7 +48,8 @@ jobs:
         commit_hash=$(git describe --always --exclude=* --abbrev=40)
         echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
-        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.version }} $commit_hash $build_timestamp
+        echo "COMMIT_HASH_SHORT=$(echo $commit_hash | awk '{print substr($0,0,8);}')" >> $GITHUB_OUTPUT
+        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Build Nethermind.Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Build Nethermind.Launcher
@@ -64,29 +61,34 @@ jobs:
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_PATH }}/linux-arm64/Nethermind.Launcher
     - name: Archive packages
-      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.version }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
-    - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux x64 package
+      id: archive
+      env:
+        PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.COMMIT_HASH_SHORT }}
+      run: |
+        echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
+        ./nethermind/scripts/deployment/archive-packages.sh
+    - name: Upload Nethermind Linux x64 package
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.LINUX_X64_PKG }}-package
-        path: ${{ env.RELEASE_PATH }}/linux-x64/${{ env.LINUX_X64_PKG }}-*
-    - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Linux arm64 package
+        name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*linux-x64*
+    - name: Upload Nethermind Linux arm64 package
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.LINUX_ARM64_PKG }}-package
-        path: ${{ env.RELEASE_PATH }}/linux-arm64/${{ env.LINUX_ARM64_PKG }}-*
-    - uses: actions/upload-artifact@v3
-      name: Upload Nethermind Windows x64 package
+        name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
+    - name: Upload Nethermind Windows x64 package
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.WIN_X64_PKG }}-package
-        path: ${{ env.RELEASE_PATH }}/win-x64/${{ env.WIN_X64_PKG }}-*
-    - uses: actions/upload-artifact@v3
-      name: Upload Nethermind macOS x64 package
+        name: ${{ env.PACKAGE_PREFIX }}-win-x64-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*win-x64*
+    - name: Upload Nethermind macOS x64 package
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.OSX_X64_PKG }}-package
-        path: ${{ env.RELEASE_PATH }}/osx-x64/${{ env.OSX_X64_PKG }}-*
-    - uses: actions/upload-artifact@v3
-      name: Upload Nethermind macOS arm64 package
+        name: ${{ env.PACKAGE_PREFIX }}-osx-x64-package
+        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*osx-x64*
+    - name: Upload Nethermind macOS arm64 package
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.OSX_ARM64_PKG }}-package
-        path: ${{ env.RELEASE_PATH }}/osx-arm64/${{ env.OSX_ARM64_PKG }}-*
+        name: ${{ env.PACKAGE_PREFIX }}-osx-arm64-pkg
+        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*osx-arm64*
