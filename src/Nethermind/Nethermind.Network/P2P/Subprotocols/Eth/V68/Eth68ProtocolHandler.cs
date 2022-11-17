@@ -129,7 +129,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             if (tx.Hash is not null)
             {
                 types.Add(tx.Type);
-                sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
+                sizes.Add(tx.GetSize(txDecoder));
                 hashes.Add(tx.Hash);
             }
         }

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -70,6 +70,15 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
+        private int? _size = null;
+        /// <summary>
+        /// Encoded transaction size
+        /// </summary>
+        public int GetSize(ITransactionSizeCalculator sizeCalculator)
+        {
+            return _size ??= sizeCalculator.CalculateSize(this);
+        }
+
         public string ToShortString()
         {
             string gasPriceString =
@@ -115,7 +124,16 @@ namespace Nethermind.Core
     public class GeneratedTransaction : Transaction { }
 
     /// <summary>
-    /// System transaction that is to be executed by the node without including in the block. 
+    /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    /// <summary>
+    /// Used inside Transaction::GetSize to calculate encoded transaction size
+    /// </summary>
+    /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
+    public interface ITransactionSizeCalculator
+    {
+        int CalculateSize(Transaction tx);
+    }
 }
