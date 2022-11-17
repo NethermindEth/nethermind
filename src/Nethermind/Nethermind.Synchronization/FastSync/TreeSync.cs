@@ -58,7 +58,8 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new();
-        private LruKeyCache<Keccak> _alreadySaved = new(AlreadySavedCapacity, "saved nodes");
+        private LruKeyCache<Keccak> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private LruKeyCache<Keccak> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new();
 
         private BranchProgress _branchProgress;
@@ -216,8 +217,26 @@ namespace Nethermind.Synchronization.FastSync
                         NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
                         if (nodeDataType == NodeDataType.Code)
                         {
-                            SaveNode(currentStateSyncItem, currentResponseItem);
-                            continue;
+                            bool processAsStorage = false;
+                            lock (_codesSameAsNodes)
+                            {
+                                // It could be that a code request was sent before another branch found storage same as
+                                // code situation, in which case, the storage request (for later branch) would not get
+                                // sent out because of _dependencies check.
+                                processAsStorage = _codesSameAsNodes.Contains(currentStateSyncItem.Hash);
+                            }
+
+                            // It is possible that the _codesSameAsNode is populated during processing of the code
+                            // before its _dependencies record is removed. But this *should* be fairly rare, we dont
+                            // want to introduce more lock and when the state root change, the request would have been
+                            // re-sent for the storage. So user should not be blocked by this.
+                            if (!processAsStorage)
+                            {
+                                SaveNode(currentStateSyncItem, currentResponseItem);
+                                continue;
+                            }
+
+                            currentStateSyncItem = new StateSyncItem(currentStateSyncItem, NodeDataType.Storage);
                         }
 
                         HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
@@ -449,7 +468,9 @@ namespace Nethermind.Synchronization.FastSync
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
-                if (_alreadySaved.Get(syncItem.Hash))
+                LruKeyCache<Keccak> alreadySavedCache =
+                    syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
+                if (alreadySavedCache.Get(syncItem.Hash))
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
@@ -467,7 +488,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
-                        _alreadySaved.Set(syncItem.Hash);
+                        alreadySavedCache.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
                         _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                         return AddNodeResult.AlreadySaved;
@@ -778,7 +799,17 @@ namespace Nethermind.Synchronization.FastSync
                             trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
-                            if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                            if (addStorageNodeResult != AddNodeResult.AlreadySaved)
+                            {
+                                dependentItem.Counter++;
+                            }
+                            else if (codeHash == storageRoot)
+                            {
+                                // Maybe a storageRoot equal to the codeHash was stored by another branch.
+                                // Double checking code...
+                                AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                                if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
+                            }
                         }
 
                         if (dependentItem.Counter == 0)
