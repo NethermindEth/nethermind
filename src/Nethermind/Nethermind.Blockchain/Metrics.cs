@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.ComponentModel;
+using System.Runtime.Serialization;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
@@ -62,5 +63,15 @@ namespace Nethermind.Blockchain
 
         [Description("Number of ms to process the last processed block.")]
         public static long LastBlockProcessingTimeInMs;
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The current height of the canonical chain.")]
+        [DataMember(Name = "ethereum_blockchain_height")]
+        public static long BlockchainHeight { get; set; }
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The estimated highest block available.")]
+        [DataMember(Name = "ethereum_best_known_block_number")]
+        public static long BestKnownBlockNumber { get; set; }
     }
 }

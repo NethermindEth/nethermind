@@ -37,6 +37,9 @@ namespace Nethermind.Merge.AuRa
     {
         private AuRaNethermindApi? _auraApi;
 
+        public override string Name => "AuRaMerge";
+        public override string Description => $"AuRa Merge plugin for ETH1-ETH2";
+
         public override bool MergeEnabled => ShouldBeEnabled(_api);
 
         public override async Task Init(INethermindApi nethermindApi)
