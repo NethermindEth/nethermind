@@ -101,18 +101,6 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out _))
             return false;
 
-        if (block.Withdrawals is not null)
-        {
-            var withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
-
-            if (withdrawalsRoot != block.Header.WithdrawalsRoot)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
-
-                return false;
-            }
-        }
-
         return true;
     }
 
@@ -185,6 +173,19 @@ public class BlockValidator : IBlockValidator
             if (_logger.IsWarn) _logger.Warn(error);
 
             return false;
+        }
+
+        if (block.Withdrawals is not null)
+        {
+            Keccak? withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
+
+            if (withdrawalsRoot != block.Header.WithdrawalsRoot)
+            {
+                error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
+                if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+
+                return false;
+            }
         }
 
         error = null;

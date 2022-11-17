@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -19,6 +19,7 @@ using System.IO;
 using System.Net;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -101,6 +102,13 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
+
+        public static Withdrawal WithdrawalA = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, Amount = 1.Ether() };
+        public static Withdrawal WithdrawalB = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, Amount = 2.Ether() };
+        public static Withdrawal WithdrawalC = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, Amount = 3.Ether() };
+        public static Withdrawal WithdrawalD = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, Amount = 4.Ether() };
+        public static Withdrawal WithdrawalE = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, Amount = 5.Ether() };
+        public static Withdrawal WithdrawalF = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, Amount = 6.Ether() };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
