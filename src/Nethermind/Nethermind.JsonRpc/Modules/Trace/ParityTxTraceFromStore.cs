@@ -24,26 +24,23 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public static ParityTxTraceFromStore[] FromTxTrace(ParityLikeTxTrace txTrace)
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace)
         {
-            List<ParityTxTraceFromStore> results = new();
-            AddActionsRecursively(results, txTrace, txTrace.Action);
-            return results.ToArray();
+            return ReturnActionsRecursively(txTrace, txTrace.Action);
         }
 
         public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
         {
-            List<ParityTxTraceFromStore> results = new();
             foreach (ParityLikeTxTrace tx in txTrace)
             {
-                AddActionsRecursively(results, tx, tx.Action);
+                foreach (ParityTxTraceFromStore trace in ReturnActionsRecursively(tx, tx.Action))
+                {
+                    yield return trace;
+                }
             }
-
-            return results;
-
         }
 
-        private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction? txTraceAction)
+        private static IEnumerable<ParityTxTraceFromStore> ReturnActionsRecursively(ParityLikeTxTrace txTrace, ParityTraceAction? txTraceAction)
         {
             if (txTraceAction is not null)
             {
@@ -60,11 +57,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     TraceAddress = txTraceAction.TraceAddress,
                     Error = txTraceAction.Error
                 };
-                results.Add(result);
+                yield return result;
 
-                foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
+                for (int index = 0; index < txTraceAction.Subtraces.Count; index++)
                 {
-                    AddActionsRecursively(results, txTrace, subtrace);
+                    ParityTraceAction subtrace = txTraceAction.Subtraces[index];
+                    foreach (ParityTxTraceFromStore convertedSubtrace in ReturnActionsRecursively(txTrace, subtrace))
+                    {
+                        yield return convertedSubtrace;
+                    }
+
                 }
             }
         }
