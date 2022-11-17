@@ -2979,38 +2979,7 @@ namespace Nethermind.Evm
                             }
                             break;
                         }
-                    case Instruction.JUMPSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StackOverflow);
-                                return CallResult.StackOverflowException;
-                            }
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
-                            {
-                                Offset = programCounter
-                            };
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
-                            programCounter++;
-
-                            break;
-                        }
-                    case Instruction.CALLF:
+                    case Instruction.JUMPSUB | Instruction.CALLF:
                         {
                             if (spec.IsEip4750Enabled)
                             {
@@ -3035,8 +3004,33 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.StackOverflow);
+                                    return CallResult.StackOverflowException;
+                                }
+
+                                vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                                {
+                                    Offset = programCounter
+                                };
+
+                                stack.PopUInt256(out UInt256 jumpDest);
+                                Jump(jumpDest, true);
+                                programCounter++;
+
                             }
                             break;
                         }

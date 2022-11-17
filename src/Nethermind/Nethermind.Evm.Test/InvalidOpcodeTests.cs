@@ -137,7 +137,7 @@ namespace Nethermind.Evm.Test
                                             Instruction.RJUMP,
                                             Instruction.RJUMPI,
                                             Instruction.CALLF,
-                                            // Instruction.RETF
+                                            Instruction.RETF
                                         }
                                     )
                             )))))).ToArray();
@@ -206,13 +206,17 @@ namespace Nethermind.Evm.Test
                 Instruction instruction = (Instruction)i;
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
+                if (instruction is Instruction.CALLF or Instruction.RETF)
+                {
+                    continue;
+                }
+
                 if (InstructionsWithImmediates.Contains(instruction))
                 {
                     var immediateArgs = instruction switch
                     {
                         >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
                         Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(i => (byte)i),
-                        Instruction.CALLF => Enumerable.Range(0, 2).Select(i => (byte)i),
                         _ => Enumerable.Empty<byte>()
                     };
                     foreach (byte arg in immediateArgs)
