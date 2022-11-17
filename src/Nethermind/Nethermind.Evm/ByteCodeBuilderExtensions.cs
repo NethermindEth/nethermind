@@ -152,7 +152,7 @@ namespace Nethermind.Evm
         public static Prepare JUMP(this Prepare @this, UInt256? to = null)
             => @this.PushSingle(to)
                     .Op(Instruction.JUMP);
-        
+
         public static Prepare RETF(this Prepare @this)
             => @this.Op(Instruction.RETF);
 

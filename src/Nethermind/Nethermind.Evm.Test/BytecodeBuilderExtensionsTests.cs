@@ -195,9 +195,9 @@ namespace Nethermind.Evm.Test
 
             foreach (Instruction opcode in address_opcodes)
             {
-                if(_releaseSpec is Shanghai && opcode is Instruction.JUMPSUB)
+                if (_releaseSpec is Shanghai && opcode is Instruction.JUMPSUB)
                 {
-                    continue; 
+                    continue;
                 }
 
                 Address arguments = Address.Zero;
