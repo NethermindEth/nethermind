@@ -20,7 +20,7 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-file_header_template = Copyright 2022 Demerzel Solutions Limited\nLicensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+file_header_template = SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
 
 ###############################
 # Other file type settings    #
