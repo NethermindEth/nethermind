@@ -1358,6 +1358,58 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
         }
 
+        [Test]
+        public void should_increase_nonce_when_transaction_not_included_in_txPool_but_broadcasted()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
+
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+
+            _txPool.AddPeer(peer);
+
+            // Add two transactions with high gas price
+            Transaction firstTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction secondTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(firstTx);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(secondTx);
+
+            // Send cheap transaction => Not included in txPool
+            Transaction cheapTx = Build.A.Transaction
+                .WithNonce(2)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(cheapTx);
+
+            // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
+            Transaction foursTx = Build.A.Transaction
+                .WithNonce(3)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(foursTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(foursTx);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
