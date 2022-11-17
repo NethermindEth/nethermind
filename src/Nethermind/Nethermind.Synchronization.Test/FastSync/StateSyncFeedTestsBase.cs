@@ -253,7 +253,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
-            ) {
+            )
+            {
                 _stateDb = stateDb;
                 _codeDb = codeDb;
 
@@ -319,7 +320,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong()%_maxRandomizedLatencyMs));
+                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
                 }
 
                 if (_executorResultFunction is not null) return await _executorResultFunction(hashes);

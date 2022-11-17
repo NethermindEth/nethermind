@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
 
-        public StateSyncFeedTests(int peerCount, int maxNodeLatency): base(peerCount, maxNodeLatency)
+        public StateSyncFeedTests(int peerCount, int maxNodeLatency) : base(peerCount, maxNodeLatency)
         {
         }
 
