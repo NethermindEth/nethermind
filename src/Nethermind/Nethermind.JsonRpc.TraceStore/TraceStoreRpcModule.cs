@@ -127,7 +127,6 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 Block block = blockSearch.Object!;
                 if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
                 {
-                    FilterTraces(traces, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
                     IEnumerable<ParityTxTraceFromStore> txTracesResult = traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
                     return txTracerFilter.FilterTxTraces(txTracesResult);
                 }
@@ -164,7 +163,6 @@ public class TraceStoreRpcModule : ITraceRpcModule
         BlockHeader block = blockSearch.Object!;
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
-            FilterTraces(traces, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
