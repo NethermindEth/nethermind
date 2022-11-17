@@ -68,9 +68,7 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
-
             _logger = api.LogManager.GetClassLogger();
-            _availableSpaceGetter = new AvailableSpaceGetter(_initConfig.BaseDbPath);
 
             return Task.CompletedTask;
         }
@@ -124,6 +122,21 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
+            {
+                try
+                {
+                    _availableSpaceGetter = new AvailableSpaceGetter(_initConfig.BaseDbPath);
+                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _availableSpaceGetter, _api.TimerFactory);
+                    _freeDiskSpaceChecker.StartAsync(default);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError)
+                        _logger.Error("Failed to initialize available disk space check module", ex);
+                }
+            }
+
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
                 _api.EthSyncingInfo!, _api, _availableSpaceGetter, _initConfig.IsMining);
@@ -139,12 +152,6 @@ namespace Nethermind.HealthChecks
             {
                 _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);
-            }
-
-            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
-            {
-                _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_initConfig, _healthChecksConfig, _logger, _availableSpaceGetter, _api.TimerFactory);
-                _freeDiskSpaceChecker.StartAsync(default);
             }
 
             return Task.CompletedTask;

@@ -36,12 +36,13 @@ using Nethermind.Logging;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.HealthChecks.Test
 {
     public class NodeHealthServiceTests
     {
-        private static readonly long _freeSpaceBytes = (int)(Math.Pow(1024, 3) * 1.5);
+        private static readonly long _freeSpaceBytes = (int)(1.GiB() * 1.5);
 
         [Test]
         public void CheckHealth_returns_expected_results([ValueSource(nameof(CheckHealthTestCases))] CheckHealthTest test)

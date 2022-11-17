@@ -18,7 +18,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
-using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
@@ -29,16 +28,14 @@ namespace Nethermind.HealthChecks
     public class FreeDiskSpaceChecker : IHostedService, IAsyncDisposable
     {
         private readonly IHealthChecksConfig _healthChecksConfig;
-        private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
         private readonly IAvailableSpaceGetter _availableSpaceGetter;
         private readonly ITimer _timer;
-        private static readonly int CheckPeriodMinutes = 1;
+        private static readonly int CheckPeriodMinutes = 5;
 
-        public FreeDiskSpaceChecker(IInitConfig initConfig, IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter, ITimerFactory timerFactory)
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter, ITimerFactory timerFactory)
         {
             _healthChecksConfig = healthChecksConfig;
-            _initConfig = initConfig;
             _logger = logger;
             _availableSpaceGetter = availableSpaceGetter;
             _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
