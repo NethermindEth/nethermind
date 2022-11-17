@@ -112,7 +112,8 @@ namespace Nethermind.TxPool
         private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
-            _persistentTxs.TryInsert(tx.Hash, tx);
+            if (tx.Hash is not null)
+                _persistentTxs.TryInsert(tx.Hash, tx);
         }
 
         private void BroadcastOnce(Transaction tx)
@@ -208,7 +209,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void TimerOnElapsed(object sender, EventArgs args)
+        private void TimerOnElapsed(object? sender, EventArgs args)
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
@@ -272,7 +273,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Keccak hash, out Transaction transaction)
+        public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
         {
             return _persistentTxs.TryGetValue(hash, out transaction);
         }
