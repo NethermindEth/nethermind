@@ -126,7 +126,7 @@ namespace Nethermind.Evm
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-4750: Code Sections count must ");
+                                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {CodeSections.Count}, expected {TypeSections / 2}");
                                 }
                                 header = null; return false;
                             }
@@ -224,7 +224,7 @@ namespace Nethermind.Evm
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {header.CodeSize?[0] ?? 0}");
+                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {CodeSections.Count}");
                                 }
                                 header = null; return false;
                             }
@@ -265,7 +265,7 @@ namespace Nethermind.Evm
                         {
                             if (LoggingEnabled)
                             {
-                                _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
+                                _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.TypeSection}, {SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
                             }
 
                             header = null; return false;
@@ -275,7 +275,7 @@ namespace Nethermind.Evm
             var contractBody = code[i..];
 
             var calculatedCodeLen = header.TypeSize + header.CodesSize + header.DataSize;
-            if (spec.IsEip4750Enabled && header.TypeSize != 0 && (contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0))
+            if (spec.IsEip4750Enabled && header.TypeSize != 0 && contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0)
             {
                 if (LoggingEnabled)
                 {
@@ -398,7 +398,7 @@ namespace Nethermind.Evm
                         {
                             if (LoggingEnabled)
                             {
-                                _logger.Trace($"EIP-4750 : invalid section id");
+                                _logger.Trace($"EIP-4750 : Invalid Section Id");
                             }
                             return false;
                         }
@@ -411,14 +411,6 @@ namespace Nethermind.Evm
                     int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
                     immediates.Add(new Range(i, i + len));
                     i += len;
-                    if (i >= sectionSize)
-                    {
-                        if (LoggingEnabled)
-                        {
-                            _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
-                        }
-                        return false;
-                    }
                 }
             }
 
@@ -434,7 +426,7 @@ namespace Nethermind.Evm
             {
                 if (LoggingEnabled)
                 {
-                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.RETF}, {Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
                 }
                 return false;
             }
