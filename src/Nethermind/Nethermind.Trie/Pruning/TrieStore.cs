@@ -402,6 +402,7 @@ namespace Nethermind.Trie.Pruning
                         lock (_dirtyNodes)
                         {
                             using var locker = ConcurrentDictionaryLock<Keccak, TrieNode>.Acquire(_dirtyNodes.AllNodes);
+                            _logger.Warn("Prune lock");
                             while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                             {
                                 PruneCache();
@@ -411,6 +412,7 @@ namespace Nethermind.Trie.Pruning
                                     break;
                                 }
                             }
+                            _logger.Warn("Prune unlock");
                         }
                     }
                     catch (Exception e)
