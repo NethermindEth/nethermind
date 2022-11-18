@@ -115,19 +115,19 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
             public AuRaParameters.ValidatorType GetValidatorType()
             {
-                if (List != null)
+                if (List is not null)
                 {
                     return AuRaParameters.ValidatorType.List;
                 }
-                else if (Contract != null)
+                else if (Contract is not null)
                 {
                     return AuRaParameters.ValidatorType.ReportingContract;
                 }
-                else if (SafeContract != null)
+                else if (SafeContract is not null)
                 {
                     return AuRaParameters.ValidatorType.Contract;
                 }
-                else if (Multi != null)
+                else if (Multi is not null)
                 {
                     return AuRaParameters.ValidatorType.Multi;
                 }

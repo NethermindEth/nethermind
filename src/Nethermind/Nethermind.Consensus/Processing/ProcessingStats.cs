@@ -23,6 +23,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing
 {
+    //TODO Consult on disabeling of such metrics from configuration
     internal class ProcessingStats
     {
         private readonly ILogger _logger;
@@ -56,7 +57,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, int recoveryQueueSize, int blockQueueSize)
+        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, int recoveryQueueSize, int blockQueueSize)
         {
             if (block is null)
             {
@@ -79,6 +80,9 @@ namespace Nethermind.Consensus.Processing
             Metrics.GasLimit = block.GasLimit;
             Metrics.RecoveryQueueSize = recoveryQueueSize;
             Metrics.ProcessingQueueSize = blockQueueSize;
+
+            Metrics.BlockchainHeight = block.Header.Number;
+            Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
             long currentTicks = _processingStopwatch.ElapsedTicks;
             decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);

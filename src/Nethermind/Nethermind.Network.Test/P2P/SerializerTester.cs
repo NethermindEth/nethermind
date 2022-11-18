@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P
             byte[] serializedAgain = serializer.Serialize(deserialized);
             Assert.AreEqual(serialized.ToHexString(), serializedAgain.ToHexString(), "test old way");
 
-            if (expectedData != null)
+            if (expectedData is not null)
             {
                 Assert.AreEqual(expectedData, serialized.ToHexString());
             }
@@ -61,7 +61,7 @@ namespace Nethermind.Network.Test.P2P
                 string allHex = buffer.ReadAllHex();
                 Assert.AreEqual(allHex, buffer2.ReadAllHex(), "test zero");
 
-                if (expectedData != null)
+                if (expectedData is not null)
                 {
                     allHex.Should().BeEquivalentTo(expectedData);
                 }

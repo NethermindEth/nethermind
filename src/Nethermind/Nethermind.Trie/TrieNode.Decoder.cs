@@ -54,12 +54,12 @@ namespace Nethermind.Trie
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key != null,
+                Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(tree, 0);
-                Debug.Assert(nodeRef != null,
+                Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
                 nodeRef.ResolveKey(tree, false);
@@ -170,7 +170,7 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream != null && item._data![i] is null)
+                    if (rlpStream is not null && item._data![i] is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);

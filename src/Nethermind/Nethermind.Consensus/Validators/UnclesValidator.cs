@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Validators
                 Block ancestor = _blockTree.FindBlock(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 for (int ancestorLevel = 0; ancestorLevel < 5; ancestorLevel++)
                 {
-                    if (ancestor == null)
+                    if (ancestor is null)
                     {
                         break;
                     }
@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Validators
             }
 
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (parent == null)
+            if (parent is null)
             {
                 return false;
             }

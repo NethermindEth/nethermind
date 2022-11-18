@@ -34,12 +34,12 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (_api.ChainSpec == null)
+            if (_api.ChainSpec is null)
             {
                 return Task.CompletedTask;
             }
 
-            if (_api.NodeKey == null)
+            if (_api.NodeKey is null)
             {
                 return Task.CompletedTask;
             }

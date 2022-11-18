@@ -39,7 +39,7 @@ namespace Nethermind.Crypto
 
         public static Keccak GetOrCalculateHash(this Block block) => block.Hash ?? block.CalculateHash();
 
-        public static bool IsNonZeroTotalDifficulty(this Block block) => block.TotalDifficulty != null && block.TotalDifficulty != UInt256.Zero;
-        public static bool IsNonZeroTotalDifficulty(this BlockHeader header) => header.TotalDifficulty != null && header.TotalDifficulty != UInt256.Zero;
+        public static bool IsNonZeroTotalDifficulty(this Block block) => block.TotalDifficulty is not null && block.TotalDifficulty != UInt256.Zero;
+        public static bool IsNonZeroTotalDifficulty(this BlockHeader header) => header.TotalDifficulty is not null && header.TotalDifficulty != UInt256.Zero;
     }
 }

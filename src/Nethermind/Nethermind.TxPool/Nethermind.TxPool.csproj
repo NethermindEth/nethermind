@@ -4,7 +4,7 @@
         <TargetFramework>net6.0</TargetFramework>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
-        <Nullable>annotations</Nullable>
+        <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 

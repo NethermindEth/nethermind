@@ -250,7 +250,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            if (DataStack is not null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
             Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
         }
@@ -270,7 +270,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList != null)
+            if (accessList is not null)
             {
                 foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
                 {

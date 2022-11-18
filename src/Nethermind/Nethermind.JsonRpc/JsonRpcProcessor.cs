@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (fileSystem == null) throw new ArgumentNullException(nameof(fileSystem));
+            if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
 
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -109,10 +109,10 @@ namespace Nethermind.JsonRpc
         private void UpdateParams(JToken token)
         {
             var paramsToken = token.SelectToken("params");
-            if (paramsToken == null)
+            if (paramsToken is null)
             {
                 paramsToken = token.SelectToken("Params");
-                if (paramsToken == null)
+                if (paramsToken is null)
                 {
                     return;
                 }
@@ -175,7 +175,7 @@ namespace Nethermind.JsonRpc
                 {
                     (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest = enumerator.Current;
 
-                    if (rpcRequest.Model != null)
+                    if (rpcRequest.Model is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc
                         yield return RecordResponse(JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess)));
                     }
 
-                    if (rpcRequest.Collection != null)
+                    if (rpcRequest.Collection is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
 
@@ -216,7 +216,7 @@ namespace Nethermind.JsonRpc
                             Metrics.JsonRpcRequests++;
                             JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest, context);
                             JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                            bool isSuccess = localErrorResponse == null;
+                            bool isSuccess = localErrorResponse is null;
                             if (!isSuccess)
                             {
                                 if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
@@ -240,7 +240,7 @@ namespace Nethermind.JsonRpc
                         yield return RecordResponse(JsonRpcResult.Collection(responses, reports));
                     }
 
-                    if (rpcRequest.Model == null && rpcRequest.Collection == null)
+                    if (rpcRequest.Model is null && rpcRequest.Collection is null)
                     {
                         Metrics.JsonRpcInvalidRequests++;
                         JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");

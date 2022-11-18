@@ -37,7 +37,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
 
             if (_api.Config<IInitConfig>().ProcessingEnabled)
             {
@@ -57,7 +57,7 @@ namespace Nethermind.Init.Steps
                 return;
             }
 
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             if (!syncConfig.FastSync)
             {

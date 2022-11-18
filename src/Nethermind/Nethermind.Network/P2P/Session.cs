@@ -101,9 +101,9 @@ namespace Nethermind.Network.P2P
             get
             {
                 //It is needed for lazy creation of Node, in case  IN connections, publicKey is available only after handshake
-                if (_node == null)
+                if (_node is null)
                 {
-                    if (RemoteNodeId == null || RemoteHost == null || RemotePort == 0)
+                    if (RemoteNodeId is null || RemoteHost is null || RemotePort == 0)
                     {
                         throw new InvalidOperationException("Cannot create a session's node object without knowing remote node details");
                     }
@@ -191,7 +191,7 @@ namespace Nethermind.Network.P2P
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
 
-            if (protocol == null)
+            if (protocol is null)
             {
                 if (_logger.IsTrace)
                     _logger.Warn($"Received a message from node: {RemoteNodeId}, " +
@@ -259,7 +259,7 @@ namespace Nethermind.Network.P2P
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
 
-            if (protocol == null)
+            if (protocol is null)
             {
                 if (_logger.IsTrace)
                     _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), " +
@@ -285,8 +285,8 @@ namespace Nethermind.Network.P2P
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
 
-            if (context == null) throw new ArgumentNullException(nameof(context));
-            if (packetSender == null) throw new ArgumentNullException(nameof(packetSender));
+            if (context is null) throw new ArgumentNullException(nameof(context));
+            if (packetSender is null) throw new ArgumentNullException(nameof(packetSender));
 
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
@@ -330,11 +330,11 @@ namespace Nethermind.Network.P2P
             //For IN connections we don't have NodeId until this moment, so we need to set it in Session
             //For OUT connections it is possible remote id is different than what we had persisted or received from Discovery
             //If that is the case we need to set it in the session
-            if (RemoteNodeId == null)
+            if (RemoteNodeId is null)
             {
                 RemoteNodeId = handshakeRemoteNodeId;
             }
-            else if (handshakeRemoteNodeId != null && RemoteNodeId != handshakeRemoteNodeId)
+            else if (handshakeRemoteNodeId is not null && RemoteNodeId != handshakeRemoteNodeId)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
@@ -456,7 +456,7 @@ namespace Nethermind.Network.P2P
 
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
-            if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
+            if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
                 NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
 
             if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
@@ -479,7 +479,7 @@ namespace Nethermind.Network.P2P
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
-            if (_context == null)
+            if (_context is null)
             {
                 //in case pipeline did not get to p2p - no disconnect delay
                 _channel.DisconnectAsync().ContinueWith(x =>
@@ -511,7 +511,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnected;
             }
 
-            if (Disconnected != null)
+            if (Disconnected is not null)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");

@@ -895,7 +895,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
-            if (code != null)
+            if (code is not null)
             {
                 AddCode(stateProvider, TestItem.AddressB, code);
             }

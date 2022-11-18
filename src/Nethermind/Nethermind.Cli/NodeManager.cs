@@ -126,7 +126,7 @@ namespace Nethermind.Cli
             T? result = default;
             try
             {
-                if (_currentClient == null)
+                if (_currentClient is null)
                 {
                     _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }

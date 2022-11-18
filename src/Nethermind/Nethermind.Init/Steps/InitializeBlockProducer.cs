@@ -58,7 +58,7 @@ namespace Nethermind.Init.Steps
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
 
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
 
             if (consensusPlugin is not null)

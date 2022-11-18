@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            if (txReceipts == null)
+            if (txReceipts is null)
             {
                 Assert.AreEqual(0, deserialized.TxReceipts.Length);
             }
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Assert.AreEqual(txReceipts.Length, deserialized.TxReceipts.Length, "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
-                    if (txReceipts[i] == null)
+                    if (txReceipts[i] is null)
                     {
                         Assert.IsNull(deserialized.TxReceipts[i], $"receipts[{i}]");
                     }
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                     {
                         for (int j = 0; j < txReceipts[i].Length; j++)
                         {
-                            if (txReceipts[i][j] == null)
+                            if (txReceipts[i][j] is null)
                             {
                                 Assert.IsNull(deserialized.TxReceipts[i][j], $"receipts[{i}][{j}]");
                             }

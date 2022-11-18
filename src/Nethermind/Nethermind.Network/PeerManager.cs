@@ -292,9 +292,9 @@ namespace Nethermind.Network
                             _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
-                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession != null && x.Value.InSession != null)} | " +
-                                          $"[Out: {activePeers.Count(x => x.Value.OutSession != null)} | " +
-                                          $"In: {activePeers.Count(x => x.Value.InSession != null)}]");
+                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
+                                          $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
+                                          $"In: {activePeers.Count(x => x.Value.InSession is not null)}]");
                         }
 
                         previousActivePeersCount = activePeersCount;
@@ -392,7 +392,7 @@ namespace Nethermind.Network
             {
                 _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
                 Interlocked.Increment(ref _failedInitialConnect);
-                if (peer.OutSession != null)
+                if (peer.OutSession is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                     peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
@@ -414,6 +414,7 @@ namespace Nethermind.Network
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)
             {
+                Interlocked.Increment(ref Metrics.PeerCount);
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
             }
             else
@@ -427,6 +428,10 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
             // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
@@ -759,7 +764,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
-            if (session.RemoteNodeId == null)
+            if (session.RemoteNodeId is null)
             {
                 // this happens when we have a disconnect on incoming connection before handshake
                 if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
@@ -833,7 +838,7 @@ namespace Nethermind.Network
 
         private void ManageNewRemoteNodeId(ISession session)
         {
-            if (session.ObsoleteRemoteNodeId == null)
+            if (session.ObsoleteRemoteNodeId is null)
             {
                 return;
             }
