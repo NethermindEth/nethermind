@@ -411,17 +411,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            ParityTraceAction action = new();
-            action.IsPrecompiled = isPrecompileCall;
-            action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
-            action.From = @from;
-            action.To = to;
-            action.Value = value;
-            action.Input = input.ToArray();
-            action.Gas = gas;
-            action.CallType = GetCallType(callType);
-            action.Type = GetActionType(callType);
-            action.CreationMethod = GetCreateMethod(callType);
+            ParityTraceAction action = new ParityTraceAction
+            {
+                IsPrecompiled = isPrecompileCall,
+                IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction || !value.IsZero,
+                From = from,
+                To = to,
+                Value = value,
+                Input = input.ToArray(),
+                Gas = gas,
+                CallType = GetCallType(callType),
+                Type = GetActionType(callType),
+                CreationMethod = GetCreateMethod(callType)
+            };
 
             if (_currentOperation is not null && callType.IsAnyCreate())
             {
