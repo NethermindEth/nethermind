@@ -114,7 +114,7 @@ namespace Nethermind.Monitoring.Metrics
             propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
         private static string BuildGaugeName(string propertyName) =>
-            Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "nethermind_$1_$2").ToLowerInvariant();
+            "nethermind_" + Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
 
         private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null) => labels is null
             ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty)
