@@ -90,5 +90,5 @@ jobs:
     - name: Upload Nethermind macOS arm64 package
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.PACKAGE_PREFIX }}-osx-arm64-pkg
+        name: ${{ env.PACKAGE_PREFIX }}-osx-arm64-package
         path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*osx-arm64*
