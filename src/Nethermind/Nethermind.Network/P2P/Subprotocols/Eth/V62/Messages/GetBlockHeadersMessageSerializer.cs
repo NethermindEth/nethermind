@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            if (message.StartBlockHash == null)
+            if (message.StartBlockHash is null)
             {
                 rlpStream.Encode(message.StartBlockNumber);
             }
@@ -72,7 +72,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(GetBlockHeadersMessage message, out int contentLength)
         {
-            contentLength = message.StartBlockHash == null
+            contentLength = message.StartBlockHash is null
                 ? Rlp.LengthOf(message.StartBlockNumber)
                 : Rlp.LengthOf(message.StartBlockHash);
             contentLength += Rlp.LengthOf(message.MaxHeaders);

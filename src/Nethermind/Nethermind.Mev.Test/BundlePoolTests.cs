@@ -476,12 +476,12 @@ namespace Nethermind.Mev.Test
 
             Dictionary<long, int> expectedCountPerBlock = new()
             {
-                {4, 1},
-                {5, 1},
-                {6, 1},
-                {9, 2},
-                {12, 0},
-                {15, 0}
+                { 4, 1 },
+                { 5, 1 },
+                { 6, 1 },
+                { 9, 2 },
+                { 12, 0 },
+                { 15, 0 }
             };
 
             foreach (var expectedCount in expectedCountPerBlock)
@@ -502,24 +502,24 @@ namespace Nethermind.Mev.Test
                 BundleTransaction CreateTransaction(PrivateKey privateKey) => Build.A
                     .TypedTransaction<BundleTransaction>().SignedAndResolved(privateKey).TestObject;
 
-                if (blockTreeHead != null)
+                if (blockTreeHead is not null)
                 {
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long)blockTreeHead).TestObject);
                 }
 
                 BlockTree.ChainId.Returns((ulong)ChainId.Mainnet);
 
-                if (timestamper != null)
+                if (timestamper is not null)
                 {
                     Timestamper = timestamper;
                 }
 
-                if (bundleSimulator != null)
+                if (bundleSimulator is not null)
                 {
                     Simulator = bundleSimulator;
                 }
 
-                if (ecdsa != null)
+                if (ecdsa is not null)
                 {
                     EthereumEcdsa = ecdsa;
                 }

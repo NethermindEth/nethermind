@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.PoSSwitcher,
                 chain.BlockTree,
                 blockCacheService,
-                new TestErrorLogManager());
+                chain.LogManager);
             invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
@@ -141,14 +141,14 @@ namespace Nethermind.Merge.Plugin.Test
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
-                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(UInt256.One);
-                MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
+                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
+                MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
+            public sealed override ILogManager LogManager { get; } = LimboLogs.Instance;
 
             public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 
@@ -262,7 +262,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Thread.Sleep(DelayMs);
             }
 
-            if (ExceptionToThrow != null)
+            if (ExceptionToThrow is not null)
             {
                 throw ExceptionToThrow;
             }

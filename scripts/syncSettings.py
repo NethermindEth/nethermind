@@ -24,23 +24,8 @@ configs = {
     "goerli": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ropsten": {
-        "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "rinkeby": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
-    "kovan": {
-        "url": "api-kovan.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },     
     "poacore": {
         "url": "https://core.poa.network",
         "blockReduced": 8192,
@@ -48,6 +33,11 @@ configs = {
     },
     "xdai": {
         "url": "https://rpc.gnosischain.com",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "chiado": {
+        "url": "https://rpc.chiadochain.net",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
@@ -70,7 +60,7 @@ configs = {
         "url": "https://volta-rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    },   
+    },
     # mev section
     "mainnet_mev": {
         "url": "api.etherscan.io",
@@ -80,7 +70,7 @@ configs = {
     "goerli_mev": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
+        "multiplierRequirement": 30000
     },
     "xdai_mev": {
         "url": "https://rpc.gnosischain.com",
@@ -96,7 +86,7 @@ configs = {
     "goerli_aa": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
+        "multiplierRequirement": 30000
     },
     "xdai_aa": {
         "url": "https://rpc.gnosischain.com",

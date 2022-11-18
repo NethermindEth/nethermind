@@ -589,11 +589,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[1].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0xa\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[2].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x1\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x3\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -636,11 +636,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[1].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0xa\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[2].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x1\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x3\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -686,11 +686,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[1].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0xd903\",\"data\":\"0x04050607\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\",\"0x434b529473163ef4ed9c9341d9b7250ab9183c27e7add004c3bba38c56274e24\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"blockNumber\":\"0xd903\",\"data\":\"0x04050607\",\"logIndex\":\"0x7\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\",\"0x434b529473163ef4ed9c9341d9b7250ab9183c27e7add004c3bba38c56274e24\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x3\"}}}");
             expectedResult.Should().Be(serialized);
 
             serialized = _jsonSerializer.Serialize(jsonRpcResults[2].Response);
-            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0xd\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x3\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -803,7 +803,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_with_baseFeePerGas_test()
         {
-            _specProvider.GetSpec(Arg.Any<long>()).IsEip1559Enabled.Returns(true);
+            _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
             Block block = Build.A.Block.Genesis.WithTotalDifficulty(0L).WithBaseFeePerGas(10000).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block);
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId);

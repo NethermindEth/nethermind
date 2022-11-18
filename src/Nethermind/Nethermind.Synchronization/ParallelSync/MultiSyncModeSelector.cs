@@ -16,8 +16,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
-                if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
+                if (peerDifficulty is null || peerBlock is null || peerBlock == 0)
                 {
                     newModes = inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
@@ -403,7 +403,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
 
             // Shared with full sync archive
-            bool desiredPeerKnown = AnyDesiredPeerKnown(best) ;
+            bool desiredPeerKnown = AnyDesiredPeerKnown(best);
 
             // Full sync specific
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;

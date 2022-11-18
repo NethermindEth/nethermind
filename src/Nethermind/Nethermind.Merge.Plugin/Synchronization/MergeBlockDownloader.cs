@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,8 +54,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ISyncProgressResolver _syncProgressResolver;
 
-        public MergeBlockDownloader(
-            IPoSSwitcher posSwitcher,
+        public MergeBlockDownloader(IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
@@ -67,10 +67,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
             ISyncProgressResolver syncProgressResolver,
-            ILogManager logManager)
+            ILogManager logManager,
+            SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, logManager),
-                betterPeerStrategy, logManager)
+                betterPeerStrategy, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -89,9 +90,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CancellationToken cancellation)
         {
             if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            {
+                if (_logger.IsDebug)
+                    _logger.Debug("Using pre merge block downloader");
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
+            }
 
-            if (bestPeer == null)
+            if (bestPeer is null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
                 if (_logger.IsError) _logger.Error(message);
@@ -105,8 +110,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
-            if (_logger.IsTrace)
-                _logger.Trace(
+            if (_logger.IsDebug)
+                _logger.Debug(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
@@ -120,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-                if (headers == null || headers.Length <= 1)
+                if (headers is null || headers.Length <= 1)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace("Chain level helper got no headers suggestion");
@@ -132,6 +137,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
+                if (HasBetterPeer)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Has better peer, stopping");
+                    break;
+                }
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 Block[]? blocks = null;
@@ -147,6 +157,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
+                Stopwatch sw = Stopwatch.StartNew();
                 await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
@@ -156,12 +167,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
-                _sinceLastTimeout++;
-                if (_sinceLastTimeout > 2)
-                {
-                    _syncBatchSize.Expand();
-
-                }
+                AdjustSyncBatchSize(sw.Elapsed);
 
                 blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;
@@ -218,7 +224,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (downloadReceipts)
                     {
                         TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                        if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
+                        if (currentBlock.Header.HasBody && contextReceiptsForBlock is null)
                         {
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
@@ -253,7 +259,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (downloadReceipts)
                         {
                             TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                            if (contextReceiptsForBlock != null)
+                            if (contextReceiptsForBlock is not null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -48,6 +48,7 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
+        public string LocalIp { get; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -55,14 +56,18 @@ namespace Nethermind.Network.Rlpx
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
+        private TimeSpan _sendLatency;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
+            string localIp,
             int localPort,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
-            ILogManager logManager)
+            ILogManager logManager,
+            TimeSpan sendLatency
+        )
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
@@ -87,7 +92,9 @@ namespace Nethermind.Network.Rlpx
             _disconnectsAnalyzer = disconnectsAnalyzer ?? throw new ArgumentNullException(nameof(disconnectsAnalyzer));
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
+            LocalIp = localIp;
             LocalPort = localPort;
+            _sendLatency = sendLatency;
         }
 
         public async Task Init()
@@ -118,7 +125,7 @@ namespace Nethermind.Network.Rlpx
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
+                _bootstrapChannel = await bootstrap.BindAsync(IPAddress.Parse(LocalIp!), LocalPort).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -139,7 +146,7 @@ namespace Nethermind.Network.Rlpx
                     return t.Result;
                 });
 
-                if (_bootstrapChannel == null)
+                if (_bootstrapChannel is null)
                 {
                     throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
                 }
@@ -211,10 +218,11 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group);
+            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
+
             if (session.Direction == ConnectionDirection.Out)
             {
                 pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));

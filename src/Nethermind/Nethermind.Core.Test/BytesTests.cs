@@ -39,8 +39,8 @@ namespace Nethermind.Core.Test
         public void Compares_bytes_properly(string? hexString1, string? hexString2, int expectedResult)
         {
             IComparer<byte[]> comparer = Bytes.Comparer;
-            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Compare(x, y));
         }
 
@@ -84,10 +84,10 @@ namespace Nethermind.Core.Test
         [TestCase("0x0102", "0x01", false)]
         public void Compares_bytes_equality_properly(string? hexString1, string? hexString2, bool expectedResult)
         {
-            // interestingly, sequence equals that we have been using for some time returns 0x == null, null == 0x
+            // interestingly, sequence equals that we have been using for some time returns 0x is null, null == 0x
             IEqualityComparer<byte[]> comparer = Bytes.EqualityComparer;
-            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Equals(x, y));
         }
 

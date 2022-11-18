@@ -69,7 +69,7 @@ namespace Nethermind.Core
             Set(indexes.Index1);
             Set(indexes.Index2);
             Set(indexes.Index3);
-            if (masterBloom != null)
+            if (masterBloom is not null)
             {
                 masterBloom.Set(indexes.Index1);
                 masterBloom.Set(indexes.Index2);
@@ -253,7 +253,7 @@ namespace Nethermind.Core
             Set(indexes.Index1);
             Set(indexes.Index2);
             Set(indexes.Index3);
-            if (masterBloom != null)
+            if (masterBloom is not null)
             {
                 masterBloom.Set(indexes.Index1);
                 masterBloom.Set(indexes.Index2);

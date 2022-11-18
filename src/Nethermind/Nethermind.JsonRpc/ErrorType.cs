@@ -81,11 +81,6 @@ namespace Nethermind.JsonRpc
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        /// Version of JSON-RPC protocol is not supported
-        /// </summary>
-        public const int RpcVersionNotSupported = -32015;
-
-        /// <summary>
         /// 
         /// </summary>
         public const int ExecutionError = -32015;

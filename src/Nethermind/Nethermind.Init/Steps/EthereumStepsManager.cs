@@ -41,7 +41,7 @@ namespace Nethermind.Init.Steps
             INethermindApi context,
             ILogManager logManager)
         {
-            if (loader == null)
+            if (loader is null)
             {
                 throw new ArgumentNullException(nameof(loader));
             }
@@ -127,7 +127,7 @@ namespace Nethermind.Init.Steps
                 }
 
                 IStep? step = CreateStepInstance(stepInfo);
-                if (step == null)
+                if (step is null)
                 {
                     if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
                     continue;

@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Rlp Encode(PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
-            item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+            item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
         {

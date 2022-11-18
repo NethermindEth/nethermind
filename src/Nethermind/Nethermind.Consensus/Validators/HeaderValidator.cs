@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Validators
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
-            if (parent == null)
+            if (parent is null)
             {
                 if (header.Number == 0)
                 {
@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.Validators
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
@@ -179,7 +179,7 @@ namespace Nethermind.Consensus.Validators
         {
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
-                                       || _daoBlockNumber == null
+                                       || _daoBlockNumber is null
                                        || header.Number < _daoBlockNumber
                                        || header.Number >= _daoBlockNumber + 10
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));

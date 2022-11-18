@@ -92,7 +92,7 @@ namespace Nethermind.Mev
             return CallBundle(txs, mevBundleRpc.BlockNumber, mevBundleRpc.StateBlockNumber, mevBundleRpc.Timestamp);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, UInt256? timestamp)
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, ulong? timestamp)
         {
             if (txs.Length == 0)
                 return ResultWrapper<TxsResults>.Fail("no tx specified in bundle");
@@ -149,7 +149,7 @@ namespace Nethermind.Mev
         private bool HasStateForBlock(BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
-            if (header.StateRoot == null) return false;
+            if (header.StateRoot is null) return false;
             _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
             return rootCheckVisitor.HasRoot;
         }

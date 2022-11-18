@@ -36,7 +36,7 @@ namespace Nethermind.Core
             in UInt256 difficulty,
             long number,
             long gasLimit,
-            in UInt256 timestamp,
+            ulong timestamp,
             byte[] extraData)
         {
             ParentHash = parentHash;
@@ -65,7 +65,7 @@ namespace Nethermind.Core
         public long Number { get; set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
-        public UInt256 Timestamp { get; set; }
+        public ulong Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public Keccak? MixHash { get; set; }
@@ -120,9 +120,9 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
+                    return Hash is null ? $"{Number} null" : $"{Number} ({Hash})";
                 default:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
+                    return Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
             }
         }
 

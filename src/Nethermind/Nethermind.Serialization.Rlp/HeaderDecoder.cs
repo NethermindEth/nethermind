@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             long number = decoderContext.DecodeLong();
             long gasLimit = decoderContext.DecodeLong();
             long gasUsed = decoderContext.DecodeLong();
-            UInt256 timestamp = decoderContext.DecodeUInt256();
+            ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
             BlockHeader blockHeader = new(
@@ -119,7 +119,7 @@ namespace Nethermind.Serialization.Rlp
             long number = rlpStream.DecodeLong();
             long gasLimit = rlpStream.DecodeLong();
             long gasUsed = rlpStream.DecodeLong();
-            UInt256 timestamp = rlpStream.DecodeUInt256();
+            ulong timestamp = rlpStream.DecodeULong();
             byte[]? extraData = rlpStream.DecodeByteArray();
 
             BlockHeader blockHeader = new(
@@ -190,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = header.AuRaSignature != null;
+                bool isAuRa = header.AuRaSignature is not null;
                 if (isAuRa)
                 {
                     rlpStream.Encode(header.AuRaStep!.Value);
@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -248,7 +248,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature != null;
+                bool isAuRa = item.AuRaSignature is not null;
                 if (isAuRa)
                 {
                     contentLength += Rlp.LengthOf(item.AuRaStep!.Value);

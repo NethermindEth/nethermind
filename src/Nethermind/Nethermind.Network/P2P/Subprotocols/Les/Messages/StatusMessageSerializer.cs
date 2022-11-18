@@ -110,7 +110,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
             int maxRequestCostsLength = 0;
             int innerCostListLength = 0;
-            if (message.MaximumRequestCosts != null)
+            if (message.MaximumRequestCosts is not null)
             {
                 // todo - what's the best way to do this? Calculating the length twice is definitely less than ideal.
                 // Maybe build RLP for them here, and append bytes below?
@@ -217,7 +217,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
                 rlpStream.Encode(message.MaximumRechargeRate.Value);
             }
 
-            if (message.MaximumRequestCosts != null)
+            if (message.MaximumRequestCosts is not null)
             {
                 rlpStream.StartSequence(maxRequestCostsLength);
                 rlpStream.Encode(StatusMessage.KeyNames.MaximumRequestCosts);

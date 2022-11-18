@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithTimestamp(UInt256 timestamp)
+        public BlockBuilder WithTimestamp(ulong timestamp)
         {
             TestObjectInternal.Header.Timestamp = timestamp;
             return this;
@@ -165,7 +165,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
-            TestObjectInternal.Header.ParentHash = blockHeader == null ? Keccak.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
             return this;
         }
 

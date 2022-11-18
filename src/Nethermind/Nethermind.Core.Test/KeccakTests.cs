@@ -95,8 +95,8 @@ namespace Nethermind.Core.Test
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
         public void Compare(string a, string b, int result)
         {
-            Keccak keccakA = a == null ? null : new Keccak(a);
-            Keccak keccakB = b == null ? null : new Keccak(b);
+            Keccak keccakA = a is null ? null : new Keccak(a);
+            Keccak keccakB = b is null ? null : new Keccak(b);
             Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
         }
 

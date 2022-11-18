@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -29,7 +29,7 @@ namespace Nethermind.Monitoring
 {
     public class MonitoringService : IMonitoringService
     {
-        private readonly IMetricsUpdater _metricsUpdater;
+        private readonly IMetricsController _metricsController;
         private readonly ILogger _logger;
         private readonly Options _options;
 
@@ -39,9 +39,9 @@ namespace Nethermind.Monitoring
         private readonly string _pushGatewayUrl;
         private readonly int _intervalSeconds;
 
-        public MonitoringService(IMetricsUpdater metricsUpdater, IMetricsConfig metricsConfig, ILogManager logManager)
+        public MonitoringService(IMetricsController metricsController, IMetricsConfig metricsConfig, ILogManager logManager)
         {
-            _metricsUpdater = metricsUpdater ?? throw new ArgumentNullException(nameof(metricsUpdater));
+            _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
 
             int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
@@ -53,15 +53,13 @@ namespace Nethermind.Monitoring
             _nodeName = string.IsNullOrWhiteSpace(nodeName)
                 ? throw new ArgumentNullException(nameof(nodeName))
                 : nodeName;
-            _pushGatewayUrl = string.IsNullOrWhiteSpace(pushGatewayUrl)
-                ? throw new ArgumentNullException(nameof(pushGatewayUrl))
-                : pushGatewayUrl;
+            _pushGatewayUrl = pushGatewayUrl;
             _pushEnabled = pushEnabled;
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
 
-            _logger = logManager == null
+            _logger = logManager is null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
             _options = GetOptions();
@@ -94,24 +92,26 @@ namespace Nethermind.Monitoring
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
                 metricPusher.Start();
+
+
             }
-            if (_exposePort != null)
+            if (_exposePort is not null)
             {
-                IMetricServer metricServer = new MetricServer(_exposePort.Value, "metrics/");
+                IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
                 metricServer.Start();
             }
-            await Task.Factory.StartNew(() => _metricsUpdater.StartUpdating(), TaskCreationOptions.LongRunning);
+            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
         public void RegisterMetrics(Type type)
         {
-            _metricsUpdater.RegisterMetrics(type);
+            _metricsController.RegisterMetrics(type);
         }
 
         public Task StopAsync()
         {
-            _metricsUpdater.StopUpdating();
+            _metricsController.StopUpdating();
 
             return Task.CompletedTask;
         }

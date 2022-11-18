@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IAuRaBlockFinalizationManager? _auRaBlockFinalizationManager;
-        private bool HasAuRaFinalizationManager => _auRaBlockFinalizationManager != null;
+        private bool HasAuRaFinalizationManager => _auRaBlockFinalizationManager is not null;
         private bool IsPostMerge { get; set; }
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;

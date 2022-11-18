@@ -198,13 +198,13 @@ namespace Nethermind.Blockchain.Test
             {
                 IsEip1559Enabled = testCase.Eip1559Enabled
             };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t?.SenderAddress != null)
+                .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key,

@@ -461,7 +461,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                bool signatureIsNull = item.Signature == null;
+                bool signatureIsNull = item.Signature is null;
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());

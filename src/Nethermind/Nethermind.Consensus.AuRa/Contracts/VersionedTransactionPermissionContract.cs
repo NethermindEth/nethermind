@@ -102,23 +102,27 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return new()
             {
                 {
-                    UInt256.One, CreateV1(abiEncoder,
+                    UInt256.One,
+                    CreateV1(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
-                    2, CreateV2(abiEncoder,
+                    2,
+                    CreateV2(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
-                    3, CreateV3(abiEncoder,
+                    3,
+                    CreateV3(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)
                 },
                 {
-                    4, CreateV4(abiEncoder,
+                    4,
+                    CreateV4(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)

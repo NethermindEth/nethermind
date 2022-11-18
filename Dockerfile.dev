@@ -4,16 +4,18 @@ ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG BUILDPLATFORM
+ARG BUILD_TIMESTAMP
+ARG COMMIT_HASH
 
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
     then dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
     dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 --version 2021.3.2 --package-directory /tmp/ && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
+    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
     else dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
     dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH --version 2021.3.2 --package-directory /tmp/ && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
+    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
     fi
 RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
@@ -31,8 +33,7 @@ COPY --from=build /tmp/dottrace /opt/tools
 COPY --from=build /tmp/.store /opt/tools/.store
 ENV PATH="/opt/dotnetcore-tools:${PATH}"
 
-ARG GIT_COMMIT=unspecified
-LABEL git_commit=$GIT_COMMIT
+LABEL git_commit=$COMMIT_HASH
 
 EXPOSE 8545
 EXPOSE 30303

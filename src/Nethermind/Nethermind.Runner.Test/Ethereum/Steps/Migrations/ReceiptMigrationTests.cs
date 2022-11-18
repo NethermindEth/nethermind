@@ -49,8 +49,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             int chainLength = 10;
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue };
-            InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
             NethermindApi context = new()
             {
                 ConfigProvider = configProvider,
@@ -84,7 +84,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             ReceiptMigration migration = new(context);
             if (migratedBlockNumber.HasValue)
             {
-                migration.Run(migratedBlockNumber.Value);
+                _ = migration.Run(migratedBlockNumber.Value);
             }
             else
             {

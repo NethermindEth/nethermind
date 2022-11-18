@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
-            return Rlp.Encode(message.Bodies.Select(b => b == null
+            return Rlp.Encode(message.Bodies.Select(b => b is null
                 ? Rlp.OfEmptySequence
                 : Rlp.Encode(
                     Rlp.Encode(b.Transactions),

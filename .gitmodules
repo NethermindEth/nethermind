@@ -7,6 +7,3 @@
 [submodule "gitbook/docs"]
 	path = gitbook/docs
 	url = https://github.com/NethermindEth/docs.git
-[submodule "src/Math.Gmp.Native"]
-	path = src/Math.Gmp.Native
-	url = git@github.com:NethermindEth/Math.Gmp.Native.git

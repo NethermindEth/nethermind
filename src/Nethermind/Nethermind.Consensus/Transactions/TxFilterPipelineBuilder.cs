@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Transactions
             ISpecProvider? specProvider,
             IMiningConfig? miningConfig = null)
         {
-            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
+            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)

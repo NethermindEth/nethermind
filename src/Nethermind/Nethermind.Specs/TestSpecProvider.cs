@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -21,7 +22,7 @@ namespace Nethermind.Specs
 {
     public class TestSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
@@ -31,24 +32,24 @@ namespace Nethermind.Specs
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        public IReleaseSpec GetSpec(long blockNumber) => SpecToReturn;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
         public ulong ChainId { get; set; }
-        public long[] TransitionBlocks { get; set; } = new long[] { 0 };
+        public ForkActivation[] TransitionBlocks { get; set; } = new ForkActivation[] { 0 };
         public bool AllowTestChainOverride { get; set; } = true;
 
         private TestSpecProvider() { }

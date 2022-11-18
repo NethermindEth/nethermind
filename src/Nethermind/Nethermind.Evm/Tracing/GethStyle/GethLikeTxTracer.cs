@@ -74,11 +74,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
             if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
             {
                 _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
+                _trace.StoragesByDepth.Push(previousTraceEntry is not null ? previousTraceEntry.Storage : new Dictionary<string, string>());
             }
             else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                 }
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             }
             else
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
                 }

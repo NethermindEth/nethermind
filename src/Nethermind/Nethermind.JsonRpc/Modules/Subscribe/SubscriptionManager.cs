@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId)
         {
             if (_subscriptions.TryGetValue(subscriptionId, out var subscription)
-                && subscription != null
+                && subscription is not null
                 && subscription.JsonRpcDuplexClient.Id == jsonRpcDuplexClient.Id)
             {
                 subscription.Dispose();
@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             foreach (var subscriptionInBag in subscriptionsBag)
             {
                 if (_subscriptions.TryRemove(subscriptionInBag.Id, out var subscription)
-                   && subscription != null)
+                   && subscription is not null)
                 {
                     subscription.Dispose();
                     if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");

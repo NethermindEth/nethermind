@@ -213,7 +213,7 @@ namespace Nethermind.Blockchain.Test
             {
                 IsEip1559Enabled = testCase.Eip1559Enabled
             };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<ITxTracer>()))
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Test
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress != null).OrderBy(t => t, comparer).ToArray();
+            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress is not null).OrderBy(t => t, comparer).ToArray();
 
             Block block = Build.A.Block
                 .WithNumber(0)

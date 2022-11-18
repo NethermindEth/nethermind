@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                if (infos[0] is not null)
                 {
                     batch = new BodiesSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch?.MarkHandlingStart();
             try
             {
-                if (batch == null)
+                if (batch is null)
                 {
                     if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 block = null;
             }
 
-            return block != null;
+            return block is not null;
         }
 
         private int InsertBodies(BodiesSyncBatch batch)
@@ -180,12 +180,12 @@ namespace Nethermind.Synchronization.FastBlocks
                     : batch.Response![i];
 
                 // last batch
-                if (blockInfo == null)
+                if (blockInfo is null)
                 {
                     break;
                 }
 
-                if (body != null)
+                if (body is not null)
                 {
                     Block? block = null;
                     bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer != null)
+                        if (batch.ResponseSourcePeer is not null)
                         {
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
                         }

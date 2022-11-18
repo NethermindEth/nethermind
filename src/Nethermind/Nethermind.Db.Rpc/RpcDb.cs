@@ -66,7 +66,7 @@ namespace Nethermind.Db.Rpc
 
         public bool KeyExists(byte[] key)
         {
-            return GetThroughRpc(key) != null;
+            return GetThroughRpc(key) is not null;
         }
 
         public IDb Innermost => this; // record db is just a helper DB here
@@ -88,10 +88,10 @@ namespace Nethermind.Db.Rpc
             JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
 
             byte[] value = null;
-            if (response.Result != null)
+            if (response.Result is not null)
             {
                 value = Bytes.FromHexString((string)response.Result);
-                if (_recordDb != null)
+                if (_recordDb is not null)
                 {
                     _recordDb[key] = value;
                 }

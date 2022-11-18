@@ -44,26 +44,18 @@ Please do not:
 
 ## Branch Naming
 
-Branch names must follow `snake_case` pattern. Follow the pattern `feature/<name>` or `fix/<name>` `(folder/<name>)` when it is possible and add issue reference if applicable.
+Branch names must follow `snake_case` pattern. Follow the pattern `<projectIfAny>/<typeOfTheChange>/<issueNo>_<title>` when it is possible and add issue reference if applicable. For example:
+
+* feature/1234_issue_title
+* shanghai/feature/1234_issue_title
+* fix/2345_bug_title
+* shanghai/refactor/4567_title
 
 ## File Headers
 
-The following file header is the used for Nethermind. Please use it for new files.
+The following notice must be included in all source files if possible.
 
-```
-//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+```csharp
+// Copyright 2022 Demerzel Solutions Limited
+// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 ```

@@ -45,6 +45,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using RocksDbSharp;
@@ -137,7 +138,13 @@ namespace Nethermind.Runner
 
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
-                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
@@ -267,14 +274,14 @@ namespace Nethermind.Runner
 
             foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
             {
-                if (configType == null)
+                if (configType is null)
                 {
                     continue;
                 }
 
                 ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
-                if (typeLevel != null && (typeLevel?.DisabledForCli ?? true))
+                if (typeLevel is not null && (typeLevel?.DisabledForCli ?? true))
                 {
                     continue;
                 }
@@ -286,7 +293,7 @@ namespace Nethermind.Runner
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                     if (!(configItemAttribute?.DisabledForCli ?? false))
                     {
-                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
 
                     }
                 }
@@ -294,7 +301,7 @@ namespace Nethermind.Runner
 
             // Create Help Text for environment variables
             Type noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
-            if (noCategoryConfig != null)
+            if (noCategoryConfig is not null)
             {
                 StringBuilder sb = new();
                 sb.AppendLine();
@@ -302,7 +309,7 @@ namespace Nethermind.Runner
                 foreach (PropertyInfo propertyInfo in noCategoryConfig.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (configItemAttribute != null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
+                    if (configItemAttribute is not null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
                     {
                         sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
                     }
@@ -527,6 +534,11 @@ namespace Nethermind.Runner
                 if (_logger.IsInfo)
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
+            }
+            else
+            {
+                // Clear it up, otherwise internally it will keep requesting to localhost as `all` target include this.
+                NLogConfigurator.ClearSeqTarget();
             }
         }
 

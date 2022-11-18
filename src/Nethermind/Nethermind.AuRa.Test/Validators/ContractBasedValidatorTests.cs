@@ -539,7 +539,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
 
                 Block? block = bt.FindBlock(bt.Head.Hash, BlockTreeLookupOptions.None);
-                while (block != null)
+                while (block is not null)
                 {
                     yield return block;
                     block = bt.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);

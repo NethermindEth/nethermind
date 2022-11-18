@@ -128,7 +128,12 @@ namespace Nethermind.Synchronization.Peers
 
         private string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
         {
-            return $"{nodeStats.GetAverageTransferSpeed(transferSpeedType) ?? -1,5:0}";
+            long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
+            if (speed is null)
+            {
+                return "     ";
+            }
+            return $"{speed,5}";
         }
 
         private void AddPeerHeader()
