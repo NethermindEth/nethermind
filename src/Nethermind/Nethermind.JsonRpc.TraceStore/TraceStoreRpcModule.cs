@@ -124,7 +124,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 Block block = blockSearch.Object!;
                 if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
                 {
-                    return  traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
+                    return traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
                 }
                 else
                 {
