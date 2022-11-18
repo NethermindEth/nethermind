@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,6 +34,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 {
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
+    private readonly FeesTracer _feesTracer = new();
     private CancellationTokenSource? _cancellationTokenSource;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
@@ -48,7 +49,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
-        CurrentBestBlock = currentBestBlock;
+        Block = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
@@ -62,19 +63,21 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);
+        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
-            CurrentBestBlock = block;
+            Block = block;
+            BlockFees = _feesTracer.Fees;
             UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
         }
 
-        return CurrentBestBlock;
+        return Block;
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? CurrentBestBlock { get; private set; }
+    public Block? Block { get; private set; }
+    public UInt256 BlockFees { get; private set; }
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 

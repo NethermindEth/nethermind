@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -58,7 +59,7 @@ public partial class EngineModuleTests
             DateTimeOffset startDateTime)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
-            CurrentBestBlock = currentBestBlock;
+            Block = currentBestBlock;
             StartDateTime = startDateTime;
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
@@ -74,14 +75,15 @@ public partial class EngineModuleTests
             await Task.Delay(delay, cancellationToken);
             if (block is not null)
             {
-                CurrentBestBlock = block;
+                Block = block;
             }
 
-            return CurrentBestBlock;
+            return Block;
         }
 
         public Task<Block?> ImprovementTask { get; }
-        public Block? CurrentBestBlock { get; private set; }
+        public Block? Block { get; private set; }
+        public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
 

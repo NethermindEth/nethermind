@@ -26,10 +26,10 @@ public class GetPayloadV2Result
     public ExecutionPayloadV1 ExecutionPayloadV1;
     public UInt256 BlockValue;
 
-    public GetPayloadV2Result(Block block)
+    public GetPayloadV2Result(Block block, UInt256 blockFees)
     {
         ExecutionPayloadV1 = new(block);
-        BlockValue = block.Header.Fees;
+        BlockValue = blockFees;
     }
 
     public override string ToString() => $"ExecutionPayloadV1: {ExecutionPayloadV1}, Fees: {BlockValue}";

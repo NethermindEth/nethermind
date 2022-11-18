@@ -83,10 +83,6 @@ namespace Nethermind.Core
         // ToDo we need to set this flag after reading block from db
         public bool IsPostMerge { get; set; }
 
-        // transient:
-        public UInt256 Fees { get; set; }
-        public UInt256 BurntFees { get; set; }
-
         public string ToString(string indent)
         {
             StringBuilder builder = new();

@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers.V1;
 
@@ -145,7 +146,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     await Task.Delay(_improvementDelay);
                     if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
-                        Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
+                        Block newBestBlock = blockImprovementContext.Block ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
                     }
                     else
@@ -170,7 +171,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Block?.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }
@@ -214,19 +215,19 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return t.Result;
         }
 
-        public async ValueTask<Block?> GetPayload(string payloadId)
+        public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
         {
             if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
             {
                 using (blockContext)
                 {
-                    bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Any() != true;
+                    bool currentBestBlockIsEmpty = blockContext.Block?.Transactions.Any() != true;
                     if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                     {
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
 
-                    return blockContext.CurrentBestBlock;
+                    return blockContext;
                 }
             }
 

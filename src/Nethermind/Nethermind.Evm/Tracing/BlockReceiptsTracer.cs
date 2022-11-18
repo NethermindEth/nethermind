@@ -197,16 +197,12 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
-            Fees += fees;
-            BurntFees += burntFees;
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.ReportFees(fees, burntFees);
             }
         }
 
-        public UInt256 Fees { get; private set; } = UInt256.Zero;
-        public UInt256 BurntFees { get; private set; } = UInt256.Zero;
         private ITxTracer _currentTxTracer = NullTxTracer.Instance;
         private int _currentIndex;
         private readonly List<TxReceipt> _txReceipts = new();
@@ -240,8 +236,6 @@ namespace Nethermind.Evm.Tracing
             _block = block;
             _currentIndex = 0;
             _txReceipts.Clear();
-            Fees = UInt256.Zero;
-            BurntFees = UInt256.Zero;
 
             _otherTracer.StartNewBlockTrace(block);
         }

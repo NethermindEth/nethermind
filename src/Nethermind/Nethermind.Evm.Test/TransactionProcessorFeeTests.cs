@@ -135,6 +135,8 @@ public class TransactionProcessorFeeTests
         IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
 
         BlockReceiptsTracer tracer = new();
+        FeesTracer feesTracer = new();
+        tracer.SetOtherTracer(feesTracer);
         tracer.SetOtherTracer(NullBlockTracer.Instance);
 
         tracer.StartNewBlockTrace(block);
@@ -165,10 +167,10 @@ public class TransactionProcessorFeeTests
             totalBurned += burned;
 
             fees.Should().NotBe(0);
-            tracer.Fees.Should().Be(totalFees);
+            feesTracer.Fees.Should().Be(totalFees);
 
             burned.Should().NotBe(0);
-            tracer.BurntFees.Should().Be(totalBurned);
+            feesTracer.BurntFees.Should().Be(totalBurned);
         }
 
         tracer.EndBlockTrace();
