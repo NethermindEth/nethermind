@@ -159,7 +159,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            error = $"Withdrawals are null in block {block.Hash} with EIP-4895 activated.";
+            error = $"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.";
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -168,7 +168,7 @@ public class BlockValidator : IBlockValidator
 
         if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
         {
-            error = $"Withdrawals are not null in block {block.Hash} with EIP-4895 not activated.";
+            error = $"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.";
 
             if (_logger.IsWarn) _logger.Warn(error);
 
