@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.ComponentModel;
+using System.Runtime.Serialization;
 
 namespace Nethermind.Network
 {
+    //TODO: consult on use of metric disabeling flags!
     public static class Metrics
     {
         [Description("Number of incoming connection.")]
@@ -256,5 +258,16 @@ namespace Nethermind.Network
 
         [Description("Number of bytes received through Discovery (UDP).")]
         public static long DiscoveryBytesReceived;
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The current number of peers connected.")]
+        [DataMember(Name = "ethereum_peer_count")]
+        //The current number of peers connected changed by threadsafe atomic increment/decrement
+        public static long PeerCount;
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The maximum number of peers this node allows to connect.")]
+        [DataMember(Name = "ethereum_peer_limit")]
+        public static long PeerLimit { get; set; }
     }
 }

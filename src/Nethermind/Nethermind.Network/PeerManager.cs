@@ -414,6 +414,7 @@ namespace Nethermind.Network
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)
             {
+                Interlocked.Increment(ref Metrics.PeerCount);
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
             }
             else
@@ -427,6 +428,10 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
             // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
