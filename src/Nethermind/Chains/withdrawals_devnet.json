@@ -9,9 +9,6 @@
         "blockReward": {
           "0x0": "0x1bc16d674ec80000"
         },
-        "homesteadTransition": "0x118c30",
-        "daoHardforkTransition": "0x1d4c00",
-        "daoHardforkBeneficiary": "0xbf4ed7b27f1d666546e30d74d50d173d20bca754",
         "daoHardforkAccounts": [
           "0xd4fe7bc31cedb7bfb8a345f31e668033056b2728",
           "0xb3fb0e5aba0e20e5c49d252dfd30e102b171a425",
@@ -130,14 +127,7 @@
           "0xbb9bc244d798123fde783fcc1c72d3bb8c189413",
           "0x807640a13483f8ac783c557fcdf27be11ea4ac7a"
         ],
-        "eip100bTransition": "0x42ae50",
         "difficultyBombDelays": {
-          "0x42ae50": "0x2dc6c0",
-          "0x6f1580": "0x1e8480",
-          "0x8C6180": "0x3D0900",
-          "0xC5D488": "0xAAE60",
-          "0xD228C8": "0xF4240",
-          "0xE5A510": "0xAAE60"
         }
       }
     }
