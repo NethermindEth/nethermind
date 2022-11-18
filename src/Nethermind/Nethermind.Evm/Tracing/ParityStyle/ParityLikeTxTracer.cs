@@ -414,7 +414,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             ParityTraceAction action = new ParityTraceAction
             {
                 IsPrecompiled = isPrecompileCall,
-                IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction || !value.IsZero,
+                // ignore pre compile calls with Zero value that originates from contracts
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
                 From = from,
                 To = to,
                 Value = value,
