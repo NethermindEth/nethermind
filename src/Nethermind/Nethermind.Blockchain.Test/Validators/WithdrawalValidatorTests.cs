@@ -1,4 +1,4 @@
-﻿// Copyright 2022 Demerzel Solutions Limited
+// Copyright 2022 Demerzel Solutions Limited
 // Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 
 using Nethermind.Consensus.Validators;
@@ -50,7 +50,7 @@ public class WithdrawalValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Withdrawal[] withdrawals = {};
+        Withdrawal[] withdrawals = { };
         Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
         Assert.True(isValid);

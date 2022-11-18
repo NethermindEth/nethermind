@@ -43,7 +43,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
 
     [Test]
-    public override async Task V2_processing_block_should_serialize_valid_responses()
+    public override async Task Should_process_block_as_expected_V2()
     {
         // Override this test for now, it fails when asserting the blockHash of produced block equals a hardcoded precomputed one.
         // This happens because for this AuRa chain the blockHash includes AuRa specific fields, hence the hash for genesis is different
