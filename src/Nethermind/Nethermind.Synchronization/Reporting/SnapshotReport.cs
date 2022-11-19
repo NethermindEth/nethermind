@@ -15,20 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core;
-using Nethermind.State;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using Microsoft.VisualBasic;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization.Reporting
 {
-    public class SyncModeChangedEventArgs : EventArgs
+    public class SyncReportSymmary
     {
-        public SyncModeChangedEventArgs(SyncMode previous, SyncMode current)
-        {
-            Previous = previous;
-            Current = current;
-        }
-
-        public SyncMode Previous { get; }
-        public SyncMode Current { get; }
+        public string CurrentStage { get; set; }
     }
 }
