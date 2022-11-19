@@ -16,14 +16,12 @@
 //
 
 using System;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
@@ -60,16 +58,24 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
     {
-
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
+        UInt256 balanceBefore =
+            _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ??
+            UInt256.Zero;
+        Block? block =
+            await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
             Block = block;
             BlockFees = _feesTracer.Fees;
-            UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
+            UInt256 balanceAfter =
+                _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ??
+                UInt256.Zero;
+            await _boostRelay.SendPayload(
+                new BoostExecutionPayloadV1
+                {
+                    Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore
+                }, cancellationToken);
         }
 
         return Block;
