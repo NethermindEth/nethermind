@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-        Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+        Keccak PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
 
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }

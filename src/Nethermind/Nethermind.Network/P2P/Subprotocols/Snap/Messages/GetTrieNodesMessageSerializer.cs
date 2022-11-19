@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
 
-            if (message.Paths == null || message.Paths.Length == 0)
+            if (message.Paths is null || message.Paths.Length == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -93,7 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int allPathsLength = 0;
             int[] pathsLengths = new int[message.Paths.Length];
 
-            if (message.Paths == null || message.Paths.Length == 0)
+            if (message.Paths is null || message.Paths.Length == 0)
             {
                 allPathsLength = 1;
             }

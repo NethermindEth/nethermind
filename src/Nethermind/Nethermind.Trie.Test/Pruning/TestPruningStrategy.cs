@@ -36,7 +36,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             if (!_pruningEnabled) return false;
             if (ShouldPruneEnabled) return true;
-            if (WithMemoryLimit != null && currentMemory > WithMemoryLimit) return true;
+            if (WithMemoryLimit is not null && currentMemory > WithMemoryLimit) return true;
 
             return false;
         }

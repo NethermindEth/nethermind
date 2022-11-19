@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.StateSync
 
         protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
-            if (batch?.RequestedNodes == null || batch.RequestedNodes.Length == 0)
+            if (batch?.RequestedNodes is null || batch.RequestedNodes.Length == 0)
             {
                 return;
             }

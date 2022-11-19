@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public override void Init()
         {
             if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
@@ -76,10 +76,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 // TODO - implement config option for these
                 ServeHeaders = true,
                 ServeChainSince = 0x00,
-                //if (config.recentchain != null)
+                //if (config.recentchain is not null)
                 //    ServeRecentChain = Config.recentchain
                 ServeStateSince = 0x00,
-                //if (Config.serverecentstate != null)
+                //if (Config.serverecentstate is not null)
                 //    ServeRecentState = Config.RecentState
                 TxRelay = true,
                 // TODO - should allow setting to infinite
@@ -298,12 +298,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             announceMessage.HeadHash = block.Hash;
             announceMessage.HeadBlockNo = block.Number;
             announceMessage.TotalDifficulty = block.TotalDifficulty.Value;
-            if (_lastSentBlock == null || block.ParentHash == _lastSentBlock.Hash)
+            if (_lastSentBlock is null || block.ParentHash == _lastSentBlock.Hash)
                 announceMessage.ReorgDepth = 0;
             else
             {
                 BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
-                if (firstCommonAncestor == null)
+                if (firstCommonAncestor is null)
                     throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
                 announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }

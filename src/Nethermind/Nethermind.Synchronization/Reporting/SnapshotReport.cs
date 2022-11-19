@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using Microsoft.VisualBasic;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Monitoring.Metrics
+namespace Nethermind.Synchronization.Reporting
 {
-    public interface IMetricsUpdater
+    public class SyncReportSymmary
     {
-        void RegisterMetrics(Type type);
-        void StartUpdating();
-        void StopUpdating();
+        public string CurrentStage { get; set; }
     }
 }

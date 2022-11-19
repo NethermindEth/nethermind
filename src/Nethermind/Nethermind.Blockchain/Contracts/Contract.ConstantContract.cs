@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Contracts
                     var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
                 }
-                else if (callInfo.MissingContractResult != null)
+                else if (callInfo.MissingContractResult is not null)
                 {
                     return callInfo.MissingContractResult;
                 }

@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -42,5 +43,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public void UpdateHeadBlock(Keccak blockHash);
         Task<bool> MigrateReceipts(long blockNumber);
         void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
+        SyncReportSymmary GetCurrentSyncStage();
     }
 }

@@ -71,7 +71,7 @@ public class NodeTable : INodeTable
 
     private void CheckInitialization()
     {
-        if (MasterNode == null)
+        if (MasterNode is null)
         {
             throw new InvalidOperationException("Master not has not been initialized");
         }

@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         public override void WriteJson(JsonWriter writer, GethLikeTxTrace value, JsonSerializer serializer)
         {
-            if (value == null)
+            if (value is null)
             {
                 writer.WriteNull();
                 return;

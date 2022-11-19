@@ -159,7 +159,7 @@ namespace Nethermind.Db
                 }
             }
 
-            if (shouldCache && cache != null && item != null)
+            if (shouldCache && cache is not null && item is not null)
             {
                 cache.Set(key, item);
             }
@@ -202,7 +202,7 @@ namespace Nethermind.Db
                 }
             }
 
-            if (shouldCache && cache != null && item != null)
+            if (shouldCache && cache is not null && item is not null)
             {
                 cache.Set(key, item);
             }

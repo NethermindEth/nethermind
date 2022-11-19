@@ -57,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs == null || message.Proofs.Length == 0)
+            if (message.Proofs is null || message.Proofs.Length == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -118,7 +118,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             int proofsLength = 0;
-            if (message.Proofs == null || message.Proofs.Length == 0)
+            if (message.Proofs is null || message.Proofs.Length == 0)
             {
                 proofsLength = 1;
                 contentLength += 1;

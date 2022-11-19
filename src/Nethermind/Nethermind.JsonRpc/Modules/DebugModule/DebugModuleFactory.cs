@@ -27,6 +27,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
@@ -46,6 +47,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyBlockTree _blockTree;
+        private readonly ISyncModeSelector _syncModeSelector;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -60,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReadOnlyTrieStore trieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
+            ISyncModeSelector syncModeSelector,
             ILogManager logManager)
         {
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -74,6 +77,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _logger = logManager.GetClassLogger();
         }
 
@@ -112,7 +116,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _blockTree,
                 _receiptStorage,
                 _receiptsMigration,
-                _specProvider);
+                _specProvider,
+                _syncModeSelector);
 
             return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
         }

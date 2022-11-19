@@ -70,7 +70,7 @@ namespace Nethermind.AuRa.Test
             for (long i = 0; i <= upperLevel; i++)
             {
                 ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(i);
-                if (level?.MainChainBlock != null)
+                if (level?.MainChainBlock is not null)
                 {
                     level.MainChainBlock.IsFinalized = true;
                     chainLevelInfoRepository.PersistLevel(i, level);

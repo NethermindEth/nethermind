@@ -34,7 +34,7 @@ namespace Nethermind.Network.IP
 
         public Task<(bool, IPAddress)> TryGetIP()
         {
-            if (_config.ExternalIp != null)
+            if (_config.ExternalIp is not null)
             {
                 bool result = IPAddress.TryParse(_config.ExternalIp, out IPAddress ipAddress);
 

@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         public static ulong EstimateSize(BlockHeader blockHeader)
         {
-            if (blockHeader == null)
+            if (blockHeader is null)
             {
                 return 0;
             }
@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public static ulong EstimateSize(Transaction tx)
         {
-            if (tx == null)
+            if (tx is null)
             {
                 return 0;
             }
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public static ulong EstimateSize(Block block)
         {
-            if (block == null)
+            if (block is null)
             {
                 return 0;
             }

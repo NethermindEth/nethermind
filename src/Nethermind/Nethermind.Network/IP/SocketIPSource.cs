@@ -40,7 +40,7 @@ namespace Nethermind.Network.IP
                 IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
                 IPAddress ipAddress = endPoint?.Address;
                 if (_logger.IsDebug) _logger.Debug($"Local ip: {ipAddress}");
-                return (ipAddress != null, ipAddress);
+                return (ipAddress is not null, ipAddress);
             }
             catch (SocketException)
             {

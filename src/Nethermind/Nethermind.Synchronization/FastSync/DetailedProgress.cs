@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo != null)
+                if (_chainSizeInfo is not null)
                 {
                     decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.Value.Current);
                     dataSizeInfo = string.Concat(
@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[] serializedData)
         {
-            if (serializedData != null)
+            if (serializedData is not null)
             {
                 RlpStream rlpStream = new(serializedData);
                 rlpStream.ReadSequenceLength();

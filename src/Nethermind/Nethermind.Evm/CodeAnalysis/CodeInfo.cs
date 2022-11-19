@@ -38,7 +38,7 @@ namespace Nethermind.Evm.CodeAnalysis
             MachineCode = code;
         }
 
-        public bool IsPrecompile => Precompile != null;
+        public bool IsPrecompile => Precompile is not null;
 
         public CodeInfo(IPrecompile precompile)
         {
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_analyzer == null)
+            if (_analyzer is null)
             {
                 CreateAnalyzer();
             }

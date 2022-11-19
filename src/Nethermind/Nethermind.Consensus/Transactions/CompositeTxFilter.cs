@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Transactions
 
         public CompositeTxFilter(params ITxFilter[] txFilters)
         {
-            _txFilters = txFilters?.Where(f => f != null).ToArray() ?? Array.Empty<ITxFilter>();
+            _txFilters = txFilters?.Where(f => f is not null).ToArray() ?? Array.Empty<ITxFilter>();
         }
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)

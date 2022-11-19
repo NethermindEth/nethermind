@@ -800,7 +800,7 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {
-            if (hexString == null)
+            if (hexString is null)
             {
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }

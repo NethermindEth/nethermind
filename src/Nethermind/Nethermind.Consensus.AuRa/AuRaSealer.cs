@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.AuRa
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             Block sealedBlock = Seal(block);
-            if (sealedBlock != null)
+            if (sealedBlock is not null)
             {
                 sealedBlock.Header.Hash = sealedBlock.Header.CalculateHash();
             }

@@ -72,7 +72,7 @@ public static class EnrTreeParser
 
     public static EnrTreeRoot ParseEnrRoot(string enrTreeRootText)
     {
-        if (enrTreeRootText == null) throw new ArgumentNullException(nameof(enrTreeRootText));
+        if (enrTreeRootText is null) throw new ArgumentNullException(nameof(enrTreeRootText));
 
         EnrTreeRoot enrTreeRoot = new();
 

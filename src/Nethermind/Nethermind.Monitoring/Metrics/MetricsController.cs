@@ -16,8 +16,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Nethermind.Monitoring.Config;
@@ -25,30 +27,64 @@ using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
-    public class MetricsUpdater : IMetricsUpdater
+    public class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private Dictionary<string, Gauge> _gauges = new Dictionary<string, Gauge>();
-        private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new Dictionary<Type, (PropertyInfo, string)[]>();
-        private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new Dictionary<Type, (FieldInfo, string)[]>();
-        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new Dictionary<Type, (string DictName, IDictionary<string, long> Dict)>();
-        private HashSet<Type> _metricTypes = new HashSet<Type>();
+        private Dictionary<string, Gauge> _gauges = new();
+        private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
+        private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
+        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private HashSet<Type> _metricTypes = new();
 
         public void RegisterMetrics(Type type)
         {
             EnsurePropertiesCached(type);
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
-                _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name));
+                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(propertyInfo);
             }
 
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
-                _gauges[gaugeName] = CreateGauge(BuildGaugeName(fieldInfo.Name));
+                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(fieldInfo);
             }
 
             _metricTypes.Add(type);
+        }
+
+        private Gauge CreateMemberInfoMectricsGauge(MemberInfo propertyInfo)
+        {
+            GaugeConfiguration configuration = new();
+
+            configuration.StaticLabels = propertyInfo
+                .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
+                .ToDictionary(
+                    attribute => attribute.Label,
+                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
+
+            string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string name = BuildGaugeName(propertyInfo);
+            return CreateGauge(name, description, configuration);
+        }
+
+        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
+        {
+            Type type = givenInformer;
+            PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
+            PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
+            if (info is null)
+            {
+                throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
+            }
+
+            object value = info.GetValue(null);
+            if (value is null)
+            {
+                throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
+            }
+
+            return value.ToString();
         }
 
         private void EnsurePropertiesCached(Type type)
@@ -67,7 +103,7 @@ namespace Nethermind.Monitoring.Metrics
 
             if (!_dynamicPropCache.ContainsKey(type))
             {
-                var p = type.GetProperties().Where(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>))).FirstOrDefault();
+                var p = type.GetProperties().FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
                 if (p != null)
                 {
                     _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
@@ -75,15 +111,16 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static string BuildGaugeName(string propertyName)
-        {
-            return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
-        }
+        private static string BuildGaugeName(MemberInfo propertyInfo) =>
+            propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
-        private static Gauge CreateGauge(string name, string help = "")
-            => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help);
+        private static string BuildGaugeName(string propertyName) =>
+            Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "nethermind_$1_$2").ToLowerInvariant();
 
-        public MetricsUpdater(IMetricsConfig metricsConfig)
+        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
+            => Prometheus.Metrics.CreateGauge(name, help, configuration);
+
+        public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
         }
@@ -129,7 +166,7 @@ namespace Nethermind.Monitoring.Metrics
                     double value = Convert.ToDouble(kvp.Value);
                     var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
 
-                    if (ReplaceValueIfChanged(value, gaugeName) == null)
+                    if (ReplaceValueIfChanged(value, gaugeName) is null)
                     {
                         var gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeName] = gauge;

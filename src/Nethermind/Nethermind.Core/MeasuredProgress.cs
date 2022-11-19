@@ -40,7 +40,7 @@ namespace Nethermind.Core
 
         public void SetMeasuringPoint()
         {
-            if (UtcStartTime != null)
+            if (UtcStartTime is not null)
             {
                 LastMeasurement = _timestamper.UtcNow;
                 LastValue = CurrentValue;
@@ -96,7 +96,7 @@ namespace Nethermind.Core
         {
             get
             {
-                if (UtcEndTime != null)
+                if (UtcEndTime is not null)
                 {
                     return 0;
                 }

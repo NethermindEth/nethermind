@@ -281,7 +281,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
 
             // LatestPendingNonce=0, when account does not exist
-            UInt256? latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            UInt256 latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
 
             _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
 
@@ -1008,18 +1008,18 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
         {
-            var address = TestItem.AddressA;
+            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
             const int reservationsCount = 1000;
             _txPool = CreatePool();
             ConcurrentQueue<UInt256> nonces = new();
 
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(address));
+                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(TestItem.AddressA));
             });
 
             result.IsCompleted.Should().BeTrue();
-            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
+            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
             nonces.Enqueue(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
             nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
@@ -1224,8 +1224,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.Hash = TestItem.KeccakA;
+            Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
             _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
         }
 
