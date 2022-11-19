@@ -19,7 +19,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
-
+using Nethermind.Synchronization.Reporting;
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     [RpcModule(ModuleType.Debug)]
@@ -98,5 +98,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
         Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
+
+        [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
+        Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
     }
 }
