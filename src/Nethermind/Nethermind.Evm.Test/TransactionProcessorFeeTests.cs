@@ -137,7 +137,6 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer tracer = new();
         FeesTracer feesTracer = new();
         tracer.SetOtherTracer(feesTracer);
-        tracer.SetOtherTracer(NullBlockTracer.Instance);
 
         tracer.StartNewBlockTrace(block);
 
