@@ -224,7 +224,9 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.WithTransactions(
             Build.A.Transaction.WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
             Build.A.Transaction.WithTo(TestItem.AddressD).WithType(TxType.EIP1559).WithMaxFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
-        payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(block);
+        IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
+        improvementContext.Block.Returns(block);
+        payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(improvementContext);
         using MergeTestBlockchain chain = await CreateBlockChain(null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -320,7 +322,7 @@ public partial class EngineModuleTests
 
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c =>
-                c.CurrentBestBlock?.Transactions.Length).ToList();
+                c.Block?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
         Transaction[] txs = getPayloadResult.GetTransactions();
