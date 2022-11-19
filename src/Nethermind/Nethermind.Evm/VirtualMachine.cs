@@ -2399,13 +2399,6 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
-                            if (spec.IsEip3670Enabled && !ByteCodeValidator.IsEOFCode(initCode, spec, out _))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
                             {
@@ -2906,7 +2899,7 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
-                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt16();
+                                var offset = codeSection.Slice(programCounter, 2).ReadEthInt16();
                                 programCounter += 2 + offset;
                                 break;
                             }
@@ -2940,7 +2933,7 @@ namespace Nethermind.Evm
                                 }
 
                                 Span<byte> condition = stack.PopBytes();
-                                var offset = codeSection[programCounter..(programCounter + 2)].ReadEthInt16();
+                                var offset = codeSection.Slice(programCounter, 2).ReadEthInt16();
                                 if (!condition.SequenceEqual(BytesZero32))
                                 {
                                     programCounter += 2 + offset;

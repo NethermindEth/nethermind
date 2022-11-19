@@ -41,17 +41,21 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-
-            if (isEof is null && _header is null)
+            if (spec.IsEip3540Enabled)
             {
-                isEof = ByteCodeValidator.IsEOFCode(MachineCode, spec, out _header);
-            }
+                if (isEof is null && _header is null)
+                {
+                    isEof = ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
+                }
 
-            if (isEof.Value)
-            {
-                CodeSection = MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
-                DataSection = MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
-                return this;
+                if (isEof.Value)
+                {
+                    var codeSectionOffsets = Header.CodeSectionOffsets;
+                    CodeSection = MachineCode.Slice(codeSectionOffsets.Start, codeSectionOffsets.Size);
+                    var dataSectionOffsets = Header.DataSectionOffsets;
+                    DataSection = MachineCode.Slice(dataSectionOffsets.Start, dataSectionOffsets.Size);
+                    return this;
+                }
             }
             CodeSection = MachineCode.AsSpan();
             DataSection = Span<byte>.Empty;
@@ -91,7 +95,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer(IReleaseSpec spec)
         {
-            var codeToBeAnalyzed = isEof.HasValue && isEof.Value == true ? MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize) : MachineCode;
+            var codeSectionOffsets = isEof.HasValue && isEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
+            var codeToBeAnalyzed = MachineCode.Slice(codeSectionOffsets.Item1, codeSectionOffsets.Item2);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test
         protected ITransactionProcessor _processor;
         private IDb _stateDb;
 
-        protected VirtualMachine Machine { get; private set; }
+        protected VirtualMachine Machine { get; set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
 
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ulong Timestamp => 0UL;
-        protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        protected virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
         protected virtual ILogManager GetLogManager()

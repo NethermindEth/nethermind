@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -153,7 +154,7 @@ namespace Nethermind.Evm
                     .Op(Instruction.JUMP);
         public static Prepare RJUMP(this Prepare @this, Int16 to)
             => @this.Op(Instruction.RJUMP)
-                    .Data(BitConverter.GetBytes(to));
+                    .Data(BitConverter.GetBytes(to).Reverse().ToArray());
         public static Prepare BLOCKHASH(this Prepare @this, UInt256? target = null)
             => @this.PushSingle(target)
                     .Op(Instruction.BLOCKHASH);
@@ -266,7 +267,7 @@ namespace Nethermind.Evm
         public static Prepare RJUMPI(this Prepare @this, Int16 to, byte[] cond = null)
             => @this.PushSingle(cond)
                     .Op(Instruction.RJUMP)
-                    .Data(BitConverter.GetBytes(to));
+                    .Data(BitConverter.GetBytes(to).Reverse().ToArray());
         public static Prepare LOGx(this Prepare @this, byte i, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
                     .Op(Instruction.LOG0 + i);
