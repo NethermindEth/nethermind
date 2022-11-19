@@ -42,10 +42,8 @@ public partial class EngineModuleTests
             _delay = delay;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader,
-            PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
-            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader,
-                payloadAttributes, _delay, startDateTime);
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
+            new DelayBlockImprovementContext(currentBestBlock, _productionTrigger, _timeout, parentHeader, payloadAttributes, _delay, startDateTime);
     }
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
