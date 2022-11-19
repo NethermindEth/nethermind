@@ -41,25 +41,29 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-            if (IsEOF is null && Header is null)
-            {
-                IsEOF = ByteCodeValidator.ValidateEofStrucutre(Container, spec, out _header);
-            }
 
-            if (IsEOF.Value && (Header is not null))
+            if (spec.IsEip3540Enabled)
             {
-                var offsets = new[] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
-                if (spec.IsEip4750Enabled)
+                if (IsEOF is null && Header is null)
                 {
-                    TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);
+                    IsEOF = ByteCodeValidator.ValidateEofStrucutre(Container, spec, out _header);
                 }
-                else
+
+                if (IsEOF.Value && (Header is not null))
                 {
-                    TypeSection = Span<byte>.Empty;
+                    var offsets = new[] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
+                    if (spec.IsEip4750Enabled)
+                    {
+                        TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);
+                    }
+                    else
+                    {
+                        TypeSection = Span<byte>.Empty;
+                    }
+                    CodeSection = MachineCode.Slice(offsets[1].Start, offsets[1].Size);
+                    DataSection = MachineCode.Slice(offsets[2].Start, offsets[2].Size);
+                    return this;
                 }
-                CodeSection = MachineCode.Slice(offsets[1].Start, offsets[1].Size);
-                DataSection = MachineCode.Slice(offsets[2].Start, offsets[2].Size);
-                return this;
             }
 
             TypeSection = Span<byte>.Empty;

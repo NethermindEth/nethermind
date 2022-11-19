@@ -67,11 +67,15 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
 
 
-            transaction.GasPrice = 100.GWei();
+            transaction.GasPrice = 20.GWei();
+            transaction.To = null;
+            transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();
+
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+            var withInvalidCodeErrors = testcase.ResultIfEOF.Status == StatusCode.Failure;
+            Assert.AreEqual(withInvalidCodeErrors, tracer.ReportedActionErrors.Any(x => x != EvmExceptionType.InvalidCode || x != EvmExceptionType.BadInstruction), $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
         }
 
         public class TestCase
