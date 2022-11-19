@@ -75,6 +75,7 @@ namespace Nethermind.Init.Steps
             if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
             if (_api.TxSender is null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader is null) throw new StepDependencyException(nameof(_api.StateReader));
             if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
@@ -145,6 +146,7 @@ namespace Nethermind.Init.Steps
                 _api.ReadOnlyTrieStore,
                 _api.ConfigProvider,
                 _api.SpecProvider,
+                _api.SyncModeSelector,
                 _api.LogManager);
             rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 

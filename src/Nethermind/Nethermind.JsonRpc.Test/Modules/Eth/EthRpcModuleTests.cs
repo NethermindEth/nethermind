@@ -979,19 +979,17 @@ public partial class EthRpcModuleTests
         Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
     }
 
-    [TestCase("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4")]
+    [TestCase("f865808506fc23ac00830124f8940000000000000000000000000000000000000316018032a044b25a8b9b247d01586b3d59c71728ff49c9b84928d9e7fa3377ead3b5570b5da03ceac696601ff7ee6f5fe8864e2998db9babdf5eeba1a0cd5b4d44b3fcbd181b")]
     public async Task Send_raw_transaction_will_send_transaction(string rawTransaction)
     {
         using Context ctx = await Context.Create();
-        ITxSender txSender = Substitute.For<ITxSender>();
+        ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
-
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
-
-        await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
-        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
+        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
+        await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"Invalid\"},\"id\":67}", serialized);
     }
 
     [Test]
@@ -1040,6 +1038,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction.WithValue(10000).SignedAndResolved(new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001")).WithNonce(0).TestObject;
         TransactionForRpc txForRpc = new(tx);
+
         string serialized = ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Account balance: 0, cumulative cost: 31000\"},\"id\":67}", serialized);

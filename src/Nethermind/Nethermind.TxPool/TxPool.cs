@@ -56,6 +56,7 @@ namespace Nethermind.TxPool
         private readonly TxDistinctSortedPool _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
+        private readonly IEthereumEcdsa _ecdsa;
 
         private readonly IAccountStateProvider _accounts;
 
@@ -98,6 +99,7 @@ namespace Nethermind.TxPool
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
+            _ecdsa = ecdsa;
 
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
