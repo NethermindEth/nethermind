@@ -122,10 +122,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            if (!(currentState.IsTopLevel && currentState.Env.Value == UInt256.Zero))
-                            {
-                                _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
-                            }
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
                         }
 
                         callResult = ExecutePrecompile(currentState, spec);

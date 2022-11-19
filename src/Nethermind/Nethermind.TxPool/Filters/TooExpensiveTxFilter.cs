@@ -43,14 +43,12 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.SenderAddress == null)
-                return AcceptTxResult.Invalid;
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
-            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress);
+            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
 
             for (int i = 0; i < transactions.Length; i++)
             {

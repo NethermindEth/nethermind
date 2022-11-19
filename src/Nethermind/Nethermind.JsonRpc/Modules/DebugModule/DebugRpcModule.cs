@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -271,6 +272,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             _debugBridge.UpdateHeadBlock(blockHash);
             return ResultWrapper<bool>.Success(true);
+        }
+
+        public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
+        {
+            return ResultWrapper<SyncReportSymmary>.Success(_debugBridge.GetCurrentSyncStage());
         }
     }
 }

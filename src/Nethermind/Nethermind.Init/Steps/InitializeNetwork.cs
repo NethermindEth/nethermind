@@ -131,7 +131,9 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+        Network.Metrics.PeerLimit = maxPeersCount;
         SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
@@ -493,7 +495,6 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
-            _networkConfig.LocalIp!,
             _networkConfig.P2PPort,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
