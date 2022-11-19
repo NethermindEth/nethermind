@@ -29,6 +29,11 @@ namespace Nethermind.Specs
             SpecToReturn = initialSpecToReturn;
             GenesisSpec = initialSpecToReturn;
         }
+        public TestSpecProvider(IReleaseSpec initialSpecToReturn, IReleaseSpec finalSpecToReturn)
+        {
+            SpecToReturn = finalSpecToReturn;
+            GenesisSpec = initialSpecToReturn;
+        }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {

@@ -634,7 +634,7 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            CodeInfo CodeContainer = env.CodeInfo.SeparateEOFSections(out Span<byte> fullCode, out Span<byte> codeSection, out Span<byte> dataSection);
+            CodeInfo CodeContainer = env.CodeInfo.SeparateEOFSections(spec, out Span<byte> fullCode, out Span<byte> codeSection, out Span<byte> dataSection);
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -2398,14 +2398,6 @@ namespace Nethermind.Evm
                             }
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-
-                            if (spec.IsEip3540Enabled
-                                && (ByteCodeValidator.HasEOFMagic(initCode) && !ByteCodeValidator.ValidateByteCode(initCode, spec)))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)

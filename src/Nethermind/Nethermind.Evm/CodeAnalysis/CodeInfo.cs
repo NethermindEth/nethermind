@@ -19,6 +19,8 @@ using System.Collections;
 using System.Reflection.PortableExecutable;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -29,30 +31,31 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private EofHeader _header;
+        private bool? isEof = null;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
-        public EofHeader Header
-        {
-            get
-            {
-                if (_header is null && ByteCodeValidator.IsEOFCode(MachineCode, out _header))
-                {
-                    return _header;
-                }
-                return _header;
-            }
-        }
+        public EofHeader Header => _header;
 
         #region EofSection Extractors
-        public CodeInfo SeparateEOFSections(out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
+        public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
         {
             Container = MachineCode.AsSpan();
-            if (Header is not null)
+            if (spec.IsEip3540Enabled)
             {
-                CodeSection = MachineCode.Slice(Header.CodeStartOffset, Header.CodeSize);
-                DataSection = MachineCode.Slice(Header.CodeEndOffset, Header.DataSize);
-                return this;
+                if (isEof is null && _header is null)
+                {
+                    isEof = ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
+                }
+
+                if (isEof.Value)
+                {
+                    var codeSectionOffsets = Header.CodeSectionOffsets;
+                    CodeSection = MachineCode.Slice(codeSectionOffsets.Start, codeSectionOffsets.Size);
+                    var dataSectionOffsets = Header.DataSectionOffsets;
+                    DataSection = MachineCode.Slice(dataSectionOffsets.Start, dataSectionOffsets.Size);
+                    return this;
+                }
             }
             CodeSection = MachineCode.AsSpan();
             DataSection = Span<byte>.Empty;
@@ -92,8 +95,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            SeparateEOFSections(out _, out var CodeSection, out _);
-            byte[] codeToBeAnalyzed = CodeSection.ToArray();
+            var codeSectionOffsets = isEof.HasValue && isEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
+            var codeToBeAnalyzed = MachineCode.Slice(codeSectionOffsets.Item1, codeSectionOffsets.Item2);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;
@@ -101,7 +104,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 // we check (by sampling randomly) how many PUSH1 instructions are in the code
                 for (int i = 0; i < NumberOfSamples; i++)
                 {
-                    byte instruction = MachineCode[_rand.Next(0, codeToBeAnalyzed.Length)];
+                    byte instruction = codeToBeAnalyzed[_rand.Next(0, codeToBeAnalyzed.Length)];
 
                     // PUSH1
                     if (instruction == 0x60)

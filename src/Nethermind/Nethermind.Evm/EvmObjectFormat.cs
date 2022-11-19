@@ -5,7 +5,9 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Org.BouncyCastle.Crypto.Paddings;
 
@@ -20,9 +22,12 @@ namespace Nethermind.Evm
     public class EofHeader
     {
         #region public construction properties
-        public UInt16 CodeSize { get; set; }
-        public UInt16 DataSize { get; set; }
+        public int CodeSize { get; set; }
+        public int DataSize { get; set; }
         public byte Version { get; set; }
+        public int HeaderSize => 2 + 1 + (DataSize == 0 ? 0 : (1 + 2)) + 3 + 1;
+        // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
+        public int ContainerSize => CodeSize + DataSize;
         #endregion
 
         #region Equality methods
@@ -33,28 +38,8 @@ namespace Nethermind.Evm
         #endregion
 
         #region Sections Offsets
-        private int? _codeStartOffset = default;
-        public int CodeStartOffset
-        {
-            get
-            {
-                if (_codeStartOffset is null)
-                    _codeStartOffset = DataSize == 0
-                        ? 7     // MagicLength + Version + 1 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 1 * (1 + 2) + 1 = 7
-                        : 10;   // MagicLength + Version + 2 * (SectionSeparator + SectionSize) + HeaderTerminator = 2 + 1 + 2 * (1 + 2) + 1 = 10 
-                return _codeStartOffset.Value;
-            }
-        }
-        private int? _codeEndOffset = default;
-        public int CodeEndOffset
-        {
-            get
-            {
-                if (_codeEndOffset is null)
-                    _codeEndOffset = CodeStartOffset + CodeSize;
-                return _codeEndOffset.Value;
-            }
-        }
+        public (int Start, int Size) CodeSectionOffsets => (HeaderSize, CodeSize);
+        public (int Start, int Size) DataSectionOffsets => (HeaderSize + CodeSize, DataSize);
         #endregion
     }
 
@@ -72,7 +57,7 @@ namespace Nethermind.Evm
         private byte[] EofMagic => new byte[] { EofFormatByte, EofFormatDiff };
 
         public bool HasEOFFormat(ReadOnlySpan<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
-        public bool ExtractHeader(ReadOnlySpan<byte> code, out EofHeader header)
+        public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader header)
         {
             if (!HasEOFFormat(code))
             {
@@ -96,7 +81,7 @@ namespace Nethermind.Evm
             switch (EOFVersion)
             {
                 case 1:
-                    return HandleEOF1(code, ref header, codeLen, ref i);
+                    return HandleEOF1(spec, code, ref header, codeLen, ref i);
                 default:
                     if (LoggingEnabled)
                     {
@@ -106,9 +91,12 @@ namespace Nethermind.Evm
             }
         }
 
-        private bool HandleEOF1(ReadOnlySpan<byte> code, ref EofHeader header, int codeLen, ref int i)
+        private bool HandleEOF1(IReleaseSpec spec, ReadOnlySpan<byte> code, ref EofHeader header, int codeLen, ref int i)
         {
             bool continueParsing = true;
+
+            UInt16? CodeSections = null;
+            UInt16? DataSections = null;
 
             while (i < codeLen && continueParsing)
             {
@@ -119,30 +107,22 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
-                            if (header.CodeSize == 0)
+                            if (CodeSections is null || CodeSections == 0)
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
+                                    _logger.Trace($"EIP-3540 : No Codesection found");
                                 }
                                 header = null; return false;
                             }
 
+                            header.CodeSize = CodeSections.Value;
+                            header.DataSize = DataSections ?? 0;
                             continueParsing = false;
                             break;
                         }
                     case SectionDividor.CodeSection:
                         {
-                            // code-section must come first and there can be only one data-section
-                            if (header.CodeSize > 0)
-                            {
-                                if (LoggingEnabled)
-                                {
-                                    _logger.Trace($"EIP-3540 : container must have exactly 1 CodeSection but found more");
-                                }
-                                header = null; return false;
-                            }
-
                             if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
@@ -152,10 +132,10 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var codeSectionSlice = code.Slice(i, 2);
-                            header.CodeSize = (ushort)((codeSectionSlice[0] << 8) | codeSectionSlice[1]);
+                            var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
+                            CodeSections = (UInt16)codeSectionSize;
 
-                            if (header.CodeSize == 0) // code section must be non-empty (i.e : size > 0)
+                            if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -170,15 +150,15 @@ namespace Nethermind.Evm
                     case SectionDividor.DataSection:
                         {
                             // data-section must come after code-section and there can be only one data-section
-                            if (header.CodeSize == 0)
+                            if (CodeSections is null)
                             {
                                 if (LoggingEnabled)
                                 {
-                                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {header.CodeSize}");
+                                    _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {0}");
                                 }
                                 header = null; return false;
                             }
-                            if (header.DataSize != 0)
+                            if (DataSections is not null)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -196,10 +176,10 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var dataSectionSlice = code.Slice(i, 2);
-                            header.DataSize = (ushort)((dataSectionSlice[0] << 8) | dataSectionSlice[1]);
+                            var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
+                            DataSections = (UInt16)dataSectionSize;
 
-                            if (header.DataSize == 0) // if declared data section must be non-empty
+                            if (dataSectionSize == 0) // if declared data section must be non-empty
                             {
                                 if (LoggingEnabled)
                                 {
@@ -223,8 +203,10 @@ namespace Nethermind.Evm
                 }
             }
             var contractBody = code[i..];
-            var calculatedCodeLen = (int)header.CodeSize + (int)header.DataSize;
-            if (header.CodeSize == 0 || contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+
+            var calculatedCodeLen = header.CodeSize + header.DataSize;
+
+            if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
             {
                 if (LoggingEnabled)
                 {
@@ -235,6 +217,20 @@ namespace Nethermind.Evm
             return true;
         }
 
-        public bool ValidateEofCode(ReadOnlySpan<byte> code) => ExtractHeader(code, out _);
+        public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code) => ExtractHeader(code, spec, out _);
+        public bool ValidateInstructions(ReadOnlySpan<byte> container, out EofHeader header, IReleaseSpec spec)
+        {
+            if (!spec.IsEip3540Enabled)
+            {
+                header = null;
+                return false;
+            }
+
+            if (ExtractHeader(container, spec, out header))
+            {
+                return true;
+            }
+            return false;
+        }
     }
 }
