@@ -2399,13 +2399,6 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
-                            if (spec.IsEip3670Enabled && !ByteCodeValidator.IsEOFCode(initCode, spec, out _))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
                             {

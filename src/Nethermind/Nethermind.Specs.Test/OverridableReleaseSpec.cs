@@ -152,7 +152,31 @@ namespace Nethermind.Specs.Test
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
         public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
-        public bool IsEip3670Enabled => _spec.IsEip3670Enabled;
-        public bool IsEip3540Enabled => _spec.IsEip3540Enabled;
+
+        private bool? _overridenEip3540Status;
+        public bool IsEip3540Enabled
+        {
+            get
+            {
+                return _overridenEip3540Status ?? _spec.IsEip3540Enabled;
+            }
+            set
+            {
+                _overridenEip3540Status = value;
+            }
+        }
+
+        private bool? _overridenEip3670Status;
+        public bool IsEip3670Enabled
+        {
+            get
+            {
+                return _overridenEip3670Status ?? _spec.IsEip3670Enabled;
+            }
+            set
+            {
+                _overridenEip3670Status = value;
+            }
+        }
     }
 }

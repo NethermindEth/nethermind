@@ -34,151 +34,24 @@ using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs.Test;
+using System.Text.Json;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
+using Castle.DynamicProxy.Contributors;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EvmObjectFormatTests : VirtualMachineTestsBase
+    public class EOF3670Tests
     {
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Shanghai.Instance);
-        static byte[] Classicalcode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? data.Length : 0) + bytecode.Length];
+        private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
 
-            Array.Copy(bytecode, 0, bytes, 0, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, bytecode.Length, data.Length);
-            }
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
 
-            return bytes;
-        }
-        static byte[] EofBytecode(byte[] bytecode, byte[] data = null)
-        {
-            var bytes = new byte[(data is not null && data.Length > 0 ? 10 + data.Length : 7) + bytecode.Length];
-
-            int i = 0;
-
-            // set magic
-            bytes[i++] = 0xEF; bytes[i++] = 0x00; bytes[i++] = 0x01;
-
-            // set code section
-            var lenBytes = bytecode.Length.ToByteArray();
-            bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-
-            // set PushData section
-            if (data is not null && data.Length > 0)
-            {
-                lenBytes = data.Length.ToByteArray();
-                bytes[i++] = 0x02; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-            }
-            bytes[i++] = 0x00;
-
-            // set the terminator byte
-            Array.Copy(bytecode, 0, bytes, i, bytecode.Length);
-            if (data is not null && data.Length > 0)
-            {
-                Array.Copy(data, 0, bytes, i + bytecode.Length, data.Length);
-            }
-
-            return bytes;
-        }
-
-        // valid code
-        [TestCase("0xEF00010100010000", true, 1, 0, true)]
-        [TestCase("0xEF0001010002006000", true, 2, 0, true)]
-        [TestCase("0xEF0001010002020001006000AA", true, 2, 1, true)]
-        [TestCase("0xEF0001010002020004006000AABBCCDD", true, 2, 4, true)]
-        [TestCase("0xEF00010100040200020060006001AABB", true, 4, 2, true)]
-        [TestCase("0xEF000101000602000400600060016002AABBCCDD", true, 6, 4, true)]
-        // code with invalid magic
-        [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete Magic")]
-        [TestCase("0xEF01", false, 0, 0, true, Description = "Incorrect Magic second byte")]
-        [TestCase("0xEF0101010002020004006000AABBCCDD", false, 0, 0, true, Description = "Valid code with wrong magic second byte")]
-        // code with valid magic but invalid body
-        [TestCase("0xEF0000010002020004006000AABBCCDD", false, 0, 0, true, Description = "Invalid Version")]
-        [TestCase("0xEF00010100", false, 0, 0, true, Description = "Code section missing")]
-        [TestCase("0xEF0001010002006000DEADBEEF", false, 0, 0, true, Description = "Invalid total Size")]
-        [TestCase("0xEF00010100020100020060006000", false, 0, 0, true, Description = "Multiple Code sections")]
-        [TestCase("0xEF000101000002000200AABB", false, 0, 0, true, Description = "Empty code section")]
-        [TestCase("0xEF000102000401000200AABBCCDD6000", false, 0, 0, true, Description = "Data section before code section")]
-        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "Data Section size Missing")]
-        [TestCase("0xEF0001010002020004020004006000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple Data sections")]
-        [TestCase("0xEF0001010002030004006000AABBCCDD", false, 0, 0, true, Description = "Unknown Section")]
-        // tests proposed on the eip paper
-        [TestCase("0xEF", false, 0, 0, true, Description = "Incomplete magic")]
-        [TestCase("0xEFFF0101000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid magic")]
-        [TestCase("0xEF00", false, 0, 0, true, Description = "No version")]
-        [TestCase("0xEF000001000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF000201000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF00FF01000302000400600000AABBCCDD", false, 0, 0, true, Description = "Invalid version")]
-        [TestCase("0xEF0001", false, 0, 0, true, Description = "No header")]
-        [TestCase("0xEF000100", false, 0, 0, true, Description = "No code section")]
-        [TestCase("0xEF000101", false, 0, 0, true, Description = "No code section size")]
-        [TestCase("0xEF00010100", false, 0, 0, true, Description = "Code section size incomplete")]
-        [TestCase("0xEF0001010003", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF0001010003600000", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF000101000200", false, 0, 0, true, Description = "No code section contents")]
-        [TestCase("0xEF00010100020060", false, 0, 0, true, Description = "Code section contents incomplete")]
-        [TestCase("0xEF000101000300600000DEADBEEF", false, 0, 0, true, Description = "Trailing bytes after code section")]
-        [TestCase("0xEF000101000301000300600000600000", false, 0, 0, true, Description = "Multiple code sections")]
-        [TestCase("0xEF000101000000", false, 0, 0, true, Description = "Empty code section")]
-        [TestCase("0xEF000101000002000200AABB", false, 0, 0, true, Description = "Empty code section (with non-empty data section)")]
-        [TestCase("0xEF000102000401000300AABBCCDD600000", false, 0, 0, true, Description = "Data section preceding code section")]
-        [TestCase("0xEF000102000400AABBCCDD", false, 0, 0, true, Description = "Data section without code section")]
-        [TestCase("0xEF000101000202", false, 0, 0, true, Description = "No data section size")]
-        [TestCase("0xEF00010100020200", false, 0, 0, true, Description = "Data section size incomplete")]
-        [TestCase("0xEF0001010003020004", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF0001010003020004600000AABBCCDD", false, 0, 0, true, Description = "No section terminator")]
-        [TestCase("0xEF000101000302000400600000", false, 0, 0, true, Description = "No data section contents")]
-        [TestCase("0xEF000101000302000400600000AABBCC", false, 0, 0, true, Description = "Data section contents incomplete")]
-        [TestCase("0xEF000101000302000400600000AABBCCDDEE", false, 0, 0, true, Description = "Trailing bytes after data section")]
-        [TestCase("0xEF000101000302000402000400600000AABBCCDDAABBCCDD", false, 0, 0, true, Description = "Multiple data sections")]
-        [TestCase("0xEF000101000101000102000102000100FEFEAABB", false, 0, 0, true, Description = "Multiple code and data sections")]
-        [TestCase("0xEF000101000302000000600000", false, 0, 0, true, Description = "Empty data section")]
-        [TestCase("0xEF0001010002030004006000AABBCCDD", false, 0, 0, true, Description = "Unknown section (id = 3)")]
-        public void EOF_Compliant_formats_Test(string code, bool isCorrectFormated, int codeSize, int dataSize, bool isShanghaiFork)
-        {
-            var bytecode = Prepare.EvmCode
-                .FromCode(code)
-                .Done;
-
-            ReleaseSpec spec = (ReleaseSpec)(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
-            spec.IsEip3670Enabled = false;
-
-            var expectedHeader = codeSize == 0 && dataSize == 0
-                ? null
-                : new EofHeader
-                {
-                    CodeSize = (ushort)codeSize,
-                    DataSize = (ushort)dataSize
-                };
-            var checkResult = ValidateByteCode(bytecode, spec, out var header);
-
-            if (isShanghaiFork)
-            {
-                header.Should().Be(expectedHeader);
-                checkResult.Should().Be(isCorrectFormated);
-            }
-            else
-            {
-                checkResult.Should().Be(isCorrectFormated);
-            }
-        }
-
-        public class TestCase
-        {
-            public int Index;
-            public byte[] Code;
-            public byte[] Data;
-            public (byte Status, string error) ResultIfEOF;
-            public (byte Status, string error) ResultIfNotEOF;
-            public string Description;
-        }
-
-        public static IEnumerable<TestCase> Eip3540TestCases
+        public static IEnumerable<TestCase> Eip3670TestCases
         {
             get
             {
@@ -191,10 +64,10 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSIZE)
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
-                            .Op(Instruction.STOP)
                             .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "Last opcode is not a terminating opcode"
                 };
 
                 yield return new TestCase
@@ -343,7 +216,26 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "EOF1 execution with data section: Try to jump into data section"
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .PushData(4)
+                            .Op(Instruction.JUMP)
+                            .Op(Instruction.CODESIZE)
+                            .Done,
+                    Data = Prepare.EvmCode
+                            .Op(Instruction.JUMPDEST)
+                            .PushData(1)
+                            .PushData(0)
+                            .Op(Instruction.MSTORE8)
+                            .Return(1, 0)
+                            .Done,
+                    ResultIfEOF = (StatusCode.Failure, "End Instruction is not a terminal opcode"),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Try to jump into data section"
                 };
@@ -363,7 +255,27 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "InvalidJumpDestination"),
+                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
+                    ResultIfNotEOF = (StatusCode.Success, null),
+                    Description = "EOF1 execution : Try to conditinally jump into data section"
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .PushData(1)
+                            .PushData(6)
+                            .Op(Instruction.JUMPI)
+                            .Op(Instruction.CODESIZE)
+                            .Done,
+                    Data = Prepare.EvmCode
+                            .Op(Instruction.JUMPDEST)
+                            .PushData(1)
+                            .PushData(0)
+                            .Op(Instruction.MSTORE8)
+                            .Return(1, 0)
+                            .Done,
+                    ResultIfEOF = (StatusCode.Failure, "Missing End Instruction"),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Try to conditinally jump into data section"
                 };
@@ -570,51 +482,73 @@ namespace Nethermind.Evm.Test
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : includes PUSHx Intructions"
                 };
+
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                            .Op(0xfb) // works as long as 0xfb is not defined yet
+                            .PushData(new byte[] { 23, 69 })
+                            .Return(2, 0)
+                            .Done,
+                    ResultIfEOF = (StatusCode.Failure, "Undefined Opcode"),
+                    ResultIfNotEOF = (StatusCode.Failure, "Undefined Opcode"),
+                    Description = "EOF1 execution : includes PUSHx Intructions"
+                };
             }
         }
 
-        public static IEnumerable<IReleaseSpec> Specs
+
+        // valid code
+        [TestCase("0xEF000101000100FE", true)]
+        [TestCase("0xEF00010100050060006000F3", true)]
+        [TestCase("0xEF00010100050060006000FD", true)]
+        [TestCase("0xEF0001010003006000FF", true)]
+        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
+        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
+        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
+        // code with invalid magic
+        [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
+        [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
+        [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF00010100010030", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
+        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
+        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated)
         {
-            get
-            {
-                yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
-            }
+            var bytecode = Prepare.EvmCode
+                .FromCode(code)
+                .Done;
+
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+
+            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
+
+            checkResult.Should().Be(isCorrectlyFormated);
         }
 
         [Test]
-        public void EOF_execution_tests([ValueSource(nameof(Eip3540TestCases))] TestCase testcase, [ValueSource(nameof(Specs))] IReleaseSpec spec)
+        public void Eip3670_execution_tests([ValueSource(nameof(Eip3670TestCases))] TestCase testcase)
         {
-            bool isShanghaiBlock = spec is Shanghai;
-            long blockTestNumber = isShanghaiBlock ? BlockNumber : BlockNumber - 1;
+            var bytecode = testcase.GenerateCode(true);
 
-            var bytecode =
-                isShanghaiBlock
-                ? EofBytecode(testcase.Code, testcase.Data)
-                : Classicalcode(testcase.Code, testcase.Data);
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(bytecode);
 
-            TestAllTracerWithOutput receipts = Execute(blockTestNumber, Int64.MaxValue, bytecode, Int64.MaxValue);
-
-            if (isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfEOF.error, testcase.Description);
-            }
-
-            if (!isShanghaiBlock)
-            {
-                receipts.StatusCode.Should().Be(testcase.ResultIfNotEOF.Status, testcase.Description);
-                receipts.Error.Should().Be(testcase.ResultIfNotEOF.error, testcase.Description);
-            }
+            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description}");
         }
 
-        public static IEnumerable<TestCase> Eip3540TxTestCases
+        public static IEnumerable<TestCase> Eip3670TxTestCases
         {
             get
             {
                 int idx = 0;
                 byte[] salt = { 4, 5, 6 };
-                var standardCode = Prepare.EvmCode.ADD(2, 3).STOP().Done;
+                var standardCode = Prepare.EvmCode
+                    .MUL(23, 3)
+                    .STOP() // for EIP-3670 End instruction condition
+                    .Done;
+
                 var standardData = new byte[] { 0xaa };
 
                 byte[] corruptBytecode(bool isEof, byte[] arg)
@@ -635,54 +569,70 @@ namespace Nethermind.Evm.Test
                     }
                 }
 
-                byte[] EmitBytecode(byte[] deployed, byte[] deployedData, bool hasEofContainer, bool hasEofInitCode, bool hasCorruptContainer, bool hasCorruptInitcode, int context)
+                byte[] EmitBytecode(byte[] deployed, byte[] deployedData,
+                    bool hasEofContainer, bool hasEofInitCode, bool hasEofCode,
+                    bool hasCorruptContainer, bool hasCorruptInitcode, bool hasCorruptCode,
+                    int context)
                 {
                     // if initcode should be EOF
-                    if (hasEofInitCode)
+                    if (hasEofCode)
                     {
-                        deployed = EofBytecode(deployed, deployedData);
+                        deployed = TestCase.EofBytecode(deployed, deployedData);
                     }
                     // if initcode should be Legacy
                     else
                     {
-                        deployed = Classicalcode(deployed, deployedData);
+                        deployed = TestCase.Classicalcode(deployed, deployedData);
+                    }
+
+                    // if initcode should be corrupt
+                    if (hasCorruptCode)
+                    {
+                        deployed = corruptBytecode(hasEofCode, deployed);
+                    }
+
+                    var initcode = Prepare.EvmCode
+                        .StoreDataInMemory(0, deployed)
+                        .RETURN(0, (UInt256)deployed.Length)
+                        .Done;
+
+                    if (hasEofInitCode)
+                    {
+                        initcode = TestCase.EofBytecode(initcode);
+                    }
+                    else
+                    {
+                        initcode = TestCase.Classicalcode(initcode);
                     }
 
                     // if initcode should be corrupt
                     if (hasCorruptInitcode)
                     {
-                        deployed = corruptBytecode(hasEofInitCode, deployed);
+                        initcode = corruptBytecode(hasEofInitCode, initcode);
                     }
 
                     // wrap initcode in container
                     byte[] result = context switch
                     {
-                        1 => Prepare.EvmCode
-                                .MSTORE(0, deployed)
-                                .CREATEx(1, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
-                                .STOP()
-                                .Done,
-                        2 => Prepare.EvmCode
-                                .MSTORE(0, deployed)
-                                .PUSHx(salt)
-                                .CREATEx(2, UInt256.Zero, (UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
-                                .STOP()
-                                .Done,
-                        _ => Prepare.EvmCode
-                                .MSTORE(0, deployed)
-                                .RETURN((UInt256)(32 - deployed.Length), (UInt256)deployed.Length)
-                                .Done,
+                        1 => Prepare.EvmCode.Create(initcode, UInt256.Zero).STOP().Done,
+                        2 => Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).STOP().Done,
+                        _ => initcode,
                     };
+
+                    if (context == 0)
+                    {
+                        return result;
+                    }
 
                     // if container should be EOF
                     if (hasEofContainer)
                     {
-                        result = EofBytecode(result);
+                        result = TestCase.EofBytecode(result);
                     }
                     // if initcode should be Legacy
                     else
                     {
-                        result = Classicalcode(result);
+                        result = TestCase.Classicalcode(result);
                     }
 
                     // if container should be corrupt
@@ -690,28 +640,32 @@ namespace Nethermind.Evm.Test
                     {
                         result = corruptBytecode(hasEofContainer, result);
                     }
-
                     return result;
-
                 }
-                for (int i = 0; i < 4; i++) // 00 01 10 11
+                for (int i = 0; i < 8; i++) // 00 01 10 11
                 {
                     bool hasEofContainer = (i & 1) == 1;
                     bool hasEofInnitcode = (i & 2) == 2;
+                    bool hasEofDeployCode = (i & 4) == 4;
                     for (int j = 0; j < 3; j++)
                     {
+                        bool classicDep = j == 0;
                         bool useCreate1 = j == 1;
                         bool useCreate2 = j == 2;
-                        for (int k = 0; k < 4; k++) // 00 01 10 11
+                        for (int k = 0; k < 8; k++) // 00 01 10 11
                         {
                             bool corruptContainer = (k & 1) == 1;
                             bool corruptInnitcode = (k & 2) == 2;
+                            bool corruptDeploycode = (k & 2) == 4;
                             yield return new TestCase
                             {
                                 Index = idx++,
-                                Code = EmitBytecode(standardCode, standardData, hasEofContainer, hasEofInnitcode, corruptContainer, corruptInnitcode, k),
-                                ResultIfEOF = (corruptContainer ? StatusCode.Failure : StatusCode.Success, null),
-                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE"
+                                Code = EmitBytecode(standardCode, standardData,
+                                    hasEofContainer, hasEofInnitcode, hasEofDeployCode,
+                                    corruptContainer, corruptInnitcode, corruptDeploycode,
+                                    context: j),
+                                ResultIfEOF = ((classicDep ? corruptInnitcode : corruptContainer) || corruptInnitcode || corruptDeploycode ? StatusCode.Failure : StatusCode.Success, null),
+                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofDeployCode ? String.Empty : "NON-")}EOF innercode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE and {(corruptDeploycode ? String.Empty : "Not")} Corrupted CODE"
                             };
                         }
                     }
@@ -719,50 +673,13 @@ namespace Nethermind.Evm.Test
             }
         }
 
-
-
         [Test]
-        public void EOF_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
+        public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
         {
-            TestState.CreateAccount(TestItem.AddressC, 200.Ether());
-            byte[] createContract = testcase.Code;
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
-
-            transaction.GasPrice = 100.GWei();
-            TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
-
-            Assert.AreEqual(testcase.ResultIfEOF.Status, tracer.StatusCode, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
 
-        // valid code
-        [TestCase("0xEF000101000100FE", true, true)]
-        [TestCase("0xEF00010100050060006000F3", true, true)]
-        [TestCase("0xEF00010100050060006000FD", true, true)]
-        [TestCase("0xEF0001010003006000FF", true, true)]
-        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true, true)]
-        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true, true)]
-        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true, true)]
-        // code with invalid magic
-        [TestCase("0xEF0001010001000C", false, true, Description = "Undefined instruction")]
-        [TestCase("0xEF000101000100EF", false, true, Description = "Undefined instruction")]
-        [TestCase("0xEF00010100010060", false, true, Description = "Missing terminating instruction")]
-        [TestCase("0xEF00010100010030", false, true, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
-        [TestCase("EF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, true, Description = "Missing terminating instruction")]
-        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated, bool isShanghaiFork)
-        {
-            var bytecode = Prepare.EvmCode
-                .FromCode(code)
-                .Done;
-
-            IReleaseSpec spec = isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance;
-
-            bool checkResult = ValidateByteCode(bytecode, spec, out _);
-
-            checkResult.Should().Be(isCorrectlyFormated);
-        }
     }
 }
