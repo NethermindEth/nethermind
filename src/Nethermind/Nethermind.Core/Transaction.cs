@@ -72,11 +72,11 @@ namespace Nethermind.Core
 
         private int? _size = null;
         /// <summary>
-        /// Encoded transaction size
+        /// Encoded transaction length
         /// </summary>
-        public int GetSize(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator)
         {
-            return _size ??= sizeCalculator.CalculateSize(this);
+            return _size ??= sizeCalculator.GetLength(this);
         }
 
         public string ToShortString()
@@ -134,6 +134,6 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int CalculateSize(Transaction tx);
+        int GetLength(Transaction tx);
     }
 }

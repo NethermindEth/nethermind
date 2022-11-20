@@ -24,7 +24,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
     {
-        public int CalculateSize(Transaction tx)
+        public int GetLength(Transaction tx)
         {
             return GetLength(tx, RlpBehaviors.None);
         }

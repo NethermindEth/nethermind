@@ -1,3 +1,4 @@
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,7 +12,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
 {
     private static void Test(TxType[] types, int[] sizes, Keccak[] hashes, string expected = null)
     {
-        NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
+        NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToList(), sizes, hashes);
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
         SerializerTester.TestZero(serializer, message, expected);
@@ -58,7 +59,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     public void Empty_to_string()
     {
         NewPooledTransactionHashesMessage68 message
-            = new(new TxType[] { }, new int[] { }, new Keccak[] { });
+            = new(new byte[] { }, new int[] { }, new Keccak[] { });
         _ = message.ToString();
     }
 }

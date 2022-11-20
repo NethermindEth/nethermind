@@ -16,7 +16,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -29,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         {
             NettyRlpStream rlpStream = new(byteBuffer);
             rlpStream.ReadSequenceLength();
-            TxType[] types = rlpStream.DecodeByteArray().Select(v => (TxType)v).ToArray();
+            byte[] types = rlpStream.DecodeByteArray();
             int[] sizes = rlpStream.DecodeArray(item => item.DecodeInt());
             Keccak[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
@@ -37,9 +36,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
-            byte[] types = message.Types.Select(v => (byte)v).ToArray();
-            int sizesLength = message.Sizes.Aggregate(0, (i, u) => i + Rlp.LengthOf(u));
-            int hashesLength = message.Hashes.Aggregate(0, (i, keccak) => i + Rlp.LengthOf(keccak));
+            byte[] types = message.Types.ToArray();
+            int sizesLength = 0;
+            for (int i = 0; i < message.Sizes.Count; i++)
+            {
+                sizesLength += Rlp.LengthOf(message.Sizes[i]);
+            }
+
+            int hashesLength = 0;
+            for (int i = 0; i < message.Hashes.Count; i++)
+            {
+                hashesLength += Rlp.LengthOf(message.Hashes[i]);
+            }
 
             int totalSize = Rlp.LengthOf(types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 

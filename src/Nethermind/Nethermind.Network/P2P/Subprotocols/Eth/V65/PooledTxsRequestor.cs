@@ -61,8 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         }
 
         public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send,
-            IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes,
-            IReadOnlyList<TxType> types)
+            IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, IReadOnlyList<byte> types)
         {
             // Ignore sizes and types for now
             RequestTransactionsEth66(send, hashes);

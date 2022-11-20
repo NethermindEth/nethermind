@@ -29,11 +29,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public override int PacketType { get; } = Eth68MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 
-        public readonly IReadOnlyList<TxType> Types;
+        public readonly IReadOnlyList<byte> Types;
         public readonly IReadOnlyList<int> Sizes;
         public readonly IReadOnlyList<Keccak> Hashes;
 
-        public NewPooledTransactionHashesMessage68(IReadOnlyList<TxType> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
+        public NewPooledTransactionHashesMessage68(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
         {
             Types = types;
             Sizes = sizes;

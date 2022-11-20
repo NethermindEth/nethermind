@@ -98,21 +98,21 @@ public class Eth68ProtocolHandlerTests
     [TestCase(100)]
     public void Can_handle_NewPooledTransactions_message(int txCount)
     {
-        GenerateLists(txCount, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes);
+        GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
 
         var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
         _pooledTxsRequestor.Received().RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<TxType>>());
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
     }
 
     [TestCase(true)]
     [TestCase(false)]
     public void Should_throw_when_sizes_doesnt_match(bool removeSize)
     {
-        GenerateLists(4, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes);
+        GenerateLists(4, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
 
         if (removeSize)
         {
@@ -138,14 +138,14 @@ public class Eth68ProtocolHandlerTests
 
         TxDecoder txDecoder = new();
 
-        var msg = new NewPooledTransactionHashesMessage68(new[] { tx.Type },
+        var msg = new NewPooledTransactionHashesMessage68(new[] { (byte)tx.Type },
             new[] { txDecoder.GetLength(tx, RlpBehaviors.None) }, new[] { tx.Hash });
 
         HandleIncomingStatusMessage();
 
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
         _pooledTxsRequestor.Received().RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<TxType>>());
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
     }
 
     private void HandleIncomingStatusMessage()
@@ -166,7 +166,7 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
 
-    private void GenerateLists(int txCount, out List<TxType> types, out List<int> sizes, out List<Keccak> hashes)
+    private void GenerateLists(int txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes)
     {
         TxDecoder txDecoder = new();
         types = new();
@@ -178,7 +178,7 @@ public class Eth68ProtocolHandlerTests
             Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
                 .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
 
-            types.Add(tx.Type);
+            types.Add((byte)tx.Type);
             sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
             hashes.Add(tx.Hash);
         }
