@@ -13,8 +13,9 @@ permissions:
   contents: write
 
 env:
-  RELEASE_PATH: ${{ github.workspace }}
   PACKAGE_DIR: pkg
+  PUB_DIR: pub
+  SCRIPTS_PATH: ${{ github.workspace }}/nethermind/scripts/deployment
 
 jobs:
   build:
@@ -54,104 +55,79 @@ jobs:
     - name: Build Nethermind.Runner
       id: build-runner
       run: |
-        cd nethermind/
         build_timestamp=$(date '+%s')
-        commit_hash=$(git describe --always --exclude=* --abbrev=40)
+        cd nethermind && commit_hash=$(git describe --always --exclude=* --abbrev=40) && cd ..
         echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH_SHORT=$(echo $commit_hash | awk '{print substr($0,0,8);}')" >> $GITHUB_OUTPUT
-        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
+        $SCRIPTS_PATH/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Build Nethermind.Cli
-      run: ./nethermind/scripts/deployment/build-cli.sh
+      run: $SCRIPTS_PATH/build-cli.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
     - name: Build Nethermind.Launcher
-      run: ./nethermind/scripts/deployment/build-launcher.sh
+      run: $SCRIPTS_PATH/build-launcher.sh
     - name: Build Nethermind.Launcher for Linux arm64
       run: |
-        cd nethermind/
+        cd nethermind
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-        mv Nethermind.Launcher ${{ env.RELEASE_PATH }}/linux-arm64/Nethermind.Launcher
+        mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
     - name: Archive packages
       id: archive
       env:
         PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.COMMIT_HASH_SHORT }}
       run: |
         echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
-        ./nethermind/scripts/deployment/archive-packages.sh
-    - name: Upload Nethermind Linux x64 package
-      uses: actions/upload-artifact@v3
+        $SCRIPTS_PATH/archive-packages.sh
+    - name: Cache packages
+      uses: actions/cache@v3
       with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-linux-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*linux-x64*
-    - name: Upload Nethermind Linux arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-linux-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
-    - name: Upload Nethermind Windows x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-win-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*win-x64*
-    - name: Upload Nethermind macOS x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-osx-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*osx-x64*
-    - name: Upload Nethermind macOS arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-osx-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}/*osx-arm64*
-    - name: Upload update-homebrew.sh
-      uses: actions/upload-artifact@v3
-      with:
-        name: update-homebrew-sh
-        path: ./nethermind/scripts/deployment/update-homebrew.sh  
+        path: |
+          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
+          ${{ env.SCRIPTS_PATH }}/
+        key: packages-${{ steps.build-runner.outputs.COMMIT_HASH }}
 
   update-homebrew:
     name: Update Homebrew to the latest version
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Download Nethermind macOS x64 package
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-x64-package
-          path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-      - name: Download Nethermind macOS arm64 package
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-arm64-package
-          path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-      - name: Download update-homebrew.sh
-        uses: actions/download-artifact@v3
-        with:
-          name: update-homebrew-sh
-          path: ${{ env.RELEASE_PATH }}/          
-      - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v3
-        with: 
-          repository: NethermindEth/homebrew-nethermind
-          path: homebrew-nethermind
-      - name: Update Homebrew file with new version, commit, and date
-        env:
-          PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
-          VERSION: ${{ github.event.inputs.tag }}
-        run: | 
-          chmod +x ${{ env.RELEASE_PATH }}/update-homebrew.sh
-          bash ${{ env.RELEASE_PATH }}/update-homebrew.sh
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@v4
-        with:
-          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-          commit-message: Update Homebrew to latest release
-          title: '[Release] Update Homebrew'
-          reviewers: falcoxyz, AntiD2ta, matilote
-          draft: false
-          path: homebrew-nethermind
-          add-paths: |
-            nethermind.rb
+    - name: Restore packages from cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
+          ${{ env.SCRIPTS_PATH }}/
+        key: packages-${{ needs.build.outputs.COMMIT_HASH }}
+    - name: Check out homebrew-nethermind repository
+      uses: actions/checkout@v3
+      with:
+        repository: NethermindEth/homebrew-nethermind
+        path: homebrew-nethermind
+    - name: Update Homebrew file
+      env:
+        PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
+        VERSION: ${{ github.event.inputs.tag }}
+      run: | 
+        cd $GITHUB_WORKSPACE/$PACKAGE_DIR
+        macos_x64_hash="$(shasum -a 256 $PACKAGE_PREFIX-macos-x64.zip | awk '{print $1}')"
+        macos_arm64_hash="$(shasum -a 256 $PACKAGE_PREFIX-macos-arm64.zip | awk '{print $1}')"
+        echo $macos_x64_hash $macos_arm64_hash
+        cd $GITHUB_WORKSPACE/homebrew-nethermind
+        sed -i "s/app_version =.*/app_version = '"$VERSION"'/" nethermind.rb
+        sed -i "s/package_prefix =.*/package_prefix = '"PACKAGE_PREFIX"'/" nethermind.rb
+        awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_x64_hash'\""); } 1' nethermind.rb
+        awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_arm64_hash'\""); } 1' nethermind.rb
+    - name: Create pull request
+      uses: peter-evans/create-pull-request@v4
+      with:
+        token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        commit-message: Update Homebrew to latest release
+        title: '[Release] Update Homebrew'
+        reviewers: falcoxyz, AntiD2ta, matilote
+        draft: false
+        path: homebrew-nethermind
+        add-paths: |
+          nethermind.rb
 
   trigger-publish:
     name: Trigger publish event to different sources
@@ -168,78 +144,33 @@ jobs:
     runs-on: ubuntu-latest
     needs: trigger-publish
     steps:
-    - name: Check out Nethermind repository
-      uses: actions/checkout@v3
+    - name: Restore packages from cache
+      uses: actions/cache@v3
       with:
-        ref: ${{ github.event.inputs.tag }}
-        path: nethermind
-        fetch-depth: 0
-    - name: Download Nethermind Linux package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-linux-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind Linux arm64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-linux-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind Windows x64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-win-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind macOS x64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind macOS arm64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
+        path: |
+          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
+          ${{ env.SCRIPTS_PATH }}/
+        key: packages-${{ needs.build.outputs.COMMIT_HASH }}
     - name: Publish
       env:
+        GIT_COMMIT: ${{ needs.build.outputs.COMMIT_HASH }}
         GIT_TAG: ${{ github.event.inputs.tag }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
-      run: ./nethermind/scripts/deployment/publish-github.sh
+      run: $SCRIPTS_PATH/publish-github.sh
 
   publish-downloads:
     name: Publish packages to Downloads page
     runs-on: ubuntu-latest
     needs: trigger-publish
     steps:
-    - name: Check out Nethermind repository
-      uses: actions/checkout@v3
+    - name: Restore packages from cache
+      uses: actions/cache@v3
       with:
-        path: nethermind
-    - name: Download Nethermind Linux x64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-linux-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind Linux arm64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-linux-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind Windows x64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-win-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind macOS x64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-x64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
-    - name: Download Nethermind macOS arm64 package
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ needs.build.outputs.PACKAGE_PREFIX }}-osx-arm64-package
-        path: ${{ env.RELEASE_PATH }}/${{ env.PACKAGE_DIR }}
+        path: |
+          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
+          ${{ env.SCRIPTS_PATH }}/
+        key: packages-${{ needs.build.outputs.COMMIT_HASH }}
     - name: Configure GPG Key
       run: |
         mkdir -p ~/.gnupg/
@@ -250,7 +181,7 @@ jobs:
         DOWNLOADS_PAGE: ${{ secrets.DOWNLOADS_API_KEY }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
         PASS: ${{ secrets.GPG_PASSWORD }}
-      run: ./nethermind/scripts/deployment/publish-downloads.sh
+      run: $SCRIPTS_PATH/publish-downloads.sh
 
   publish-dockers:
     name: Publish Docker images to Docker Hub
@@ -274,12 +205,12 @@ jobs:
       run: |
         echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
     - name: Build and push image to Docker registry (major) / trigger DAppNode build
-      if: ${{ !contains(github.event.inputs.tag, 'beta') && !contains(github.event.inputs.tag, 'unstable') }}
+      if: ${{ !contains(github.event.inputs.tag, '-') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
-        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
     - name: Build and push image to Docker registry  (patch)
-      if: ${{ contains(github.event.inputs.tag, 'beta') || contains(github.event.inputs.tag, 'unstable') }}
+      if: ${{ contains(github.event.inputs.tag, '-') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
@@ -315,5 +246,5 @@ jobs:
         path: nethermind
     - name: Publish to PPA
       run: | 
-        chmod +x ./nethermind/scripts/deployment/publish-ppa.sh
-        ./nethermind/scripts/deployment/publish-ppa.sh
+        chmod +x $SCRIPTS_PATH/publish-ppa.sh
+        $SCRIPTS_PATH/publish-ppa.sh

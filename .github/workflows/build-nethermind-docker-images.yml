@@ -44,7 +44,7 @@ jobs:
         if: github.event.inputs.tag == steps.settings.outputs.TAG_FROM_REPO
         run: |
           docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ github.event.inputs.repo }}:latest" -t "${{ github.event.inputs.repo }}:${{ github.event.inputs.tag }}" -f ${{ github.event.inputs.dockerfile }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
-          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
       - name: Build and push image to Docker registry  (patch)
         if: github.event.inputs.tag != steps.settings.outputs.TAG_FROM_REPO
         run: |

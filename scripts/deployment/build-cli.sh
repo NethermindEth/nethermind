@@ -1,41 +1,21 @@
 #!/bin/bash
-#exit when any command fails
+
 set -e
 
-CLI_PATH=$RELEASE_PATH/nethermind/src/Nethermind/Nethermind.Cli
-OUT=publish
+CLI_PATH=$GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Cli
+OUTPUT_PATH=$GITHUB_WORKSPACE/$PUB_DIR
 
 cd $CLI_PATH
 
-echo =======================================================
-echo Publishing Nethermind Cli for different platforms...
-echo =======================================================
-echo Nethermind Cli path: $CLI_PATH
+echo "Building Nethermind CLI v$1+${2:0:8}"
 
-dotnet publish -c release -r linux-x64 -o $OUT/linux-x64 --sc true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
-dotnet publish -c release -r linux-arm64 -o $OUT/linux-arm64 --sc true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
-dotnet publish -c release -r win-x64 -o $OUT/win-x64 --sc true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
-dotnet publish -c release -r osx-x64 -o $OUT/osx-x64 --sc true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
-dotnet publish -c release -r osx-arm64 -o $OUT/osx-arm64 --sc true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
+do
+  echo "  Publshing for $rid"
 
-echo =======================================================
-echo Packing Nethermind Cli for different platforms...
-echo =======================================================
+  dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
 
-rm $OUT/linux-x64/*.pdb
-rm $OUT/linux-arm64/*.pdb
-rm $OUT/win-x64/*.pdb
-rm $OUT/osx-x64/*.pdb
-rm $OUT/osx-arm64/*.pdb
+  rm -rf $OUTPUT_PATH/$rid/*.pdb
+done
 
-cp -r $OUT/linux-x64 $RELEASE_PATH
-cp -r $OUT/linux-arm64 $RELEASE_PATH
-cp -r $OUT/win-x64 $RELEASE_PATH
-cp -r $OUT/osx-x64 $RELEASE_PATH
-cp -r $OUT/osx-arm64 $RELEASE_PATH
-
-rm -rf $OUT
-
-echo =======================================================
-echo Building Nethermind Cli completed
-echo =======================================================
+echo "Build completed"
