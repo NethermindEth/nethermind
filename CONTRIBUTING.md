@@ -53,9 +53,11 @@ Branch names must follow `snake_case` pattern. Follow the pattern `<projectIfAny
 
 ## File Headers
 
-The following notice must be included in all source files if possible.
+The following notice must be included as a header in all source files if possible.
 
 ```
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 ```
+
+The `//` should be replaced depending on the file. For example, for Linux shell scripts, it is `#`.
