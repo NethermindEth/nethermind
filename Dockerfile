@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-jammy AS build
 
 ARG TARGETPLATFORM
