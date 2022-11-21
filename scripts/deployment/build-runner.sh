@@ -11,7 +11,7 @@ echo "Building Nethermind v$1+${2:0:8}"
 
 for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
 do
-  echo "  Publshing for $rid"
+  echo "  Publishing for $rid"
 
   dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
 
