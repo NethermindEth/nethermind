@@ -290,7 +290,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual Block GetGenesisBlock()
         {
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
-            if (GenesisBlockBuilder != null)
+            if (GenesisBlockBuilder is not null)
             {
                 genesisBlockBuilder = GenesisBlockBuilder;
             }

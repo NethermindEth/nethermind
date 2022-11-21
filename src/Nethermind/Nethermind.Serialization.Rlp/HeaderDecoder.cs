@@ -190,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = header.AuRaSignature != null;
+                bool isAuRa = header.AuRaSignature is not null;
                 if (isAuRa)
                 {
                     rlpStream.Encode(header.AuRaStep!.Value);
@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -248,7 +248,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature != null;
+                bool isAuRa = item.AuRaSignature is not null;
                 if (isAuRa)
                 {
                     contentLength += Rlp.LengthOf(item.AuRaStep!.Value);

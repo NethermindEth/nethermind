@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Receipts
             return ReceiptsRecoveryResult.Fail;
         }
 
-        public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (forceRecoverSender && receipts[0].Sender == null));
+        public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true) => receipts?.Length > 0 && (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
 
         private void RecoverReceiptData(IReleaseSpec releaseSpec, TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore, bool force)
         {

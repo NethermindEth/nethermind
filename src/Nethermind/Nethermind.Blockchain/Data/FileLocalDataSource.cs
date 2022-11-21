@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Data
             catch (PathTooLongException) { }
             catch (NotSupportedException) { }
 
-            if (fileInfo == null)
+            if (fileInfo is null)
             {
                 // file name is not valid
                 if (_logger.IsError) _logger.Error($"Invalid file path to watch: {filePath}.");

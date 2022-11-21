@@ -74,7 +74,7 @@ namespace Nethermind.Analytics
                 for (int i = 0; i < 16; i++)
                 {
                     Keccak childHash = node.GetChildHash(i);
-                    if (childHash != null)
+                    if (childHash is not null)
                     {
                         _ignoreThisOne.Add(childHash);
                     }

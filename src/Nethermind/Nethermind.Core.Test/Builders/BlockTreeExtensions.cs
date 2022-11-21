@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Builders
                 if (i == splitBlockNumber + 1)
                 {
                     Block? mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
-                    if (mainBlock != null)
+                    if (mainBlock is not null)
                         parent = mainBlock;
                 }
 

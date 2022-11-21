@@ -62,8 +62,8 @@ namespace Nethermind.Consensus.Tracing
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
         {
-            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
-            if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
+            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
+            if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
             _stateProvider.Accept(visitor, stateRoot);
         }

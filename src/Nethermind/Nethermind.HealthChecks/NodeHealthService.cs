@@ -72,7 +72,7 @@ namespace Nethermind.HealthChecks
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty != null)
+            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
             {
                 if (syncingResult.IsSyncing)
                 {

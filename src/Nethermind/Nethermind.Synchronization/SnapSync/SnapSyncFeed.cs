@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 (SnapSyncBatch request, bool finished) = _snapProvider.GetNextRequest();
 
-                if (request == null)
+                if (request is null)
                 {
                     if (finished)
                     {
@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
         {
-            if (batch == null)
+            if (batch is null)
             {
                 if (_logger.IsError) _logger.Error("Received empty batch as a response");
                 return SyncResponseHandlingResult.InternalError;
@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _snapProvider.RetryRequest(batch);
 
-                if (peer == null)
+                if (peer is null)
                 {
                     return SyncResponseHandlingResult.NotAssigned;
                 }
@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
         {
-            if (peer == null)
+            if (peer is null)
             {
                 return SyncResponseHandlingResult.OK;
             }

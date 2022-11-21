@@ -55,8 +55,8 @@ namespace Nethermind.Monitoring.Test
                 typeof(Nethermind.Trie.Metrics),
                 typeof(Nethermind.Trie.Pruning.Metrics),
             };
-            MetricsUpdater metricsUpdater = new(metricsConfig);
-            MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);
+            MetricsController metricsController = new(metricsConfig);
+            MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
             List<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics)).ToList();
             metrics.AddRange(knownMetricsTypes);
 
@@ -67,7 +67,7 @@ namespace Nethermind.Monitoring.Test
                     monitoringService.RegisterMetrics(metric);
                 }
 
-                metricsUpdater.UpdateMetrics(null);
+                metricsController.UpdateMetrics(null);
             });
         }
 
