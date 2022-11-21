@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.DataMarketplace.Providers.Plugins.Grpc;
 using Nethermind.DataMarketplace.Providers.Plugins.JsonRpc;
 using Nethermind.DataMarketplace.Providers.Plugins.WebApi;
