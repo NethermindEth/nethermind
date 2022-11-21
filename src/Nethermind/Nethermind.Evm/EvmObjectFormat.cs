@@ -243,7 +243,7 @@ namespace Nethermind.Evm
                     opcode = (Instruction)code[i];
                     i++;
                     // validate opcode
-                    if (!Enum.IsDefined(opcode.Value))
+                    if (!opcode.Value.IsValid(spec))
                     {
                         if (LoggingEnabled)
                         {
