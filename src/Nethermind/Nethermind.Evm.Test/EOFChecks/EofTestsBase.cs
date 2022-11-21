@@ -74,8 +74,7 @@ namespace Nethermind.Evm.Test
 
             _processor.Execute(transaction, block.Header, tracer);
 
-            var withInvalidCodeErrors = testcase.ResultIfEOF.Status == StatusCode.Failure;
-            Assert.AreEqual(withInvalidCodeErrors, tracer.ReportedActionErrors.Any(x => x != EvmExceptionType.InvalidCode || x != EvmExceptionType.BadInstruction), $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+            Assert.AreEqual(testcase.ResultIfEOF.Status == StatusCode.Failure, tracer.ReportedActionErrors.Any(x => x != EvmExceptionType.InvalidCode), $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
         }
 
         public class TestCase

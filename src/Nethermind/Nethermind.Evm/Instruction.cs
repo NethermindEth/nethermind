@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
@@ -50,9 +51,9 @@ namespace Nethermind.Evm
         XOR = 0x18,
         NOT = 0x19,
         BYTE = 0x1a,
-        SHL = 0x1b, // EIP-145
-        SHR = 0x1c, // EIP-145
-        SAR = 0x1d, // EIP-145
+        SHL = 0x1b, // ShiftOpcodesEnabled
+        SHR = 0x1c, // ShiftOpcodesEnabled
+        SAR = 0x1d, // ShiftOpcodesEnabled
 
         SHA3 = 0x20,
 
@@ -69,9 +70,9 @@ namespace Nethermind.Evm
         GASPRICE = 0x3a,
         EXTCODESIZE = 0x3b,
         EXTCODECOPY = 0x3c,
-        RETURNDATASIZE = 0x3d,
-        RETURNDATACOPY = 0x3e,
-        EXTCODEHASH = 0x3f,
+        RETURNDATASIZE = 0x3d, // ReturnDataOpcodesEnabled
+        RETURNDATACOPY = 0x3e, // ReturnDataOpcodesEnabled
+        EXTCODEHASH = 0x3f, // ExtCodeHashOpcodeEnabled
 
         BLOCKHASH = 0x40,
         COINBASE = 0x41,
@@ -79,9 +80,9 @@ namespace Nethermind.Evm
         NUMBER = 0x43,
         PREVRANDAO = 0x44,
         GASLIMIT = 0x45,
-        CHAINID = 0x46,
-        SELFBALANCE = 0x47,
-        BASEFEE = 0x48,
+        CHAINID = 0x46, // ChainIdOpcodeEnabled
+        SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
+        BASEFEE = 0x48, // BaseFeeEnabled
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -95,17 +96,13 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
-        RJUMP = 0x5c,
-        RJUMPI = 0x5d,
-        BEGINSUB = 0x5c,
-        RETURNSUB = 0x5d,
-        JUMPSUB = 0x5e,
+        RJUMP = 0x5c, // RelativeStaticJumps
+        RJUMPI = 0x5d, // RelativeStaticJumps
+        BEGINSUB = 0x5c, // SubroutinesEnabled
+        RETURNSUB = 0x5d, // SubroutinesEnabled
+        JUMPSUB = 0x5e, // SubroutinesEnabled
 
-        // alt values to avoid collision
-        RETF = 0x49, // EIP-4750 altered version : collision with PUSH0
-        CALLF = 0x5e, // EIP-4750
-
-        PUSH0 = 0x5f, // EIP-3855
+        PUSH0 = 0x5f, // IncludePush0Instruction
         PUSH1 = 0x60,
         PUSH2 = 0x61,
         PUSH3 = 0x62,
@@ -180,29 +177,58 @@ namespace Nethermind.Evm
         LOG4 = 0xa4,
 
         // EIP-1153
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
+        TLOAD = 0xb3, // TransientStorageEnabled
+        TSTORE = 0xb4, //TransientStorageEnabled
 
         CREATE = 0xf0,
         CALL = 0xf1,
+        RETF = 0x49, // FunctionSection
+        CALLF = 0x5e, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
-        DELEGATECALL = 0xf4,
-        CREATE2 = 0xf5,
-        STATICCALL = 0xfa,
-        REVERT = 0xfd,
+        DELEGATECALL = 0xf4, // DelegateCallEnabled
+        CREATE2 = 0xf5, // Create2OpcodeEnabled
+        STATICCALL = 0xfa, // StaticCallEnabled
+        REVERT = 0xfd, // RevertOpcodeEnabled
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
 
     public static class InstructionExtensions
     {
+        public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
+        {
+            if (!FastEnum.IsDefined(instruction))
+            {
+                return false;
+            }
+
+            return instruction switch
+            {
+                Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
+                Instruction.REVERT => spec.RevertOpcodeEnabled,
+                Instruction.STATICCALL => spec.StaticCallEnabled,
+                Instruction.CREATE2 => spec.Create2OpcodeEnabled,
+                Instruction.DELEGATECALL => spec.DelegateCallEnabled,
+                Instruction.PUSH0 => spec.IncludePush0Instruction,
+                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
+                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled => true,
+                Instruction.CALLF or Instruction.RETF when spec.FunctionSections => true,
+                Instruction.BASEFEE => spec.BaseFeeEnabled,
+                Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
+                Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
+                Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
+                Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
+                Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
+                _ => true
+            };
+        }
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
         {
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.PREVRANDAO => isPostMerge ? FastEnum.GetName(instruction) : "DIFFICULTY",
+                Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
                 Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
@@ -210,4 +236,3 @@ namespace Nethermind.Evm
         }
     }
 }
-
