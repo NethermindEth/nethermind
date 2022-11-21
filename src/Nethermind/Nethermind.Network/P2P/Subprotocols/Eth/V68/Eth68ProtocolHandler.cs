@@ -78,16 +78,14 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
     {
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
+            string errorMessage = $"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
+                                  $"Hashes count: {message.Hashes.Count} " +
+                                  $"Types count: {message.Types.Count} " +
+                                  $"Sizes count: {message.Sizes.Count}";
             if (Logger.IsTrace)
-                Logger.Trace($"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
-                             $"Hashes count: {message.Hashes.Count} " +
-                             $"Types count: {message.Types.Count} " +
-                             $"Sizes count: {message.Sizes.Count}");
+                Logger.Trace(errorMessage);
 
-            throw new SubprotocolException($"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
-                                           $"Hashes count: {message.Hashes.Count} " +
-                                           $"Types count: {message.Types.Count} " +
-                                           $"Sizes count: {message.Sizes.Count}");
+            throw new SubprotocolException(errorMessage);
         }
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
@@ -111,10 +109,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             return;
         }
 
-        int txCount = txs.Count();
-        ArrayPoolList<byte> types = new(txCount);
-        ArrayPoolList<int> sizes = new(txCount);
-        ArrayPoolList<Keccak> hashes = new(txCount);
+        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
