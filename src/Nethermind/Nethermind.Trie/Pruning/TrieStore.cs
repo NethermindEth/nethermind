@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -145,8 +144,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
-        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-        private readonly ResettableList<Keccak> _nodesToRemoveOnPruning = new();
+        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -497,8 +495,10 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
+
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
+            List<Keccak> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
             foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
@@ -514,7 +514,7 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
-                    _nodesToRemoveOnPruning.Add(key);
+                    toRemove.Add(key);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -526,7 +526,7 @@ namespace Nethermind.Trie.Pruning
                         throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    _nodesToRemoveOnPruning.Add(key);
+                    toRemove.Add(key);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -537,12 +537,10 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            for (int index = 0; index < _nodesToRemoveOnPruning.Count; index++)
+            for (int index = 0; index < toRemove.Count; index++)
             {
-                _dirtyNodes.Remove(_nodesToRemoveOnPruning[index]);
+                _dirtyNodes.Remove(toRemove[index]);
             }
-
-            _nodesToRemoveOnPruning.Reset();
 
             MemoryUsedByDirtyCache = newMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
