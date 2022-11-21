@@ -27,7 +27,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.State;
 using Org.BouncyCastle.Crypto;
@@ -68,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
-                if (tx != null)
+                if (tx is not null)
                 {
                     yield return tx;
                 }

@@ -87,8 +87,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public Task<IBlockProducer> BuildProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
         {
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
@@ -110,20 +110,21 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _auraConfig,
                 gasLimitCalculator,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                _api.ConfigProvider.GetConfig<IMiningConfig>());
 
             return Task.FromResult(blockProducer);
         }
 
         private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
         {
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.ValidatorStore is null) throw new StepDependencyException(nameof(_api.ValidatorStore));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
@@ -185,7 +186,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
-            if (_txPriorityContract != null || _localDataSource != null)
+            if (_txPriorityContract is not null || _localDataSource is not null)
             {
                 _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);
@@ -349,9 +350,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 return false;
             }
 
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource) };
             bool needSigner = false;
@@ -372,7 +373,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
 
             ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
-            if (txPermissionFilter != null)
+            if (txPermissionFilter is not null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
                 txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, _api.LogManager);
@@ -383,7 +384,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =

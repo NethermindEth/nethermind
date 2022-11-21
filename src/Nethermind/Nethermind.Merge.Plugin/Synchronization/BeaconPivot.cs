@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -42,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             set
             {
                 _currentBeaconPivot = value;
-                if (value != null)
+                if (value is not null)
                 {
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
                         Rlp.Encode(value.GetOrCalculateHash()).Bytes);
@@ -72,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public Keccak PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
         public BlockHeader? ProcessDestination { get; set; }
+        public bool ShouldForceStartNewSync { get; set; } = false;
 
         // We actually start beacon header sync from the pivot parent hash because hive test.... And because
         // we can I guess?
@@ -80,13 +82,34 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 
-        public long PivotDestinationNumber => CurrentBeaconPivot is null
-            ? 0
-            : _syncConfig.PivotNumberParsed + 1;
+        // The stopping point (inclusive) for the reverse beacon header sync.
+        public long PivotDestinationNumber
+        {
+            get
+            {
+                if (CurrentBeaconPivot is null)
+                {
+                    // Need to rethink if this is expected. Maybe it need to forward sync without a pivot.
+                    return 0;
+                }
+
+                // If head is not null, that means we processed some block before.
+                // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
+                if (_blockTree.Head is not null && _blockTree.Head?.Number != 0)
+                {
+                    // However, the head may not be canon, so the destination need to be before that.
+                    long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
+                    return Math.Max(1, safeNumber);
+                }
+
+                return _syncConfig.PivotNumberParsed + 1;
+            }
+        }
+
         public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            if (blockHeader != null)
+            if (blockHeader is not null)
             {
                 if (beaconPivotExists && updateOnlyIfNull)
                 {
@@ -110,6 +133,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
+                ShouldForceStartNewSync = false;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
             }
         }
@@ -120,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CurrentBeaconPivot = null;
         }
 
-        public bool BeaconPivotExists() => CurrentBeaconPivot != null;
+        public bool BeaconPivotExists() => CurrentBeaconPivot is not null;
 
         private void LoadBeaconPivot()
         {
@@ -128,7 +152,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 Keccak? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
                     .AsRlpStream().DecodeKeccak();
-                if (pivotHash != null)
+                if (pivotHash is not null)
                 {
                     _currentBeaconPivot =
                         _blockTree.FindHeader(pivotHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -152,5 +176,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // as MergeBlockDownloader process higher block, making it somewhat like a lowest processed beacon block.
         // TODO: Check if we can just re-use pivot and move pivot forward
         BlockHeader? ProcessDestination { get; set; }
+        bool ShouldForceStartNewSync { get; set; }
     }
 }

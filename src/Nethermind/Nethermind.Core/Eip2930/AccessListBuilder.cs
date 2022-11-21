@@ -59,7 +59,7 @@ namespace Nethermind.Core.Eip2930
 
         public void AddStorage(in UInt256 index)
         {
-            if (_currentAddress == null)
+            if (_currentAddress is null)
             {
                 throw new InvalidOperationException("No address known when adding index to the access list");
             }

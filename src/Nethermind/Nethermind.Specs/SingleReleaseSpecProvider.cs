@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -22,20 +23,20 @@ namespace Nethermind.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
         public UInt256? TerminalTotalDifficulty { get; set; }
         public ulong ChainId { get; }
-        public long[] TransitionBlocks { get; } = { 0 };
+        public ForkActivation[] TransitionBlocks { get; } = { 0 };
 
         private readonly IReleaseSpec _releaseSpec;
 
@@ -51,7 +52,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber) => _releaseSpec;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
     }

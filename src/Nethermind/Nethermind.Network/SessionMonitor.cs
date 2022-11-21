@@ -118,7 +118,7 @@ namespace Nethermind.Network
 
         private async Task<bool> SendPingMessage(ISession session)
         {
-            if (session.PingSender == null)
+            if (session.PingSender is null)
             {
                 /* this would happen when session is initialized already but the protocol is not yet initialized
                    we do not have a separate session state for it at the moment */

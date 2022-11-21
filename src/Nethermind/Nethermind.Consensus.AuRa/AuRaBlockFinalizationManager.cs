@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.AuRa
 
         private void Initialize()
         {
-            var hasHead = _blockTree.Head != null;
+            var hasHead = _blockTree.Head is not null;
             var level = hasHead ? _blockTree.Head.Number + 1 : 0;
             ChainLevelInfo chainLevel;
             do
@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.AuRa
                     for (int i = 1; i < minSealersForFinalization; i++)
                     {
                         header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header != null)
+                        if (header is not null)
                         {
                             UnFinalizeBlock(header, batch);
                         }

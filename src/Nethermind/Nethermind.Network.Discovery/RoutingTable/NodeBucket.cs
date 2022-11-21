@@ -46,7 +46,7 @@ public class NodeBucket
             lock (_nodeBucketLock)
             {
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node != null)
+                while (node is not null)
                 {
                     if (!node.Value.IsBonded)
                     {
@@ -68,7 +68,7 @@ public class NodeBucket
             {
                 int result = _items.Count;
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node != null)
+                while (node is not null)
                 {
                     if (node.Value.IsBonded)
                     {
@@ -128,7 +128,7 @@ public class NodeBucket
         {
             NodeBucketItem item = new(node, DateTime.UtcNow);
             LinkedListNode<NodeBucketItem>? bucketItem = _items.Find(item);
-            if (bucketItem != null)
+            if (bucketItem is not null)
             {
                 bucketItem.Value.OnContactReceived();
                 _items.Remove(item);

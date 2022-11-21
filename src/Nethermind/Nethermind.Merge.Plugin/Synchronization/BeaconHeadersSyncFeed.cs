@@ -43,6 +43,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     private bool _chainMerged;
+
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
@@ -90,7 +91,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // This is probably whats going to happen. We probably should just set the pivot directly to the parent of FcU head,
         // but pivot underlying data is a Header, which we may not have. Maybe later we'll clean this up.
-        if (_pivot.PivotParentHash != null)
+        if (_pivot.PivotParentHash is not null)
         {
             _pivotNumber = _pivotNumber - 1;
             _nextHeaderHash = _pivot.PivotParentHash;
@@ -100,7 +101,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+        if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
         {
             startNumber = lowestInserted.Number - 1;
             _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
@@ -134,7 +135,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
     {
-        if (batch.Response != null)
+        if (batch.Response is not null)
         {
             ConnectHeaderChainInInvalidChainTracker(batch.Response);
         }
@@ -151,7 +152,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         for (int i = 0; i < batchResponse.Count; i++)
         {
             BlockHeader? header = batchResponse[i];
-            if (header != null && HeaderValidator.ValidateHash(header))
+            if (header is not null && HeaderValidator.ValidateHash(header))
             {
                 _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
             }
@@ -178,7 +179,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         // Found existing block in the block tree
-        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+        if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
             if (_logger.IsTrace)
@@ -198,7 +199,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
             else
             {
-                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
+                _nextHeaderDiff = header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
                     ? header.TotalDifficulty - header.Difficulty
                     : null;
             }

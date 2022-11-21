@@ -88,7 +88,7 @@ namespace Nethermind.Core
 
         public long GasUsed => Header.GasUsed; // do not add setter here
 
-        public UInt256 Timestamp => Header.Timestamp; // do not add setter here
+        public ulong Timestamp => Header.Timestamp; // do not add setter here
 
         public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 
@@ -114,14 +114,14 @@ namespace Nethermind.Core
             return format switch
             {
                 Format.Full => ToFullString(),
-                Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
-                Format.HashNumberAndTx => Hash == null
+                Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
+                Format.HashNumberAndTx => Hash is null
                     ? $"{Number} null, tx count: {Body.Transactions.Length}"
                     : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
-                Format.HashNumberDiffAndTx => Hash == null
+                Format.HashNumberDiffAndTx => Hash is null
                     ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
                     : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
-                _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
+                _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
 

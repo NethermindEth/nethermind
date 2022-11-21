@@ -108,7 +108,7 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount)
+            if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
                 // fire and forget - all the surrounding logic will be executed
@@ -292,9 +292,9 @@ namespace Nethermind.Network
                             _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
-                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession != null && x.Value.InSession != null)} | " +
-                                          $"[Out: {activePeers.Count(x => x.Value.OutSession != null)} | " +
-                                          $"In: {activePeers.Count(x => x.Value.InSession != null)}]");
+                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
+                                          $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
+                                          $"In: {activePeers.Count(x => x.Value.InSession is not null)}]");
                         }
 
                         previousActivePeersCount = activePeersCount;
@@ -344,6 +344,25 @@ namespace Nethermind.Network
             }
         }
 
+        private bool CanConnectToPeer(Peer peer)
+        {
+            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
+                return false;
+            }
+
+            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
+            if (delayed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
+                return false;
+            }
+
+            return true;
+        }
+
+
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupPeerConnection(Peer peer)
         {
@@ -373,7 +392,7 @@ namespace Nethermind.Network
             {
                 _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
                 Interlocked.Increment(ref _failedInitialConnect);
-                if (peer.OutSession != null)
+                if (peer.OutSession is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                     peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
@@ -395,6 +414,7 @@ namespace Nethermind.Network
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)
             {
+                Interlocked.Increment(ref Metrics.PeerCount);
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
             }
             else
@@ -408,6 +428,10 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
             // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
@@ -541,11 +565,17 @@ namespace Nethermind.Network
             {
                 if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
                 candidate.IsAwaitingConnection = true;
+                _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
                 await _rlpxHost.ConnectAsync(candidate.Node);
                 return true;
             }
             catch (NetworkingException ex)
             {
+                if (ex.NetworkExceptionType == NetworkExceptionType.TargetUnreachable)
+                {
+                    _stats.ReportEvent(candidate.Node, NodeStatsEventType.ConnectionFailedTargetUnreachable);
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
                 return false;
             }
@@ -734,7 +764,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
-            if (session.RemoteNodeId == null)
+            if (session.RemoteNodeId is null)
             {
                 // this happens when we have a disconnect on incoming connection before handshake
                 if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
@@ -808,7 +838,7 @@ namespace Nethermind.Network
 
         private void ManageNewRemoteNodeId(ISession session)
         {
-            if (session.ObsoleteRemoteNodeId == null)
+            if (session.ObsoleteRemoteNodeId is null)
             {
                 return;
             }

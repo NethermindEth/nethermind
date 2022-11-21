@@ -118,14 +118,16 @@ namespace Nethermind.AuRa.Test
             Dictionary<long, IDictionary<Address, byte[]>> contractOverrides = new()
             {
                 {
-                    2, new Dictionary<Address, byte[]>()
+                    2,
+                    new Dictionary<Address, byte[]>()
                     {
                         {TestItem.AddressA, Bytes.FromHexString("0x123")},
                         {TestItem.AddressB, Bytes.FromHexString("0x321")},
                     }
                 },
                 {
-                    3, new Dictionary<Address, byte[]>()
+                    3,
+                    new Dictionary<Address, byte[]>()
                     {
                         {TestItem.AddressA, Bytes.FromHexString("0x456")},
                         {TestItem.AddressB, Bytes.FromHexString("0x654")},

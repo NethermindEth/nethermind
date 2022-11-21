@@ -35,8 +35,16 @@ namespace Nethermind.Synchronization.FastSync
 
         public Keccak Hash { get; }
 
+        /// <summary>
+        /// Account part of the path if the item is a Storage node.
+        /// It's null when the item is an Account tree node.
+        /// </summary>
         public byte[] AccountPathNibbles { get; }
 
+        /// <summary>
+        /// Nibbles of item path in the Account tree or a Storage tree.
+        /// If item is an Account tree node then <see cref="AccountPathNibbles"/> is null.
+        /// </summary>
         public byte[] PathNibbles { get; }
 
         public NodeDataType NodeDataType { get; }

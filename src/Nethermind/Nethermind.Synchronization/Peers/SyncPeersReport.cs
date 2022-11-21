@@ -116,14 +116,24 @@ namespace Nethermind.Synchronization.Peers
         {
             INodeStats stats = _stats.GetOrAdd(peerInfo.SyncPeer.Node);
             _stringBuilder.Append("   ").Append(peerInfo);
-            _stringBuilder.Append('[').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Latency));
-            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Headers));
-            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Bodies));
-            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Receipts));
-            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.NodeData));
-            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.SnapRanges));
+            _stringBuilder.Append('[').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Latency));
+            _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Headers));
+            _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Bodies));
+            _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Receipts));
+            _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.NodeData));
+            _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.SnapRanges));
             _stringBuilder.Append(']');
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
+        }
+
+        private string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
+        {
+            long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
+            if (speed is null)
+            {
+                return "     ";
+            }
+            return $"{speed,5}";
         }
 
         private void AddPeerHeader()

@@ -44,7 +44,6 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
-        public event EventHandler<EventArgs> SnapSyncFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -60,7 +59,7 @@ namespace Nethermind.Synchronization.SnapSync
         public bool CanSync()
         {
             BlockHeader? header = _pivot.GetPivotHeader();
-            if (header == null || header.Number == 0)
+            if (header is null || header.Number == 0)
             {
                 if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
 
@@ -126,7 +125,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            if (NextSlotRange.TryDequeue(out slotRange))
+            if (TryDequeNextSlotRange(out slotRange))
             {
                 return CreateStorageRangeRequest(slotRange, rootHash, blockNumber, request);
             }
@@ -155,6 +154,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         private (SnapSyncBatch request, bool finished) CreateCodesRequest(SnapSyncBatch request)
         {
+            Interlocked.Increment(ref _activeCodeRequests);
+
             // TODO: optimize this
             List<Keccak> codesToQuery = new(CODES_BATCH_SIZE);
 
@@ -165,8 +166,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
 
-            Interlocked.Increment(ref _activeCodeRequests);
-
             request.CodesRequest = codesToQuery.ToArray();
 
             return (request, false);
@@ -175,6 +174,8 @@ namespace Nethermind.Synchronization.SnapSync
         private (SnapSyncBatch request, bool finished) CreateStorageRangeRequest(Keccak? rootHash, long blockNumber,
             SnapSyncBatch request)
         {
+            Interlocked.Increment(ref _activeStorageRequests);
+
             // TODO: optimize this
             List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
 
@@ -193,8 +194,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
 
-            Interlocked.Increment(ref _activeStorageRequests);
-
             request.StorageRangeRequest = storageRange;
 
             return (request, false);
@@ -208,8 +207,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
 
-            Interlocked.Increment(ref _activeStorageRequests);
-
             request.StorageRangeRequest = slotRange;
 
             return (request, false);
@@ -218,11 +215,12 @@ namespace Nethermind.Synchronization.SnapSync
         private (SnapSyncBatch request, bool finished) CreateAccountRangeRequest(Keccak? rootHash, long blockNumber,
             SnapSyncBatch request)
         {
+            Interlocked.Increment(ref _activeAccountRequests);
+
             AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
             LogRequest("AccountRange");
 
-            Interlocked.Increment(ref _activeAccountRequests);
             _accountRequestCompleted.Reset();
 
             request.AccountRangeRequest = range;
@@ -232,6 +230,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         private (SnapSyncBatch request, bool finished) CreateAccountRefreshRequest(SnapSyncBatch request, Keccak? rootHash)
         {
+            Interlocked.Increment(ref _activeAccRefreshRequests);
+
             LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
 
             int queueLength = AccountsToRefresh.Count;
@@ -241,8 +241,6 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 paths[i] = acc;
             }
-
-            Interlocked.Increment(ref _activeAccRefreshRequests);
 
             request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
 
@@ -344,12 +342,15 @@ namespace Nethermind.Synchronization.SnapSync
             if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
-                _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished. Healing (Phase 2) starting...");
+                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
                     MoreAccountsToRight = false;
+                }
+                else
+                {
+                    _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
                 }
             }
         }
@@ -359,8 +360,6 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
-
-            SnapSyncFinished?.Invoke(this, EventArgs.Empty);
         }
 
         private void LogRequest(string reqType)
@@ -377,6 +376,18 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Info(
                     $"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
             }
+        }
+
+        private bool TryDequeNextSlotRange(out StorageRange item)
+        {
+            Interlocked.Increment(ref _activeStorageRequests);
+            if (!NextSlotRange.TryDequeue(out item))
+            {
+                Interlocked.Decrement(ref _activeStorageRequests);
+                return false;
+            }
+
+            return true;
         }
     }
 }

@@ -26,6 +26,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -50,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() { Enabled = true };
+            _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
             MiningConfig? miningConfig = new() { Enabled = true };
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
@@ -80,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Epoch = CliqueConfig.Default.Epoch,
                 Period = CliqueConfig.Default.BlockPeriod
             };
-            _plugin = new MergePlugin(new EnvironmentExitMock());
+            _plugin = new MergePlugin();
 
             _consensusPlugin = new();
         }
@@ -89,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
         [TestCase(false)]
         public void Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
-            _mergeConfig.Enabled = enabled;
+            _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
             Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
@@ -140,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             await _plugin.Invoking((plugin) => plugin.Init(_context))
                 .Should()
-                .ThrowAsync<InvalidOperationException>();
+                .ThrowAsync<InvalidConfigurationException>();
         }
 
         [Test]
@@ -187,25 +188,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
             else
             {
-                await invocation.Should().ThrowAsync<InvalidOperationException>();
-            }
-        }
-
-        private class EnvironmentExitMock : IEnvironment
-        {
-            public string GetEnvironmentVariable(string variableName)
-            {
-                throw new NotImplementedException();
-            }
-
-            public IDictionary GetEnvironmentVariables()
-            {
-                throw new NotImplementedException();
-            }
-
-            public void Exit(int exitCode)
-            {
-                throw new InvalidOperationException($"Exit with exitCode: {exitCode}");
+                await invocation.Should().ThrowAsync<InvalidConfigurationException>();
             }
         }
     }

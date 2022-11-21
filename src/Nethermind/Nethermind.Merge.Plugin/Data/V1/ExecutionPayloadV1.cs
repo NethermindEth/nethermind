@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             PrevRandao = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
             ExtraData = block.ExtraData!;
-            Timestamp = (ulong)block.Timestamp; // Timestamp should be changed to ulong across entire Nethermind code?
+            Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// </summary>
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
 
-        public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
+        public override string ToString() => BlockHash is null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
 
         public void SetTransactions(params Transaction[] transactions)
         {

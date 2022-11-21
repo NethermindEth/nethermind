@@ -52,7 +52,7 @@ namespace Nethermind.Cli
         public void Error(string text, Exception? ex = null)
         {
             _cliConsole.WriteErrorLine(text);
-            if (ex != null)
+            if (ex is not null)
             {
                 _cliConsole.WriteException(ex);
             }

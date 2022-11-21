@@ -132,14 +132,14 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
         try
         {
-            if (_blockTree.Head == null)
+            if (_blockTree.Head is null)
             {
                 _timer.Enabled = true;
                 return;
             }
 
             Block? scheduledBlock = _scheduledBlock;
-            if (scheduledBlock == null)
+            if (scheduledBlock is null)
             {
                 if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                 {
@@ -273,7 +273,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                 {
                     if (t.IsCompletedSuccessfully)
                     {
-                        if (t.Result != null)
+                        if (t.Result is not null)
                         {
                             if (_logger.IsInfo)
                                 _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -321,9 +321,9 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     bool IBlockProducer.IsProducingBlocks(ulong? maxProducingInterval)
     {
-        if (_producerTask == null || _producerTask.IsCompleted)
+        if (_producerTask is null || _producerTask.IsCompleted)
             return false;
-        if (maxProducingInterval != null)
+        if (maxProducingInterval is not null)
             return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
         else
             return true;
@@ -336,7 +336,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     private Block? PrepareBlock(Block parentBlock)
     {
         BlockHeader parentHeader = parentBlock.Header;
-        if (parentHeader.Hash == null)
+        if (parentHeader.Hash is null)
         {
             if (_logger.IsError) _logger.Error(
                 $"Preparing new block on top of {parentHeader.ToString(BlockHeader.Format.Short)} - parent header hash is null");
@@ -358,7 +358,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsInfo)
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-        UInt256 timestamp = _timestamper.UnixTime.Seconds;
+        ulong timestamp = _timestamper.UnixTime.Seconds;
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
         BlockHeader header = new(
@@ -432,7 +432,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
         if (header.Timestamp < _timestamper.UnixTime.Seconds)
         {
-            header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
+            header.Timestamp = _timestamper.UnixTime.Seconds;
         }
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;

@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc
 
         public static JsonRpcUrl Parse(string packedUrlValue)
         {
-            if (packedUrlValue == null)
+            if (packedUrlValue is null)
                 throw new ArgumentNullException(nameof(packedUrlValue));
 
             string[] parts = packedUrlValue.Split('|');
@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc
 
         public bool Equals(JsonRpcUrl other)
         {
-            if (other == null)
+            if (other is null)
                 return false;
 
             if (ReferenceEquals(this, other))
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc
 
         public override bool Equals(object other)
         {
-            if (other == null)
+            if (other is null)
                 return false;
 
             if (ReferenceEquals(this, other))

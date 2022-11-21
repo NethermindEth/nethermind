@@ -53,7 +53,7 @@ public class BeaconHeadersSyncTests
         {
             get
             {
-                if (_blockTree == null)
+                if (_blockTree is null)
                 {
                     IDb blockInfoDb = new MemDb();
                     Block genesis = Build.A.Block.Genesis.TestObject;
@@ -110,7 +110,7 @@ public class BeaconHeadersSyncTests
         {
             get
             {
-                if (_selector == null)
+                if (_selector is null)
                 {
                     MemDb stateDb = new();
                     ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
@@ -146,7 +146,7 @@ public class BeaconHeadersSyncTests
         {
             get
             {
-                if (_report == null)
+                if (_report is null)
                 {
                     _report = Substitute.For<ISyncReport>();
                     MeasuredProgress measuredProgress = new MeasuredProgress();
@@ -179,7 +179,7 @@ public class BeaconHeadersSyncTests
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, ctx.SyncConfig, ctx.BlockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
@@ -216,7 +216,7 @@ public class BeaconHeadersSyncTests
             BlockTree = blockTree,
             Report = report,
             SyncConfig = syncConfig,
-            MergeConfig = { Enabled = true }
+            MergeConfig = { }
         };
         ctx.BeaconPivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = ctx.Feed;
@@ -376,7 +376,7 @@ public class BeaconHeadersSyncTests
     {
         batch.MarkSent();
         BlockHeader? startHeader = blockTree.FindHeader(batch.StartNumber);
-        if (startHeader == null)
+        if (startHeader is null)
         {
             return;
         }

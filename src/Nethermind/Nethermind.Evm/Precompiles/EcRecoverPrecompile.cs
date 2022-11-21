@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Precompiles
 
             Signature signature = new(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
-            if (recovered == null)
+            if (recovered is null)
             {
                 return (Array.Empty<byte>(), true);
             }

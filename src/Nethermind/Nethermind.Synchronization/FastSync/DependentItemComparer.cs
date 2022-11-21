@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             get
             {
-                if (_instance == null)
+                if (_instance is null)
                 {
                     LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
                 }

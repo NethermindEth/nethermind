@@ -254,7 +254,17 @@ namespace Nethermind.Core.Test.Blockchain
                 LogManager);
 
             BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
-            return new TestBlockProducer(env.TxSource, env.ChainProcessor, env.ReadOnlyStateProvider, sealer, BlockTree, BlockProductionTrigger, Timestamper, SpecProvider, LogManager);
+            return new TestBlockProducer(
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyStateProvider,
+                sealer,
+                BlockTree,
+                BlockProductionTrigger,
+                Timestamper,
+                SpecProvider,
+                LogManager,
+                miningConfig);
         }
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
@@ -280,7 +290,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual Block GetGenesisBlock()
         {
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
-            if (GenesisBlockBuilder != null)
+            if (GenesisBlockBuilder is not null)
             {
                 genesisBlockBuilder = GenesisBlockBuilder;
             }

@@ -104,7 +104,7 @@ namespace Nethermind.Wallet
                 }
             }
 
-            if (_config.TestNodeKey != null) return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+            if (_config.TestNodeKey is not null) return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
             var key = LoadKeyForAccount(_config.EnodeAccount);
             return key ?? LoadKeyFromFile();
         }

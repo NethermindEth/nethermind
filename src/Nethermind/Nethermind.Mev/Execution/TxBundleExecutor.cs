@@ -47,7 +47,7 @@ namespace Nethermind.Mev.Execution
             _signer = signer;
         }
 
-        public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
+        public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, ulong? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
             TBlockTracer blockTracer = CreateBlockTracer(bundle);
@@ -58,7 +58,7 @@ namespace Nethermind.Mev.Execution
 
         protected abstract TResult BuildResult(MevBundle bundle, TBlockTracer tracer);
 
-        private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
+        private Block BuildBlock(MevBundle bundle, BlockHeader parent, ulong? timestamp)
         {
             BlockHeader header = new(
                 parent.Hash ?? Keccak.OfAnEmptySequenceRlp,

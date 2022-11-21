@@ -711,7 +711,7 @@ namespace Nethermind.Synchronization.Test
             await Task.WhenAll(allocationTasks);
 
             var allocations = allocationTasks.Select(t => t.Result).ToArray();
-            var successfulAllocations = allocations.Where(r => r.Current != null).ToArray();
+            var successfulAllocations = allocations.Where(r => r.Current is not null).ToArray();
 
             // we had only two peers and 3 borrow calls so only two are successful
             Assert.AreEqual(2, successfulAllocations.Length);

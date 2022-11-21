@@ -15,5 +15,6 @@ namespace Nethermind.Blockchain.Synchronization
         Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token);
         Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token);
         Task<byte[][]> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token);
+        Task<byte[][]> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token);
     }
 }
