@@ -495,10 +495,9 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
-            List<Keccak> toRemove = new(); // TODO: resettable
+            List<TrieNode> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
             foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
@@ -514,7 +513,7 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
-                    toRemove.Add(key);
+                    toRemove.Add(node);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -526,7 +525,7 @@ namespace Nethermind.Trie.Pruning
                         throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    toRemove.Add(key);
+                    toRemove.Add(node);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -539,7 +538,13 @@ namespace Nethermind.Trie.Pruning
 
             for (int index = 0; index < toRemove.Count; index++)
             {
-                _dirtyNodes.Remove(toRemove[index]);
+                TrieNode trieNode = toRemove[index];
+                if (trieNode.Keccak is null)
+                {
+                    throw new InvalidOperationException($"{trieNode} has a null key");
+                }
+
+                _dirtyNodes.Remove(trieNode.Keccak);
             }
 
             MemoryUsedByDirtyCache = newMemory;
