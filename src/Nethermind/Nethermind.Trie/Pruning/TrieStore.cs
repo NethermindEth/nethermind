@@ -44,40 +44,30 @@ namespace Nethermind.Trie.Pruning
                 _trieStore = trieStore;
             }
 
-            public TrieNode GetOrAdd(TrieNode node, out bool added)
+            public void SaveInCache(TrieNode node)
             {
-                bool add = false;
                 Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
-                TrieNode result = _objectsCache.GetOrAdd(node.Keccak, _ =>
+                if (_objectsCache.TryAdd(node.Keccak!, node))
                 {
-                    add = true;
-                    return AddingNodeToCache(node);
-                });
-
-                added = add;
-                return result;
+                    Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
+                    _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
+                }
             }
 
             public TrieNode FindCachedOrUnknown(Keccak hash)
             {
-                Metrics.LoadedFromCacheNodesCount++;
-
-                TrieNode Add(Keccak h)
+                if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
-                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {h}");
-                    Metrics.LoadedFromCacheNodesCount--;
-                    TrieNode node = new(NodeType.Unknown, h);
-                    return AddingNodeToCache(node);
+                    Metrics.LoadedFromCacheNodesCount++;
+                }
+                else
+                {
+                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
+                    trieNode = new TrieNode(NodeType.Unknown, hash);
+                    SaveInCache(trieNode);
                 }
 
-                return _objectsCache.GetOrAdd(hash, Add);
-            }
-
-            private TrieNode AddingNodeToCache(TrieNode node)
-            {
-                Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
-                _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
-                return node;
+                return trieNode;
             }
 
             public TrieNode FromCachedRlpOrUnknown(Keccak hash)
@@ -93,8 +83,10 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     // we returning a copy to avoid multithreaded access
-                    trieNode = new TrieNode(trieNode.NodeType, hash, trieNode.FullRlp);
+                    trieNode = new TrieNode(NodeType.Unknown, hash, trieNode.FullRlp);
                     trieNode.ResolveNode(_trieStore);
+                    trieNode.Keccak = hash;
+
                     Metrics.LoadedFromCacheNodesCount++;
                 }
                 else
@@ -268,17 +260,24 @@ namespace Nethermind.Trie.Pruning
         {
             if (_pruningStrategy.PruningEnabled)
             {
-                TrieNode cachedNodeCopy = _dirtyNodes.GetOrAdd(node, out bool added);
-                if (!added && !ReferenceEquals(cachedNodeCopy, node))
+                if (IsNodeCached(node.Keccak))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
-                    if (!nodeCommitInfo.IsRoot)
+                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
+                    if (!ReferenceEquals(cachedNodeCopy, node))
                     {
-                        nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                    }
+                        if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        if (!nodeCommitInfo.IsRoot)
+                        {
+                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                        }
 
-                    node = cachedNodeCopy;
-                    Metrics.ReplacedNodesCount++;
+                        node = cachedNodeCopy;
+                        Metrics.ReplacedNodesCount++;
+                    }
+                }
+                else
+                {
+                    _dirtyNodes.SaveInCache(node);
                 }
             }
 
