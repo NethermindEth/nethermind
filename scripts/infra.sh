@@ -1,3 +1,7 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 if [ "$1" != "" ]; then
     CONFIG=$(echo "$1" | tr '[:upper:]' '[:lower:]')
 else
