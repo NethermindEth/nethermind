@@ -42,18 +42,14 @@ namespace Nethermind.Network
             ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
             for (int i = 0; i < transitionBlocks.Length; i++)
             {
-                bool useTimestamp = false;
-                if (transitionBlocks[i].Timestamp != null)
-                    useTimestamp = true;
                 ulong transition = transitionBlocks[i].Timestamp ?? (ulong)transitionBlocks[i].BlockNumber;
-
-
+                bool useTimestamp = transitionBlocks[i].Timestamp is not null;
+                
                 if ((useTimestamp && transition >= ImpossibleTimestampWithSpaceForImpossibleForks)
                     || (!useTimestamp && transition >= ImpossibleBlockNumberWithSpaceForImpossibleForks))
                 {
                     continue;
                 }
-
                 if ((useTimestamp && transition > headTimestamp)
                     || (!useTimestamp && transition > (ulong)headNumber))
                 {
