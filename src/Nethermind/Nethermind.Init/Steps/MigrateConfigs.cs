@@ -49,9 +49,9 @@ namespace Nethermind.Init.Steps
         }
 
         //This function is marked publick and static for use in tests
-        public static void MigrateBlocksConfig(IBlocksConfig? blocksesConfig, IBlocksConfig? value)
+        public static void MigrateBlocksConfig(IBlocksConfig? blocksConfig, IBlocksConfig? value)
         {
-            PropertyInfo[]? propertyInfos = blocksesConfig?.GetType().GetInterface($"{nameof(IBlocksConfig)}")?.GetProperties();
+            PropertyInfo[]? propertyInfos = blocksConfig?.GetType().GetInterface($"{nameof(IBlocksConfig)}")?.GetProperties();
 
             //Loop over config properties checking mismaches and changing defaults
             //So that on given and current inner configs we would only have same values
@@ -61,7 +61,7 @@ namespace Nethermind.Init.Steps
             {
                 ConfigItemAttribute? attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 string expectedDefaultValue = attribute?.DefaultValue.Trim('"') ?? "";
-                object? valA = propertyInfo.GetValue(blocksesConfig);
+                object? valA = propertyInfo.GetValue(blocksConfig);
                 object? valB = propertyInfo.GetValue(value);
 
                 string valAasStr = (valA?.ToString() ?? "null");
@@ -71,7 +71,7 @@ namespace Nethermind.Init.Steps
                 {
                     if (valAasStr == expectedDefaultValue)
                     {
-                        propertyInfo.SetValue(blocksesConfig, valB);
+                        propertyInfo.SetValue(blocksConfig, valB);
                     }
                     else if (valBasStr == expectedDefaultValue)
                     {
