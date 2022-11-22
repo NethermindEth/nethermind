@@ -38,14 +38,14 @@ namespace Nethermind.Merge.Plugin.Test
         public void Setup()
         {
             _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-            MiningConfig? miningConfig = new() { Enabled = true };
+            BlocksConfig? miningConfig = new();
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
-            _context.ConfigProvider.GetConfig<IMiningConfig>().Returns(miningConfig);
+            _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
             _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
             _context.BlockProcessingQueue?.IsEmpty.Returns(true);
             _context.MemDbFactory = new MemDbFactory();
