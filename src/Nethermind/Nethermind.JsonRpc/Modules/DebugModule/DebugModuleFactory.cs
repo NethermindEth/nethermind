@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -27,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
@@ -46,6 +34,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyBlockTree _blockTree;
+        private readonly ISyncModeSelector _syncModeSelector;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -60,6 +49,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReadOnlyTrieStore trieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
+            ISyncModeSelector syncModeSelector,
             ILogManager logManager)
         {
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -74,6 +64,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _logger = logManager.GetClassLogger();
         }
 
@@ -112,7 +103,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _blockTree,
                 _receiptStorage,
                 _receiptsMigration,
-                _specProvider);
+                _specProvider,
+                _syncModeSelector);
 
             return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
         }
