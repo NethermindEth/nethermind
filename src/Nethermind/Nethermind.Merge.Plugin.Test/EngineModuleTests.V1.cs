@@ -362,7 +362,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task executePayloadV1_unknown_parentHash_return_accepted()
+    public async Task executePayloadV1_unknown_parentHash_return_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);

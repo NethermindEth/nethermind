@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -44,6 +45,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     protected override Keccak ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
+
+
+    [TestCaseSource(nameof(GetWithdrawalValidationValues))]
+    public override async Task engine_newPayloadV2_should_validate_withdrawals((
+        string CreateBlockchainMethod,
+        string ErrorMessage,
+        IEnumerable<Withdrawal>? Withdrawals
+        ) input)
+    {
+        await Task.CompletedTask;
+    }
 
     [Test]
     public override async Task Should_process_block_as_expected_V2()

@@ -319,7 +319,7 @@ public partial class EngineModuleTests
         }));
     }
 
-    private static IEnumerable<(
+    protected static IEnumerable<(
     string CreateBlockchainMethod,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
