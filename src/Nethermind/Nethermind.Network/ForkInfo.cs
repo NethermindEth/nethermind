@@ -44,7 +44,7 @@ namespace Nethermind.Network
             {
                 ulong transition = transitionBlocks[i].Timestamp ?? (ulong)transitionBlocks[i].BlockNumber;
                 bool useTimestamp = transitionBlocks[i].Timestamp is not null;
-                
+
                 if ((useTimestamp && transition >= ImpossibleTimestampWithSpaceForImpossibleForks)
                     || (!useTimestamp && transition >= ImpossibleBlockNumberWithSpaceForImpossibleForks))
                 {
