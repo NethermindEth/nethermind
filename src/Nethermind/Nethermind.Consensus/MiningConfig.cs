@@ -2,49 +2,59 @@
 // SPDX-License-Identifier: LGPL-3.0-only 
 
 using Nethermind.Int256;
-using System.Text;
-using Nethermind.Config;
-using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
+
 namespace Nethermind.Consensus;
 
 public class MiningConfig : IMiningConfig
 {
-    private byte[] _extraDataBytes = Encoding.UTF8.GetBytes("Nethermind");
-    private string _extraDataString = "Nethermind";
+    public bool Enabled { get; set; }
 
-    public bool Enabled { get; set; } = false;
+    public long? TargetBlockGasLimit
+    {
+        get
+        {
+            return BlocksConfig.TargetBlockGasLimit;
+        }
+        set
+        {
+            BlocksConfig.TargetBlockGasLimit = value;
+        }
+    }
 
-    public long? TargetBlockGasLimit { get; set; } = null;
+    public UInt256 MinGasPrice
+    {
+        get
+        {
+            return BlocksConfig.MinGasPrice;
+        }
+        set
+        {
+            BlocksConfig.MinGasPrice = value;
+        }
+    }
 
-    public UInt256 MinGasPrice { get; set; } = 1.Wei();
-
-    public bool RandomizedBlocks { get; set; }
+    public bool RandomizedBlocks
+    {
+        get
+        {
+            return BlocksConfig.RandomizedBlocks;
+        }
+        set
+        {
+            BlocksConfig.RandomizedBlocks = value;
+        }
+    }
 
     public string ExtraData
     {
         get
         {
-            return _extraDataString;
+            return BlocksConfig.ExtraData;
         }
         set
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
-            if (bytes is not null && bytes.Length > 32)
-            {
-                throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
-                    ExitCodes.TooLongExtraData);
-
-            }
-
-            _extraDataString = value;
-            _extraDataBytes = bytes;
+            BlocksConfig.ExtraData = value;
         }
-    }
-
-    public byte[] GetExtraDataBytes()
-    {
-        return _extraDataBytes;
     }
 
     private IBlocksConfig? _blocksConfig = null;
