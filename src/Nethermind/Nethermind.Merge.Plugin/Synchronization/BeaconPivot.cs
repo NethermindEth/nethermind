@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -43,7 +29,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             set
             {
                 _currentBeaconPivot = value;
-                if (value != null)
+                if (value is not null)
                 {
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
                         Rlp.Encode(value.GetOrCalculateHash()).Bytes);
@@ -95,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 // If head is not null, that means we processed some block before.
                 // It is possible that the head is lower than the sync pivot (restart with a new pivot) so we need to account for that.
-                if (_blockTree.Head != null && _blockTree.Head?.Number != 0)
+                if (_blockTree.Head is not null && _blockTree.Head?.Number != 0)
                 {
                     // However, the head may not be canon, so the destination need to be before that.
                     long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
@@ -109,7 +95,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            if (blockHeader != null)
+            if (blockHeader is not null)
             {
                 if (beaconPivotExists && updateOnlyIfNull)
                 {
@@ -144,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             CurrentBeaconPivot = null;
         }
 
-        public bool BeaconPivotExists() => CurrentBeaconPivot != null;
+        public bool BeaconPivotExists() => CurrentBeaconPivot is not null;
 
         private void LoadBeaconPivot()
         {
@@ -152,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 Keccak? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
                     .AsRlpStream().DecodeKeccak();
-                if (pivotHash != null)
+                if (pivotHash is not null)
                 {
                     _currentBeaconPivot =
                         _blockTree.FindHeader(pivotHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -50,7 +37,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash,
-                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                TransactionPosition = tx is null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
                 BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
@@ -179,7 +166,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         private void PushAction(ParityTraceAction action)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 action.TraceAddress = new int[_currentAction.TraceAddress.Length + 1];
                 for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
@@ -202,7 +189,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             if (IsTracingInstructions)
             {
                 (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(), new List<ParityVmOperationTrace>());
-                if (_currentOperation != null)
+                if (_currentOperation is not null)
                 {
                     if (action.Type != "suicide")
                     {
@@ -238,7 +225,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
@@ -253,7 +240,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            if (_currentAction != null)
+            if (_currentAction is not null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
@@ -261,7 +248,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Output = output;
 
             // quick tx fail (before execution)
-            if (_trace.Action == null)
+            if (_trace.Action is null)
             {
                 _trace.Action = new ParityTraceAction();
                 _trace.Action.From = _tx.SenderAddress;
@@ -435,7 +422,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             action.Type = GetActionType(callType);
             action.CreationMethod = GetCreateMethod(callType);
 
-            if (_currentOperation != null && callType.IsAnyCreate())
+            if (_currentOperation is not null && callType.IsAnyCreate())
             {
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;

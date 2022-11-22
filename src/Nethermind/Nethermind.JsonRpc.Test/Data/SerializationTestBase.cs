@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.JsonRpc.Data;
@@ -29,7 +16,7 @@ namespace Nethermind.JsonRpc.Test.Data
         protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
@@ -37,7 +24,7 @@ namespace Nethermind.JsonRpc.Test.Data
             string result = serializer.Serialize(item);
             T deserialized = serializer.Deserialize<T>(result);
 
-            if (equalityComparer == null)
+            if (equalityComparer is null)
             {
                 Assert.AreEqual(item, deserialized, description);
             }
@@ -65,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Data
         protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
@@ -78,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
         private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }

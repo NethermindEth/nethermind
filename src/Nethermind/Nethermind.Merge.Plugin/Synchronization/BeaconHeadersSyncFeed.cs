@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -91,7 +77,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // This is probably whats going to happen. We probably should just set the pivot directly to the parent of FcU head,
         // but pivot underlying data is a Header, which we may not have. Maybe later we'll clean this up.
-        if (_pivot.PivotParentHash != null)
+        if (_pivot.PivotParentHash is not null)
         {
             _pivotNumber = _pivotNumber - 1;
             _nextHeaderHash = _pivot.PivotParentHash;
@@ -101,7 +87,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        if (lowestInserted != null && lowestInserted.Number <= _pivotNumber)
+        if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
         {
             startNumber = lowestInserted.Number - 1;
             _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
@@ -135,7 +121,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
     {
-        if (batch.Response != null)
+        if (batch.Response is not null)
         {
             ConnectHeaderChainInInvalidChainTracker(batch.Response);
         }
@@ -152,7 +138,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         for (int i = 0; i < batchResponse.Count; i++)
         {
             BlockHeader? header = batchResponse[i];
-            if (header != null && HeaderValidator.ValidateHash(header))
+            if (header is not null && HeaderValidator.ValidateHash(header))
             {
                 _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
             }
@@ -199,7 +185,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
             else
             {
-                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
+                _nextHeaderDiff = header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
                     ? header.TotalDifficulty - header.Difficulty
                     : null;
             }

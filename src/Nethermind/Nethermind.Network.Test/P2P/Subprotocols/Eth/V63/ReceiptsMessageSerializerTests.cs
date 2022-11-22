@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
@@ -35,7 +22,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            if (txReceipts == null)
+            if (txReceipts is null)
             {
                 Assert.AreEqual(0, deserialized.TxReceipts.Length);
             }
@@ -44,7 +31,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Assert.AreEqual(txReceipts.Length, deserialized.TxReceipts.Length, "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
-                    if (txReceipts[i] == null)
+                    if (txReceipts[i] is null)
                     {
                         Assert.IsNull(deserialized.TxReceipts[i], $"receipts[{i}]");
                     }
@@ -52,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                     {
                         for (int j = 0; j < txReceipts[i].Length; j++)
                         {
-                            if (txReceipts[i][j] == null)
+                            if (txReceipts[i][j] is null)
                             {
                                 Assert.IsNull(deserialized.TxReceipts[i][j], $"receipts[{i}][{j}]");
                             }

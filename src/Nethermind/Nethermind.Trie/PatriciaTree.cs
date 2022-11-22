@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
@@ -150,7 +137,7 @@ namespace Nethermind.Trie
                 throw new TrieException("Commits are not allowed on this trie.");
             }
 
-            if (RootRef != null && RootRef.IsDirty)
+            if (RootRef is not null && RootRef.IsDirty)
             {
                 Commit(new NodeCommitInfo(RootRef));
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
@@ -199,7 +186,7 @@ namespace Nethermind.Trie
                             if (_logger.IsTrace)
                             {
                                 TrieNode child = node.GetChild(TrieStore, i);
-                                if (child != null)
+                                if (child is not null)
                                 {
                                     _logger.Trace($"Skipping commit of {child}");
                                 }
@@ -221,7 +208,7 @@ namespace Nethermind.Trie
                             if (_logger.IsTrace)
                             {
                                 TrieNode child = node.GetChild(TrieStore, i);
-                                if (child != null)
+                                if (child is not null)
                                 {
                                     _logger.Trace($"Skipping commit of {child}");
                                 }
@@ -320,7 +307,7 @@ namespace Nethermind.Trie
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result;
             }
             catch (TrieException e)
@@ -342,7 +329,7 @@ namespace Nethermind.Trie
                 : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
             Run(nibbles, nibblesCount, value, true);
-            if (array != null) ArrayPool<byte>.Shared.Return(array);
+            if (array is not null) ArrayPool<byte>.Shared.Return(array);
         }
 
         [DebuggerStepThrough]
@@ -359,7 +346,7 @@ namespace Nethermind.Trie
             bool ignoreMissingDelete = true,
             Keccak? startRootHash = null)
         {
-            if (isUpdate && startRootHash != null)
+            if (isUpdate && startRootHash is not null)
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
@@ -381,7 +368,7 @@ namespace Nethermind.Trie
             }
 
             byte[]? result;
-            if (startRootHash != null)
+            if (startRootHash is not null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
@@ -393,7 +380,7 @@ namespace Nethermind.Trie
                 bool trieIsEmpty = RootRef is null;
                 if (trieIsEmpty)
                 {
-                    if (traverseContext.UpdateValue != null)
+                    if (traverseContext.UpdateValue is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
                         HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
@@ -958,7 +945,7 @@ namespace Nethermind.Trie
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
-                if (updateValue != null && updateValue.Length == 0)
+                if (updateValue is not null && updateValue.Length == 0)
                 {
                     updateValue = null;
                 }
