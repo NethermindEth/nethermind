@@ -1,28 +1,14 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -43,21 +29,20 @@ namespace Nethermind.Monitoring.Metrics
             EnsurePropertiesCached(type);
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
-                CreateMemberInfoMectricsGauge(propertyInfo, gaugeName);
+                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(propertyInfo);
             }
 
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
-                CreateMemberInfoMectricsGauge(fieldInfo, gaugeName);
+                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(fieldInfo);
             }
 
             _metricTypes.Add(type);
         }
 
-        private void CreateMemberInfoMectricsGauge(MemberInfo propertyInfo, string gaugeName)
+        private Gauge CreateMemberInfoMectricsGauge(MemberInfo propertyInfo)
         {
             GaugeConfiguration configuration = new();
-            Dictionary<string, string> tagValues = new();
 
             configuration.StaticLabels = propertyInfo
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
@@ -66,7 +51,8 @@ namespace Nethermind.Monitoring.Metrics
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
             string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
-            _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name), description, configuration);
+            string name = BuildGaugeName(propertyInfo);
+            return CreateGauge(name, description, configuration);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -112,13 +98,14 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static string BuildGaugeName(string propertyName)
-        {
-            return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
-        }
+        private static string BuildGaugeName(MemberInfo propertyInfo) =>
+            propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
+
+        private static string BuildGaugeName(string propertyName) =>
+            Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "nethermind_$1_$2").ToLowerInvariant();
 
         private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
-                => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration);
+            => Prometheus.Metrics.CreateGauge(name, help, configuration);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -52,6 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthRpcModule EthRpcModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
+        public ITxSealer TxSealer { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
 
@@ -143,10 +131,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
 
-            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
-            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
-            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
-            TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
+            TxSealer = new NonceReservingTxSealer(txSigner, Timestamper, TxPool, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId, LogManager));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();
