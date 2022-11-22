@@ -1,5 +1,5 @@
-// Copyright 2022 Demerzel Solutions Limited
-// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -15,7 +15,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -59,17 +58,20 @@ public partial class EngineModuleTests
         var successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
-        successResponse!.Result.Should().NotBeNull();
-        successResponse!.Result!.Should().BeEquivalentTo(new JObject
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            ["payloadStatus"] = new JObject
+            Id = successResponse.Id,
+            Result = new ForkchoiceUpdatedV1Result
             {
-                ["latestValidHash"] = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
-                ["status"] = PayloadStatus.Valid,
-                ["validationError"] = (string?)null
-            },
-            ["payloadId"] = expectedPayloadId
-        });
+                PayloadId = expectedPayloadId,
+                PayloadStatus = new PayloadStatusV1
+                {
+                    LatestValidHash = new("0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133"),
+                    Status = PayloadStatus.Valid,
+                    ValidationError = null
+                }
+            }
+        }));
 
         var blockHash = new Keccak("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         var expectedPayload = new ExecutionPayload
@@ -92,7 +94,9 @@ public partial class EngineModuleTests
         };
 
         response = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+        successResponse.Should().NotBeNull();
         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -104,13 +108,16 @@ public partial class EngineModuleTests
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
-        successResponse!.Result.Should().NotBeNull();
-        successResponse!.Result!.Should().BeEquivalentTo(new JObject
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            ["latestValidHash"] = blockHash.ToString(),
-            ["status"] = PayloadStatus.Valid,
-            ["validationError"] = (string?)null
-        });
+            Id = successResponse.Id,
+            Result = new PayloadStatusV1
+            {
+                LatestValidHash = blockHash,
+                Status = PayloadStatus.Valid,
+                ValidationError = null
+            }
+        }));
 
         fcuState = new
         {
@@ -128,17 +135,20 @@ public partial class EngineModuleTests
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
-        successResponse!.Result.Should().NotBeNull();
-        successResponse!.Result!.Should().BeEquivalentTo(new JObject
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            ["payloadStatus"] = new JObject
+            Id = successResponse.Id,
+            Result = new ForkchoiceUpdatedV1Result
             {
-                ["latestValidHash"] = blockHash.ToString(),
-                ["status"] = PayloadStatus.Valid,
-                ["validationError"] = (string?)null
-            },
-            ["payloadId"] = (string?)null
-        });
+                PayloadId = null,
+                PayloadStatus = new PayloadStatusV1
+                {
+                    LatestValidHash = blockHash,
+                    Status = PayloadStatus.Valid,
+                    ValidationError = null
+                }
+            }
+        }));
     }
 
     [Test]
@@ -174,7 +184,7 @@ public partial class EngineModuleTests
         errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
     }
 
-    [TestCaseSource(nameof(GetWithdrawalValidationValuesForFcuV2))]
+    [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public virtual async Task engine_forkchoiceUpdatedV2_should_validate_withdrawals((
         string CreateBlockchainMethod,
         string ErrorMessage,
@@ -215,7 +225,7 @@ public partial class EngineModuleTests
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
         errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-        errorResponse!.Error!.Message.Should().Contain(input.ErrorMessage);
+        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, string.Empty));
     }
 
     [Test]
@@ -252,13 +262,70 @@ public partial class EngineModuleTests
         errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
     }
 
-    private static IEnumerable<(
+    [TestCaseSource(nameof(GetWithdrawalValidationValues))]
+    public virtual async Task engine_newPayloadV2_should_validate_withdrawals((
         string CreateBlockchainMethod,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
-        )> GetWithdrawalValidationValuesForFcuV2()
+        ) input)
     {
-        yield return (nameof(CreateShanghaiBlockChain), "Withdrawals are null", null);
-        yield return (nameof(CreateBlockChain), "Withdrawals are not null", Enumerable.Empty<Withdrawal>());
+        var createBlockchain = typeof(EngineModuleTests).GetMethod(
+            input.CreateBlockchainMethod,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            new[] { typeof(IMergeConfig), typeof(IPayloadPreparationService) })!;
+
+        using var chain = await (Task<MergeTestBlockchain>)
+            createBlockchain.Invoke(this, new object?[] { new MergeConfig { TerminalTotalDifficulty = "0" }, null })!;
+
+        var rpcModule = CreateEngineModule(chain);
+        var blockHash = new Keccak("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        var startingHead = chain.BlockTree.HeadHash;
+        var prevRandao = Keccak.Zero;
+        var feeRecipient = TestItem.AddressC;
+        var timestamp = Timestamper.UnixTime.Seconds;
+        var expectedPayload = new ExecutionPayload
+        {
+            BaseFeePerGas = 0,
+            BlockHash = blockHash,
+            BlockNumber = 1,
+            ExtraData = Bytes.FromHexString("0x4e65746865726d696e64"), // Nethermind
+            FeeRecipient = feeRecipient,
+            GasLimit = chain.BlockTree.Head!.GasLimit,
+            GasUsed = 0,
+            LogsBloom = Bloom.Empty,
+            ParentHash = startingHead,
+            PrevRandao = prevRandao,
+            ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+            StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+            Timestamp = timestamp,
+            Transactions = Array.Empty<byte[]>(),
+            Withdrawals = input.Withdrawals
+        };
+
+        var response = RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV2",
+            chain.JsonSerializer.Serialize(expectedPayload));
+        var successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+
+        successResponse.Should().NotBeNull();
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        {
+            Id = successResponse.Id,
+            Result = new PayloadStatusV1
+            {
+                LatestValidHash = null,
+                Status = PayloadStatus.Invalid,
+                ValidationError = string.Format(input.ErrorMessage, $"in block {blockHash} ")
+            }
+        }));
+    }
+
+    private static IEnumerable<(
+    string CreateBlockchainMethod,
+        string ErrorMessage,
+        IEnumerable<Withdrawal>? Withdrawals
+        )> GetWithdrawalValidationValues()
+    {
+        yield return (nameof(CreateShanghaiBlockChain), "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
+        yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
     }
 }

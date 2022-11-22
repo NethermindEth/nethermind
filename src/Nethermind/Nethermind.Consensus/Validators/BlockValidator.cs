@@ -1,5 +1,5 @@
-// Copyright 2022 Demerzel Solutions Limited
-// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -159,7 +159,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            error = $"Withdrawals are null in block {block.Hash} with EIP-4895 activated.";
+            error = $"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.";
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -168,7 +168,7 @@ public class BlockValidator : IBlockValidator
 
         if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
         {
-            error = $"Withdrawals are not null in block {block.Hash} with EIP-4895 not activated.";
+            error = $"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.";
 
             if (_logger.IsWarn) _logger.Warn(error);
 

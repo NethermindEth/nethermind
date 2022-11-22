@@ -1,5 +1,5 @@
-// Copyright 2022 Demerzel Solutions Limited
-// Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -235,7 +235,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
             {
-                var error = "Withdrawals are null with EIP-4895 activated.";
+                var error = "Withdrawals cannot be null when EIP-4895 activated.";
 
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
@@ -244,7 +244,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
             {
-                var error = "Withdrawals are not null with EIP-4895 not activated.";
+                var error = "Withdrawals must be null when EIP-4895 not activated.";
 
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
