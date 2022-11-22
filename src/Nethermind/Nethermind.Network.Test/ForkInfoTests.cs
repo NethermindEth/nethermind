@@ -122,7 +122,8 @@ namespace Nethermind.Network.Test
             Test(head, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
         }
 
-        [TestCase(24000000, "0x018479d3", 0, "")]
+        [TestCase(0, "0xf64909b1", 1604400, "Gnosis Genesis")]
+        [TestCase(21735000, "0x018479d3", 0, "GIP-31")]
         public void Fork_id_and_hash_as_expected_on_gnosis(long head, string forkHashHex, long next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
