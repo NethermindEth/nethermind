@@ -18,6 +18,9 @@ namespace Nethermind.Network.Config
         [ConfigItem(Description = "List of nodes for which we will keep the connection on. Static nodes are not counted to the max number of nodes limit.", DefaultValue = "null")]
         string? StaticPeers { get; set; }
 
+        [ConfigItem(Description = "Use tree is available through a DNS name. Keep it empty for the default of {chainName}.ethdisco.net", DefaultValue = "null")]
+        string? DiscoveryDns { get; set; }
+
         [ConfigItem(Description = "If set to 'true' then no connections will be made to non-static peers.", DefaultValue = "false")]
         bool OnlyStaticPeers { get; set; }
 
