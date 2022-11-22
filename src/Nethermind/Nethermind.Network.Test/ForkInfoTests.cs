@@ -122,6 +122,24 @@ namespace Nethermind.Network.Test
             Test(head, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
         }
 
+        [TestCase(24000000, "0x018479d3", 0, "")]
+        public void Fork_id_and_hash_as_expected_on_gnosis(long head, string forkHashHex, long next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "xdai.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
+        }
+
+        [TestCase(0, "0x50d39d7b", 0, "Chiado genesis")]
+        public void Fork_id_and_hash_as_expected_on_chiado(long head, string forkHashHex, long next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
+        }
+
         private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
         {
             Test(head, genesisHash, forkHashHex, next, description, specProvider);
