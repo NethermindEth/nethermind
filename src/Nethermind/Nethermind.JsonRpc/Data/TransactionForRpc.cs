@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -43,7 +30,7 @@ public class TransactionForRpc
         Input = Data = transaction.Data;
         if (transaction.IsEip1559)
         {
-            GasPrice = baseFee != null
+            GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
                 : transaction.MaxFeePerGas;
             MaxFeePerGas = transaction.MaxFeePerGas;
@@ -54,7 +41,7 @@ public class TransactionForRpc
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
         Signature? signature = transaction.Signature;
-        if (signature != null)
+        if (signature is not null)
         {
 
             YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
@@ -129,7 +116,8 @@ public class TransactionForRpc
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
-            DecodedMaxFeePerGas = MaxFeePerGas ?? 0
+            DecodedMaxFeePerGas = MaxFeePerGas ?? 0,
+            Hash = Hash
         };
 
         if (tx.IsEip1559)
@@ -168,16 +156,16 @@ public class TransactionForRpc
     }
 
     private AccessList? TryGetAccessList() =>
-        !Type.IsTxTypeWithAccessList() || AccessList == null
+        !Type.IsTxTypeWithAccessList() || AccessList is null
             ? null
             : AccessListItemForRpc.ToAccessList(AccessList);
 
     public void EnsureDefaults(long? gasCap)
     {
-        if (gasCap == null || gasCap == 0)
+        if (gasCap is null || gasCap == 0)
             gasCap = long.MaxValue;
 
-        Gas = Gas == null || Gas == 0
+        Gas = Gas is null || Gas == 0
             ? gasCap
             : Math.Min(gasCap.Value, Gas.Value);
 

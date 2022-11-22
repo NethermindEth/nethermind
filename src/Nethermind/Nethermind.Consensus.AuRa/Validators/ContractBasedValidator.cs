@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -79,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
 
-                if (parentHeader != null)
+                if (parentHeader is not null)
                 {
                     Validators = LoadValidatorsFromContract(parentHeader);
                     InitValidatorStore();
@@ -103,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var notConsecutiveBlock = block.Number - 1 > _lastProcessedBlockNumber || _lastProcessedBlockNumber == 0;
-            var shouldLoadValidators = Validators == null || notConsecutiveBlock || isProducingBlock;
+            var shouldLoadValidators = Validators is null || notConsecutiveBlock || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
 
             if (shouldLoadValidators)
@@ -229,7 +216,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
-            if (CurrentPendingValidators == null && potentialValidators.Length > 0)
+            if (CurrentPendingValidators is null && potentialValidators.Length > 0)
             {
                 SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators)
                 {
@@ -260,7 +247,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
         {
-            if (CurrentPendingValidators != null)
+            if (CurrentPendingValidators is not null)
             {
                 // .Any equivalent with for
                 var currentPendingValidatorsBlockGotFinalized = false;

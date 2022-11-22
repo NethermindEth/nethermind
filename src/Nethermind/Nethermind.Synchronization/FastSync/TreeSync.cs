@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -82,20 +85,20 @@ namespace Nethermind.Synchronization.FastSync
         {
             try
             {
-                List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
-                LogRequestInfo(requestHashes);
+                List<StateSyncItem> requestItems = _pendingItems.TakeBatch(MaxRequestSize);
+                LogRequestInfo(requestItems);
 
                 long secondsInCurrentSync = (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds;
 
-                if (requestHashes.Count > 0)
+                if (requestItems.Count > 0)
                 {
-                    StateSyncItem[] requestedNodes = requestHashes.ToArray();
-                    StateSyncBatch result = new(requestedNodes);
+                    StateSyncItem[] requestedNodes = requestItems.ToArray();
+                    StateSyncBatch result = new(_rootNode, requestItems[0].NodeDataType, requestedNodes);
 
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
 
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestItems.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
 
@@ -103,7 +106,7 @@ namespace Nethermind.Synchronization.FastSync
                     return await Task.FromResult(result);
                 }
 
-                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.TotalSeconds)
+                if (requestItems.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.TotalSeconds)
                 {
                     // trying to reproduce past behaviour where we can recognize the transition time this way
                     Interlocked.Increment(ref _hintsToResetRoot);
@@ -158,7 +161,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     _handleWatch.Restart();
 
-                    bool isMissingRequestData = batch.RequestedNodes == null;
+                    bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
                     {
                         _hintsToResetRoot++;
@@ -169,7 +172,7 @@ namespace Nethermind.Synchronization.FastSync
                         return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
                     }
 
-                    if (batch.Responses == null)
+                    if (batch.Responses is null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
@@ -194,7 +197,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         /* if the peer does not have details of this particular node */
                         byte[] currentResponseItem = batch.Responses[i];
-                        if (currentResponseItem == null)
+                        if (currentResponseItem is null)
                         {
                             AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                             continue;
@@ -294,6 +297,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             if (_rootSaved == 1)
             {
+                if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
                 VerifyPostSyncCleanUp();
                 return (false, true);
             }
@@ -305,13 +309,13 @@ namespace Nethermind.Synchronization.FastSync
 
             if (_rootNode == Keccak.EmptyTreeHash)
             {
-                if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
+                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - root is empty tree");
                 return (false, true);
             }
 
             if (_hintsToResetRoot >= 32)
             {
-                if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
+                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - many missing responses");
                 return (false, true);
             }
 
@@ -355,7 +359,7 @@ namespace Nethermind.Synchronization.FastSync
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (bestSuggested == null || bestSuggested.Number == 0)
+            if (bestSuggested is null || bestSuggested.Number == 0)
             {
                 return;
             }
@@ -476,7 +480,7 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_dependencies)
                 {
                     isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
-                    if (dependentItem != null)
+                    if (dependentItem is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
                         AddDependency(syncItem.Hash, dependentItem);
@@ -663,7 +667,7 @@ namespace Nethermind.Synchronization.FastSync
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak? childHash = trieNode.GetChildHash(childIndex);
-                        if (childHash != null &&
+                        if (childHash is not null &&
                             alreadyProcessedChildHashes.Contains(childHash))
                         {
                             continue;
@@ -671,11 +675,19 @@ namespace Nethermind.Synchronization.FastSync
 
                         alreadyProcessedChildHashes.Add(childHash);
 
-                        if (childHash != null)
+                        if (childHash is not null)
                         {
                             branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
 
-                            AddNodeResult addChildResult = AddNodeToPending(new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) { BranchChildIndex = (short)childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex }, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNodeToPending(
+                                new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
+                                {
+                                    BranchChildIndex = (short)childIndex,
+                                    ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex
+                                },
+                                dependentBranch,
+                                "branch child");
+
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
@@ -699,10 +711,11 @@ namespace Nethermind.Synchronization.FastSync
                     break;
                 case NodeType.Extension:
                     Keccak? next = trieNode.GetChild(NullTrieNodeResolver.Instance, 0)?.Keccak;
-                    if (next != null)
+                    if (next is not null)
                     {
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
+                        // Add nibbles to StateSyncItem.PathNibbles
                         Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
                         currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
                         trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
@@ -758,7 +771,13 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, currentStateSyncItem.PathNibbles, null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
+                            // and StateSyncItem.PathNibbles will start from null (storage root)
+                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
+                            currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+                            trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 

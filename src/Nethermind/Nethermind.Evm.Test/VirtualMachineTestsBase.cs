@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -101,12 +88,17 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected TestAllTracerWithOutput Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
+        }
+
+        protected TestAllTracerWithOutput Execute(params byte[] code)
+        {
+            return Execute(BlockNumber, Timestamp, code);
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
@@ -212,7 +204,7 @@ namespace Nethermind.Evm.Test
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(blockNumber)
-                .WithTransactions(tx == null ? new Transaction[0] : new[] { tx })
+                .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
                 .WithGasLimit(blockGasLimit)
                 .WithBeneficiary(senderRecipientAndMiner.Miner)
                 .WithTimestamp(timestamp)

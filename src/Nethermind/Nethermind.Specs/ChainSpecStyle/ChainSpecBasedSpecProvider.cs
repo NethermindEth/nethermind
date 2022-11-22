@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -44,7 +31,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             SortedSet<ulong> transitionTimestamps = new();
             transitionBlockNumbers.Add(0L);
 
-            if (_chainSpec.Ethash?.BlockRewards != null)
+            if (_chainSpec.Ethash?.BlockRewards is not null)
             {
                 foreach ((long blockNumber, _) in _chainSpec.Ethash.BlockRewards)
                 {
@@ -84,7 +71,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 else if (propertyInfo.PropertyType == typeof(long?))
                 {
                     var optionalTransition = (long?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition != null)
+                    if (optionalTransition is not null)
                     {
                         transitionBlockNumbers.Add(optionalTransition.Value);
                     }
@@ -102,7 +89,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 else if (propertyInfo.PropertyType == typeof(ulong?))
                 {
                     var optionalTransition = (ulong?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition != null && optionalTransition.Value > 0)
+                    if (optionalTransition is not null && optionalTransition.Value > 0)
                     {
                         transitionTimestamps.Add(optionalTransition.Value);
                     }
@@ -126,15 +113,15 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(releaseStartBlock, 0ul, releaseSpec);
-                _transitions[index] = ((releaseStartBlock, 0ul), releaseSpec);
+                FillReleaseSpec(releaseSpec, releaseStartBlock);
+                _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp, releaseSpec);
+                FillReleaseSpec(releaseSpec, _transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp);
                 _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;
             }
@@ -143,7 +130,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private void FillReleaseSpec(long releaseStartBlock, ulong releaseStartTimestamp, ReleaseSpec releaseSpec)
+        private void FillReleaseSpec(ReleaseSpec releaseSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
@@ -197,7 +184,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
 
-            if (_chainSpec.Ethash != null)
+            if (_chainSpec.Ethash is not null)
             {
                 foreach (KeyValuePair<long, UInt256> blockReward in _chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
                 {
@@ -223,9 +210,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
+            if (blockNumber is not null)
                 MergeBlockNumber = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 

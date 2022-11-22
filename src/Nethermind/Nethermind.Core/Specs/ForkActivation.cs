@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 
 namespace Nethermind.Core.Specs;
@@ -18,12 +21,10 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
         timestamp = Timestamp;
     }
 
-    public static implicit operator ForkActivation(long blocknumber) => new(blocknumber);
+    public static implicit operator ForkActivation(long blockNumber) => new(blockNumber);
 
-    public static implicit operator ForkActivation((long blocknumber, ulong timestamp) blocknumberAndTimestamp)
-        => new(blocknumberAndTimestamp.blocknumber, blocknumberAndTimestamp.timestamp);
-    public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) blocknumberAndTimestamp)
-        => new(blocknumberAndTimestamp.blocknumber, blocknumberAndTimestamp.timestamp);
+    public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) forkActivation)
+        => new(forkActivation.blocknumber, forkActivation.timestamp);
 
     public static implicit operator (long blocknumber, ulong? timestamp)(ForkActivation forkActivation)
         => (forkActivation.BlockNumber, forkActivation.Timestamp);

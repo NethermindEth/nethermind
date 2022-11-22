@@ -1,20 +1,15 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -47,7 +42,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public async Task HealBigSquezedRandomTree()
+        public async Task HealBigSqueezedRandomTree()
         {
             DbContext dbContext = new DbContext(_logger, _logManager);
 

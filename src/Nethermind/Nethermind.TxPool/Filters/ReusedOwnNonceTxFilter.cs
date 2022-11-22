@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
@@ -29,21 +15,19 @@ namespace Nethermind.TxPool.Filters
     internal class ReusedOwnNonceTxFilter : IIncomingTxFilter
     {
         private readonly object _locker = new();
-        private readonly IAccountStateProvider _accounts;
         private readonly ConcurrentDictionary<Address, TxPool.AddressNonces> _nonces;
         private readonly ILogger _logger;
 
-        public ReusedOwnNonceTxFilter(IAccountStateProvider accountStateProvider, ConcurrentDictionary<Address, TxPool.AddressNonces> nonces, ILogger logger)
+        public ReusedOwnNonceTxFilter(ConcurrentDictionary<Address, TxPool.AddressNonces> nonces, ILogger logger)
         {
-            _accounts = accountStateProvider;
             _nonces = nonces;
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            Account account = _accounts.GetAccount(tx.SenderAddress!);
+            Account account = state.SenderAccount;
             UInt256 currentNonce = account.Nonce;
 
             if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
@@ -64,7 +48,7 @@ namespace Nethermind.TxPool.Filters
         /// <returns></returns>
         private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, in UInt256 currentNonce)
         {
-            Address address = transaction.SenderAddress;
+            Address address = transaction.SenderAddress!; // since unknownSenderFilter will run before this one
             lock (_locker)
             {
                 if (!_nonces.TryGetValue(address, out var addressNonces))

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,14 +7,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -237,9 +220,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _stateDb = stateDb;
                 _codeDb = codeDb;
 
-                if (executorResultFunction != null) _executorResultFunction = executorResultFunction;
+                if (executorResultFunction is not null) _executorResultFunction = executorResultFunction;
 
-                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true);
+                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
@@ -296,7 +279,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
-                if (_executorResultFunction != null) return _executorResultFunction(hashes);
+                if (_executorResultFunction is not null) return _executorResultFunction(hashes);
 
                 var responses = new byte[hashes.Count][];
 
@@ -305,7 +288,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter == null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
+                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
 
                     i++;
                 }
