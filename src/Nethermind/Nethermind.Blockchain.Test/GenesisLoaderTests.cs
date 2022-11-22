@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -22,7 +23,28 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class GenesisLoaderTests
     {
-        [TestCase]
+        [Test]
+        public void Can_load_withdrawals_with_empty_root()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,
+                transactionProcessor);
+            Block block = genesisLoader.Load();
+            Assert.AreEqual(Keccak.EmptyTreeHash, block.WithdrawalsRoot);
+            Assert.AreEqual("0x6e13a7579f3dbe60f15af51e05103186dedaec7435e58aeef37fb253fbb29841", block.Hash!.ToString());
+        }
+
+        [Test]
         public void Can_load_genesis_with_emtpy_accounts_and_storage()
         {
             AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
