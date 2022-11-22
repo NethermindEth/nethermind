@@ -122,8 +122,20 @@ namespace Nethermind.Network.Test
             Test(head, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
         }
 
-        [TestCase(0, "0xf64909b1", 1604400, "Gnosis Genesis")]
-        [TestCase(21735000, "0x018479d3", 0, "GIP-31")]
+        [TestCase(0, "0xf64909b1", 1604400, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
+        [TestCase(1604399, "0xf64909b1", 1604400, "Last Byzantium block")]
+        [TestCase(1604400, "0xfde2d083", 2508800, "First Constantinople block")]
+        [TestCase(2508799, "0xfde2d083", 2508800, "Last Constantinople block")]
+        [TestCase(2508800, "0xfc1d8f2f", 7298030, "First Petersburg block")]
+        [TestCase(7298029, "0xfc1d8f2f", 7298030, "Last Petersburg block")]
+        [TestCase(7298030, "0x54d05e6c", 9186425, "First Istanbul block")]
+        [TestCase(9186424, "0x54d05e6c", 9186425, "Last Istanbul block")]
+        [TestCase(9186425, "0xb6e6cd81", 16101500, "First POSDAO Activation block")]
+        [TestCase(16101499, "0xb6e6cd81", 16101500, "Last POSDAO Activation block")]
+        [TestCase(16101500, "0x069a83d9", 19040000, "First Berlin block")]
+        [TestCase(19039999, "0x069a83d9", 19040000, "Last Berlin block")]
+        [TestCase(19040000, "0x018479d3", 0, "First London block")]
+        [TestCase(21735000, "0x018479d3", 0, "First GIP-31 block")]
         public void Fork_id_and_hash_as_expected_on_gnosis(long head, string forkHashHex, long next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
