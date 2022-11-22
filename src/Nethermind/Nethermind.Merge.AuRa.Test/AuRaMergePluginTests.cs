@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -77,15 +80,15 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
-            MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
+            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
-            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
-                miningConfig,
+                blocksConfig,
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
@@ -100,7 +103,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 BlockPreprocessorStep,
                 TxPool,
                 transactionComparerProvider,
-                miningConfig,
+                blocksConfig,
                 LogManager);
 
 
@@ -133,7 +136,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 gasLimitCalculator,
                 SpecProvider,
                 LogManager,
-                miningConfig
+                blocksConfig
             );
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);

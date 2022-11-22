@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -122,7 +125,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.OK, null, false);
             }
 
-            if (tree == null)
+            if (tree is null)
             {
                 throw new ArgumentNullException(nameof(tree));
             }
@@ -253,7 +256,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
         {
-            if (sortedBoundaryList == null || sortedBoundaryList.Count == 0)
+            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
                 return;
             }
@@ -293,7 +296,7 @@ namespace Nethermind.Synchronization.SnapSync
         private static bool IsChildPersisted(TrieNode node, int childIndex, ITrieStore store)
         {
             TrieNode data = node.GetData(childIndex) as TrieNode;
-            if (data != null)
+            if (data is not null)
             {
 
                 return data.IsBoundaryProofNode == false;

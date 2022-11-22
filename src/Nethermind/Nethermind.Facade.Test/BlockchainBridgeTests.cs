@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -153,13 +140,42 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new();
-            tx.GasLimit = Transaction.BaseTxGasCost;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 10),
+                Arg.Any<ITxTracer>());
+        }
+
+        [Test]
+        public void Call_uses_valid_mix_hash()
+        {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
+            BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(bh => bh.MixHash == TestItem.KeccakA),
+                Arg.Any<ITxTracer>());
+        }
+
+        [Test]
+        public void Call_uses_valid_beneficiary()
+        {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
+            BlockHeader header = Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).TestObject;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(bh => bh.Beneficiary == TestItem.AddressB),
                 Arg.Any<ITxTracer>());
         }
 

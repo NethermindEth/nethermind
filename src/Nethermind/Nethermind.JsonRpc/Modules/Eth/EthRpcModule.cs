@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -201,7 +188,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader? header = searchResult.Object;
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -299,7 +286,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -335,7 +322,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
-        TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
@@ -407,12 +394,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (returnFullTransactionObjects && block != null)
+        if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc>.Success(block == null
+        return ResultWrapper<BlockForRpc>.Success(block is null
             ? null
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
@@ -422,10 +409,10 @@ public partial class EthRpcModule : IEthRpcModule
         UInt256? baseFee = null;
         _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
-        if (transaction == null)
+        if (transaction is null)
         {
             (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
-            if (transaction == null)
+            if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
             }
@@ -507,7 +494,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
     {
         (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-        if (receipt == null)
+        if (receipt is null)
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
@@ -715,7 +702,7 @@ public partial class EthRpcModule : IEthRpcModule
         try
         {
             header = _blockFinder.FindHeader(blockParameter);
-            if (header == null)
+            if (header is null)
             {
                 return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
                     ErrorCodes.ResourceNotFound, null);

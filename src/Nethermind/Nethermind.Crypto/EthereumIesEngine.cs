@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Org.BouncyCastle.Crypto;
@@ -102,12 +89,12 @@ namespace Nethermind.Crypto
             _mac.Init(new KeyParameter(k2A));
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(c, 0, c.Length);
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }
@@ -159,12 +146,12 @@ namespace Nethermind.Crypto
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(inEnc, inOff, inLen - t2.Length);
 
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }
