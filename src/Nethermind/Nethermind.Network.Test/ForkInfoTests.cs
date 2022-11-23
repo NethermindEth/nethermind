@@ -166,35 +166,35 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, new Keccak("0xbea94d3492ed9c41556a1c45c27da4947938880fb4c15f31fb742e5a1c10a2fb"), forkHashHex, next, description, chainSpecBasedSpecProvider, "shandong.json");
         }
 
-        [TestCase(0, "0xf64909b1", 1604400, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
-        [TestCase(1604399, "0xf64909b1", 1604400, "Last Byzantium block")]
-        [TestCase(1604400, "0xfde2d083", 2508800, "First Constantinople block")]
-        [TestCase(2508799, "0xfde2d083", 2508800, "Last Constantinople block")]
-        [TestCase(2508800, "0xfc1d8f2f", 7298030, "First Petersburg block")]
-        [TestCase(7298029, "0xfc1d8f2f", 7298030, "Last Petersburg block")]
-        [TestCase(7298030, "0x54d05e6c", 9186425, "First Istanbul block")]
-        [TestCase(9186424, "0x54d05e6c", 9186425, "Last Istanbul block")]
-        [TestCase(9186425, "0xb6e6cd81", 16101500, "First POSDAO Activation block")]
-        [TestCase(16101499, "0xb6e6cd81", 16101500, "Last POSDAO Activation block")]
-        [TestCase(16101500, "0x069a83d9", 19040000, "First Berlin block")]
-        [TestCase(19039999, "0x069a83d9", 19040000, "Last Berlin block")]
-        [TestCase(19040000, "0x018479d3", 0, "First London block")]
-        [TestCase(21735000, "0x018479d3", 0, "First GIP-31 block")]
-        public void Fork_id_and_hash_as_expected_on_gnosis(long head, string forkHashHex, long next, string description)
+        [TestCase(0, 0ul, "0xf64909b1", 1604400ul, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
+        [TestCase(1604399, 0ul, "0xf64909b1", 1604400ul, "Last Byzantium block")]
+        [TestCase(1604400, 0ul, "0xfde2d083", 2508800ul, "First Constantinople block")]
+        [TestCase(2508799, 0ul, "0xfde2d083", 2508800ul, "Last Constantinople block")]
+        [TestCase(2508800, 0ul, "0xfc1d8f2f", 7298030ul, "First Petersburg block")]
+        [TestCase(7298029, 0ul, "0xfc1d8f2f", 7298030ul, "Last Petersburg block")]
+        [TestCase(7298030, 0ul, "0x54d05e6c", 9186425ul, "First Istanbul block")]
+        [TestCase(9186424, 0ul, "0x54d05e6c", 9186425ul, "Last Istanbul block")]
+        [TestCase(9186425, 0ul, "0xb6e6cd81", 16101500ul, "First POSDAO Activation block")]
+        [TestCase(16101499, 0ul, "0xb6e6cd81", 16101500ul, "Last POSDAO Activation block")]
+        [TestCase(16101500, 0ul, "0x069a83d9", 19040000ul, "First Berlin block")]
+        [TestCase(19039999, 0ul, "0x069a83d9", 19040000ul, "Last Berlin block")]
+        [TestCase(19040000, 0ul, "0x018479d3", 0ul, "First London block")]
+        [TestCase(21735000, 0ul, "0x018479d3", 0ul, "First GIP-31 block")]
+        public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "xdai.json")));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
-            Test(head, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
+            Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
         }
 
-        [TestCase(0, "0x50d39d7b", 0, "Chiado genesis")]
-        public void Fork_id_and_hash_as_expected_on_chiado(long head, string forkHashHex, long next, string description)
+        [TestCase(0, 0ul, "0x50d39d7b", 0ul, "Chiado genesis")]
+        public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
-            Test(head, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
+            Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
