@@ -17,7 +17,7 @@ namespace Nethermind.Network
         public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, ulong headTimestamp, Keccak genesisHash)
         {
             uint crc = 0;
-            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionBlocks = specProvider.TransitionActivations;
             byte[] blockNumberBytes = new byte[8];
             crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
@@ -39,7 +39,7 @@ namespace Nethermind.Network
 
             byte[] forkHash = CalculateForkHash(specProvider, headNumber, headTimestamp, genesisHash);
             ulong next = 0;
-            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionBlocks = specProvider.TransitionActivations;
             for (int i = 0; i < transitionBlocks.Length; i++)
             {
                 ulong transition = transitionBlocks[i].Timestamp ?? (ulong)transitionBlocks[i].BlockNumber;

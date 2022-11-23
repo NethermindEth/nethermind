@@ -16,7 +16,7 @@ namespace Nethermind.Specs.Test
         private (ForkActivation forkActivation, IReleaseSpec Release)[] _transitions;
 
         public ulong ChainId { get; }
-        public ForkActivation[] TransitionBlocks { get; }
+        public ForkActivation[] TransitionActivations { get; }
 
         public CustomSpecProvider(params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
@@ -32,7 +32,7 @@ namespace Nethermind.Specs.Test
             }
 
             _transitions = transitions.OrderBy(r => r.forkActivation).ToArray();
-            TransitionBlocks = _transitions.Select(t => t.forkActivation).ToArray();
+            TransitionActivations = _transitions.Select(t => t.forkActivation).ToArray();
 
             if (transitions[0].forkActivation.BlockNumber != 0L)
             {

@@ -33,7 +33,7 @@ public class SepoliaSpecProvider : ISpecProvider
 
     public ulong ChainId => Core.ChainId.Rinkeby;
 
-    public ForkActivation[] TransitionBlocks { get; } = { (ForkActivation)1735371 };
+    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371 };
 
     private SepoliaSpecProvider() { }
 

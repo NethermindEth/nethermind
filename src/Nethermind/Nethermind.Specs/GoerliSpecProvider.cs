@@ -50,7 +50,7 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 5_062_605;
         public ulong ChainId => Core.ChainId.Goerli;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
             (ForkActivation)IstanbulBlockNumber,
             (ForkActivation)BerlinBlockNumber,
