@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
         private readonly ISpecProvider _specProvider;
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa
             IAuRaBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager,
             ISigner signer,
             ISpecProvider specProvider,
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa
             _finalizationManager = finalizationManager;
             _txSender = txSender;
             _txPool = txPool;
-            _miningConfig = miningConfig;
+            _blocksConfig = blocksConfig;
             _logManager = logManager;
             _signer = signer;
             _reportingValidatorCache = reportingValidatorCache;
@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.AuRa
                         _posdaoTransition,
                         _txSender,
                         _txPool,
-                        _miningConfig,
+                        _blocksConfig,
                         _stateProvider,
                         _reportingValidatorCache,
                         _specProvider,

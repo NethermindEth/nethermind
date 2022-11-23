@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 gasLimitCalculator,
                 _api.SpecProvider,
                 _api.LogManager,
-                _api.ConfigProvider.GetConfig<IMiningConfig>());
+                _api.ConfigProvider.GetConfig<IBlocksConfig>());
 
             return Task.FromResult(blockProducer);
         }
@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
-                    NethermindApi.Config<IMiningConfig>(),
+                    NethermindApi.Config<IBlocksConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
@@ -283,7 +283,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
             TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                NethermindApi.Config<IMiningConfig>(),
+                NethermindApi.Config<IBlocksConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
                 _minGasPricesContractDataStore,
@@ -375,7 +375,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>());
+                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IBlocksConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
