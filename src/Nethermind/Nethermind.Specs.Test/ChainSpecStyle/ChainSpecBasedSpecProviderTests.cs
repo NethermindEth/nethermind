@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle
@@ -30,9 +31,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
 
-
-            ReleaseSpec shandongSpec = (ReleaseSpec)MainnetSpecProvider
-                .Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation);
+            ReleaseSpec shandongSpec = (ReleaseSpec)((ReleaseSpec)MainnetSpecProvider
+                .Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation)).Clone();
             shandongSpec.Name = "shandong";
             shandongSpec.IsEip3651Enabled = true;
             shandongSpec.IsEip3675Enabled = true;
@@ -56,6 +56,38 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             CompareSpecProviders(testProvider, provider, blockNumbersToTest);
             Assert.AreEqual(testProvider.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
+        }
+
+        [Test]
+        public void Genesis_with_non_zero_timestamp_loads_correctly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/genesis_with_non_zero_timestamp.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+
+            ReleaseSpec expectedSpec = (ReleaseSpec)((ReleaseSpec)MainnetSpecProvider
+                .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, 1234ul))).Clone();
+            expectedSpec.Name = "Genesis_with_non_zero_timestamp";
+            expectedSpec.IsEip3651Enabled = true;
+            expectedSpec.Eip1559TransitionBlock = 0;
+            expectedSpec.DifficultyBombDelay = 0;
+            TestSpecProvider testProvider = TestSpecProvider.Instance;
+            testProvider.SpecToReturn = expectedSpec;
+            testProvider.TerminalTotalDifficulty = 0;
+            testProvider.GenesisSpec = expectedSpec;
+
+            List<ForkActivation> blockNumbersToTest = new()
+            {
+                (0, 4661),
+            };
+
+            CompareSpecProviders(testProvider, provider, blockNumbersToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
         }
@@ -220,7 +252,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, ForkActivation activation, bool isMainnet,
+        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, bool isMainnet,
             bool checkDifficultyBomb = false)
         {
             PropertyInfo[] propertyInfos =
@@ -236,7 +268,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                          .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp)))
             {
-                Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
+                Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
                     activation + "." + propertyInfo.Name);
             }
         }
@@ -420,6 +452,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
+            var currentTimestamp = Timestamper.Default.UnixTime.Seconds;
             ChainSpec chainSpec = new()
             {
                 Ethash =
@@ -474,6 +507,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,
+                    Eip3651TransitionTimestamp = 1000000012,
+                    Eip3675TransitionTimestamp = 1000000012,
+                    Eip3855TransitionTimestamp = 1000000012,
+                    Eip3860TransitionTimestamp = 1000000012,
+                    Eip1153TransitionTimestamp = 1000000024,
                 }
             };
 
@@ -488,7 +526,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 changes(expected);
                 IReleaseSpec underTest = provider.GetSpec(activation);
-                expected.Should().BeEquivalentTo(underTest);
+                underTest.Should().BeEquivalentTo(expected);
             }
 
             TestTransitions((ForkActivation)0L, r =>
@@ -541,6 +579,15 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
             TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+
+            TestTransitions((40000L, 1000000012), r =>
+            {
+                r.IsEip3651Enabled = true;
+                r.IsEip3675Enabled = true;
+                r.IsEip3855Enabled = true;
+                r.IsEip3860Enabled = true;
+            });
+            TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
         }
     }
 }

@@ -29,7 +29,7 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber => 0L;
 
         public ulong ChainId => Core.ChainId.Olympic;
-        public ForkActivation[] TransitionBlocks { get; } = { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
 
         private OlympicSpecProvider() { }
 

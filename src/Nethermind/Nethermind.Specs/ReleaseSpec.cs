@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
-    public class ReleaseSpec : IReleaseSpec
+    public class ReleaseSpec : IReleaseSpec, ICloneable
     {
         public string Name { get; set; } = "Custom";
         public long MaximumExtraDataSize { get; set; }
@@ -53,6 +54,12 @@ namespace Nethermind.Specs
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
         public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+
+        public object Clone()
+        {
+            return MemberwiseClone();
+        }
+
         public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }

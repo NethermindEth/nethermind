@@ -50,7 +50,7 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 10_499_401;
 
         public ulong ChainId => Core.ChainId.Ropsten;
-        public ForkActivation[] TransitionBlocks => new ForkActivation[]
+        public ForkActivation[] TransitionActivations => new ForkActivation[]
         {
             (ForkActivation)SpuriousDragonBlockNumber,
             (ForkActivation)ByzantiumBlockNumber,

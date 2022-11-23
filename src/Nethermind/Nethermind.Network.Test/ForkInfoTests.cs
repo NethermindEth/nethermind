@@ -48,6 +48,38 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
 
+        [TestCase(0, 0ul, "0xfc64ec04", 1_150_000ul, "Unsynced")]
+        [TestCase(1_149_999, 0ul, "0xfc64ec04", 1_150_000ul, "Last Frontier block")]
+        [TestCase(1_150_000, 0ul, "0x97c2c34c", 1_920_000ul, "First Homestead block")]
+        [TestCase(1_919_999, 0ul, "0x97c2c34c", 1_920_000ul, "Last Homestead block")]
+        [TestCase(1_920_000, 0ul, "0x91d1f948", 2_463_000ul, "First DAO block")]
+        [TestCase(2_462_999, 0ul, "0x91d1f948", 2_463_000ul, "Last DAO block")]
+        [TestCase(2_463_000, 0ul, "0x7a64da13", 2_675_000ul, "First Tangerine block")]
+        [TestCase(2_674_999, 0ul, "0x7a64da13", 2_675_000ul, "Last Tangerine block")]
+        [TestCase(2_675_000, 0ul, "0x3edd5b10", 4_370_000ul, "First Spurious block")]
+        [TestCase(4_369_999, 0ul, "0x3edd5b10", 4_370_000ul, "Last Spurious block")]
+        [TestCase(4_370_000, 0ul, "0xa00bc324", 7_280_000ul, "First Byzantium block")]
+        [TestCase(7_279_999, 0ul, "0xa00bc324", 7_280_000ul, "Last Byzantium block")]
+        [TestCase(7_280_000, 0ul, "0x668db0af", 9_069_000ul, "First Constantinople block")]
+        [TestCase(9_068_999, 0ul, "0x668db0af", 9_069_000ul, "Last Constantinople block")]
+        [TestCase(9_069_000, 0ul, "0x879d6e30", 9_200_000ul, "First Istanbul block")]
+        [TestCase(9_199_999, 0ul, "0x879d6e30", 9_200_000ul, "Last Istanbul block")]
+        [TestCase(9_200_000, 0ul, "0xe029e991", 12_244_000ul, "Last Muir Glacier")]
+        [TestCase(12_244_000, 0ul, "0x0eb440f6", 12_965_000ul, "First Berlin")]
+        [TestCase(12_964_999, 0ul, "0x0eb440f6", 12_965_000ul, "Last Berlin")]
+        [TestCase(12_965_000, 0ul, "0xb715077d", 13_773_000ul, "First London")]
+        [TestCase(13_772_999, 0ul, "0xb715077d", 13_773_000ul, "Last London")]
+        [TestCase(13_773_000, 0ul, "0x20c327fc", 15_050_000ul, "First Arrow Glacier")]
+        [TestCase(15_049_999, 0ul, "0x20c327fc", 15_050_000ul, "Last Arrow Glacier")]
+        [TestCase(15_050_000, 0ul, "0xf0afd0e3", 1000000000ul, "First Gray Glacier")]
+        [TestCase(20_000_000, 0ul, "0xf0afd0e3", 1000000000ul, "Future Gray Glacier")]
+        [TestCase(20_005_000, 1000000000ul, "0x857b708a", 0ul, "First Shanghai")]
+        [TestCase(20_006_000, 1000050000ul, "0x857b708a", 0ul, "Future Shanghai")]
+        public void Fork_id_and_hash_as_expected_with_timestamps(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
+        {
+            Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, "TimestampForkIdTest.json", "../../../");
+        }
+
         [TestCase(15_050_000, 0ul, "0xf0afd0e3", 21_000_000ul, "First Gray Glacier")]
         [TestCase(21_000_000, 0ul, "0x3f5fd195", 0ul, "First Merge Fork Id test")]
         [TestCase(21_811_000, 0ul, "0x3f5fd195", 0ul, "Future Merge Fork Id test")]
@@ -134,10 +166,45 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, new Keccak("0xbea94d3492ed9c41556a1c45c27da4947938880fb4c15f31fb742e5a1c10a2fb"), forkHashHex, next, description, chainSpecBasedSpecProvider, "shandong.json");
         }
 
+        [TestCase(0, 0ul, "0xf64909b1", 1604400ul, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
+        [TestCase(1604399, 0ul, "0xf64909b1", 1604400ul, "Last Byzantium block")]
+        [TestCase(1604400, 0ul, "0xfde2d083", 2508800ul, "First Constantinople block")]
+        [TestCase(2508799, 0ul, "0xfde2d083", 2508800ul, "Last Constantinople block")]
+        [TestCase(2508800, 0ul, "0xfc1d8f2f", 7298030ul, "First Petersburg block")]
+        [TestCase(7298029, 0ul, "0xfc1d8f2f", 7298030ul, "Last Petersburg block")]
+        [TestCase(7298030, 0ul, "0x54d05e6c", 9186425ul, "First Istanbul block")]
+        [TestCase(9186424, 0ul, "0x54d05e6c", 9186425ul, "Last Istanbul block")]
+        [TestCase(9186425, 0ul, "0xb6e6cd81", 16101500ul, "First POSDAO Activation block")]
+        [TestCase(16101499, 0ul, "0xb6e6cd81", 16101500ul, "Last POSDAO Activation block")]
+        [TestCase(16101500, 0ul, "0x069a83d9", 19040000ul, "First Berlin block")]
+        [TestCase(19039999, 0ul, "0x069a83d9", 19040000ul, "Last Berlin block")]
+        [TestCase(19040000, 0ul, "0x018479d3", 0ul, "First London block")]
+        [TestCase(21735000, 0ul, "0x018479d3", 0ul, "First GIP-31 block")]
+        public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "xdai.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
+        }
+
+        [TestCase(0, 0ul, "0x50d39d7b", 0ul, "Chiado genesis")]
+        public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
+        }
+
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
         {
             Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);
+            Test(head, headTimestamp, genesisHash, forkHashHex, next, description, chainSpec, path);
+        }
 
+        private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
+        {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
@@ -147,10 +214,11 @@ namespace Nethermind.Network.Test
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
         {
             byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
-            byte[] forkHash = ForkInfo.CalculateForkHash(specProvider, head, headTimestamp, genesisHash);
-            forkHash.Should().BeEquivalentTo(expectedForkHash, description);
 
             ForkId forkId = ForkInfo.CalculateForkId(specProvider, head, headTimestamp, genesisHash);
+            byte[] forkHash = forkId.ForkHash;
+            forkHash.Should().BeEquivalentTo(expectedForkHash, description);
+
             forkId.Next.Should().Be(next);
             forkId.ForkHash.Should().BeEquivalentTo(expectedForkHash);
         }

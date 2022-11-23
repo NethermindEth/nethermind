@@ -34,6 +34,6 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber => null;
 
         public ulong ChainId => 2;
-        public ForkActivation[] TransitionBlocks { get; } = { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
     }
 }

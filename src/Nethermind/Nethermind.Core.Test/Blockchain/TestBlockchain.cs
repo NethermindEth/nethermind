@@ -225,7 +225,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
-            MiningConfig miningConfig = new();
+            BlocksConfig blocksConfig = new();
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
                 DbProvider,
@@ -238,7 +238,7 @@ namespace Nethermind.Core.Test.Blockchain
                 BlockPreprocessorStep,
                 TxPool,
                 transactionComparerProvider,
-                miningConfig,
+                blocksConfig,
                 LogManager);
 
             BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
@@ -252,7 +252,7 @@ namespace Nethermind.Core.Test.Blockchain
                 Timestamper,
                 SpecProvider,
                 LogManager,
-                miningConfig);
+                blocksConfig);
         }
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
@@ -260,7 +260,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(
                 EthereumEcdsa,
-                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
                 new TxValidator(SpecProvider.ChainId),
                 LogManager,

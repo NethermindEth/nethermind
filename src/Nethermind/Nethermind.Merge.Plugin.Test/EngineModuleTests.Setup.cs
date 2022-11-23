@@ -144,15 +144,15 @@ namespace Nethermind.Merge.Plugin.Test
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
                 IBlockProducer preMergeBlockProducer =
                     base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
-                MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
-                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+                BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
+                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
                 ISyncConfig syncConfig = new SyncConfig();
                 EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
                 PostMergeBlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,
                     Timestamper,
-                    miningConfig,
+                    blocksConfig,
                     LogManager,
                     targetAdjustedGasLimitCalculator);
 
@@ -167,7 +167,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager);
 
 

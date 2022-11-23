@@ -75,8 +75,10 @@ namespace Nethermind.Consensus.Clique
 
             (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
 
-            _miningConfig = getFromApi.Config<IMiningConfig>();
-            if (!_miningConfig.Enabled)
+            _blocksConfig = getFromApi.Config<IBlocksConfig>();
+            IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
+
+            if (!miningConfig.Enabled)
             {
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
@@ -126,7 +128,7 @@ namespace Nethermind.Consensus.Clique
                 TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
                     _nethermindApi.LogManager,
                     getFromApi.SpecProvider,
-                    _miningConfig);
+                    _blocksConfig);
 
             TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
@@ -135,7 +137,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
+            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
             IBlockProducer blockProducer = new CliqueBlockProducer(
                 additionalTxSource.Then(txPoolTxSource),
@@ -191,6 +193,6 @@ namespace Nethermind.Consensus.Clique
 
         private ICliqueConfig? _cliqueConfig;
 
-        private IMiningConfig? _miningConfig;
+        private IBlocksConfig? _blocksConfig;
     }
 }

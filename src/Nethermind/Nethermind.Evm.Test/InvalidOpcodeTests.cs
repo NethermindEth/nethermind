@@ -54,91 +54,60 @@ namespace Nethermind.Evm.Test
                 new[] { Instruction.DELEGATECALL }).ToArray();
 
         private static readonly Instruction[] ByzantiumInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    new[]
-                    {
-                        Instruction.REVERT, Instruction.STATICCALL, Instruction.RETURNDATACOPY,
-                        Instruction.RETURNDATASIZE
-                    })).ToArray();
+            HomesteadInstructions.Union(
+                new[]
+                {
+                    Instruction.REVERT, Instruction.STATICCALL, Instruction.RETURNDATACOPY,
+                    Instruction.RETURNDATASIZE
+                }).ToArray();
 
         private static readonly Instruction[] ConstantinopleFixInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        new[]
-                        {
-                            Instruction.CREATE2, Instruction.EXTCODEHASH, Instruction.SHL, Instruction.SHR,
-                            Instruction.SAR
-                        }))).ToArray();
+            ByzantiumInstructions.Union(
+                new[]
+                {
+                    Instruction.CREATE2, Instruction.EXTCODEHASH, Instruction.SHL, Instruction.SHR,
+                    Instruction.SAR
+                }).ToArray();
 
         private static readonly Instruction[] IstanbulInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            new[] { Instruction.SELFBALANCE, Instruction.CHAINID })))).ToArray();
+            ConstantinopleFixInstructions.Union(
+                new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
         private static readonly Instruction[] BerlinInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                // new[]
-                                // {
-                                //     Instruction.BEGINSUB,
-                                //     Instruction.JUMPSUB,
-                                //     Instruction.RETURNSUB
-                                // }
-                                new Instruction[] { }
-                            ))))).ToArray();
+            IstanbulInstructions.Union(
+                // new[]
+                // {
+                //     Instruction.BEGINSUB,
+                //     Instruction.JUMPSUB,
+                //     Instruction.RETURNSUB
+                // }
+                new Instruction[] { }
+            ).ToArray();
 
         private static readonly Instruction[] LondonInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                BerlinInstructions.Union(
-                                new Instruction[]
-                                    {
-                                        Instruction.BASEFEE
-                                    }
-                                )
-                            ))))).ToArray();
+            BerlinInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.BASEFEE
+                }
+            ).ToArray();
 
         private static readonly Instruction[] ShanghaiInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                BerlinInstructions.Union(
-                                    LondonInstructions.Union(
-                                    new Instruction[]
-                                        {
-                                            Instruction.PUSH0
-                                        }
-                                    )
-                            )))))).ToArray();
+            LondonInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.PUSH0
+                }
+            ).ToArray();
 
         private static readonly Instruction[] CancunInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                BerlinInstructions.Union(
-                                    LondonInstructions.Union(
-                                        ShanghaiInstructions.Union(
-                                        new Instruction[]
-                                            {
-                                                Instruction.TSTORE,
-                                                Instruction.TLOAD
-                                            }
-                                        )
-                            ))))))).ToArray();
+            ShanghaiInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.TSTORE,
+                    Instruction.TLOAD
+                }
+            ).ToArray();
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()

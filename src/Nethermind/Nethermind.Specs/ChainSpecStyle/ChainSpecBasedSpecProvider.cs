@@ -83,13 +83,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                 if (propertyInfo.PropertyType == typeof(ulong))
                 {
                     ulong timestampTansition = (ulong)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (timestampTansition > 0)
+                    if (timestampTansition > (_chainSpec?.Genesis?.Timestamp ?? 0))
                         transitionTimestamps.Add(timestampTansition);
                 }
                 else if (propertyInfo.PropertyType == typeof(ulong?))
                 {
                     var optionalTransition = (ulong?)propertyInfo.GetValue(propertyInfo.DeclaringType == typeof(ChainSpec) ? _chainSpec : propertyInfo.DeclaringType == typeof(EthashParameters) ? (object)_chainSpec.Ethash : _chainSpec.Parameters);
-                    if (optionalTransition is not null && optionalTransition.Value > 0)
+                    if (optionalTransition is not null && optionalTransition.Value > (_chainSpec?.Genesis?.Timestamp ?? 0))
                     {
                         transitionTimestamps.Add(optionalTransition.Value);
                     }
@@ -102,7 +102,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 transitionBlockNumbers.Add(bombDelay.Key);
             }
 
-            TransitionBlocks = transitionBlockNumbers.Skip(1).Select(bn => new ForkActivation(bn))
+            TransitionActivations = transitionBlockNumbers.Skip(1).Select(bn => new ForkActivation(bn))
                 .Union(
                 transitionTimestamps.Select(ts => new ForkActivation(transitionBlockNumbers.Last(), ts))
                 )
@@ -113,7 +113,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(releaseSpec, releaseStartBlock, 0);
+                FillReleaseSpec(releaseSpec, releaseStartBlock, _chainSpec?.Genesis?.Timestamp ?? 0);
                 _transitions[index] = ((ForkActivation)releaseStartBlock, releaseSpec);
                 index++;
             }
@@ -232,7 +232,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     CompareTransitionOnBlock,
                     out (ForkActivation, ReleaseSpec Release) transition)
                     ? transition.Release
-                    : null;
+                    : GenesisSpec;
 
         private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, ReleaseSpec Release) transition) =>
             forkActivation.CompareTo(transition.activation);
@@ -240,6 +240,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public ulong ChainId => _chainSpec.ChainId;
-        public ForkActivation[] TransitionBlocks { get; private set; }
+        public ForkActivation[] TransitionActivations { get; private set; }
     }
 }

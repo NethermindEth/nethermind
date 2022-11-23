@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Blockchain
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IMiningConfig miningConfig)
+            IBlocksConfig blocksConfig)
             : base(
                 txSource,
                 processor,
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test.Blockchain
                 specProvider,
                 logManager,
                 ConstantDifficulty.One,
-                miningConfig)
+                blocksConfig)
         {
         }
 

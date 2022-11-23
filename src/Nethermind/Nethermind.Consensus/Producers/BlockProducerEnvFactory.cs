@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IBlockPreprocessorStep _blockPreprocessorStep;
         private readonly ITxPool _txPool;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly ILogManager _logManager;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
             IBlockPreprocessorStep blockPreprocessorStep,
             ITxPool txPool,
             ITransactionComparerProvider transactionComparerProvider,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider;
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Producers
             _blockPreprocessorStep = blockPreprocessorStep;
             _txPool = txPool;
             _transactionComparerProvider = transactionComparerProvider;
-            _miningConfig = miningConfig;
+            _blocksConfig = blocksConfig;
             _logManager = logManager;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Producers
                     _rewardCalculatorSource,
                     _receiptStorage,
                     _logManager,
-                    _miningConfig);
+                    _blocksConfig);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, _transactionComparerProvider, _logManager),
+                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
@@ -112,34 +112,34 @@ namespace Nethermind.Consensus.Producers
             ITxSource? additionalTxSource,
             ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
             return additionalTxSource.Then(txPoolSource);
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
             ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(miningConfig);
+            ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(blocksConfig);
             return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
         }
 
-        protected virtual ITxFilterPipeline CreateTxSourceFilter(IMiningConfig miningConfig) =>
-            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, miningConfig);
+        protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
+            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
 
         protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
-            ILogManager logManager, IMiningConfig miningConfig) =>
+            ILogManager logManager, IBlocksConfig blocksConfig) =>
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),

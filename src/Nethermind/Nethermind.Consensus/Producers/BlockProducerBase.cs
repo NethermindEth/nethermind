@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Producers
         private DateTime _lastProducedBlockDateTime;
         private const int BlockProductionTimeout = 1000;
         protected ILogger Logger { get; }
-        protected readonly IMiningConfig MiningConfig;
+        protected readonly IBlocksConfig _blocksConfig;
 
         protected BlockProducerBase(
             ITxSource? txSource,
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Producers
             ISpecProvider? specProvider,
             ILogManager? logManager,
             IDifficultyCalculator? difficultyCalculator,
-            IMiningConfig? miningConfig)
+            IBlocksConfig? blocksConfig)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Producers
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            MiningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
@@ -282,7 +282,7 @@ namespace Nethermind.Consensus.Producers
                 parent.Number + 1,
                 payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                MiningConfig.GetExtraDataBytes())
+                _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao

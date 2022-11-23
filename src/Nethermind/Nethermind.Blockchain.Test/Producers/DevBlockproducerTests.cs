@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 trigger,
                 timestamper,
                 specProvider,
-                new MiningConfig { Enabled = true },
+                new BlocksConfig(),
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();

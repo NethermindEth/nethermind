@@ -53,7 +53,7 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
             (ForkActivation)HomesteadBlockNumber,
             (ForkActivation)TangerineWhistleBlockNumber,
