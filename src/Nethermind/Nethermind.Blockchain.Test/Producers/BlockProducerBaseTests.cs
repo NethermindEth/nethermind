@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 IGasLimitCalculator gasLimitCalculator,
                 ITimestamper timestamper,
                 ILogManager logManager,
-                IMiningConfig miningConfig)
+                IBlocksConfig blocksConfig)
                 : base(
                     txSource,
                     processor,
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     MainnetSpecProvider.Instance,
                     logManager,
                     new TimestampDifficultyCalculator(),
-                    miningConfig)
+                    blocksConfig)
             {
             }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Time_passing_does_not_break_the_block()
         {
             ITimestamper timestamper = new IncrementalTimestamper();
-            IMiningConfig miningConfig = new MiningConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
             ProducerUnderTest producerUnderTest = new(
                 EmptyTxSource.Instance,
                 Substitute.For<IBlockchainProcessor>(),
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
                 LimboLogs.Instance,
-                miningConfig
+                blocksConfig
                 );
 
             Block block = producerUnderTest.Prepare();
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Parent_timestamp_is_used_consistently()
         {
             ITimestamper timestamper = new IncrementalTimestamper(DateTime.UnixEpoch, TimeSpan.FromSeconds(1));
-            IMiningConfig miningConfig = new MiningConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
 
             ProducerUnderTest producerUnderTest = new(
                 EmptyTxSource.Instance,
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
                 LimboLogs.Instance,
-                miningConfig);
+                blocksConfig);
 
             ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
             Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);

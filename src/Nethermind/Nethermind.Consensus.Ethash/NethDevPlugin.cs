@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Ethash
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IMiningConfig>().MinGasPrice, getFromApi.SpecProvider)
+                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>().MinGasPrice, getFromApi.SpecProvider)
                 .Build;
 
             TxPoolTxSource txPoolTxSource = new(
@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.Ethash
                 blockProductionTrigger ?? DefaultBlockProductionTrigger,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
-                getFromApi.Config<IMiningConfig>(),
+                getFromApi.Config<IBlocksConfig>(),
                 getFromApi.LogManager);
 
             return Task.FromResult(blockProducer);

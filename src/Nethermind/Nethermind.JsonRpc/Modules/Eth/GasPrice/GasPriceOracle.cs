@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         {
             _blockFinder = blockFinder;
             _logger = logManager.GetClassLogger();
-            _minGasPrice = minGasPrice ?? new MiningConfig().MinGasPrice;
+            _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
             SpecProvider = specProvider;
         }
 

@@ -23,7 +23,7 @@ public class EnrDiscovery : INodeSource
     {
         _parser = parser;
         _logger = logManager.GetClassLogger();
-        _crawler = new EnrTreeCrawler();
+        _crawler = new EnrTreeCrawler(_logger);
     }
 
     public async Task SearchTree(string domain)

@@ -1,12 +1,36 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only 
 
+using Nethermind.Logging;
+
 namespace Nethermind.Network.Dns;
 
 public class EnrTreeCrawler
 {
+    private readonly ILogger _logger;
+
+    public EnrTreeCrawler(ILogger logger)
+    {
+        _logger = logger;
+    }
     public IAsyncEnumerable<string> SearchTree(string domain)
     {
+        if (domain.ToLower().StartsWith("enrtree://"))
+        {
+            domain = domain[10..];
+            // Note: we have no verification of a DNS list signer!
+            // Following EIP-1459 "public key must be known to the client in order to verify the list"
+            // Thus there shall be a list of public keys that a client allows and we shall check against it
+            string[] pubkey_and_url = domain.Split("@");
+            if (pubkey_and_url.Length > 1)
+            {
+                domain = pubkey_and_url[1];
+            }
+            else
+            {
+                _logger.Warn("No 32bit encoded public key of enr tree signer");
+            }
+        }
         DnsClient client = new(domain);
         SearchContext searchContext = new(string.Empty);
         return SearchTree(client, searchContext);
