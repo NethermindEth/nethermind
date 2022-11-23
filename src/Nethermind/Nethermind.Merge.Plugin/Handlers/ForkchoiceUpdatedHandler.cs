@@ -231,7 +231,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             }
 
-            var spec = _specProvider.GetSpec(newHeadBlock.Number, payloadAttributes.Timestamp);
+            var spec = _specProvider.GetSpec(newHeadBlock.Number + 1, payloadAttributes.Timestamp);
 
             if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
             {
