@@ -61,6 +61,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
+        [NonParallelizable]
         public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
