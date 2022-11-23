@@ -23,7 +23,8 @@ public class FeesTracer : IBlockTracer, ITxTracer
     public bool IsTracingBlockHash => false;
     public bool IsTracingAccess => false;
     public bool IsTracingStorage => false;
-    public bool IsTracingReceipt => true;
+    public bool IsTracingReceipt => false;
+    public bool IsTracingFees => true;
 
     public UInt256 Fees { get; private set; } = UInt256.Zero;
     public UInt256 BurntFees { get; private set; } = UInt256.Zero;

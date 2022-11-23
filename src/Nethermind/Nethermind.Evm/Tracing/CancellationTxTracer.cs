@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingStorage;
         private readonly bool _isTracingBlockHash;
         private readonly bool _isTracingBlockAccess;
+        private readonly bool _isTracingFees;
 
         public ITxTracer InnerTracer => _innerTracer;
 
@@ -106,6 +107,12 @@ namespace Nethermind.Evm.Tracing
         {
             get => _isTracingBlockAccess || _innerTracer.IsTracingAccess;
             init => _isTracingBlockAccess = value;
+        }
+
+        public bool IsTracingFees
+        {
+            get => _isTracingFees || _innerTracer.IsTracingFees;
+            init => _isTracingFees = value;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -426,7 +433,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
             _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingReceipt)
+            if (_innerTracer.IsTracingFees)
             {
                 _innerTracer.ReportFees(fees, burntFees);
             }

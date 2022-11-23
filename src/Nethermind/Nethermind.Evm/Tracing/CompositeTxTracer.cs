@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing
                 IsTracingBlockHash |= t.IsTracingBlockHash;
                 IsTracingStorage |= t.IsTracingStorage;
                 IsTracingAccess |= t.IsTracingAccess;
+                IsTracingFees |= t.IsTracingFees;
             }
         }
 
@@ -50,6 +51,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash { get; }
         public bool IsTracingAccess { get; }
+        public bool IsTracingFees { get; }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
@@ -476,7 +478,7 @@ namespace Nethermind.Evm.Tracing
             for (int index = 0; index < _txTracers.Count; index++)
             {
                 ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingReceipt)
+                if (innerTracer.IsTracingFees)
                 {
                     innerTracer.ReportFees(fees, burntFees);
                 }

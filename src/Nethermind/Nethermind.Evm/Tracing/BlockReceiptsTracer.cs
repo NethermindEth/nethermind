@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Tracing
 
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
+        public bool IsTracingFees => _currentTxTracer.IsTracingFees;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -184,7 +185,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
-            if (_currentTxTracer.IsTracingReceipt)
+            if (_currentTxTracer.IsTracingFees)
             {
                 _currentTxTracer.ReportFees(fees, burntFees);
             }

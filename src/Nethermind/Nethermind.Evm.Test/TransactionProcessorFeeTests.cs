@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -27,13 +27,13 @@ public class TransactionProcessorFeeTests
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
     private IStateProvider _stateProvider;
+    private OverridableReleaseSpec _spec;
 
     [SetUp]
     public void Setup()
     {
-        OverridableReleaseSpec spec = new(London.Instance);
-        spec.Eip1559FeeCollector = TestItem.AddressC;
-        _specProvider = new TestSpecProvider(spec);
+        _spec = new(London.Instance);
+        _specProvider = new TestSpecProvider(_spec);
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
 
@@ -49,13 +49,16 @@ public class TransactionProcessorFeeTests
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Check_paid_fees_simple(bool isTransactionEip1559)
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    public void Check_paid_fees_simple(bool isTransactionEip1559, bool withFeeCollector)
     {
-        OverridableReleaseSpec spec = new(London.Instance);
-        spec.Eip1559FeeCollector = TestItem.AddressC;
-        _specProvider = new TestSpecProvider(spec);
+        if (withFeeCollector)
+        {
+            _spec.Eip1559FeeCollector = TestItem.AddressC;
+        }
 
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithGasPrice(10).WithMaxFeePerGas(10)
@@ -64,23 +67,45 @@ public class TransactionProcessorFeeTests
             .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
             .TestObject;
 
-        ExecuteAndCheckFees(block, tx);
+        FeesTracer tracer = new();
+        CompositeBlockTracer compositeTracer = new();
+        compositeTracer.Add(tracer);
+        compositeTracer.Add(NullBlockTracer.Instance);
+
+        ExecuteAndTrace(block, compositeTracer);
+
+        tracer.Fees.Should().Be(189000);
+        tracer.BurntFees.Should().Be(21000);
     }
 
 
-    [Test]
-    public void Check_paid_fees_multiple_transactions()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Check_paid_fees_multiple_transactions(bool withFeeCollector)
     {
+        if (withFeeCollector)
+        {
+            _spec.Eip1559FeeCollector = TestItem.AddressC;
+        }
+
         Transaction tx1 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(10).WithGasPrice(1).WithGasLimit(21000).TestObject;
-        Transaction tx2 = Build.A.Transaction
+            .WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(1).WithGasLimit(21000).TestObject;
+        Transaction tx2 = Build.A.Transaction.WithType(TxType.Legacy)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(1)
             .WithGasPrice(10).WithGasLimit(21000).TestObject;
-        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(1)
+        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(2)
             .WithBeneficiary(TestItem.AddressB).WithTransactions(tx1, tx2).WithGasLimit(42000).TestObject;
 
-        ExecuteAndCheckFees(block, tx1, tx2);
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        // tx1: 1 * 21000
+        // tx2: (10 - 2) * 21000 = 168000
+        tracer.Fees.Should().Be(189000);
+
+        block.GasUsed.Should().Be(42000);
+        tracer.BurntFees.Should().Be(84000);
     }
 
 
@@ -98,66 +123,101 @@ public class TransactionProcessorFeeTests
             .Op(Instruction.STOP)
             .Done;
         Transaction tx1 = Build.A.Transaction
-            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithMaxFeePerGas(10).WithGasPrice(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(2)
             .WithType(TxType.EIP1559).WithGasLimit(21000).TestObject;
         Transaction tx2 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(1).WithGasPrice(10)
             .WithType(TxType.Legacy).WithGasLimit(21000).TestObject;
         Transaction tx3 = Build.A.Transaction
-            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(2).WithMaxFeePerGas(30).WithGasPrice(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(2).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1)
             .WithType(TxType.EIP1559).WithCode(byteCode)
             .WithGasLimit(60000).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(1).WithTransactions(tx1, tx2, tx3)
             .WithGasLimit(102000).TestObject;
 
-        ExecuteAndCheckFees(block, tx1, tx2, tx3);
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        // tx1: 2 * 21000
+        // tx2: (10 - 1) * 21000
+        // tx3: 1 * 60000
+        tracer.Fees.Should().Be(291000);
+
+        block.GasUsed.Should().Be(102000);
+        tracer.BurntFees.Should().Be(102000);
     }
 
-
-    private void ExecuteAndCheckFees(Block block, params Transaction[] txs)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Should_stop_when_cancellation(bool withCanselation)
     {
-        Address beneficiary = block.Beneficiary!;
-        IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+        Transaction tx1 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(1).WithGasLimit(21000).TestObject;
+        Transaction tx2 = Build.A.Transaction.WithType(TxType.Legacy)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(1)
+            .WithGasPrice(10).WithGasLimit(21000).TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(2)
+            .WithBeneficiary(TestItem.AddressB).WithTransactions(tx1, tx2).WithGasLimit(42000).TestObject;
 
-        BlockReceiptsTracer tracer = new();
         FeesTracer feesTracer = new();
-        tracer.SetOtherTracer(feesTracer);
 
-        tracer.StartNewBlockTrace(block);
+        CancellationTokenSource source = new();
+        CancellationToken token = source.Token;
 
-        UInt256 totalBurned = UInt256.Zero;
-        UInt256 totalFees = UInt256.Zero;
-        foreach (Transaction tx in txs)
+        CancellationBlockTracer cancellationBlockTracer = new(feesTracer, token);
+
+        BlockReceiptsTracer blockTracer = new();
+        blockTracer.SetOtherTracer(cancellationBlockTracer);
+
+        blockTracer.StartNewBlockTrace(block);
         {
-            // Read balances of Eip1559FeeCollector and blockBeneficiary before tx execution
-            UInt256 startBurned = _stateProvider.AccountExists(spec.Eip1559FeeCollector!)
-                ? _stateProvider.GetBalance(spec.Eip1559FeeCollector!) : 0;
-            UInt256 starBeneficiary = _stateProvider.GetBalance(beneficiary);
-
-
-            tracer.StartNewTxTrace(tx);
-            _transactionProcessor.Execute(tx, block.Header, tracer);
-            tracer.EndTxTrace();
-
-            // Read balances of Eip1559FeeCollector and blockBeneficiary after tx execution
-            UInt256 endBurned = spec.IsEip1559Enabled ? _stateProvider.GetBalance(spec.Eip1559FeeCollector!) : 0;
-            UInt256 endBeneficiary = _stateProvider.GetBalance(beneficiary);
-
-            // Calculate expected fees
-            UInt256 fees = endBeneficiary - starBeneficiary;
-            UInt256 burned = endBurned - startBurned;
-
-            totalFees += fees;
-            totalBurned += burned;
-
-            fees.Should().NotBe(0);
-            feesTracer.Fees.Should().Be(totalFees);
-
-            burned.Should().NotBe(0);
-            feesTracer.BurntFees.Should().Be(totalBurned);
+            var txTracer = blockTracer.StartNewTxTrace(tx1);
+            _transactionProcessor.Execute(tx1, block.Header, txTracer);
+            blockTracer.EndTxTrace();
         }
 
+        if (withCanselation)
+        {
+            source.Cancel();
+        }
+
+        try
+        {
+            var txTracer = blockTracer.StartNewTxTrace(tx2);
+            _transactionProcessor.Execute(tx2, block.Header, txTracer);
+            blockTracer.EndTxTrace();
+            blockTracer.EndBlockTrace();
+        }
+        catch (OperationCanceledException) { }
+
+        if (withCanselation)
+        {
+            // tx1: 1 * 21000
+            feesTracer.Fees.Should().Be(21000);
+            feesTracer.BurntFees.Should().Be(42000);
+        }
+        else
+        {
+            // tx2: (10 - 2) * 21000 = 168000
+            feesTracer.Fees.Should().Be(189000);
+            feesTracer.BurntFees.Should().Be(84000);
+        }
+    }
+
+    private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
+    {
+        BlockReceiptsTracer tracer = new();
+        tracer.SetOtherTracer(otherTracer);
+
+        tracer.StartNewBlockTrace(block);
+        foreach (Transaction tx in block.Transactions)
+        {
+            var txTracer = tracer.StartNewTxTrace(tx);
+            _transactionProcessor.Execute(tx, block.Header, txTracer);
+            tracer.EndTxTrace();
+        }
         tracer.EndBlockTrace();
     }
 }
