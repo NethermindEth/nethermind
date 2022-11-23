@@ -61,27 +61,24 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
-        public void Genesis_with_non_zero_timestamp_loads_correctly()
+        public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-
-
             ReleaseSpec expectedSpec = (ReleaseSpec)((ReleaseSpec)MainnetSpecProvider
                 .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
             expectedSpec.Name = "Genesis_with_non_zero_timestamp";
             expectedSpec.IsEip3651Enabled = true;
+            expectedSpec.IsEip3198Enabled = false;
             expectedSpec.Eip1559TransitionBlock = 0;
             expectedSpec.DifficultyBombDelay = 0;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
             testProvider.SpecToReturn = expectedSpec;
             testProvider.TerminalTotalDifficulty = 0;
             testProvider.GenesisSpec = expectedSpec;
-
             List<ForkActivation> blockNumbersToTest = new()
             {
                 (0, null),
@@ -90,10 +87,25 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (1, 4660),
                 (1, 4661),
             };
-
             CompareSpecProviders(testProvider, provider, blockNumbersToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
+            expectedSpec.IsEip3198Enabled = true;
+            List<ForkActivation> blockNumbersToTest2 = new()
+            {
+                (2, 4662),
+                (3, 4662),
+                (3, 4671),
+            };
+            CompareSpecProviders(testProvider, provider, blockNumbersToTest2);
+            expectedSpec.IsEip3675Enabled = true;
+            List<ForkActivation> blockNumbersToTest3 = new()
+            {
+                (4, 4672),
+                (4, 4673),
+                (5, 4680),
+            };
+            CompareSpecProviders(testProvider, provider, blockNumbersToTest3);
         }
 
         [Test]

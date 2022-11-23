@@ -225,12 +225,48 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-                _transitions.TryGetSearchedItem(forkActivation,
+        public IReleaseSpec GetSpec(ForkActivation activation)
+        {
+            if (activation.Timestamp is null)
+            {
+                return _transitions.TryGetSearchedItem(activation,
                     CompareTransitionOnBlock,
                     out (ForkActivation, ReleaseSpec Release) transition)
                     ? transition.Release
                     : GenesisSpec;
+            }
+            List<(ForkActivation ForkActivation, IReleaseSpec Release)> filterdByBlockNumber = new();
+            long biggestBlockNumber = 0;
+            for (int i = 0; i < _transitions.Length; i++)
+            {
+                (ForkActivation ForkActivation, IReleaseSpec Release) transition = _transitions[i];
+                long currentBlockNumber = transition.ForkActivation.BlockNumber;
+                if (currentBlockNumber <= activation.BlockNumber && currentBlockNumber > biggestBlockNumber)
+                    biggestBlockNumber = currentBlockNumber;
+            }
+            for (int i = 0; i < _transitions.Length; i++)
+            {
+                (ForkActivation ForkActivation, IReleaseSpec Release) transition = _transitions[i];
+                long currentBlockNumber = transition.ForkActivation.BlockNumber;
+                if (currentBlockNumber == biggestBlockNumber)
+                    filterdByBlockNumber.Add(transition);
+            }
+            if (filterdByBlockNumber.Count == 1)
+                return filterdByBlockNumber[0].Release;
+            (ForkActivation ForkActivation, IReleaseSpec Release) candidate = filterdByBlockNumber[0];
+            for (int i = 1; i < filterdByBlockNumber.Count; i++)
+            {
+                (ForkActivation ForkActivation, IReleaseSpec Release) transition = filterdByBlockNumber[i];
+                if (filterdByBlockNumber[i].ForkActivation.Timestamp <= activation.Timestamp &&
+                    (candidate.ForkActivation.Timestamp is null
+                    || candidate.ForkActivation.Timestamp < filterdByBlockNumber[i].ForkActivation.Timestamp))
+                {
+                    candidate = filterdByBlockNumber[i];
+                    continue;
+                }
+            }
+            return candidate.Release;
+        }
 
         private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, ReleaseSpec Release) transition) =>
             forkActivation.CompareTo(transition.activation);
