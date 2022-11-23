@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
-        private IMiningConfig _miningConfig = null!;
+        private IBlocksConfig _blocksConfig = null!;
         private PostMergeBlockProducer _postMergeBlockProducer = null!;
         private IManualBlockProductionTrigger? _blockProductionTrigger = null;
         private ManualTimestamper? _manualTimestamper;
@@ -50,14 +50,14 @@ namespace Nethermind.Merge.Plugin
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
                     ? await consensusPlugin.InitBlockProducer()
                     : null;
-                _miningConfig = _api.Config<IMiningConfig>();
+                _blocksConfig = _api.Config<IBlocksConfig>();
                 _manualTimestamper ??= new ManualTimestamper();
                 _blockProductionTrigger = new BuildBlocksWhenRequested();
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
-                PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
+                PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _blocksConfig, _api.LogManager);
                 _postMergeBlockProducer = blockProducerFactory.Create(
                     blockProducerEnv,
                     _blockProductionTrigger,

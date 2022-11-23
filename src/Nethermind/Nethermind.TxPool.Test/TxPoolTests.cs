@@ -1346,6 +1346,36 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
         }
 
+        [Test]
+        public void TooExpensiveTxFilter_correctly_calculates_cumulative_cost()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            EnsureSenderBalance(TestItem.AddressF, 1);
+
+            Transaction zeroCostTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Cumulative cost should be 1
+            Transaction expensiveTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithValue(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
