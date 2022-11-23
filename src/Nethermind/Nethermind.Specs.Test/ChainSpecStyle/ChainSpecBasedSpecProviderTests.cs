@@ -64,7 +64,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         public void Genesis_with_non_zero_timestamp_loads_correctly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/genesis_with_non_zero_timestamp.json");
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             chainSpec.Parameters.Eip2537Transition.Should().BeNull();
 
@@ -72,7 +72,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
 
             ReleaseSpec expectedSpec = (ReleaseSpec)((ReleaseSpec)MainnetSpecProvider
-                .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, 1234ul))).Clone();
+                .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
             expectedSpec.Name = "Genesis_with_non_zero_timestamp";
             expectedSpec.IsEip3651Enabled = true;
             expectedSpec.Eip1559TransitionBlock = 0;
@@ -84,7 +84,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> blockNumbersToTest = new()
             {
-                (0, 4661),
+                (0, null),
+                (0, 0),
+                (0, 4660),
+                (1, 4660),
+                (1, 4661),
             };
 
             CompareSpecProviders(testProvider, provider, blockNumbersToTest);

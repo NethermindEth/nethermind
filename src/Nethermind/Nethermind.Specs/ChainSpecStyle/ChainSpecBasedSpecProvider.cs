@@ -15,7 +15,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
-        private (ForkActivation, ReleaseSpec Release)[] _transitions;
+        private (ForkActivation ForkActivation, ReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
 
@@ -121,8 +121,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
                 ReleaseSpec releaseSpec = new();
-                FillReleaseSpec(releaseSpec, _transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp);
-                _transitions[index] = ((_transitions[index - 1].Item1.BlockNumber, releaseStartTimestamp), releaseSpec);
+                FillReleaseSpec(releaseSpec, _transitions[index - 1].ForkActivation.BlockNumber, releaseStartTimestamp);
+                _transitions[index] = ((_transitions[index - 1].ForkActivation.BlockNumber, releaseStartTimestamp), releaseSpec);
                 index++;
             }
             if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
