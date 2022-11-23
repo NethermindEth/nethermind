@@ -419,6 +419,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
+            var currentTimestamp = Timestamper.Default.UnixTime.Seconds;
             ChainSpec chainSpec = new()
             {
                 Ethash =
@@ -473,6 +474,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,
+                    Eip3651TransitionTimestamp = 1000000012,
+                    Eip3675TransitionTimestamp = 1000000012,
+                    Eip3855TransitionTimestamp = 1000000012,
+                    Eip3860TransitionTimestamp = 1000000012,
+                    Eip1153TransitionTimestamp = 1000000024,
                 }
             };
 
@@ -487,7 +493,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             {
                 changes(expected);
                 IReleaseSpec underTest = provider.GetSpec(activation);
-                expected.Should().BeEquivalentTo(underTest);
+                underTest.Should().BeEquivalentTo(expected);
             }
 
             TestTransitions((ForkActivation)0L, r =>
@@ -539,6 +545,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
             TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+
+            TestTransitions((40000L, 1000000012), r => {
+                r.IsEip3651Enabled = true;
+                r.IsEip3675Enabled = true;
+                r.IsEip3855Enabled = true;
+                r.IsEip3860Enabled = true;
+            });
+            TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
         }
     }
 }
