@@ -354,12 +354,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                     : UInt256.Zero;
 
-            // if (chainSpecJson.Params.Eip4895TransitionTimestamp != null)
-            //     baseFee = chainSpecJson.Params.Eip4895TransitionTimestamp == 0
-            //         ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
-            //         : UInt256.Zero;
-
-
             BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
