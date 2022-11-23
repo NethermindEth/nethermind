@@ -38,8 +38,7 @@ COPY --from=build /out .
 
 LABEL git_commit=$COMMIT_HASH
 
-EXPOSE 8545
-EXPOSE 30303
+EXPOSE 8545 8551 30303
 
 VOLUME /nethermind/nethermind_db
 VOLUME /nethermind/logs
