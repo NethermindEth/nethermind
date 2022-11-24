@@ -184,5 +184,34 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
             Assert.AreEqual(TestItem.KeccakA, response?.Result);
         }
+
+        [Test]
+        public void BlockForRpc_should_expose_withdrawals_if_any()
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            var block = Build.A.Block
+                .WithWithdrawals(new[]
+                {
+                    Build.A.Withdrawal
+                        .WithAmount(1)
+                        .WithRecipient(TestItem.AddressA)
+                        .TestObject
+                })
+                .TestObject;
+            var rpcBlock = new BlockForRpc(block, false, specProvider);
+
+            block.WithdrawalsRoot.Should().NotBeNull();
+            rpcBlock.WithdrawalsRoot.Should().BeEquivalentTo(block.WithdrawalsRoot);
+            rpcBlock.Withdrawals.Should().BeEquivalentTo(block.Withdrawals);
+
+            block = Build.A.Block.WithWithdrawals(null).TestObject;
+            rpcBlock = new(block, false, specProvider);
+
+            var serializer = new EthereumJsonSerializer();
+            var json = serializer.Serialize(rpcBlock);
+
+            json.Should().NotContain("withdrawals");
+            json.Should().NotContain("withdrawalsRoot");
+        }
     }
 }
