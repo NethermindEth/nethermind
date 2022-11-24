@@ -10,11 +10,14 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Specs.Forks;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -320,12 +323,38 @@ public partial class EngineModuleTests
     }
 
     protected static IEnumerable<(
-    string CreateBlockchainMethod,
+        string CreateBlockchainMethod,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
         )> GetWithdrawalValidationValues()
     {
         yield return (nameof(CreateShanghaiBlockChain), "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
         yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
+    }
+
+    [TestCaseSource(nameof(WithdrawalsTestCases))]
+    public async Task executePayloadV2_works_correctly_when_0_withdrawals_applied((
+        IReleaseSpec ReleaseSpec,
+        Withdrawal[]? Withdrawals,
+        bool IsValid) input)
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.ReleaseSpec);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, input.Withdrawals);
+        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
+        resultWrapper.Data.Status.Should().Be(input.IsValid ? PayloadStatus.Valid : PayloadStatus.Invalid);
+    }
+
+    protected static IEnumerable<(
+        IReleaseSpec releaseSpec,
+        Withdrawal[]? Withdrawals,
+        bool isValid
+        )> WithdrawalsTestCases()
+    {
+        yield return (London.Instance, null,  true);
+        yield return (Shanghai.Instance, null,  false);
+        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
+        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(),  true);
+        yield return (London.Instance, new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }, false);
     }
 }

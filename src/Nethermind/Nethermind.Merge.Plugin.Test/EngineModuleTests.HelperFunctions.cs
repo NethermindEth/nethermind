@@ -82,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null)
         {
             ExecutionPayload blockRequest = new()
             {
@@ -95,6 +95,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
+                Withdrawals = withdrawals
             };
 
             blockRequest.SetTransactions(Array.Empty<Transaction>());
