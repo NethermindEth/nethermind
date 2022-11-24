@@ -367,10 +367,13 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = input.Withdrawals[0] };
-        ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
-        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
-        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        for (int i = 0; i < input.Withdrawals.Length; ++i)
+        {
+            PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = input.Withdrawals[i] };
+            ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        }
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
