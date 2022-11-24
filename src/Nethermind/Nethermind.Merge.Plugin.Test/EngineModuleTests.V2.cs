@@ -13,11 +13,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
@@ -360,19 +362,35 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
-    public async Task Can_apply_withdrawals_correctly((
-        Withdrawal[][] Withdrawals,
-        Address[] expectedAccountIncrease) input)
+    public async Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        for (int i = 0; i < input.Withdrawals.Length; ++i)
+        // get initial balances
+        List<UInt256> initialBalances = new();
+        foreach ((Address Account, UInt256 BalanceIncrease) accountIncrease in input.ExpectedAccountIncrease)
         {
-            PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = input.Withdrawals[i] };
+            UInt256 initialBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+            initialBalances.Add(initialBalance);
+        }
+
+        foreach (Withdrawal[] t in input.Withdrawals)
+        {
+            PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = t };
             ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultFcu = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash));
+            resultFcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        }
+
+        // check balance increase
+        for (int index = 0; index < input.ExpectedAccountIncrease.Length; index++)
+        {
+            (Address Account, UInt256 BalanceIncrease) accountIncrease = input.ExpectedAccountIncrease[index];
+            UInt256 currentBalance = chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+            currentBalance.Should().Be(accountIncrease.BalanceIncrease + initialBalances[index]);
         }
     }
 
@@ -389,9 +407,9 @@ public partial class EngineModuleTests
 
     protected static IEnumerable<(
         Withdrawal[][] Withdrawals,
-        Address[] expectedAccountIncrease)> WithdrawalsTestCases()
+        (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
     {
-        yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<Address>());
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }}, Array.Empty<Address>());
+        yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
+        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }}, Array.Empty<(Address, UInt256)>());
     }
 }
