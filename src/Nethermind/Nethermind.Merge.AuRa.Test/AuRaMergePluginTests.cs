@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -13,23 +12,17 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade.Eth;
-using Nethermind.Merge.AuRa.Test;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Trie.Pruning;
-using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -59,7 +52,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     // the test class above and rerunning the tests.
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override async Task engine_newPayloadV2_should_validate_withdrawals((
-        string CreateBlockchainMethod,
+        IReleaseSpec Spec,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
         ) input)
@@ -96,7 +89,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
-            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
+            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
