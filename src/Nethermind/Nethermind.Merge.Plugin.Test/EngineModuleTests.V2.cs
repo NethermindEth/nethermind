@@ -406,10 +406,12 @@ public partial class EngineModuleTests
     }
 
     protected static IEnumerable<(
-        Withdrawal[][] Withdrawals,
+        Withdrawal[][] Withdrawals, // withdrawals per payload
         (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
     {
         yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }}, Array.Empty<(Address, UInt256)>());
+        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) } );
+        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
+        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA }, new[] { TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
     }
 }
