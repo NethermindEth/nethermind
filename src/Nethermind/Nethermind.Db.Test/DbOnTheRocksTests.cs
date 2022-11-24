@@ -1,20 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,7 +14,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
+using RocksDbSharp;
 
 namespace Nethermind.Db.Test
 {
@@ -110,6 +101,60 @@ namespace Nethermind.Db.Test
             db.Dispose();
         }
 
+        [Test]
+        public void Corrupted_exception_on_open_would_create_marker()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool exceptionThrown = false;
+            try
+            {
+                CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem);
+            }
+            catch (RocksDbSharpException)
+            {
+                exceptionThrown = true;
+            }
+
+            exceptionThrown.Should().BeTrue();
+            file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+        }
+
+        [Test]
+        public void If_marker_exists_on_open_then_repair_before_open()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
+            file.Exists(markerFile).Returns(true);
+
+            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+
+            try
+            {
+                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    rocksDbNative: native);
+            }
+            catch (Exception)
+            {
+            }
+
+            native.Received().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+            file.Received().Delete(markerFile);
+        }
+
         private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
@@ -119,6 +164,26 @@ namespace Nethermind.Db.Test
                 WriteBufferNumber = 4,
                 WriteBufferSize = (ulong)1.KiB()
             };
+        }
+    }
+
+    class CorruptedDbOnTheRocks : DbOnTheRocks
+    {
+        public CorruptedDbOnTheRocks(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig,
+            ILogManager logManager,
+            ColumnFamilies? columnFamilies = null,
+            RocksDbSharp.Native? rocksDbNative = null,
+            IFileSystem? fileSystem = null
+        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        {
+        }
+
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
+        {
+            throw new RocksDbSharpException("Corruption: test corruption");
         }
     }
 }

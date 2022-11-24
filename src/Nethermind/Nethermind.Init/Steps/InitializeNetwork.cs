@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -131,7 +118,9 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+        Network.Metrics.PeerLimit = maxPeersCount;
         SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
@@ -493,7 +482,6 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
-            _networkConfig.LocalIp!,
             _networkConfig.P2PPort,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
@@ -556,8 +544,9 @@ public class InitializeNetwork : IStep
             _api.LogManager);
 
         string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
-        enrDiscovery.SearchTree($"all.{chainName}.ethdisco.net").ContinueWith(t =>
+        enrDiscovery.SearchTree(domain).ContinueWith(t =>
 #pragma warning restore CS4014
         {
             if (t.IsFaulted)
