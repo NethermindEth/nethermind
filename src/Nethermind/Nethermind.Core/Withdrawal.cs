@@ -33,10 +33,10 @@ public class Withdrawal
 
     public override string ToString() => ToString(string.Empty);
 
-    public string ToString(string indentation) => new StringBuilder()
-        .AppendLine($"{indentation}{nameof(Index)}:          {Index}")
-        .AppendLine($"{indentation}{nameof(ValidatorIndex)}: {ValidatorIndex}")
-        .AppendLine($"{indentation}{nameof(Address)}:        {Address}")
-        .AppendLine($"{indentation}{nameof(Amount)}:         {Amount}")
+    public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(Withdrawal)} {{")
+        .Append($"{nameof(Index)}: {Index}, ")
+        .Append($"{nameof(ValidatorIndex)}: {ValidatorIndex}, ")
+        .Append($"{nameof(Address)}: {Address}, ")
+        .Append($"{nameof(Amount)}: {Amount}}}")
         .ToString();
 }
