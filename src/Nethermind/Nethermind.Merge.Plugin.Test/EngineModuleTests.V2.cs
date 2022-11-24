@@ -325,16 +325,6 @@ public partial class EngineModuleTests
         }));
     }
 
-    protected static IEnumerable<(
-        string CreateBlockchainMethod,
-        string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals
-        )> GetWithdrawalValidationValues()
-    {
-        yield return (nameof(CreateShanghaiBlockChain), "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
-        yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
-    }
-
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
     public async Task executePayloadV2_works_correctly_when_0_withdrawals_applied((
         IReleaseSpec ReleaseSpec,
@@ -346,19 +336,6 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         resultWrapper.Data.Status.Should().Be(input.IsValid ? PayloadStatus.Valid : PayloadStatus.Invalid);
-    }
-
-    protected static IEnumerable<(
-        IReleaseSpec releaseSpec,
-        Withdrawal[]? Withdrawals,
-        bool isValid
-        )> ZeroWithdrawalsTestCases()
-    {
-        yield return (London.Instance, null,  true);
-        yield return (Shanghai.Instance, null,  false);
-        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
-        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(),  true);
-        yield return (London.Instance, new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }, false);
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
@@ -394,7 +371,17 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
+    protected static IEnumerable<(
+        string CreateBlockchainMethod,
+        string ErrorMessage,
+        IEnumerable<Withdrawal>? Withdrawals
+        )> GetWithdrawalValidationValues()
+    {
+        yield return (nameof(CreateShanghaiBlockChain), "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
+        yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
+    }
+
+    private static async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
@@ -409,9 +396,22 @@ public partial class EngineModuleTests
         Withdrawal[][] Withdrawals, // withdrawals per payload
         (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
     {
-        yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) } );
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA }, new[] { TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
+        yield return (new[] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
+        yield return (new[] { new[] { TestItem.WithdrawalA, TestItem.WithdrawalB } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) });
+        yield return (new[] { new[] { TestItem.WithdrawalA, TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) });
+        yield return (new[] { new[] { TestItem.WithdrawalA, TestItem.WithdrawalA }, new[] { TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) });
+    }
+
+    protected static IEnumerable<(
+        IReleaseSpec releaseSpec,
+        Withdrawal[]? Withdrawals,
+        bool isValid
+        )> ZeroWithdrawalsTestCases()
+    {
+        yield return (London.Instance, null, true);
+        yield return (Shanghai.Instance, null, false);
+        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
+        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
+        yield return (London.Instance, new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }, false);
     }
 }
