@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -76,8 +77,8 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak blockHash = new Keccak("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
-        ExecutionPayload expectedPayload = new ExecutionPayload
+        Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
             BlockHash = blockHash,
@@ -236,7 +237,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ExecutionPayload expectedPayload = new ExecutionPayload
+        ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
             BlockHash = Keccak.Zero,
@@ -281,12 +282,12 @@ public partial class EngineModuleTests
             createBlockchain.Invoke(this, new object?[] { new MergeConfig { TerminalTotalDifficulty = "0" }, null })!;
 
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        Keccak blockHash = new Keccak("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        ExecutionPayload expectedPayload = new ExecutionPayload
+        ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
             BlockHash = blockHash,
@@ -332,7 +333,7 @@ public partial class EngineModuleTests
         yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
     }
 
-    [TestCaseSource(nameof(WithdrawalsTestCases))]
+    [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
     public async Task executePayloadV2_works_correctly_when_0_withdrawals_applied((
         IReleaseSpec ReleaseSpec,
         Withdrawal[]? Withdrawals,
@@ -349,12 +350,45 @@ public partial class EngineModuleTests
         IReleaseSpec releaseSpec,
         Withdrawal[]? Withdrawals,
         bool isValid
-        )> WithdrawalsTestCases()
+        )> ZeroWithdrawalsTestCases()
     {
         yield return (London.Instance, null,  true);
         yield return (Shanghai.Instance, null,  false);
         yield return (London.Instance, Array.Empty<Withdrawal>(), false);
         yield return (Shanghai.Instance, Array.Empty<Withdrawal>(),  true);
         yield return (London.Instance, new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }, false);
+    }
+
+    [TestCaseSource(nameof(WithdrawalsTestCases))]
+    public async Task Can_apply_withdrawals_correctly((
+        Withdrawal[][] Withdrawals,
+        Address[] expectedAccountIncrease) input)
+    {
+        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = input.Withdrawals[0] };
+        ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
+        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
+        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
+        IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
+    {
+        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
+        string payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
+        ResultWrapper<ExecutionPayload?> getPayloadResult =
+            await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId));
+        return getPayloadResult.Data!;
+    }
+
+    protected static IEnumerable<(
+        Withdrawal[][] Withdrawals,
+        Address[] expectedAccountIncrease)> WithdrawalsTestCases()
+    {
+        yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<Address>());
+        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }}, Array.Empty<Address>());
     }
 }
