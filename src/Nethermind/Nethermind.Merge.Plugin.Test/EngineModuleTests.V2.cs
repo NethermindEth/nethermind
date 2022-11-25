@@ -358,7 +358,7 @@ public partial class EngineModuleTests
         yield return (Shanghai.Instance, null,  false);
         yield return (London.Instance, Array.Empty<Withdrawal>(), false);
         yield return (Shanghai.Instance, Array.Empty<Withdrawal>(),  true);
-        yield return (London.Instance, new[] { TestItem.WithdrawalA, TestItem.WithdrawalB }, false);
+        yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
@@ -375,9 +375,9 @@ public partial class EngineModuleTests
             initialBalances.Add(initialBalance);
         }
 
-        foreach (Withdrawal[] t in input.Withdrawals)
+        foreach (Withdrawal[] withdrawal in input.Withdrawals)
         {
-            PayloadAttributes payloadAttributes = new() { Timestamp = Timestamper.UnixTime.Seconds, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = t };
+            PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 1, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = withdrawal };
             ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -410,8 +410,16 @@ public partial class EngineModuleTests
         (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
     {
         yield return (new [] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalB } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) } );
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
-        yield return (new [] {new[] { TestItem.WithdrawalA, TestItem.WithdrawalA }, new[] { TestItem.WithdrawalA } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
+        yield return (new [] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) } );
+        yield return (new [] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) } );
+        yield return (new [] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth } }, new[] { (TestItem.AddressA, 3.Ether()), (TestItem.AddressB, 0.Ether()) } );
+        yield return (new []
+        {
+            new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
+            new[] { TestItem.WithdrawalA_1Eth }, // 2nd payload
+            Array.Empty<Withdrawal>(), // 3rd payload
+            new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
+            new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
+        }, new[] { (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()), (TestItem.AddressF, 6.Ether()) } );
     }
 }
