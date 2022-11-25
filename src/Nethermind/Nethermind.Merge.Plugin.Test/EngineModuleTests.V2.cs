@@ -337,10 +337,10 @@ public partial class EngineModuleTests
         bool isValid
         )> ZeroWithdrawalsTestCases()
     {
-        yield return (London.Instance, null,  true);
-        yield return (Shanghai.Instance, null,  false);
+        yield return (London.Instance, null, true);
+        yield return (Shanghai.Instance, null, false);
         yield return (London.Instance, Array.Empty<Withdrawal>(), false);
-        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(),  true);
+        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
         yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
     }
 
