@@ -189,9 +189,10 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithWithdrawalsRoot(Keccak withdrawalsRoot)
+        public BlockBuilder WithWithdrawalsRoot(Keccak? withdrawalsRoot)
         {
             TestObjectInternal.Header.WithdrawalsRoot = withdrawalsRoot;
+
             return this;
         }
 
@@ -244,12 +245,14 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[] withdrawals)
+        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));
 
-            TestObjectInternal.Header.WithdrawalsRoot = new WithdrawalTrie(withdrawals).RootHash;
+            TestObjectInternal.Header.WithdrawalsRoot = withdrawals is null
+                ? null
+                : new WithdrawalTrie(withdrawals).RootHash;
 
             return this;
         }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
@@ -16,11 +15,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
-using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -192,19 +189,12 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public virtual async Task engine_forkchoiceUpdatedV2_should_validate_withdrawals((
-        string CreateBlockchainMethod,
+        IReleaseSpec Spec,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
         ) input)
     {
-        MethodInfo createBlockchain = typeof(EngineModuleTests).GetMethod(
-            input.CreateBlockchainMethod,
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            new[] { typeof(IMergeConfig), typeof(IPayloadPreparationService) })!;
-
-        using MergeTestBlockchain chain = await (Task<MergeTestBlockchain>)
-            createBlockchain.Invoke(this, new object?[] { new MergeConfig { TerminalTotalDifficulty = "0" }, null })!;
-
+        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
@@ -270,19 +260,12 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public virtual async Task engine_newPayloadV2_should_validate_withdrawals((
-        string CreateBlockchainMethod,
+        IReleaseSpec Spec,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
         ) input)
     {
-        MethodInfo createBlockchain = typeof(EngineModuleTests).GetMethod(
-            input.CreateBlockchainMethod,
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            new[] { typeof(IMergeConfig), typeof(IPayloadPreparationService) })!;
-
-        using MergeTestBlockchain chain = await (Task<MergeTestBlockchain>)
-            createBlockchain.Invoke(this, new object?[] { new MergeConfig { TerminalTotalDifficulty = "0" }, null })!;
-
+        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -326,13 +309,13 @@ public partial class EngineModuleTests
     }
 
     protected static IEnumerable<(
-        string CreateBlockchainMethod,
+        IReleaseSpec spec,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals
         )> GetWithdrawalValidationValues()
     {
-        yield return (nameof(CreateShanghaiBlockChain), "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
-        yield return (nameof(CreateBlockChain), "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
+        yield return (Shanghai.Instance, "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
+        yield return (London.Instance, "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
@@ -394,7 +377,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
+    private static async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
         Keccak currentHeadHash = chain.BlockTree.HeadHash;

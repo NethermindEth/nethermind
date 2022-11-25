@@ -274,16 +274,16 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Withdrawals_Test": {
+    "Withdrawals (Devnet)": {
       "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_test -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Withdrawals_devnet": {
+    "Withdrawals (Hive tests)": {
       "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c withdrawals_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

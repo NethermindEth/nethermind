@@ -1082,6 +1082,38 @@ public partial class EthRpcModuleTests
         Assert.AreEqual(long.MaxValue, rpcTx.Gas, "Gas must be set to max if gasCap is null or 0");
     }
 
+    [Test]
+    public async Task eth_getBlockByNumber_should()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(new[] { Build.A.Transaction.TestObject })
+            .TestObject;
+
+        LogEntry[] entries = new[]
+        {
+            Build.A.LogEntry.TestObject,
+            Build.A.LogEntry.TestObject
+        };
+
+        TxReceipt receipt = Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled
+            .WithSender(TestItem.AddressE)
+            .WithLogs(entries).TestObject;
+        TxReceipt[] receiptsTab = { receipt };
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
+        receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
+        string serialized = ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
+
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x1\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x221\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[{\"nonce\":\"0x0\",\"blockHash\":\"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c\",\"blockNumber\":\"0x1\",\"transactionIndex\":\"0x0\",\"from\":\"0x2d36e6c27c34ea22620e7b7c45de774599406cf3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\"}],\"transactionsRoot\":\"0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5\",\"uncles\":[]},\"id\":67}", serialized);
+    }
+
     private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
     {
         AccessListItemForRpc[] accessList = allowSystemUser
@@ -1130,7 +1162,7 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge blockchainBridge = null) =>
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null) =>
             new()
             {
                 Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(specProvider),
