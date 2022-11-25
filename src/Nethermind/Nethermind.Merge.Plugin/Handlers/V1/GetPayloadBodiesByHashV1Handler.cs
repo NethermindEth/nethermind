@@ -12,30 +12,28 @@ using Nethermind.Merge.Plugin.Data.V1;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
-    public class GetPayloadBodiesV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]>
+    public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]>
     {
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public GetPayloadBodiesV1Handler(IBlockTree blockTree, ILogManager logManager)
+        public GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> HandleAsync(Keccak[] blockHashes)
+        public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> HandleAsync(Keccak[] blockHashes)
         {
-            List<ExecutionPayloadBodyV1Result> payloadBodies = new(blockHashes.Length);
+            List<ExecutionPayloadBodyV1Result?> payloadBodies = new(blockHashes.Length);
             foreach (Keccak hash in blockHashes)
             {
                 Block? block = _blockTree.FindBlock(hash);
-                if (block is not null)
-                {
-                    payloadBodies.Add(new ExecutionPayloadBodyV1Result(block.Transactions));
-                }
+
+                payloadBodies.Add(block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null);
             }
 
-            return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result[]>.Success(payloadBodies.ToArray()));
+            return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies.ToArray()));
         }
     }
 }

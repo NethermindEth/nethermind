@@ -339,7 +339,8 @@ namespace Nethermind.Merge.Plugin
                         _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
-                    new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
+                    new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
+                    new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                     new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                     _api.LogManager);
 
