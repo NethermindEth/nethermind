@@ -200,7 +200,7 @@ namespace Nethermind.Merge.Plugin.Test
                 executionPayloadV12.BlockHash!, executionPayloadV12.BlockHash!));
 
             ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 3).Result.Data;
-            ExecutionPayloadBodyV1Result?[] expected = {new(Array.Empty<Transaction>()), new(txs), null };
+            ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>()), new(txs), null };
             payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }
 
@@ -258,7 +258,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .Be(PayloadStatus.Valid);
 
                 ExecutionPayloadBodyV1Result?[] payloadBodiesA = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-                ExecutionPayloadBodyV1Result?[] expectedA = {new(Array.Empty<Transaction>()), new(txsA), null};
+                ExecutionPayloadBodyV1Result?[] expectedA = { new(Array.Empty<Transaction>()), new(txsA), null };
 
                 payloadBodiesA.Should().BeEquivalentTo(expectedA, o => o.WithStrictOrdering());
             }
@@ -841,8 +841,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .TestObject
                 )
                 .WithGasUsed(21000)
-                // after processing transaction, this state root is wrong
-                .WithStateRoot(head.StateRoot!)
+                .WithStateRoot(head.StateRoot!) // after processing transaction, this state root is wrong
                 .TestObject;
 
             chain.ThrottleBlockProcessor(1000); // throttle the block processor enough so that the block processing queue is never empty
