@@ -28,11 +28,11 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public partial class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IDisposable
     {
         private readonly object _locker = new();
 
-        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new();
+        private readonly INonceManager _nonceManager;
 
         private readonly List<IIncomingTxFilter> _filterPipeline = new();
 
@@ -87,7 +87,7 @@ namespace Nethermind.TxPool
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
             _ecdsa = ecdsa;
-
+            _nonceManager = new NonceManager(_accounts, _logger);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
@@ -106,7 +106,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonceManager, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -282,6 +282,8 @@ namespace Nethermind.TxPool
                     return accepted;
                 }
             }
+
+            _nonceManager.SetNonceTransactionHash(tx.SenderAddress!, tx.Nonce, tx.Hash!);
 
             return AddCore(tx, startBroadcast);
         }
@@ -460,15 +462,7 @@ namespace Nethermind.TxPool
                 if (hasBeenRemoved)
                 {
                     Address? address = transaction.SenderAddress;
-
-                    if (address != null && _nonces.TryGetValue(address, out AddressNonces? addressNonces))
-                    {
-                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
-                        if (addressNonces.Nonces.IsEmpty)
-                        {
-                            _nonces.Remove(address, out _);
-                        }
-                    }
+                    _nonceManager.ReleaseNonce(address!, transaction.Nonce);
 
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
@@ -504,18 +498,7 @@ namespace Nethermind.TxPool
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
-            UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(address, a =>
-            {
-                currentNonce = _accounts.GetAccount(address).Nonce;
-                return new AddressNonces(currentNonce);
-            }, (a, n) =>
-            {
-                currentNonce = n.ReserveNonce().Value;
-                return n;
-            });
-
-            return currentNonce;
+            return _nonceManager.ReserveNonce(address);
         }
 
         public UInt256 GetLatestPendingNonce(Address address)
