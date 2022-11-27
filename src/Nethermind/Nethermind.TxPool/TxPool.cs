@@ -283,7 +283,10 @@ namespace Nethermind.TxPool
                 }
             }
 
-            _nonceManager.SetNonceTransactionHash(tx.SenderAddress!, tx.Nonce, tx.Hash!);
+            if (managedNonce)
+            {
+                _nonceManager.SetTransactionHash(tx.SenderAddress!, tx.Nonce, tx.Hash!);
+            }
 
             return AddCore(tx, startBroadcast);
         }
@@ -462,7 +465,10 @@ namespace Nethermind.TxPool
                 if (hasBeenRemoved)
                 {
                     Address? address = transaction.SenderAddress;
-                    _nonceManager.ReleaseNonce(address!, transaction.Nonce);
+                    if (address is not null)
+                    {
+                        _nonceManager.ReleaseNonce(address, transaction.Nonce);
+                    }
 
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }

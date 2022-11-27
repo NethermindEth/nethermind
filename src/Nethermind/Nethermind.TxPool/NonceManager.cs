@@ -85,7 +85,7 @@ public class NonceManager : INonceManager
         }
     }
 
-    public void SetNonceTransactionHash(Address address, UInt256 nonce, Keccak hash)
+    public void SetTransactionHash(Address address, UInt256 nonce, Keccak hash)
     {
         lock (_locker)
         {

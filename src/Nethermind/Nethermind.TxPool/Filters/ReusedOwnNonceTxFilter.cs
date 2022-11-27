@@ -26,10 +26,8 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            Account account = state.SenderAccount;
-            UInt256 currentNonce = account.Nonce;
 
-            if (managedNonce && _nonceManager.IsNonceUsed(tx.SenderAddress!, currentNonce))
+            if (managedNonce && _nonceManager.IsNonceUsed(tx.SenderAddress!, tx.Nonce))
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");

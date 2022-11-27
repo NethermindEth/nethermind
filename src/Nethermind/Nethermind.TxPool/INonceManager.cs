@@ -12,5 +12,5 @@ public interface INonceManager
     UInt256 ReserveNonce(Address address);
     void ReleaseNonce(Address address, UInt256 nonce);
     bool IsNonceUsed(Address address, UInt256 nonce);
-    void SetNonceTransactionHash(Address address, UInt256 nonce, Keccak hash);
+    void SetTransactionHash(Address address, UInt256 nonce, Keccak hash);
 }
