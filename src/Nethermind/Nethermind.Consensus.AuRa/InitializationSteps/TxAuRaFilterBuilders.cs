@@ -32,13 +32,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         public static FilterDecorator CreateFilter { get; set; } = (x, _) => x;
 
         private static ITxFilter CreateBaseAuRaTxFilter(
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
             ISpecProvider specProvider)
         {
-            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
+            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(blocksConfig, specProvider);
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore is not null)
             {
@@ -101,13 +101,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         }
 
         public static ITxFilter CreateAuRaTxFilterForProducer(
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
             ISpecProvider specProvider)
         {
-            ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(miningConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore, specProvider);
+            ITxFilter baseAuRaTxFilter = CreateBaseAuRaTxFilter(blocksConfig, api, readOnlyTxProcessorSource, minGasPricesContractDataStore, specProvider);
             ITxFilter? txPermissionFilter = CreateTxPermissionFilter(api, readOnlyTxProcessorSource);
             return txPermissionFilter is not null
                 ? new CompositeTxFilter(baseAuRaTxFilter, txPermissionFilter)

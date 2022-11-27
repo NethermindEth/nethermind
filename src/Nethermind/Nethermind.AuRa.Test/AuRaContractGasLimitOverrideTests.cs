@@ -43,7 +43,7 @@ namespace Nethermind.AuRa.Test
             blockGasLimitContract3.Activation.Returns(10);
             blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
 
-            MiningConfig config = new() { TargetBlockGasLimit = 4000000 };
+            BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };
             AuRaContractGasLimitOverride gasLimitOverride = new(
                 new List<IBlockGasLimitContract> { blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3 },
                 new AuRaContractGasLimitOverride.Cache(),

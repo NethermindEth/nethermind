@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Ethash
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IMiningConfig miningConfig)
+            IBlocksConfig blocksConfig)
             : base(
                 txSource,
                 processor,
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Ethash
                 specProvider,
                 logManager,
                 new EthashDifficultyCalculator(specProvider),
-                miningConfig)
+                blocksConfig)
         {
         }
     }
