@@ -53,7 +53,7 @@ public class TransactionProcessorFeeTests
     [TestCase(false, true)]
     [TestCase(true, false)]
     [TestCase(false, false)]
-    public void Check_paid_fees_simple(bool isTransactionEip1559, bool withFeeCollector)
+    public void Check_fees_with_fee_collector(bool isTransactionEip1559, bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -150,7 +150,7 @@ public class TransactionProcessorFeeTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Should_stop_when_cancellation(bool withCanselation)
+    public void Should_stop_when_cancellation(bool withCancellation)
     {
         Transaction tx1 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
@@ -178,7 +178,7 @@ public class TransactionProcessorFeeTests
             blockTracer.EndTxTrace();
         }
 
-        if (withCanselation)
+        if (withCancellation)
         {
             source.Cancel();
         }
@@ -192,7 +192,7 @@ public class TransactionProcessorFeeTests
         }
         catch (OperationCanceledException) { }
 
-        if (withCanselation)
+        if (withCancellation)
         {
             // tx1: 1 * 21000
             feesTracer.Fees.Should().Be(21000);
@@ -204,6 +204,29 @@ public class TransactionProcessorFeeTests
             feesTracer.Fees.Should().Be(189000);
             feesTracer.BurntFees.Should().Be(84000);
         }
+    }
+
+    [Test]
+    public void Check_fees_with_free_transaction()
+    {
+        Transaction tx1 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(1).WithGasLimit(21000).TestObject;
+        Transaction tx2 = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithNonce(1).WithIsServiceTransaction(true)
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(3)
+            .WithMaxPriorityFeePerGas(1).WithGasLimit(21000).TestObject;
+        Transaction tx3 = new SystemTransaction();
+        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(1)
+            .WithBeneficiary(TestItem.AddressB).WithTransactions(tx1, tx2, tx3).WithGasLimit(42000).TestObject;
+
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        tracer.Fees.Should().Be(42000);
+
+        block.GasUsed.Should().Be(42000);
+        tracer.BurntFees.Should().Be(21000);
     }
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
