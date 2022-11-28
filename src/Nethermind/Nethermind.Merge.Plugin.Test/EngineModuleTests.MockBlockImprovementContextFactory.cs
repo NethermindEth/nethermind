@@ -25,14 +25,14 @@ public partial class EngineModuleTests
     {
         public MockBlockImprovementContext(Block currentBestBlock, DateTimeOffset startDateTime)
         {
-            Block = currentBestBlock;
+            CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
             ImprovementTask = Task.FromResult((Block?)currentBestBlock);
         }
 
         public void Dispose() => Disposed = true;
         public Task<Block?> ImprovementTask { get; }
-        public Block? Block { get; }
+        public Block? CurrentBestBlock { get; }
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }

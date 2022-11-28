@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     await Task.Delay(_improvementDelay);
                     if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
-                        Block newBestBlock = blockImprovementContext.Block ?? currentBestBlock;
+                        Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
                     }
                     else
@@ -157,7 +157,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Block?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }
@@ -207,7 +207,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 using (blockContext)
                 {
-                    bool currentBestBlockIsEmpty = blockContext.Block?.Transactions.Any() != true;
+                    bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Any() != true;
                     if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                     {
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));

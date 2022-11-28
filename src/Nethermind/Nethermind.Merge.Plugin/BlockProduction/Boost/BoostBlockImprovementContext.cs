@@ -35,7 +35,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
-        Block = currentBestBlock;
+        CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
     }
@@ -52,17 +52,17 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
-            Block = block;
+            CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
             UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
         }
 
-        return Block;
+        return CurrentBestBlock;
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? Block { get; private set; }
+    public Block? CurrentBestBlock { get; private set; }
     public UInt256 BlockFees { get; private set; }
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }

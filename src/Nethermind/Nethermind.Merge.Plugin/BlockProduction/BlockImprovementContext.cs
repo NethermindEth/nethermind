@@ -25,7 +25,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         DateTimeOffset startDateTime)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
-        Block = currentBestBlock;
+        CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = blockProductionTrigger
             .BuildBlock(parentHeader, _cancellationTokenSource.Token, _feesTracer, payloadAttributes)
@@ -34,7 +34,7 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? Block { get; private set; }
+    public Block? CurrentBestBlock { get; private set; }
     public UInt256 BlockFees { get; private set; }
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
@@ -43,7 +43,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         {
             if (task.Result is not null)
             {
-                Block = task.Result;
+                CurrentBestBlock = task.Result;
                 BlockFees = _feesTracer.Fees;
             }
         }

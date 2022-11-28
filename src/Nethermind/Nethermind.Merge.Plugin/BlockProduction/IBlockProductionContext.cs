@@ -8,6 +8,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public interface IBlockProductionContext
 {
-    Block? Block { get; }
+    Block? CurrentBestBlock { get; }
     UInt256 BlockFees { get; }
 }

@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V2
         {
             string payloadStr = payloadId.ToHexString(true);
             IBlockProductionContext? blockContext = await _payloadPreparationService.GetPayload(payloadStr);
-            Block? block = blockContext?.Block;
+            Block? block = blockContext?.CurrentBestBlock;
 
             if (block is null)
             {

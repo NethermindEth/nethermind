@@ -45,7 +45,7 @@ public partial class EngineModuleTests
             DateTimeOffset startDateTime)
         {
             _cancellationTokenSource = new CancellationTokenSource(timeout);
-            Block = currentBestBlock;
+            CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
             ImprovementTask = BuildBlock(blockProductionTrigger, parentHeader, payloadAttributes, delay, _cancellationTokenSource.Token);
         }
@@ -61,14 +61,14 @@ public partial class EngineModuleTests
             await Task.Delay(delay, cancellationToken);
             if (block is not null)
             {
-                Block = block;
+                CurrentBestBlock = block;
             }
 
-            return Block;
+            return CurrentBestBlock;
         }
 
         public Task<Block?> ImprovementTask { get; }
-        public Block? Block { get; private set; }
+        public Block? CurrentBestBlock { get; private set; }
         public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }

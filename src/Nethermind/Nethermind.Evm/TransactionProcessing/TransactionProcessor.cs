@@ -430,9 +430,9 @@ namespace Nethermind.Evm.TransactionProcessing
                         _stateProvider.CreateAccount(gasBeneficiary, fees);
                     }
 
-                    UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
+                    UInt256 burntFees = !transaction.IsFree() ? (ulong)spentGas * block.BaseFeePerGas : 0;
 
-                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
                     {
                         if (!burntFees.IsZero)
                         {
