@@ -182,8 +182,8 @@ namespace Nethermind.Evm
 
         CREATE = 0xf0,
         CALL = 0xf1,
-        RETF = 0x49, // FunctionSection
-        CALLF = 0x5e, // FunctionSection
+        RETF = 0xb1, // FunctionSection
+        CALLF = 0xb0, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
