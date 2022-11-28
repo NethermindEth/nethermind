@@ -403,7 +403,13 @@ namespace Nethermind.Blockchain
             long right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
-            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            left = Math.Max(
+                Math.Max(
+                    Head?.Number ?? 0,
+                    LowestInsertedBeaconHeader?.Number ?? 0),
+                BestSuggestedHeader?.Number ?? 0
+                ) - 1;
+
             right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
