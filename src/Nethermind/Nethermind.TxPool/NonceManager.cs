@@ -36,7 +36,7 @@ public class NonceManager : INonceManager
                 return new AddressNonces(currentNonce);
             }, (a, n) =>
             {
-                currentNonce = n.ReserveNonce().Value;
+                currentNonce = n.ReserveNonce();
                 return n;
             });
             return currentNonce;
@@ -111,38 +111,17 @@ public class NonceManager : INonceManager
 
         public ConcurrentDictionary<UInt256, NonceInfo> Nonces { get; } = new();
 
-        public AddressNonces(in UInt256 startNonce)
+        public AddressNonces(UInt256 startNonce)
         {
             _currentNonceInfo = new NonceInfo(startNonce);
             Nonces.TryAdd(_currentNonceInfo.Value, _currentNonceInfo);
         }
 
-        public NonceInfo ReserveNonce()
+        public UInt256 ReserveNonce()
         {
-            UInt256 nonce = _currentNonceInfo.Value;
-            NonceInfo newNonce;
-            bool added = false;
-
-            do
-            {
-                nonce += 1;
-                newNonce = Nonces.AddOrUpdate(nonce, v =>
-                {
-                    added = true;
-                    return new NonceInfo(v);
-                }, (v, n) =>
-                {
-                    added = false;
-                    return n;
-                });
-            } while (!added);
-
-            if (_currentNonceInfo.Value < newNonce.Value)
-            {
-                Interlocked.Exchange(ref _currentNonceInfo, newNonce);
-            }
-
-            return newNonce;
+            UInt256 result = _currentNonceInfo.Value + 1;
+            _currentNonceInfo = new NonceInfo(result);
+            return result;
         }
     }
 
