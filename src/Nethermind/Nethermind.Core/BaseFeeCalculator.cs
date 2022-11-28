@@ -10,7 +10,7 @@ namespace Nethermind.Core
     /// <summary>Calculate BaseFee based on block parent and release spec.</summary>
     public static class BaseFeeCalculator
     {
-        public static UInt256 Calculate(BlockHeader parent, IReleaseSpec specFor1559)
+        public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
         {
             UInt256 expectedBaseFee = parent.BaseFeePerGas;
             if (specFor1559.IsEip1559Enabled)

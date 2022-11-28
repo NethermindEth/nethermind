@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -57,23 +58,15 @@ namespace Nethermind.Specs.Test
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation)
-        {
-            IReleaseSpec spec = _transitions[0].Release;
-            for (int i = 1; i < _transitions.Length; i++)
-            {
-                if (forkActivation >= _transitions[i].forkActivation)
-                {
-                    spec = _transitions[i].Release;
-                }
-                else
-                {
-                    break;
-                }
-            }
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            _transitions.TryGetSearchedItem(forkActivation,
+                CompareTransitionOnBlock,
+                out (ForkActivation, IReleaseSpec Release) transition)
+                ? transition.Release
+                : GenesisSpec;
 
-            return spec;
-        }
+        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, IReleaseSpec Release) transition) =>
+            forkActivation.CompareTo(transition.activation);
 
         public long? DaoBlockNumber
         {

@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Transactions
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             long blockNumber = parentHeader.Number + 1;
-            IReleaseSpec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, specFor1559);
             bool isEip1559Enabled = specFor1559.IsEip1559Enabled;
 

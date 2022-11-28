@@ -84,7 +84,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            IReleaseSpec specfor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
+            IEip1559Spec specfor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
@@ -164,7 +164,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private Transaction BuildSimulateValidationTransaction(
             UserOperation userOperation,
             BlockHeader parent,
-            IReleaseSpec specfor1559)
+            IEip1559Spec specfor1559)
         {
             AbiSignature abiSignature = _entryPointContractAbi.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
