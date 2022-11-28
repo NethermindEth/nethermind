@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -404,5 +405,25 @@ public partial class EngineModuleTests
             new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
             new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
         }, new[] { (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()), (TestItem.AddressF, 6.Ether()) });
+    }
+
+    [Test]
+    public async Task Withdrawals_transition()
+    {
+        // in progress
+        CustomSpecProvider specProvider = new((new ForkActivation(0, null), ArrowGlacier.Instance), (new ForkActivation(0, 3), Shanghai.Instance));
+        using MergeTestBlockchain chain = await CreateBlockChain(specProvider);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
+        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        // fcu
+
+        PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 2, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = new[] { TestItem.WithdrawalA_1Eth } };
+        ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
+        ResultWrapper<PayloadStatusV1> resultWrapper2 = await rpc.engine_newPayloadV2(payload);
+        resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
+        // fcu
     }
 }
