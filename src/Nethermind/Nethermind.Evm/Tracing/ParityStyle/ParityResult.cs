@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Newtonsoft.Json;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -24,6 +25,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public byte[]? Output { get; set; }
         public Address? Address { get; set; }
         public byte[]? Code { get; set; }
+
+        [JsonIgnore]
         public bool IsEmpty => Output is null && GasUsed == 0 && Address is null && Code is null;
     }
 }
