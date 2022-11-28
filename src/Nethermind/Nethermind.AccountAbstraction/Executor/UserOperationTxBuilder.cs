@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _abiEncoder = new AbiEncoder();
         }
 
-        public Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IReleaseSpec specFor1559,
+        public Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IEip1559Spec specFor1559,
             UInt256 nonce, bool systemTransaction)
         {
             Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
@@ -65,7 +65,7 @@ namespace Nethermind.AccountAbstraction.Executor
             BlockHeader parent,
             long gasLimit,
             UInt256 nonce,
-            IReleaseSpec specFor1559)
+            IEip1559Spec specFor1559)
         {
             byte[] computedCallData;
 

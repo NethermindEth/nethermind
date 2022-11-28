@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, specFor1559);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
