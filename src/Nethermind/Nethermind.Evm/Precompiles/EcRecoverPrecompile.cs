@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumEcdsa _ecdsa = new(TestChainIds.ChainId, LimboLogs.Instance);
+        private readonly EthereumEcdsa _ecdsa = new(TestBlockchainIds.ChainId, LimboLogs.Instance);
 
         private readonly byte[] _zero31 = new byte[31];
 

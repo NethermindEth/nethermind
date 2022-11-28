@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin.Test
             new(mergeConfig, mockedPayloadService);
 
         protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
-            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, TestChainIds.NetworkId, TestChainIds.ChainId));
+            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
         {

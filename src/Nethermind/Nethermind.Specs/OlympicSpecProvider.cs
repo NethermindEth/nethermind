@@ -28,7 +28,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber => 0L;
 
-        public ulong NetworkId => Core.ChainId.Olympic;
+        public ulong NetworkId => Core.NetworkId.Olympic;
         public ulong ChainId => NetworkId;
         public ForkActivation[] TransitionBlocks { get; } = { 0 };
 

@@ -29,7 +29,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
-        public ulong NetworkId => Core.ChainId.Mainnet;
+        public ulong NetworkId => Core.NetworkId.Mainnet;
         public ulong ChainId => NetworkId;
         public Keccak GenesisHash => KnownHashes.MainnetGenesis;
         public ForkActivation[] TransitionBlocks { get; } = { 0 };

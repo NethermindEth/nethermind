@@ -51,7 +51,7 @@ namespace Nethermind.Clique.Test
             private ILogger _logger;
             private static ITimestamper _timestamper = Timestamper.Default;
             private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new(ChainId.Goerli, LimboLogs.Instance);
+            private EthereumEcdsa _ethereumEcdsa = new(NetworkId.Goerli, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -115,7 +115,7 @@ namespace Nethermind.Clique.Test
 
                 SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
-                CliqueSealer cliqueSealer = new(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+                CliqueSealer cliqueSealer = new(new Signer(NetworkId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();

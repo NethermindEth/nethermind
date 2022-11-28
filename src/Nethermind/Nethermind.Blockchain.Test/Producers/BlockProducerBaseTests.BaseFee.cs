@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Producers
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
                             Eip1559FeeCollector = _eip1559FeeCollector,
                             IsEip155Enabled = true
-                        }, TestChainIds.NetworkId, TestChainIds.ChainId);
+                        }, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId);
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)

@@ -42,8 +42,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
-            Assert.AreEqual(ChainId.Sepolia, provider.ChainId);
-            Assert.AreEqual(ChainId.Sepolia, provider.NetworkId);
+            Assert.AreEqual(NetworkId.Sepolia, provider.ChainId);
+            Assert.AreEqual(NetworkId.Sepolia, provider.NetworkId);
         }
 
         [Test]
@@ -102,8 +102,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(goerli, provider, blockNumbersToTest);
             Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-            Assert.AreEqual(ChainId.Goerli, provider.ChainId);
-            Assert.AreEqual(ChainId.Goerli, provider.NetworkId);
+            Assert.AreEqual(NetworkId.Goerli, provider.ChainId);
+            Assert.AreEqual(NetworkId.Goerli, provider.NetworkId);
         }
 
         [Test]
@@ -165,8 +165,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
             Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-            Assert.AreEqual(ChainId.Mainnet, provider.ChainId);
-            Assert.AreEqual(ChainId.Mainnet, provider.NetworkId);
+            Assert.AreEqual(NetworkId.Mainnet, provider.ChainId);
+            Assert.AreEqual(NetworkId.Mainnet, provider.NetworkId);
         }
 
         private static void CompareSpecProviders(

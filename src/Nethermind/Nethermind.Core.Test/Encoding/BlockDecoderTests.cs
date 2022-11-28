@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test.Encoding
             var transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
-                transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true).TestObject;
+                transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(NetworkId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true).TestObject;
             }
 
             _scenarios = new[]

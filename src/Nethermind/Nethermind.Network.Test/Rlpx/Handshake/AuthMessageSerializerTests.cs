@@ -44,24 +44,24 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);
         }
 
-        [TestCase(ChainId.Mainnet)]
-        [TestCase(ChainId.Morden)]
-        [TestCase(ChainId.RootstockMainnet)]
-        [TestCase(ChainId.DefaultGethPrivateChain)]
-        [TestCase(ChainId.EthereumClassicMainnet)]
-        [TestCase(ChainId.EthereumClassicTestnet)]
+        [TestCase(NetworkId.Mainnet)]
+        [TestCase(NetworkId.Morden)]
+        [TestCase(NetworkId.RootstockMainnet)]
+        [TestCase(NetworkId.DefaultGethPrivateChain)]
+        [TestCase(NetworkId.EthereumClassicMainnet)]
+        [TestCase(NetworkId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(NetworkId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
 
-        [TestCase(ChainId.Mainnet)]
-        [TestCase(ChainId.Ropsten)]
-        [TestCase(ChainId.Kovan)]
+        [TestCase(NetworkId.Mainnet)]
+        [TestCase(NetworkId.Ropsten)]
+        [TestCase(NetworkId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(NetworkId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
     }

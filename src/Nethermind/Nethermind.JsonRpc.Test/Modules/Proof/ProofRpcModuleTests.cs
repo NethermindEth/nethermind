@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 _dbProvider,
                 _blockTree,
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestChainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);
@@ -212,7 +212,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 _dbProvider,
                 _blockTree,
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestChainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,
                 LimboLogs.Instance);

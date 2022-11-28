@@ -155,7 +155,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestChainIds.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;

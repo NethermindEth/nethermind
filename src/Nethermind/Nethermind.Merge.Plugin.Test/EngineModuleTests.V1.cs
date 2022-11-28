@@ -446,7 +446,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
         {
             using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
-                .Build(new SingleReleaseSpecProvider(London.Instance, TestChainIds.NetworkId, TestChainIds.ChainId));
+                .Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
             ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -464,7 +464,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBaseBlockChain()
                 .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-                .Build(new SingleReleaseSpecProvider(London.Instance, TestChainIds.NetworkId, TestChainIds.ChainId));
+                .Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
 
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)

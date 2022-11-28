@@ -27,7 +27,7 @@ namespace Nethermind.Core
     /// 7762959: Musicoin, the music blockchain
     /// 61717561: Aquachain, ASIC resistant chain
     /// </summary>
-    public static class ChainId
+    public static class NetworkId
     {
         public const int Olympic = 0;
         public const int Mainnet = 1;
@@ -74,7 +74,7 @@ namespace Nethermind.Core
         }
     }
 
-    public static class TestChainIds
+    public static class TestBlockchainIds
     {
         public const int NetworkId = 1;
         public const int ChainId = 1;

@@ -59,7 +59,7 @@ namespace Nethermind.Network
                     SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateNetworkId(syncPeerArgs.NetworkId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different network id: {ChainId.GetChainName(syncPeerArgs.NetworkId)}, our network id: {ChainId.GetChainName(_blockTree.NetworkId)}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different network id: {NetworkId.GetChainName(syncPeerArgs.NetworkId)}, our network id: {NetworkId.GetChainName(_blockTree.NetworkId)}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(session, DisconnectReason.UselessPeer, $"invalid network id - {syncPeerArgs.NetworkId}");
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid network id - {syncPeerArgs.NetworkId})");

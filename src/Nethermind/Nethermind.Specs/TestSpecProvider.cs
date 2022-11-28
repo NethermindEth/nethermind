@@ -36,11 +36,11 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; set; }
 
-        public ulong? networkId;
-        public ulong NetworkId { get { return networkId ?? TestChainIds.NetworkId; } set { networkId = value; } }
+        public ulong? _networkId;
+        public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
 
-        public ulong? chainId;
-        public ulong ChainId { get { return chainId ?? TestChainIds.ChainId; } set { chainId = value; } }
+        public ulong? _chainId;
+        public ulong ChainId { get { return _chainId ?? TestBlockchainIds.ChainId; } set { _chainId = value; } }
 
         public ForkActivation[] TransitionBlocks { get; set; } = new ForkActivation[] { 0 };
 

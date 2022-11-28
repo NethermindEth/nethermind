@@ -13,7 +13,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
     /// https://wiki.parity.io/Chain-specification 
     /// </summary>
-    [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
+    [DebuggerDisplay("{Name}, NetworkId = {NetworkId}")]
     public class ChainSpec
     {
         public string Name { get; set; }

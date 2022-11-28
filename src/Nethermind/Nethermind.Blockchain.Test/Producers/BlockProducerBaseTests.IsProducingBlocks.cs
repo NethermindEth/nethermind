@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Test.Producers
         private async Task<TestRpcBlockchain> CreateTestRpc()
         {
             Address address = TestItem.Addresses[0];
-            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, TestChainIds.NetworkId, TestChainIds.ChainId);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());

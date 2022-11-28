@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
-            RecoverSignatures txRecovery = new(new EthereumEcdsa(TestChainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+            RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;
