@@ -2353,14 +2353,6 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
                             long gasCost = GasCostOf.Create +
                                 (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                                 (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
@@ -2396,6 +2388,16 @@ namespace Nethermind.Evm
                             UInt256 maxNonce = ulong.MaxValue;
                             if (accountNonce >= maxNonce)
                             {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
+                            {
+                                //currently this needs to update nonce - may be a change in spec
+                                _state.IncrementNonce(env.ExecutingAccount);
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
                                 break;
