@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
