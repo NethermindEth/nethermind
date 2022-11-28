@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -42,7 +41,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpec chainSpec = new();
 
                 chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? 1;
+                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpecJson.Params.NetworkId ?? 1;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
