@@ -1,30 +1,22 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Core.Extensions
 {
     public static class SpecProviderExtensions
     {
-
-        public static bool IsEip658Enabled(this ISpecProvider specProvider, long blockNumber)
+        /// <summary>
+        /// this method is here only for getting spec related to receipts.
+        /// Reason of adding is that at sometime we dont know the Timestamp.
+        /// </summary>
+        /// <param name="specProvider"></param>
+        /// <param name="blockNumber"></param>
+        /// <returns>IReceiptSpec</returns>
+        public static IReceiptSpec GetReceiptSpec(this ISpecProvider specProvider, long blockNumber)
         {
-            return specProvider.GetSpec(blockNumber, null).IsEip658Enabled;
+            return specProvider.GetSpec(blockNumber, null);
         }
 
         /// <summary>
@@ -33,7 +25,7 @@ namespace Nethermind.Core.Extensions
         /// </summary>
         /// <param name="specProvider"></param>
         /// <param name="blockNumber"></param>
-        /// <returns>ReleaseSpec that has the values for EIP1559 correct but not the rest.</returns>
+        /// <returns>IEip1559Spec</returns>
         public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
         {
             return specProvider.GetSpec(blockNumber, null);

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -171,7 +172,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 else
                 {
                     // BlockInfo has no timestamp
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec((ForkActivation)blockInfo.BlockNumber);
+                    IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
                     preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
                         : receipts;

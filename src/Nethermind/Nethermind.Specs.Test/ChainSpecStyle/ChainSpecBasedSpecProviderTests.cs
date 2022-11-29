@@ -45,7 +45,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             testProvider.TerminalTotalDifficulty = 0;
             testProvider.GenesisSpec = shandongSpec;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)0,
                 (0, 0),
@@ -54,7 +54,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)999_999_999, // far in the future
             };
 
-            CompareSpecProviders(testProvider, provider, ForkActivationsToTest);
+            CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
@@ -80,7 +80,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             testProvider.SpecToReturn = expectedSpec;
             testProvider.TerminalTotalDifficulty = 0;
             testProvider.GenesisSpec = expectedSpec;
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (0, null),
                 (0, 0),
@@ -88,25 +88,25 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (1, 4660),
                 (1, 4661),
             };
-            CompareSpecProviders(testProvider, provider, ForkActivationsToTest);
+            CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
             expectedSpec.IsEip3198Enabled = true;
-            List<ForkActivation> blockNumbersToTest2 = new()
+            List<ForkActivation> forkActivationsToTest2 = new()
             {
                 (2, 4662),
                 (3, 4662),
                 (3, 4671),
             };
-            CompareSpecProviders(testProvider, provider, blockNumbersToTest2);
+            CompareSpecProviders(testProvider, provider, forkActivationsToTest2);
             expectedSpec.IsEip3675Enabled = true;
-            List<ForkActivation> blockNumbersToTest3 = new()
+            List<ForkActivation> forkActivationsToTest3 = new()
             {
                 (4, 4672),
                 (4, 4673),
                 (5, 4680),
             };
-            CompareSpecProviders(testProvider, provider, blockNumbersToTest3);
+            CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
         }
 
         [Test]
@@ -120,12 +120,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)120_000_000, // far in the future
             };
 
-            CompareSpecProviders(sepolia, provider, ForkActivationsToTest);
+            CompareSpecProviders(sepolia, provider, forkActivationsToTest);
             Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
@@ -142,7 +142,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)RinkebySpecProvider.ByzantiumBlockNumber,
                 (ForkActivation)(RinkebySpecProvider.ConstantinopleFixBlockNumber - 1),
@@ -156,7 +156,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)120_000_000, // far in the future
             };
 
-            CompareSpecProviders(rinkeby, provider, ForkActivationsToTest);
+            CompareSpecProviders(rinkeby, provider, forkActivationsToTest);
             Assert.AreEqual(RinkebySpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
@@ -171,7 +171,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)0,
                 (ForkActivation)1,
@@ -184,7 +184,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)100000000, // far in the future
             };
 
-            CompareSpecProviders(goerli, provider, ForkActivationsToTest);
+            CompareSpecProviders(goerli, provider, forkActivationsToTest);
             Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
@@ -200,7 +200,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)0,
                 (0, 0),
@@ -231,7 +231,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)99_000_000, // far in the future
             };
 
-            CompareSpecProviders(mainnet, provider, ForkActivationsToTest);
+            CompareSpecProviders(mainnet, provider, forkActivationsToTest);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);
@@ -300,7 +300,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
 
-            List<ForkActivation> ForkActivationsToTest = new()
+            List<ForkActivation> forkActivationsToTest = new()
             {
                 (ForkActivation)0,
                 (ForkActivation)1,
@@ -321,7 +321,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)999_999_999, // far in the future
             };
 
-            CompareSpecProviders(ropsten, provider, ForkActivationsToTest, true);
+            CompareSpecProviders(ropsten, provider, forkActivationsToTest, true);
             Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
