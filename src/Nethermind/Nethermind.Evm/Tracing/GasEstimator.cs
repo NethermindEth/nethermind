@@ -29,6 +29,7 @@ namespace Nethermind.Evm.Tracing
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer)
         {
+            // SecondsPerSlot fix incoming
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + 13);
 
             long intrinsicGas = tx.GasLimit - gasTracer.IntrinsicGasAt;
