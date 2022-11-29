@@ -162,18 +162,6 @@ namespace Nethermind.Network
         [Description("Number of eth.68 NewPooledTransactionHashes messages sent")]
         public static long Eth68NewPooledTransactionHashesSent { get; set; }
 
-        [Description("Number of eth NewPooledTransactionHashes messages received")]
-        public static long EthNewPooledTransactionHashesReceived
-        {
-            get => Eth68NewPooledTransactionHashesReceived + Eth65NewPooledTransactionHashesReceived;
-        }
-
-        [Description("Number of eth NewPooledTransactionHashes messages sent")]
-        public static long EthNewPooledTransactionHashesSent
-        {
-            get => Eth68NewPooledTransactionHashesSent + Eth65NewPooledTransactionHashesSent;
-        }
-
         [Description("Number of eth.65 GetPooledTransactions messages received")]
         public static long Eth65GetPooledTransactionsReceived { get; set; }
 

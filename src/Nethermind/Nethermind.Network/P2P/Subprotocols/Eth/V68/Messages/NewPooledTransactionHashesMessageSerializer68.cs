@@ -46,15 +46,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             rlpStream.Encode(types);
 
             rlpStream.StartSequence(sizesLength);
-            foreach (int size in message.Sizes)
+            for (int i = 0; i < message.Sizes.Count; ++i)
             {
-                rlpStream.Encode(size);
+                rlpStream.Encode(message.Sizes[i]);
             }
 
             rlpStream.StartSequence(hashesLength);
-            foreach (Keccak hash in message.Hashes)
+            for (int i = 0; i < message.Hashes.Count; ++i)
             {
-                rlpStream.Encode(hash);
+                rlpStream.Encode(message.Hashes[i]);
             }
         }
     }
