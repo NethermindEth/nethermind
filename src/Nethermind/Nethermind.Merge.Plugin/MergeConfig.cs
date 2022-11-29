@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin
 
         public long? TerminalBlockNumber { get; set; }
 
-        [Obsolete("Use InitConfig.SecondsPerSlot")]
+        [Obsolete("Use BlocksConfig.SecondsPerSlot")]
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public string? BuilderRelayUrl { get; set; }
