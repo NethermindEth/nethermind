@@ -115,9 +115,9 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                     transaction.GasLimit = 100000;
                     transaction.GasPrice = gasPrice;
                     transaction.Nonce = (UInt256)nonce++;
-                    wallet.Sign(transaction, ChainId.Mainnet);
+                    wallet.Sign(transaction, NetworkId.Mainnet);
 
-                    EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new EthereumEcdsa(NetworkId.Mainnet, LimboLogs.Instance);
                     Address recoveredAddress = ecdsa.RecoverAddress(transaction);
                     if (recoveredAddress != transaction.SenderAddress)
                     {

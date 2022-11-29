@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 new TrieStore(memDbProvider.StateDb, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
             var trieStore = new TrieStore(memDbProvider.StateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(NetworkId.Mainnet, LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 specProvider,
                 false);
 
-            WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
+            WalletTxSigner txSigner = new WalletTxSigner(wallet, NetworkId.Mainnet);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper.Default);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
             ITxSender txSender = new TxPoolSender(txPool, txSealer0, txSealer1);

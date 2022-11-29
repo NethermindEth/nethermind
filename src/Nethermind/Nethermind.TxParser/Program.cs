@@ -16,7 +16,7 @@ while (true)
     try
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input), RlpBehaviors.SkipTypedWrapping);
-        EthereumEcdsa ecdsa = new(ChainId.Mainnet, SimpleConsoleLogManager.Instance);
+        EthereumEcdsa ecdsa = new(NetworkId.Mainnet, SimpleConsoleLogManager.Instance);
         Address? sender = ecdsa.RecoverAddress(tx);
         if (sender == null)
         {
