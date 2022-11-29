@@ -21,6 +21,12 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpecProviderExtensions
     {
+
+        public static bool IsEip658Enabled(this ISpecProvider specProvider, long blockNumber)
+        {
+            return specProvider.GetSpec(blockNumber, null).IsEip658Enabled;
+        }
+
         /// <summary>
         /// this method is here only for getting spec for 1559.
         /// Reason of adding is that at sometime we dont know the Timestamp.

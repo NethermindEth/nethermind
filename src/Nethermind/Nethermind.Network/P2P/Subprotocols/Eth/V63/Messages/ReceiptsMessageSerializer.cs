@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                             n => n is null
                                 ? Rlp.OfEmptySequence
                                 // for TxReceipt there is no timestamp, as such, we are keeping the old implementation. wonder how we can metigate this later if future EIPs affecting this are added. 
-                                : _decoder.Encode(n, _specProvider.GetSpec((ForkActivation)n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
+                                : _decoder.Encode(n, _specProvider.IsEip658Enabled(n.BlockNumber) ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.Encode(rlp);
