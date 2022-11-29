@@ -18,11 +18,12 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private Dictionary<string, Gauge> _gauges = new();
-        private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
-        private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
-        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
-        private HashSet<Type> _metricTypes = new();
+        private readonly Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
+        private readonly Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
+        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private readonly HashSet<Type> _metricTypes = new();
+
+        public readonly Dictionary<string, Gauge> _gauges = new();
 
         public void RegisterMetrics(Type type)
         {
@@ -102,7 +103,7 @@ namespace Nethermind.Monitoring.Metrics
             propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
         private static string BuildGaugeName(string propertyName) =>
-            Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "nethermind_$1_$2").ToLowerInvariant();
+            $"nethermind_{Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant()}";
 
         private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
             => Prometheus.Metrics.CreateGauge(name, help, configuration);
