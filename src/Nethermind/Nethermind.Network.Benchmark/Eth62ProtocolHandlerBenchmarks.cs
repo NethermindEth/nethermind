@@ -51,7 +51,7 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(TestChainIds.ChainId, LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
             var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Benchmarks
                 ecdsa,
                 new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(ChainId.Mainnet),
+                new TxValidator(NetworkId.Mainnet),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();

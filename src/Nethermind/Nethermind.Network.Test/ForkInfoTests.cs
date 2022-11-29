@@ -6,12 +6,10 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Network.Enr;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Nethermind.Network.Test
 {
@@ -162,9 +160,10 @@ namespace Nethermind.Network.Test
         [TestCase(null, null, 1ul, 1ul)]
         public void Chain_id_and_network_id_have_proper_default_values(ulong? specNetworkId, ulong? specChainId, ulong expectedNetworkId, ulong expectedChainId)
         {
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null" },\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
-            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+            ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
+            ChainSpecBasedSpecProvider provider = new(spec);
 
             spec.ChainId.Should().Be(expectedChainId);
             spec.NetworkId.Should().Be(expectedNetworkId);
