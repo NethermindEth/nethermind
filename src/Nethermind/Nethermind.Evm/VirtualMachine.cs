@@ -3013,7 +3013,8 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
                             }
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
+
+                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) // still undecided in EIP
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
@@ -3021,47 +3022,51 @@ namespace Nethermind.Evm
 
                             var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
                             var inputCount = typeSection[index * 2];
+
+                            if(vmState.ReturnStackHead == 1024)
+                            {
+                                return CallResult.StackOverflowException;
+                            }
+
+                            stack.EnsureDepth(inputCount);
                             vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                             {
                                 Index = CodeInfo.SectionId,
                                 Height = stack.Head - inputCount,
                                 Offset = programCounter + 2
                             };
-                            CodeInfo.SectionId = index;
 
-                            stack.EnsureDepth(inputCount);
+                            CodeInfo.SectionId = index;
                             programCounter = CodeInfo.Header[index].Start;
                             break;
                         }
                     case Instruction.RETF:
                         {
-                            if (spec.IsEip4750Enabled)
-                            {
-                                if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-
-                                var index = CodeInfo.SectionId;
-                                var outputCount = typeSection[index * 2 + 1];
-
-                                var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
-                                if (stack.Head == stackFrame.Height + outputCount)
-                                {
-                                    CodeInfo.SectionId = stackFrame.Index;
-                                    programCounter = stackFrame.Offset;
-                                }
-                                else
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
-                                    return CallResult.AccessViolationException;
-                                }
-                            }
-                            else
+                            if (!spec.IsEip4750Enabled)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) // still undecided in EIP
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = CodeInfo.SectionId;
+                            var outputCount = typeSection[index * 2 + 1];
+
+                            var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            if (stack.Head == stackFrame.Height + outputCount)
+                            {
+                                CodeInfo.SectionId = stackFrame.Index;
+                                programCounter = stackFrame.Offset;
+                            }
+                            else
+                            {
+                                EndInstructionTraceError(EvmExceptionType.InvalidStackState);
+                                return CallResult.AccessViolationException;
                             }
                             break;
                         }
