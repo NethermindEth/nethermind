@@ -200,6 +200,7 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,

@@ -164,7 +164,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
                                 }
-                                header = null; header = null; return false;
+                                header = null;  return false;
                             }
 
                             if (i + 2 > codeLen)
@@ -173,7 +173,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : container code incomplete, failed parsing data section");
                                 }
-                                header = null; header = null; return false;
+                                header = null;  return false;
                             }
 
                             var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
@@ -185,7 +185,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : DataSection size must be strictly bigger than 0 but found 0");
                                 }
-                                header = null; header = null; return false;
+                                header = null;  return false;
                             }
 
                             i += 2;
@@ -198,7 +198,7 @@ namespace Nethermind.Evm
                                 _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
                             }
 
-                            header = null; header = null; return false;
+                            header = null;  return false;
                         }
                 }
             }
@@ -212,7 +212,7 @@ namespace Nethermind.Evm
                 {
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 }
-                header = null; header = null; return false;
+                header = null;  return false;
             }
             return true;
         }
@@ -257,13 +257,13 @@ namespace Nethermind.Evm
                     }
                 }
 
-                bool endCorrectly = opcode is Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT;
+                bool endCorrectly = opcode is Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID; // or Instruction.SELFDESTRUCT /* deperecated SelfDestruct but sellAll might take it's place*/
 
                 if (!endCorrectly)
                 {
                     if (LoggingEnabled)
                     {
-                        _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                        _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}");
                     }
                     header = null; return false;
                 }
