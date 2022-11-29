@@ -50,12 +50,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private static ParityTraceAction? GetAction(ParityTraceAction? action)
         {
-            if (action?.Result?.IsEmpty == true)
-            {
-                action.Result = null;
-            }
+            RemoveEmptyResults(action);
 
             return action;
+        }
+
+        private static void RemoveEmptyResults(ParityTraceAction? action)
+        {
+            if (action is not null)
+            {
+                if (action.Result?.IsEmpty == true)
+                {
+                    action.Result = null;
+                }
+
+                for (int i = 0; i < action.Subtraces.Count; i++)
+                {
+                    RemoveEmptyResults(action.Subtraces[i]);
+                }
+            }
         }
 
         public byte[]? Output { get; set; }
