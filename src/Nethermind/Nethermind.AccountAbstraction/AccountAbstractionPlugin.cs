@@ -106,7 +106,7 @@ namespace Nethermind.AccountAbstraction
                 UserOperationSimulator(entryPoint),
                 userOperationSortedPool,
                 UserOperationBroadcaster,
-                _nethermindApi.SpecProvider!.NetworkId);
+                _nethermindApi.SpecProvider!.ChainId);
 
             return _userOperationPools[entryPoint];
         }

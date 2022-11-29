@@ -214,11 +214,11 @@ namespace Nethermind.Blockchain
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
                              $"body {LowestInsertedBodyNumber}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
-            ThisNodeInfo.AddInfo("Network ID   :", $"{Core.NetworkId.GetChainName(NetworkId)}");
+            ThisNodeInfo.AddInfo("Chain ID     :", $"{(ChainId == NetworkId ? Core.NetworkId.GetBlockchainName(NetworkId) : ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
             if (ChainId != NetworkId)
             {
-                ThisNodeInfo.AddInfo("ChainId ID   :", $"{ChainId}");
+                ThisNodeInfo.AddInfo("Network ID   :", $"{ChainId}");
             }
         }
 

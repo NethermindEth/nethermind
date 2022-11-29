@@ -48,7 +48,7 @@ namespace Nethermind.Core
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
 
-        public static string GetChainName(ulong networkId)
+        public static string GetBlockchainName(ulong networkId)
         {
             return networkId switch
             {
@@ -76,7 +76,7 @@ namespace Nethermind.Core
 
     public static class TestBlockchainIds
     {
-        public const int NetworkId = 5;
+        public const int NetworkId = 4261;
         public const int ChainId = 1;
     }
 }

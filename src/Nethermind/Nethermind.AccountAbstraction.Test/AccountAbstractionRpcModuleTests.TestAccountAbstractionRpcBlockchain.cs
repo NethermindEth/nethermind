@@ -243,7 +243,7 @@ namespace Nethermind.AccountAbstraction.Test
                             LogManager,
                             _accountAbstractionConfig.MaximumUserOperationPerSender),
                         broadcaster,
-                        SpecProvider.NetworkId);
+                        SpecProvider.ChainId);
                 }
 
                 return blockProcessor;
