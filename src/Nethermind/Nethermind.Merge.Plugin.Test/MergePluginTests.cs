@@ -24,6 +24,7 @@ using NUnit.Framework;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
+using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin.Test
 {

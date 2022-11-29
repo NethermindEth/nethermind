@@ -19,18 +19,20 @@ namespace Nethermind.Evm.Tracing
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
-        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider, ISpecProvider specProvider)
+        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider,
+            ISpecProvider specProvider, IBlocksConfig blocksConfig)
         {
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _specProvider = specProvider;
+            _blocksConfig = blocksConfig;
         }
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer)
         {
-            // SecondsPerSlot fix incoming
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + 13);
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             long intrinsicGas = tx.GasLimit - gasTracer.IntrinsicGasAt;
             if (tx.GasLimit > header.GasLimit)

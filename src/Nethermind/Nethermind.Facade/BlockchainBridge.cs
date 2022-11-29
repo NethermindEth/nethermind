@@ -45,6 +45,7 @@ namespace Nethermind.Facade
         private readonly IReceiptFinder _receiptFinder;
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             ITxPool? txPool,
@@ -55,6 +56,7 @@ namespace Nethermind.Facade
             ITimestamper? timestamper,
             ILogFinder? logFinder,
             ISpecProvider specProvider,
+            IBlocksConfig blocksConfig,
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
@@ -66,6 +68,7 @@ namespace Nethermind.Facade
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksConfig = blocksConfig;
             IsMining = isMining;
         }
 
@@ -174,7 +177,8 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider, _specProvider);
+            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+                _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new CallOutput

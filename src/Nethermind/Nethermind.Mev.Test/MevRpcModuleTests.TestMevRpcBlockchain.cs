@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;

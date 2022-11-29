@@ -30,6 +30,8 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using NSubstitute;
+using Nethermind.Evm;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -124,7 +126,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 

@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps

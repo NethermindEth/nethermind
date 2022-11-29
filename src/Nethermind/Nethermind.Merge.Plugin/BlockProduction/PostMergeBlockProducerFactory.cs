@@ -6,6 +6,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.BlockProduction

@@ -316,7 +316,8 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             EstimateGasTracer tracer = new();
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
             tracer.GasSpent.Should().Be(21000);
@@ -350,7 +351,8 @@ namespace Nethermind.Evm.Test
             EstimateGasTracer tracer = new();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
@@ -391,7 +393,8 @@ namespace Nethermind.Evm.Test
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
@@ -457,7 +460,8 @@ namespace Nethermind.Evm.Test
             EstimateGasTracer tracer = new();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
@@ -500,7 +504,8 @@ namespace Nethermind.Evm.Test
             EstimateGasTracer tracer = new();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);
@@ -539,7 +544,8 @@ namespace Nethermind.Evm.Test
             EstimateGasTracer tracer = new();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
 
-            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            BlocksConfig blocksConfig = new();
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
             actualIntrinsic.Should().Be(intrinsic);

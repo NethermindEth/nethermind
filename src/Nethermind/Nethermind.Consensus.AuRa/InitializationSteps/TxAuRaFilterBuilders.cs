@@ -8,6 +8,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.Ethash
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>().MinGasPrice, getFromApi.SpecProvider)
+                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
                 .Build;
 
             TxPoolTxSource txPoolTxSource = new(

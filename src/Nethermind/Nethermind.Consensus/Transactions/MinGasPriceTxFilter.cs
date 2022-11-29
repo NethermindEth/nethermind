@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -13,20 +14,20 @@ namespace Nethermind.Consensus.Transactions
     /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
     public class MinGasPriceTxFilter : IMinGasPriceTxFilter
     {
-        private readonly UInt256 _minGasPrice;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
         public MinGasPriceTxFilter(
-            in UInt256 minGasPrice,
+            IBlocksConfig blocksConfig,
             ISpecProvider specProvider)
         {
-            _minGasPrice = minGasPrice;
             _specProvider = specProvider;
+            _blocksConfig = blocksConfig;
         }
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            return IsAllowed(tx, parentHeader, _minGasPrice);
+            return IsAllowed(tx, parentHeader, _blocksConfig.MinGasPrice);
         }
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
@@ -35,7 +36,7 @@ namespace Nethermind.Consensus.Transactions
             UInt256 baseFeePerGas = UInt256.Zero;
             long blockNumber = (parentHeader?.Number ?? 0) + 1;
             // SecondsPerSlot fix incoming
-            ulong blockTimestamp = (parentHeader?.Timestamp ?? 0) + 13;
+            ulong blockTimestamp = (parentHeader?.Timestamp ?? 0) + _blocksConfig.SecondsPerSlot;
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber, blockTimestamp);
             if (spec.IsEip1559Enabled)
             {

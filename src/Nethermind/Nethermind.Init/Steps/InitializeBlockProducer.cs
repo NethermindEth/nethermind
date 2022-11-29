@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Evm;
 
 namespace Nethermind.Init.Steps
 {

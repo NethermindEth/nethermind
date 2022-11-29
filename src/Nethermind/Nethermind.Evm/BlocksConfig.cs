@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Evm
 {
     public class BlocksConfig : IBlocksConfig
     {
@@ -23,6 +23,9 @@ namespace Nethermind.Consensus
         public UInt256 MinGasPrice { get; set; } = 1.Wei();
 
         public bool RandomizedBlocks { get; set; }
+
+        public ulong SecondsPerSlot { get; set; } = 12;
+
 
         public string ExtraData
         {
@@ -44,7 +47,6 @@ namespace Nethermind.Consensus
                 _extraDataBytes = bytes;
             }
         }
-
         public byte[] GetExtraDataBytes()
         {
             return _extraDataBytes;

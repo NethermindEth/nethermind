@@ -4,6 +4,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;

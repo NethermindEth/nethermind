@@ -331,7 +331,11 @@ namespace Nethermind.Synchronization.Test
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider, blocksConfig);
             TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,

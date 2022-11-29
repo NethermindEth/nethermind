@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Specs;
 using NUnit.Framework;
 

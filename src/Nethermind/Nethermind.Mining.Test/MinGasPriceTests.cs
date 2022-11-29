@@ -6,6 +6,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.TxPool;
@@ -29,7 +30,11 @@ namespace Nethermind.Mining.Test
             {
                 IsEip1559Enabled = false
             });
-            MinGasPriceTxFilter _filter = new((UInt256)minimum, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = (UInt256)minimum
+            };
+            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
         }
@@ -49,7 +54,11 @@ namespace Nethermind.Mining.Test
             specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).IsEip1559Enabled.Returns(true);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).IsEip1559Enabled.Returns(true);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-            MinGasPriceTxFilter _filter = new((UInt256)minimum, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = (UInt256)minimum
+            };
+            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(0)
                 .WithMaxFeePerGas((UInt256)maxFeePerGas)
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)

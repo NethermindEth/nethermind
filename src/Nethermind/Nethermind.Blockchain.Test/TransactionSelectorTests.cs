@@ -24,6 +24,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -199,8 +200,12 @@ namespace Nethermind.Blockchain.Test
                     g => g.Key,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = testCase.MinGasPriceForMining
+            };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(testCase.MinGasPriceForMining, specProvider)
+                .WithMinGasPriceFilter(blocksConfig, specProvider)
                 .WithBaseFeeFilter(specProvider)
                 .Build;
 

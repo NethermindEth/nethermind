@@ -10,6 +10,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;

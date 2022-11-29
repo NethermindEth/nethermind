@@ -14,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 

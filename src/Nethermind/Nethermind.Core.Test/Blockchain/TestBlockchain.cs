@@ -267,8 +267,12 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider, blocksConfig);
             return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 

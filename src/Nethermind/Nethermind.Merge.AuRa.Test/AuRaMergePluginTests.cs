@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Merge.AuRa.Test;
 using Nethermind.Merge.Plugin;

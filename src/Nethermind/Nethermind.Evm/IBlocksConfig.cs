@@ -7,7 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Evm
 {
     public interface IBlocksConfig : IConfig
     {
@@ -35,6 +35,9 @@ namespace Nethermind.Consensus
 
         [ConfigItem(Description = "Block header extra data. 32-bytes shall be extra data max length.", DefaultValue = "Nethermind")]
         string ExtraData { get; set; }
+
+        [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
+        ulong SecondsPerSlot { get; set; }
 
         byte[] GetExtraDataBytes();
     }

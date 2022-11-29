@@ -56,6 +56,7 @@ using Nethermind.Sockets;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Evm;
 
 namespace Nethermind.Api
 {
@@ -83,6 +84,7 @@ namespace Nethermind.Api
                 LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
+            IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
@@ -94,6 +96,7 @@ namespace Nethermind.Api
                 Timestamper,
                 LogFinder,
                 SpecProvider!,
+                blocksConfig,
                 miningConfig.Enabled
             );
         }

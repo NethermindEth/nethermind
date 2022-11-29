@@ -3,12 +3,13 @@
 
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus
 {
     public static class TxFilterBuilders
     {
         public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
-            => new MinGasPriceTxFilter(blocksConfig.MinGasPrice, specProvider);
+            => new MinGasPriceTxFilter(blocksConfig, specProvider);
     }
 }
