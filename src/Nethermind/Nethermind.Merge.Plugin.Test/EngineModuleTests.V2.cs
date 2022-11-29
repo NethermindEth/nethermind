@@ -410,20 +410,24 @@ public partial class EngineModuleTests
     [Test]
     public async Task Withdrawals_transition()
     {
-        // in progress
+        // Shanghai fork, ForkActivation.Timestamp = 3
         CustomSpecProvider specProvider = new((new ForkActivation(0, null), ArrowGlacier.Instance), (new ForkActivation(0, 3), Shanghai.Instance));
+
+        // Genesis, Timestamp = 1
         using MergeTestBlockchain chain = await CreateBlockChain(specProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
+        // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        // fcu
 
+        // Block with withdrawals, Timestamp = 3
         PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 2, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = new[] { TestItem.WithdrawalA_1Eth } };
-        ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
-        ResultWrapper<PayloadStatusV1> resultWrapper2 = await rpc.engine_newPayloadV2(payload);
-        resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
-        // fcu
+        ExecutionPayload payloadWithWithdrawals = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
+        ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals);
+        resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash));
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 }
