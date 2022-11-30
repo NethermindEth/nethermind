@@ -10,14 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        public byte[] Serialize(BlockBodiesMessage message)
-        {
-            return Rlp.Encode(message.Bodies.Select(b => b is null
+        public byte[] Serialize(BlockBodiesMessage message) =>
+            Rlp.Encode(message.Bodies.Select(b => b is null
                 ? Rlp.OfEmptySequence
-                : Rlp.Encode(
-                    Rlp.Encode(b.Transactions),
-                    Rlp.Encode(b.Uncles))).ToArray()).Bytes;
-        }
+                : b.Withdrawals != null
+                    ? Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles), Rlp.Encode(b.Withdrawals))
+                    : Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles))
+                ).ToArray()).Bytes;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
@@ -44,6 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             BlockBodiesMessage message = new();
             message.Bodies = rlpStream.DecodeArray(ctx =>
             {
+                int startingPosition = rlpStream.Position;
                 int sequenceLength = rlpStream.ReadSequenceLength();
                 if (sequenceLength == 0)
                 {
@@ -54,7 +54,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
-                return new BlockBody(transactions, uncles);
+                Withdrawal[]? withdrawals = null;
+                if (rlpStream.ReadNumberOfItemsRemaining() > 0)
+                    withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<Withdrawal>(ctx));
+
+                return new BlockBody(transactions, uncles, withdrawals);
             }, false);
 
             return message;
