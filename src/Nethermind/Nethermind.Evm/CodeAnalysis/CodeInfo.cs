@@ -30,10 +30,7 @@ namespace Nethermind.Evm.CodeAnalysis
             Container = MachineCode.AsSpan();
             if (spec.IsEip3540Enabled)
             {
-                if (isEof is null && _header is null)
-                {
-                    isEof = ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
-                }
+                isEof ??= ByteCodeValidator.Instance.ValidateEofStructure(MachineCode, spec, out _header);
 
                 if (isEof.Value)
                 {
@@ -82,8 +79,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer()
         {
-            var codeSectionOffsets = isEof.HasValue && isEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
-            var codeToBeAnalyzed = MachineCode.Slice(codeSectionOffsets.Item1, codeSectionOffsets.Item2);
+            var (CodeStart, CodeSize) = isEof.HasValue && isEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
+            var codeToBeAnalyzed = MachineCode.Slice(CodeStart, CodeSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

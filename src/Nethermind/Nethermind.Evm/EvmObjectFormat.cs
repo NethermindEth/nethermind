@@ -34,7 +34,7 @@ namespace Nethermind.Evm
         public override bool Equals(object? obj)
             => this.GetHashCode() == obj.GetHashCode();
         public override int GetHashCode()
-            => CodeSize.GetHashCode() ^ DataSize.GetHashCode();
+            => CodeSize.GetHashCode() ^ DataSize.GetHashCode() ^ Version.GetHashCode();
         #endregion
 
         #region Sections Offsets
@@ -47,8 +47,8 @@ namespace Nethermind.Evm
     {
         private readonly ILogger _logger;
         private bool LoggingEnabled => _logger is not null;
-        public EvmObjectFormat(ILogger logger = null)
-            => _logger = logger;
+        public EvmObjectFormat(ILogManager loggerManager = null)
+            => _logger = loggerManager?.GetClassLogger<EvmObjectFormat>();
 
         // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
         private const byte EofMagicLength = 2;
@@ -107,7 +107,7 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
-                            if (CodeSections is null || CodeSections == 0)
+                            if (CodeSections is null)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -123,6 +123,15 @@ namespace Nethermind.Evm
                         }
                     case SectionDividor.CodeSection:
                         {
+                            if (CodeSections is not null)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : only 1 code section is allowed");
+                                }
+                                header = null; return false;
+                            }
+
                             if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
@@ -132,10 +141,9 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            CodeSections = (UInt16)codeSectionSize;
+                            CodeSections = code.Slice(i, 2).ReadEthUInt16();
 
-                            if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
+                            if (CodeSections == 0) // code section must be non-empty (i.e : size > 0)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -158,6 +166,7 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
+
                             if (DataSections is not null)
                             {
                                 if (LoggingEnabled)
@@ -176,10 +185,9 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            DataSections = (UInt16)dataSectionSize;
+                            DataSections = code.Slice(i, 2).ReadEthUInt16();
 
-                            if (dataSectionSize == 0) // if declared data section must be non-empty
+                            if (DataSections == 0) // if declared data section must be non-empty
                             {
                                 if (LoggingEnabled)
                                 {

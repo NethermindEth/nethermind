@@ -67,6 +67,7 @@ namespace Nethermind.Evm
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
+        private ByteCodeValidator _byteCodeValidator;
 
         public VirtualMachine(
             IBlockhashProvider? blockhashProvider,
@@ -77,7 +78,7 @@ namespace Nethermind.Evm
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-            ByteCodeValidator.Initialize(_logger);
+            _byteCodeValidator = new ByteCodeValidator(logManager);
             InitializePrecompiledContracts();
         }
 
@@ -197,7 +198,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !ByteCodeValidator.ValidateByteCode(callResult.Output, spec))
+                                else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -242,7 +243,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !ByteCodeValidator.ValidateByteCode(callResult.Output, spec);
+                            bool invalidCode = !_byteCodeValidator.ValidateBytecode(callResult.Output, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -2378,8 +2379,8 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
-                            if (spec.IsEip3540Enabled &&
-                                ByteCodeValidator.HasEOFMagic(initCode) && !ByteCodeValidator.ValidateEofStrucutre(initCode, spec, out _))
+                            if (spec.IsEip3540Enabled && _byteCodeValidator.HasEOFMagic(initCode) &&
+                                !_byteCodeValidator.ValidateEofStructure(initCode, spec, out _))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

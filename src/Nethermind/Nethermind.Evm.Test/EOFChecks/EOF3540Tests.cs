@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Test
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
+            var checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out var header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)
