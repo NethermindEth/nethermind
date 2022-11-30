@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, London.Instance);
         }
 
-        [TestCase(TxType.EIP1559, false, ExpectedResult = false)]
+        [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
         [TestCase(TxType.Blob, false, ExpectedResult = false)]
         [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
         [TestCase(TxType.Blob, true, ExpectedResult = true)]
@@ -230,6 +230,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
                 .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
                 .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
                 .WithChainId(TestChainIds.ChainId)
                 .WithSignature(signature).TestObject;

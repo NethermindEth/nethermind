@@ -79,6 +79,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? ShanghaiTimestamp { get; set; }
 
-        public long? ShardingForkBlockNumber { get; set; }
+        public ulong? ShardingForkTimestamp { get; set; }
     }
 }

@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Validators
         private bool Validate4844Fields(Transaction transaction)
         {
             // TODO: Add blobs validation
-            return transaction.Type != TxType.Blob ^ transaction.MaxFeePerDataGas is not null;
+            return transaction.Type == TxType.Blob ^ transaction.MaxFeePerDataGas is null;
         }
     }
 }

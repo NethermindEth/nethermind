@@ -213,6 +213,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
                 : null;
             chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip1153TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.ShardingForkTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? (long.MaxValue - 1);
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
