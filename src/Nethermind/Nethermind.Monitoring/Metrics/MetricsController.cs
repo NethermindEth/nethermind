@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -31,11 +18,12 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private Dictionary<string, Gauge> _gauges = new();
-        private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
-        private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
-        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
-        private HashSet<Type> _metricTypes = new();
+        private readonly Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
+        private readonly Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
+        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private readonly HashSet<Type> _metricTypes = new();
+
+        public readonly Dictionary<string, Gauge> _gauges = new();
 
         public void RegisterMetrics(Type type)
         {
@@ -115,7 +103,7 @@ namespace Nethermind.Monitoring.Metrics
             propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
         private static string BuildGaugeName(string propertyName) =>
-            Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "nethermind_$1_$2").ToLowerInvariant();
+            $"nethermind_{Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant()}";
 
         private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
             => Prometheus.Metrics.CreateGauge(name, help, configuration);

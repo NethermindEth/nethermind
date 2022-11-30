@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -382,7 +369,6 @@ namespace Nethermind.Core.Extensions
         {
             return ReadEthInt32((ReadOnlySpan<byte>)bytes);
         }
-
         public static int ReadEthInt16(this Span<byte> bytes)
         {
             return ReadEthInt16((ReadOnlySpan<byte>)bytes);
@@ -399,9 +385,30 @@ namespace Nethermind.Core.Extensions
                 return BinaryPrimitives.ReadInt16BigEndian(bytes);
             }
 
-            Span<byte> fourBytes = stackalloc byte[4];
+            Span<byte> fourBytes = stackalloc byte[2];
             bytes.CopyTo(fourBytes.Slice(2 - bytes.Length));
             return BinaryPrimitives.ReadInt16BigEndian(fourBytes);
+        }
+
+        public static ushort ReadEthUInt16(this Span<byte> bytes)
+        {
+            return ReadEthUInt16((ReadOnlySpan<byte>)bytes);
+        }
+        public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            if (bytes.Length == 2)
+            {
+                return BinaryPrimitives.ReadUInt16BigEndian(bytes);
+            }
+
+            Span<byte> fourBytes = stackalloc byte[2];
+            bytes.CopyTo(fourBytes.Slice(2 - bytes.Length));
+            return BinaryPrimitives.ReadUInt16BigEndian(fourBytes);
         }
         public static int ReadEthInt32(this ReadOnlySpan<byte> bytes)
         {

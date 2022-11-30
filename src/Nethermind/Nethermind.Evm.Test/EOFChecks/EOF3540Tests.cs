@@ -122,12 +122,12 @@ namespace Nethermind.Evm.Test
                 ? null
                 : new EofHeader
                 {
-                    CodeSize = (UInt16)codeSize,
-                    DataSize = (UInt16)dataSize,
+                    CodeSize = codeSize,
+                    DataSize = dataSize,
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
+            var checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out var header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)

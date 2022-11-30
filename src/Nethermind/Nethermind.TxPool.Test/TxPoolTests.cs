@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -1356,6 +1343,36 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
+        }
+
+        [Test]
+        public void TooExpensiveTxFilter_correctly_calculates_cumulative_cost()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            EnsureSenderBalance(TestItem.AddressF, 1);
+
+            Transaction zeroCostTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Cumulative cost should be 1
+            Transaction expensiveTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithValue(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

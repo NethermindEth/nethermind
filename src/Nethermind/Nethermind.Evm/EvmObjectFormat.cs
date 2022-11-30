@@ -34,7 +34,7 @@ namespace Nethermind.Evm
         public override bool Equals(object? obj)
             => this.GetHashCode() == obj.GetHashCode();
         public override int GetHashCode()
-            => CodeSize.GetHashCode() ^ DataSize.GetHashCode();
+            => CodeSize.GetHashCode() ^ DataSize.GetHashCode() ^ Version.GetHashCode();
         #endregion
 
         #region Sections Offsets
@@ -47,8 +47,8 @@ namespace Nethermind.Evm
     {
         private readonly ILogger _logger;
         private bool LoggingEnabled => _logger is not null;
-        public EvmObjectFormat(ILogger logger = null)
-            => _logger = logger;
+        public EvmObjectFormat(ILogManager loggerManager = null)
+            => _logger = loggerManager?.GetClassLogger<EvmObjectFormat>();
 
         // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
         private const byte EofMagicLength = 2;
@@ -107,13 +107,13 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
-                            if (CodeSections is null || CodeSections == 0)
+                            if (CodeSections is null)
                             {
                                 if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : No Codesection found");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
                             header.CodeSize = CodeSections.Value;
@@ -123,25 +123,33 @@ namespace Nethermind.Evm
                         }
                     case SectionDividor.CodeSection:
                         {
+                            if (CodeSections is not null)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : only 1 code section is allowed");
+                                }
+                                header = null; return false;
+                            }
+
                             if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : container code incomplete, failed parsing code section");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
-                            var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            CodeSections = (UInt16)codeSectionSize;
+                            CodeSections = code.Slice(i, 2).ReadEthUInt16();
 
-                            if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
+                            if (CodeSections == 0) // code section must be non-empty (i.e : size > 0)
                             {
                                 if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : CodeSection size must be strictly bigger than 0 but found 0");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
                             i += 2;
@@ -156,15 +164,16 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {0}");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
+
                             if (DataSections is not null)
                             {
                                 if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
                             if (i + 2 > codeLen)
@@ -173,19 +182,18 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : container code incomplete, failed parsing data section");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
-                            var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            DataSections = (UInt16)dataSectionSize;
+                            DataSections = code.Slice(i, 2).ReadEthUInt16();
 
-                            if (dataSectionSize == 0) // if declared data section must be non-empty
+                            if (DataSections == 0) // if declared data section must be non-empty
                             {
                                 if (LoggingEnabled)
                                 {
                                     _logger.Trace($"EIP-3540 : DataSection size must be strictly bigger than 0 but found 0");
                                 }
-                                header = null; header = null; return false;
+                                header = null; return false;
                             }
 
                             i += 2;
@@ -198,7 +206,7 @@ namespace Nethermind.Evm
                                 _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
                             }
 
-                            header = null; header = null; return false;
+                            header = null; return false;
                         }
                 }
             }
@@ -212,7 +220,7 @@ namespace Nethermind.Evm
                 {
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 }
-                header = null; header = null; return false;
+                header = null; return false;
             }
             return true;
         }
@@ -289,7 +297,7 @@ namespace Nethermind.Evm
                     }
                 }
 
-                bool endCorrectly = opcode is Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT;
+                bool endCorrectly = opcode is Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID; // or Instruction.SELFDESTRUCT /* deperecated SelfDestruct but sellAll might take it's place*/
 
                 if (!endCorrectly)
                 {

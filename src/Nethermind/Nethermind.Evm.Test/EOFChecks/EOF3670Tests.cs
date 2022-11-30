@@ -506,11 +506,11 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF000101000100FE", true)]
         [TestCase("0xEF00010100050060006000F3", true)]
         [TestCase("0xEF00010100050060006000FD", true)]
-        [TestCase("0xEF0001010003006000FF", true)]
         [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
         [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
         [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
         // code with invalid magic
+        [TestCase("0xEF0001010003006000FF", false, Description = "Ends with Selfdestruct")]
         [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
         [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
         [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
@@ -529,7 +529,7 @@ namespace Nethermind.Evm.Test
             };
 
 
-            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
+            bool checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

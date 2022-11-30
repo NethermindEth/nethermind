@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test
             };
 
 
-            bool checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out _);
+            bool checkResult = ByteCodeValidator.Instance.ValidateEofStructure(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

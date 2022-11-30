@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -44,7 +31,7 @@ namespace Nethermind.Evm.CodeAnalysis
             Container = MachineCode.AsSpan();
             if (spec.IsEip3540Enabled)
             {
-                IsEof ??= ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
+                IsEof ??= ByteCodeValidator.Instance.ValidateEofStructure(MachineCode, spec, out _header);
 
                 if (IsEof.Value)
                 {
@@ -93,8 +80,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer(IReleaseSpec spec)
         {
-            var codeSectionOffsets = isEof.HasValue && isEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
-            var codeToBeAnalyzed = MachineCode.Slice(codeSectionOffsets.Item1, codeSectionOffsets.Item2);
+            var (CodeStart, CodeSize) = IsEof.HasValue && IsEof.Value == true ? Header.CodeSectionOffsets : (0, MachineCode.Length);
+            var codeToBeAnalyzed = MachineCode.Slice(CodeStart, CodeSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

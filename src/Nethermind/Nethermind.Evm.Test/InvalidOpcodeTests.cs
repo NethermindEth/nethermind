@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -208,7 +196,7 @@ namespace Nethermind.Evm.Test
                     var immediateArgs = instruction switch
                     {
                         >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
-                        Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(i => (byte)i),
+                        Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(_ => (byte)0),
                         _ => Enumerable.Empty<byte>()
                     };
                     foreach (byte arg in immediateArgs)
@@ -216,9 +204,18 @@ namespace Nethermind.Evm.Test
                         prepCode.Data(arg);
                     }
                 }
-                var code = prepCode.Done;
-
+                
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains(instruction);
+
+                byte[] code;
+                if (!instruction.IsOnlyForEofBytecode())
+                {
+                    code = prepCode.Done;
+                } else
+                {
+                    code = EofTestsBase.TestCase.EofBytecode(prepCode.STOP().Done);
+                }
+
                 TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
 
                 if (isValidOpcode)
