@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Test
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
+            var checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out var header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)
@@ -662,7 +662,7 @@ namespace Nethermind.Evm.Test
                                     hasEofContainer, hasEofInnitcode, hasEofDeployCode,
                                     corruptContainer, corruptInnitcode, corruptDeploycode,
                                     context: j),
-                                ResultIfEOF = ((classicDep ? corruptInnitcode : corruptContainer) || corruptInnitcode || corruptDeploycode ? StatusCode.Failure : StatusCode.Success, null),
+                                ResultIfEOF = ((classicDep ? corruptInnitcode : corruptContainer) || (!hasEofInnitcode && corruptInnitcode) || corruptDeploycode ? StatusCode.Failure : StatusCode.Success, null),
                                 Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofDeployCode ? String.Empty : "NON-")}EOF innercode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE and {(corruptDeploycode ? String.Empty : "Not")} Corrupted CODE"
                             };
                         }
