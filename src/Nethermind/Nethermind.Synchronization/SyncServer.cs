@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruKeyCache<Keccak> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruKeyCache<Keccak> _recentlySuggested = new(1024, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization
                 {
                     if (!_blockTree.IsKnownBlock(block.Number, block.Hash))
                     {
-	                    // we null total difficulty for a block in a block tree as we don't trust the message					
+	                    // we null total difficulty for a block in a block tree as we don't trust the message
                         UInt256? totalDifficulty = block.TotalDifficulty;
 
                         // Recalculate total difficulty as we don't trust total difficulty from gossip
@@ -228,8 +228,6 @@ namespace Nethermind.Synchronization
                             SyncBlock(block, nodeWhoSentTheBlock);
                         }
                     }
-
-                    // we null total difficulty for a block in a block tree as we don't trust the message
                 }
                 else
                 {
