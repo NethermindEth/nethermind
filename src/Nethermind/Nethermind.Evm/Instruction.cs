@@ -197,7 +197,7 @@ namespace Nethermind.Evm
                 Instruction.DELEGATECALL => spec.DelegateCallEnabled,
                 Instruction.PUSH0 => spec.IncludePush0Instruction,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled=> true,
+                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.BASEFEE => spec.BaseFeeEnabled,
                 Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
                 Instruction.CHAINID => spec.ChainIdOpcodeEnabled,

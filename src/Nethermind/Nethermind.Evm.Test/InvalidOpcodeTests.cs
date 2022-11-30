@@ -204,14 +204,15 @@ namespace Nethermind.Evm.Test
                         prepCode.Data(arg);
                     }
                 }
-                
+
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains(instruction);
 
                 byte[] code;
                 if (!instruction.IsOnlyForEofBytecode())
                 {
                     code = prepCode.Done;
-                } else
+                }
+                else
                 {
                     code = EofTestsBase.TestCase.EofBytecode(prepCode.STOP().Done);
                 }
