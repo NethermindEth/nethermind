@@ -195,36 +195,41 @@ namespace Nethermind.Synchronization
                 Block? parent = _blockTree.FindBlock(block.ParentHash);
                 if (parent != null)
                 {
+                    if (!_blockTree.IsKnownBlock(block.Number, block.Hash))
+                    {
+	                    // we null total difficulty for a block in a block tree as we don't trust the message					
+                        UInt256? totalDifficulty = block.TotalDifficulty;
+
+                        // Recalculate total difficulty as we don't trust total difficulty from gossip
+                        block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
+                        if (!_blockValidator.ValidateSuggestedBlock(block))
+                        {
+                            ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                        }
+
+                        if (!ValidateSeal(block, nodeWhoSentTheBlock))
+                        {
+                            ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                        }
+
+                        // we want to broadcast original block, lets check if TD changed
+                        Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
+                            ? block
+                            : new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+
+                        BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
+
+                        SyncMode syncMode = _syncModeSelector.Current;
+                        bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
+                        bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
+                        if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
+                        {
+                            LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                            SyncBlock(block, nodeWhoSentTheBlock);
+                        }
+                    }
+
                     // we null total difficulty for a block in a block tree as we don't trust the message
-                    UInt256? totalDifficulty = block.TotalDifficulty;
-
-                    // Recalculate total difficulty as we don't trust total difficulty from gossip
-                    block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block))
-                    {
-                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
-                    }
-
-                    if (!ValidateSeal(block, nodeWhoSentTheBlock))
-                    {
-                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
-                    }
-
-                    // we want to broadcast original block, lets check if TD changed
-                    Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
-                        ? block
-                        : new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
-
-                    BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
-
-                    SyncMode syncMode = _syncModeSelector.Current;
-                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
-                    bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
-                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
-                    {
-                        LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
-                        SyncBlock(block, nodeWhoSentTheBlock);
-                    }
                 }
                 else
                 {
