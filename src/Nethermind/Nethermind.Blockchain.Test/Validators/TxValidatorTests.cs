@@ -225,17 +225,17 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestChainIds.ChainId * 2 + 35;
+            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
                 .WithTimestamp(ulong.MaxValue)
                 .WithMaxFeePerGas(1)
                 .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
-                .WithChainId(TestChainIds.ChainId)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestChainIds.ChainId);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, ShardingFork.Instance);
         }
     }
