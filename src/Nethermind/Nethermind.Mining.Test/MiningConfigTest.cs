@@ -15,7 +15,7 @@ public class MiningConfigTest
 
     public void Test(string data = "Nethermind")
     {
-        IMiningConfig config = new MiningConfig();
+        IBlocksConfig config = new BlocksConfig();
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
         config.ExtraData = data;
 
@@ -31,7 +31,7 @@ public class MiningConfigTest
                       "1234567890" +
                       "1234567890";
 
-        IMiningConfig config = new MiningConfig();
+        IBlocksConfig config = new BlocksConfig();
         string defaultData = config.ExtraData;
         byte[] defaultDataBytes = Encoding.UTF8.GetBytes(defaultData);
 
