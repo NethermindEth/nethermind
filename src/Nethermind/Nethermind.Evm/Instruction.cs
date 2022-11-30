@@ -75,7 +75,7 @@ namespace Nethermind.Evm
         MSTORE = 0x52,
         MSTORE8 = 0x53,
         SLOAD = 0x54,
-        SSTORE = 0x55, 
+        SSTORE = 0x55,
         JUMP = 0x56,
         JUMPI = 0x57,
         PC = 0x58,

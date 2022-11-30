@@ -164,7 +164,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
                                 }
-                                header = null;  return false;
+                                header = null; return false;
                             }
 
                             if (i + 2 > codeLen)
@@ -173,7 +173,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : container code incomplete, failed parsing data section");
                                 }
-                                header = null;  return false;
+                                header = null; return false;
                             }
 
                             var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
@@ -185,7 +185,7 @@ namespace Nethermind.Evm
                                 {
                                     _logger.Trace($"EIP-3540 : DataSection size must be strictly bigger than 0 but found 0");
                                 }
-                                header = null;  return false;
+                                header = null; return false;
                             }
 
                             i += 2;
@@ -198,7 +198,7 @@ namespace Nethermind.Evm
                                 _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
                             }
 
-                            header = null;  return false;
+                            header = null; return false;
                         }
                 }
             }
@@ -212,7 +212,7 @@ namespace Nethermind.Evm
                 {
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 }
-                header = null;  return false;
+                header = null; return false;
             }
             return true;
         }
