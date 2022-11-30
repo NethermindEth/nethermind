@@ -43,8 +43,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             BlockBodiesMessage message = new();
             message.Bodies = rlpStream.DecodeArray(ctx =>
             {
-                int startingPosition = rlpStream.Position;
                 int sequenceLength = rlpStream.ReadSequenceLength();
+                int startingPosition = rlpStream.Position;
                 if (sequenceLength == 0)
                 {
                     return null;
@@ -55,8 +55,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
                 Withdrawal[]? withdrawals = null;
-                if (rlpStream.ReadNumberOfItemsRemaining() > 0)
+                if (rlpStream.ReadNumberOfItemsRemaining(startingPosition + sequenceLength) > 0)
+                {
                     withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<Withdrawal>(ctx));
+                }
 
                 return new BlockBody(transactions, uncles, withdrawals);
             }, false);
