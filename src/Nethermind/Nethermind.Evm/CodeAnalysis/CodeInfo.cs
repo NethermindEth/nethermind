@@ -31,11 +31,12 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private EofHeader _header;
-        private bool? isEof = null;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
         public EofHeader Header => _header;
+
+        public bool? IsEof = null;
 
         #region EofSection Extractors
         public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> CodeSection, out Span<byte> DataSection)
@@ -43,12 +44,9 @@ namespace Nethermind.Evm.CodeAnalysis
             Container = MachineCode.AsSpan();
             if (spec.IsEip3540Enabled)
             {
-                if (isEof is null && _header is null)
-                {
-                    isEof = ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
-                }
+                IsEof ??= ByteCodeValidator.ValidateEofStrucutre(MachineCode, spec, out _header);
 
-                if (isEof.Value)
+                if (IsEof.Value)
                 {
                     var codeSectionOffsets = Header.CodeSectionOffsets;
                     CodeSection = MachineCode.Slice(codeSectionOffsets.Start, codeSectionOffsets.Size);

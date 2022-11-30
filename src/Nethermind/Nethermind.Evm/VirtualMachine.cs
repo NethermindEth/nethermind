@@ -2899,7 +2899,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
-                            if (spec.StaticRelativeJumpsEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && CodeContainer.IsEof.Value)
                             {
                                 if (!UpdateGas(GasCostOf.RJump, ref gasAvailable))
                                 {
