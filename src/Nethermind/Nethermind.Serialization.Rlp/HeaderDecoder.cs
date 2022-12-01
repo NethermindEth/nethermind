@@ -76,7 +76,8 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            if (blockHeader.Timestamp >= WithdrawalTimestamp)
+            if (decoderContext.ReadNumberOfItemsRemaining() > 0 &&
+                decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             }
@@ -149,7 +150,8 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            if (blockHeader.Timestamp >= WithdrawalTimestamp)
+            if (rlpStream.ReadNumberOfItemsRemaining() > 0 &&
+                rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
             }
@@ -206,7 +208,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.Timestamp >= WithdrawalTimestamp)
+            if (header.WithdrawalsRoot is not null)
             {
                 rlpStream.Encode(header.WithdrawalsRoot);
             }
@@ -248,7 +250,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.Timestamp < WithdrawalTimestamp ? 0 : Rlp.LengthOf(item.WithdrawalsRoot));
+                                + (item.WithdrawalsRoot is null ? 0 : Rlp.LengthOf(item.WithdrawalsRoot));
 
             if (notForSealing)
             {
