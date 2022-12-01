@@ -142,7 +142,7 @@ namespace Nethermind.Serialization.Rlp
             Position += bytesToWrite.Length;
         }
 
-        public void WriteByteList(IReadOnlyList<byte> bytesToWrite)
+        public virtual void WriteByteList(IReadOnlyList<byte> bytesToWrite)
         {
             for (int i = 0; i < bytesToWrite.Count; ++i)
             {
