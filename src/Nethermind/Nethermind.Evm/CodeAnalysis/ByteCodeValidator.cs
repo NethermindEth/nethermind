@@ -11,19 +11,18 @@ using Nethermind.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    internal static class ByteCodeValidator
+    internal class ByteCodeValidator
     {
-        private static EvmObjectFormat? EofFormatChecker = new EvmObjectFormat();
-        public static void Initialize(ILogger logger = null)
-        {
-            if (EofFormatChecker is not null)
-                EofFormatChecker = new EvmObjectFormat(logger);
-        }
+        public static ByteCodeValidator Instance => new ByteCodeValidator();
 
-        public static bool HasEOFMagic(this ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
-        public static bool ValidateByteCode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
+        private EvmObjectFormat? EofFormatChecker = new EvmObjectFormat();
+        public ByteCodeValidator(ILogManager loggerManager = null)
+            => EofFormatChecker = new EvmObjectFormat(loggerManager);
+
+        public bool HasEOFMagic(ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
         {
-            if (_spec.IsEip3540Enabled && code.HasEOFMagic())
+            if (_spec.IsEip3540Enabled && HasEOFMagic(code))
             {
                 return EofFormatChecker.ValidateInstructions(code, out header, _spec);
             }
@@ -31,10 +30,10 @@ namespace Nethermind.Evm.CodeAnalysis
             header = null;
             return !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
-        public static bool ValidateByteCode(this ReadOnlySpan<byte> code, IReleaseSpec _spec)
-                => ValidateByteCode(code, _spec, out _);
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
+                => ValidateBytecode(code, _spec, out _);
 
-        public static bool ValidateEofStrucutre(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
+        public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
             => EofFormatChecker.ValidateInstructions(machineCode, out header, _spec);
     }
 }

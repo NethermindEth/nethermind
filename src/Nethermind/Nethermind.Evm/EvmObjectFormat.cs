@@ -52,8 +52,8 @@ namespace Nethermind.Evm
     {
         private readonly ILogger _logger = null;
         private bool LoggingEnabled => _logger is not null;
-        public EvmObjectFormat(ILogger logger = null)
-            => _logger = logger;
+        public EvmObjectFormat(ILogManager loggerManager = null)
+            => _logger = loggerManager?.GetClassLogger<EvmObjectFormat>();
 
         // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
         private const byte EofMagicLength = 2;
@@ -92,7 +92,7 @@ namespace Nethermind.Evm
                     {
                         _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {EOFVersion}");
                     }
-                    header = null; return false;
+                    header = null; header = null; return false;
             }
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.Evm
                 {
                     case SectionDividor.Terminator:
                         {
-                            if (CodeSections.Count == 0 || CodeSections[0] == 0)
+                            if (CodeSections.Count == 0 || CodeSections.Any(section => section == 0))
                             {
                                 if (LoggingEnabled)
                                 {
@@ -139,6 +139,7 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
+
                             header.CodeSize = CodeSections.ToArray();
                             header.TypeSize = TypeSections ?? 0;
                             header.DataSize = DataSections ?? 0;
@@ -176,8 +177,7 @@ namespace Nethermind.Evm
                                     header = null; return false;
                                 }
 
-                                var typeSectionSize = code.Slice(i, 2).ReadEthInt16();
-                                TypeSections = typeSectionSize;
+                                TypeSections = code.Slice(i, 2).ReadEthInt16();
                             }
                             else
                             {
@@ -193,6 +193,15 @@ namespace Nethermind.Evm
                         }
                     case SectionDividor.CodeSection:
                         {
+                            if (!spec.IsEip4750Enabled && CodeSections.Count > 0)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-3540 : only 1 code section is allowed");
+                                }
+                                header = null; return false;
+                            }
+
                             if (i + 2 > codeLen)
                             {
                                 if (LoggingEnabled)
@@ -202,7 +211,7 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var codeSectionSize = code.Slice(i, 2).ReadEthInt16();
+                            var codeSectionSize = code.Slice(i, 2).ReadEthUInt16();
                             CodeSections.Add(codeSectionSize);
 
                             if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
@@ -228,6 +237,7 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
+
                             if (DataSections is not null)
                             {
                                 if (LoggingEnabled)
@@ -246,10 +256,9 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var dataSectionSize = code.Slice(i, 2).ReadEthInt16();
-                            DataSections = dataSectionSize;
+                            DataSections = code.Slice(i, 2).ReadEthUInt16();
 
-                            if (dataSectionSize == 0) // if declared data section must be non-empty
+                            if (DataSections == 0) // if declared data section must be non-empty
                             {
                                 if (LoggingEnabled)
                                 {
@@ -417,7 +426,7 @@ namespace Nethermind.Evm
             bool endCorrectly = opcode switch
             {
                 Instruction.RETF when spec.IsEip4750Enabled => true,
-                Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID or Instruction.SELFDESTRUCT
+                Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID // or Instruction.SELFDESTRUCT
                     => true,
                 _ => false
             };
@@ -426,7 +435,7 @@ namespace Nethermind.Evm
             {
                 if (LoggingEnabled)
                 {
-                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.RETF}, {Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}, {Instruction.SELFDESTRUCT}");
+                    _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.RETF}, {Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}"); // , {Instruction.SELFDESTRUCT}");
                 }
                 return false;
             }

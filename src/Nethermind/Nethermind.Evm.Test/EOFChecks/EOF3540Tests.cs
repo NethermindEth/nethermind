@@ -51,7 +51,6 @@ namespace Nethermind.Evm.Test
         {
             IsEip3670Enabled = false,
             IsEip4200Enabled = false,
-            IsEip4750Enabled = false
         });
         // valid code
         [TestCase("0xEF00010100010000", true, 1, 0, true)]
@@ -115,8 +114,8 @@ namespace Nethermind.Evm.Test
             var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance)
             {
                 IsEip3670Enabled = false,
-                IsEip4750Enabled = false,
                 IsEip4200Enabled = false,
+                IsEip4750Enabled = false,
             };
 
 
@@ -129,7 +128,7 @@ namespace Nethermind.Evm.Test
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ValidateByteCode(bytecode, TargetReleaseSpec, out var header);
+            var checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out var header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)
@@ -688,7 +687,7 @@ namespace Nethermind.Evm.Test
             {
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
-                IsEip4750Enabled = false
+                IsEip4750Enabled = false,
             };
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
