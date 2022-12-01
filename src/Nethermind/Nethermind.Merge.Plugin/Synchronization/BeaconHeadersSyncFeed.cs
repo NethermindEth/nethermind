@@ -117,8 +117,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _dependencies.Clear(); // there may be some dependencies from wrong branches
         _pending.Clear(); // there may be pending wrong branches
         _sent.Clear(); // we my still be waiting for some bad branches
-        _syncReport.HeadersInQueue.Update(0L);
-        _syncReport.HeadersInQueue.MarkEnd();
+        HeadersSyncQueueReport.Update(0L);
+        HeadersSyncQueueReport.MarkEnd();
     }
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
