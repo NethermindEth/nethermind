@@ -103,7 +103,7 @@ public class NodeRecordSigner : INodeRecordSigner
             byte[] originalContent = new byte[noSigSequenceLength];
             RlpStream originalContentStream = new(originalContent);
             originalContentStream.StartSequence(noSigContentLength);
-            originalContentStream.Write(rlpStream.Read(noSigContentLength));
+            originalContentStream.WriteByteSpan(rlpStream.Read(noSigContentLength));
             rlpStream.Position = startPosition;
             nodeRecord.OriginalContentRlp = originalContentStream.Data!;
         }

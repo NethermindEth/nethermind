@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core;
@@ -39,16 +39,16 @@ namespace Nethermind.AccountAbstraction.Data
 
             stream.Encode(op.Sender);
             stream.Encode(op.Nonce);
-            stream.Encode(op.InitCode);
-            stream.Encode(op.CallData);
+            stream.EncodeSpan(op.InitCode);
+            stream.EncodeSpan(op.CallData);
             stream.Encode(op.CallGas);
             stream.Encode(op.VerificationGas);
             stream.Encode(op.PreVerificationGas);
             stream.Encode(op.MaxFeePerGas);
             stream.Encode(op.MaxPriorityFeePerGas);
             stream.Encode(op.Paymaster);
-            stream.Encode(op.PaymasterData);
-            stream.Encode(op.Signature);
+            stream.EncodeSpan(op.PaymasterData);
+            stream.EncodeSpan(op.Signature);
             stream.Encode(entryPoint);
         }
 

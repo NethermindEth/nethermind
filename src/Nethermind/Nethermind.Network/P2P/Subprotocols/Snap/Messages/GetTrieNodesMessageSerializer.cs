@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                     for (int j = 0; j < group.Group.Length; j++)
                     {
-                        stream.Encode(group.Group[j]);
+                        stream.EncodeSpan(group.Group[j]);
                     }
                 }
             }

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -23,7 +25,7 @@ namespace Nethermind.Crypto
             _keccakHash = keccakHash;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void WriteByteSpan(Span<byte> bytesToWrite)
         {
             _keccakHash.Update(bytesToWrite, 0, bytesToWrite.Length);
         }
@@ -36,7 +38,7 @@ namespace Nethermind.Crypto
         protected override void WriteZero(int length)
         {
             Span<byte> zeros = stackalloc byte[length];
-            Write(zeros);
+            WriteByteSpan(zeros);
         }
 
         public override byte ReadByte()

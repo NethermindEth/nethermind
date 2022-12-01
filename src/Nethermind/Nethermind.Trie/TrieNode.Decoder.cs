@@ -55,16 +55,16 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
+                rlpStream.EncodeSpan(keyBytes);
                 if (nodeRef.Keccak is null)
                 {
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
                     // so |
                     // so |
-                    // so E - - - - - - - - - - - - - - - 
+                    // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.Write(nodeRef.FullRlp);
+                    rlpStream.WriteByteSpan(nodeRef.FullRlp);
                 }
                 else
                 {
@@ -86,8 +86,8 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
-                rlpStream.Encode(node.Value);
+                rlpStream.EncodeSpan(keyBytes);
+                rlpStream.EncodeSpan(node.Value);
                 return rlpStream.Data;
             }
 

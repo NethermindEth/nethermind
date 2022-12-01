@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
                 rlpStream.StartSequence(GetRequestLength(request));
                 rlpStream.Encode((int)request.SubType);
                 rlpStream.Encode(request.SectionIndex);
-                rlpStream.Encode(request.Key);
+                rlpStream.EncodeSpan(request.Key);
                 rlpStream.Encode(request.FromLevel);
                 rlpStream.Encode(request.AuxiliaryData);
             }

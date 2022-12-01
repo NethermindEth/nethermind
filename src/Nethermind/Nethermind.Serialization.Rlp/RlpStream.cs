@@ -136,10 +136,19 @@ namespace Nethermind.Serialization.Rlp
             Data[Position++] = byteToWrite;
         }
 
-        public virtual void Write(Span<byte> bytesToWrite)
+        public virtual void WriteByteSpan(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
+        }
+
+        public void WriteByteList(IReadOnlyList<byte> bytesToWrite)
+        {
+            for (int i = 0; i < bytesToWrite.Count; ++i)
+            {
+                Data![Position + i] = bytesToWrite[i];
+            }
+            Position += bytesToWrite.Count;
         }
 
         protected virtual string Description =>
@@ -166,16 +175,16 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
-                Write(Rlp.OfEmptyTreeHash.Bytes);
+                WriteByteSpan(Rlp.OfEmptyTreeHash.Bytes);
             }
             else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
             {
-                Write(Rlp.OfEmptyStringHash.Bytes);
+                WriteByteSpan(Rlp.OfEmptyStringHash.Bytes);
             }
             else
             {
                 WriteByte(160);
-                Write(keccak.Bytes);
+                WriteByteSpan(keccak.Bytes);
             }
         }
 
@@ -205,7 +214,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 WriteByte(148);
-                Write(address.Bytes);
+                WriteByteSpan(address.Bytes);
             }
         }
 
@@ -217,7 +226,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                Write(rlp.Bytes);
+                WriteByteSpan(rlp.Bytes);
             }
         }
 
@@ -239,7 +248,7 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(185);
                 WriteByte(1);
                 WriteByte(0);
-                Write(bloom.Bytes);
+                WriteByteSpan(bloom.Bytes);
             }
         }
 
@@ -280,7 +289,7 @@ namespace Nethermind.Serialization.Rlp
             Rlp rlp = bigInteger == 0
                 ? Rlp.OfEmptyByteArray
                 : Rlp.Encode(bigInteger.ToBigEndianByteArray(outputLength));
-            Write(rlp.Bytes);
+            WriteByteSpan(rlp.Bytes);
         }
 
         public void Encode(long value)
@@ -414,11 +423,11 @@ namespace Nethermind.Serialization.Rlp
                 value.ToBigEndian(bytes);
                 if (length != -1)
                 {
-                    Encode(bytes.Slice(bytes.Length - length, length));
+                    EncodeSpan(bytes.Slice(bytes.Length - length, length));
                 }
                 else
                 {
-                    Encode(bytes.WithoutLeadingZeros());
+                    EncodeSpan(bytes.WithoutLeadingZeros());
                 }
             }
         }
@@ -432,13 +441,13 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // todo: can avoid allocation here but benefit is rare
-                Encode(Encoding.ASCII.GetBytes(value));
+                EncodeSpan(Encoding.ASCII.GetBytes(value));
             }
         }
 
-        public void Encode(Span<byte> input)
+        public void EncodeSpan(Span<byte> input)
         {
-            if (input.IsEmpty || input.Length == 0)
+            if (input.IsEmpty)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -450,7 +459,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 WriteByte(smallPrefix);
-                Write(input);
+                WriteByteSpan(input);
             }
             else
             {
@@ -458,7 +467,33 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Length);
-                Write(input);
+                WriteByteSpan(input);
+            }
+        }
+
+        public void EncodeList(IReadOnlyList<byte> input)
+        {
+            if (input.Count == 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else if (input.Count == 1 && input[0] < 128)
+            {
+                WriteByte(input[0]);
+            }
+            else if (input.Count < 56)
+            {
+                byte smallPrefix = (byte)(input.Count + 128);
+                WriteByte(smallPrefix);
+                WriteByteList(input);
+            }
+            else
+            {
+                int lengthOfLength = Rlp.LengthOfLength(input.Count);
+                byte prefix = (byte)(183 + lengthOfLength);
+                WriteByte(prefix);
+                WriteEncodedLength(input.Count);
+                WriteByteList(input);
             }
         }
 
@@ -758,7 +793,7 @@ namespace Nethermind.Serialization.Rlp
             // https://github.com/NethermindEth/nethermind/issues/113
             if (PeekByte() == 249)
             {
-                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes 
+                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes
                 bloomBytes = Read(256);
             }
             else

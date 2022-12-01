@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(item.Topics[i]);
             }
 
-            rlpStream.Encode(item.Data);
+            rlpStream.EncodeSpan(item.Data);
         }
 
         public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -49,7 +49,7 @@ namespace Nethermind.Network
             int contentLength = GetContentLength(item, rlpBehaviors);
             RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
             stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
+            stream.EncodeSpan(item.NodeId.Bytes);
             stream.Encode(item.Host);
             stream.Encode(item.Port);
             stream.Encode(string.Empty);

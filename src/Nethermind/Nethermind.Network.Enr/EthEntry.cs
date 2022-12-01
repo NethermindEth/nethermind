@@ -27,7 +27,7 @@ public class EthEntry : EnrContentEntry<ForkId>
         int contentLength = 5 + Rlp.LengthOf(Value.NextBlock);
         rlpStream.StartSequence(contentLength + 1);
         rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Value.ForkHash);
+        rlpStream.EncodeSpan(Value.ForkHash);
         rlpStream.Encode(Value.NextBlock);
     }
 }

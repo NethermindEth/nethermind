@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             rlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Data.Length; i++)
             {
-                rlpStream.Encode(message.Data[i]);
+                rlpStream.EncodeSpan(message.Data[i]);
             }
         }
 

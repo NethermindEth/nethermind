@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.StartSequence(codesLength);
             for (int i = 0; i < message.Codes.Length; i++)
             {
-                rlpStream.Encode(message.Codes[i]);
+                rlpStream.EncodeSpan(message.Codes[i]);
             }
         }
 

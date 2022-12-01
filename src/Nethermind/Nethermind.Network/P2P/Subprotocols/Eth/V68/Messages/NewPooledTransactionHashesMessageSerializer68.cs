@@ -23,7 +23,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
-            byte[] types = message.Types.ToArray();
             int sizesLength = 0;
             for (int i = 0; i < message.Sizes.Count; i++)
             {
@@ -36,14 +35,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
                 hashesLength += Rlp.LengthOf(message.Hashes[i]);
             }
 
-            int totalSize = Rlp.LengthOf(types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
+            int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
             byteBuffer.EnsureWritable(totalSize, true);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(totalSize);
-            rlpStream.Encode(types);
+            rlpStream.EncodeList(message.Types);
 
             rlpStream.StartSequence(sizesLength);
             for (int i = 0; i < message.Sizes.Count; ++i)
