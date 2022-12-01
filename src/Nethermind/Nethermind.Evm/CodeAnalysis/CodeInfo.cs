@@ -32,7 +32,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             if (spec.IsEip3540Enabled)
             {
-                IsEof ??= ByteCodeValidator.Instance.ValidateEofStructure(Container, spec, out _header);
+                IsEof ??= ByteCodeValidator.Instance.ValidateBytecode(Container, spec, out _header);
 
                 if (IsEof.Value && (Header is not null))
                 {

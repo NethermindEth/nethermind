@@ -285,6 +285,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip4750Enabled { get; }
 
+        /// <summary>
+        /// Stack Validation
+        /// </summary>
+        bool IsEip5450Enabled { get; }
+
 
         /// <summary>
         /// Should transactions be validated against chainId.

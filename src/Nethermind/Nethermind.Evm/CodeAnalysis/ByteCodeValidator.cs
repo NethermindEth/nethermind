@@ -20,20 +20,17 @@ namespace Nethermind.Evm.CodeAnalysis
             => EofFormatChecker = new EvmObjectFormat(loggerManager);
 
         public bool HasEOFMagic(ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
-        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header)
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, out EofHeader header, bool skipEip3541 = true)
         {
             if (_spec.IsEip3540Enabled && HasEOFMagic(code))
             {
-                return EofFormatChecker.ValidateInstructions(code, out header, _spec);
+                return EofFormatChecker.ValidateEofCode(code, _spec, out header);
             }
 
             header = null;
-            return !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
+            return skipEip3541 || !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
-        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
-                => ValidateBytecode(code, _spec, out _);
-
-        public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
-            => EofFormatChecker.ValidateInstructions(machineCode, out header, _spec);
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, bool skipEip3541 = true)
+                => ValidateBytecode(code, _spec, out _, skipEip3541);
     }
 }

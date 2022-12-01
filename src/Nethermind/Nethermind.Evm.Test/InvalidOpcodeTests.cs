@@ -194,7 +194,7 @@ namespace Nethermind.Evm.Test
                 Instruction instruction = (Instruction)i;
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
-                if (instruction is Instruction.CALLF or Instruction.RETF)
+                if (instruction is Instruction.CALLF or Instruction.RETF or Instruction.RJUMP or Instruction.RJUMPI)
                 {
                     continue;
                 }

@@ -48,8 +48,8 @@ namespace Nethermind.Evm.Test
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
-            IsEip4200Enabled = true,
-            IsEip4750Enabled = false
+            IsEip4750Enabled = false,
+            IsEip5450Enabled = false,
         });
 
         // valid code
@@ -84,11 +84,12 @@ namespace Nethermind.Evm.Test
 
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip4750Enabled = false
+                IsEip4750Enabled = false,
+                IsEip5450Enabled = false,
             };
 
 
-            bool checkResult = ByteCodeValidator.Instance.ValidateEofStructure(bytecode, TargetReleaseSpec, out _);
+            bool checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

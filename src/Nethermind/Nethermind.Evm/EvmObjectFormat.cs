@@ -1,8 +1,11 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -10,6 +13,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Org.BouncyCastle.Crypto.Paddings;
+using static System.Collections.Specialized.BitVector32;
 
 namespace Nethermind.Evm
 {
@@ -60,9 +64,11 @@ namespace Nethermind.Evm
         private const byte EofFormatByte = 0xEF;
         private const byte EofFormatDiff = 0x00;
         private byte[] EofMagic => new byte[] { EofFormatByte, EofFormatDiff };
-
+        public bool ValidateEofCode(ReadOnlySpan<byte> code, IReleaseSpec spec) => ValidateInstructions(code, out _, spec);
+        public bool ValidateEofCode(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader header) => ValidateInstructions(code, out header, spec);
         public bool HasEOFFormat(ReadOnlySpan<byte> code) => code.Length > EofMagicLength && code.StartsWith(EofMagic);
-        public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader header)
+
+        private bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader header)
         {
             if (!HasEOFFormat(code))
             {
@@ -95,7 +101,6 @@ namespace Nethermind.Evm
                     header = null; header = null; return false;
             }
         }
-
         private bool HandleEOF1(IReleaseSpec spec, ReadOnlySpan<byte> code, ref EofHeader header, int codeLen, ref int i)
         {
             bool continueParsing = true;
@@ -303,9 +308,7 @@ namespace Nethermind.Evm
             }
             return true;
         }
-
-        public bool ValidateEofCode(ReadOnlySpan<byte> code, IReleaseSpec spec) => ExtractHeader(code, spec, out _);
-        public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader header, IReleaseSpec spec)
+        private bool ValidateInstructions(ReadOnlySpan<byte> container, out EofHeader header, IReleaseSpec spec)
         {
             // check if code is EOF compliant
             if (!spec.IsEip3540Enabled)
@@ -314,37 +317,120 @@ namespace Nethermind.Evm
                 return false;
             }
 
-            if (ExtractHeader(code, spec, out header))
+            if (ExtractHeader(container, spec, out header))
             {
-                bool valid = true;
-                for (int i = 0; i < header.CodeSize.Length; i++)
+                if (spec.IsEip3670Enabled)
                 {
-                    valid &= ValidateSectionInstructions(ref code, i, header, spec);
+                    bool valid = true;
+                    for (ushort sectionId = 0; sectionId < header.CodeSize.Length; sectionId++)
+                    {
+                        var (startOffset, sectionSize) = header[sectionId];
+                        ReadOnlySpan<byte> code = container.Slice(header.CodeSectionOffsets.Start + startOffset, sectionSize);
+
+                        valid &= ValidateSectionInstructions(sectionId, ref code, header, spec);
+
+                        if (spec.IsEip5450Enabled)
+                        {
+                            (startOffset, sectionSize) = header.TypeSectionOffsets;
+                            ReadOnlySpan<byte> typeSection = sectionSize == 0 ? new byte[] { 0, 0 } : container.Slice(startOffset, sectionSize);
+
+                            valid &= ValidateStackState(sectionId, ref code, ref typeSection, spec);
+                        }
+
+                    }
+                    return valid;
                 }
-                return valid;
+                else return true;
             }
             return false;
         }
-
-        public bool ValidateSectionInstructions(ref ReadOnlySpan<byte> container, int sectionId, EofHeader header, IReleaseSpec spec)
+        private bool ValidateStackState(ushort funcId, ref ReadOnlySpan<byte> code, ref ReadOnlySpan<byte> typesection, IReleaseSpec spec)
         {
-            // check if code is EOF compliant
-            if (!spec.IsEip3540Enabled)
-            {
-                return false;
-            }
+            Dictionary<int, int?> visitedLines = new();
+            int peakStackHeight = typesection[funcId * 2];
 
-            if (!spec.IsEip3670Enabled)
-            {
-                return true;
-            }
+            Stack<(int Position, int StackHeigth)> workSet= new();
+            workSet.Push((0, peakStackHeight));
 
-            var (startOffset, sectionSize) = header[sectionId];
-            ReadOnlySpan<byte> code = container.Slice(header.CodeSectionOffsets.Start + startOffset, sectionSize);
+            while (workSet.Count > 0)
+            {
+                (int pos, int stackHeight) = workSet.Pop();
+                while (true)
+                {
+                    Instruction opcode = (Instruction)code[pos];
+                    (var inputs, var immediates, var  outputs) = opcode.StackRequirements(spec);
+
+                    if(visitedLines.ContainsKey(pos))
+                    {
+                        if (stackHeight != visitedLines[pos])
+                        {
+                            return false;
+                        }
+                        else return true;
+                    } else
+                    {
+                        visitedLines[pos] = stackHeight;
+                    }
+
+                    if(opcode is Instruction.CALLF)
+                    {
+                        var sectionIndex = code.Slice(pos + 1, 2).ReadEthUInt16();
+                        inputs = typesection[sectionIndex * 2];
+                        outputs = typesection[sectionIndex * 2 + 1];
+                    }
+
+                    if (stackHeight < inputs)
+                    {
+                        return false;
+                    }
+
+                    stackHeight += outputs - inputs;
+                    peakStackHeight = Math.Max(peakStackHeight, stackHeight);
+
+                    switch (opcode)
+                    {
+                        case Instruction.RJUMP:
+                            {
+                                var jumpDestination= code.Slice(pos + 1, 2).ReadEthInt16();
+                                pos += immediates + 1 + jumpDestination;
+                                break;
+                            }
+                        case Instruction.RJUMPI:
+                            {
+                            
+                                var jumpDestination = code.Slice(pos + 1, 2).ReadEthInt16();
+                                workSet.Push((pos + immediates + 1 + jumpDestination, stackHeight));
+                                pos += immediates + 1;
+                                break;
+                            }
+                        default :
+                            {
+                                if (opcode.IsTerminatingInstruction())
+                                {
+                                    var expectedHeight = opcode is Instruction.RETF ? typesection[funcId * 2 + 1] : 0;
+                                    if (expectedHeight != stackHeight)
+                                    {
+                                        return false;
+                                    }
+                                } else
+                                {
+                                    pos += 1 + immediates;
+                                }
+                               break;
+                            }
+                    }
+
+                }
+
+            }
+            return peakStackHeight <= 1024;
+        } 
+        private bool ValidateSectionInstructions(ushort sectionId, ref ReadOnlySpan<byte> code, EofHeader header, IReleaseSpec spec)
+        {
             Instruction? opcode = null;
             HashSet<Range> immediates = new HashSet<Range>();
             HashSet<Int32> rjumpdests = new HashSet<Int32>();
-            for (int i = 0; i < sectionSize;)
+            for (int i = 0; i < code.Length;)
             {
                 opcode = (Instruction)code[i];
                 i++;
@@ -362,7 +448,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + 2 > code.Length)
                         {
                             if (LoggingEnabled)
                             {
@@ -375,7 +461,7 @@ namespace Nethermind.Evm
                         immediates.Add(new Range(i, i + 1));
                         var rjumpdest = offset + 2 + i;
                         rjumpdests.Add(rjumpdest);
-                        if (rjumpdest < 0 || rjumpdest >= sectionSize)
+                        if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
                             if (LoggingEnabled)
                             {
@@ -391,7 +477,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.CALLF)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + 2 > code.Length)
                         {
                             if (LoggingEnabled)
                             {
@@ -423,15 +509,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            bool endCorrectly = opcode switch
-            {
-                Instruction.RETF when spec.IsEip4750Enabled => true,
-                Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID // or Instruction.SELFDESTRUCT
-                    => true,
-                _ => false
-            };
-
-            if (!endCorrectly)
+            if (!opcode.Value.IsTerminatingInstruction())
             {
                 if (LoggingEnabled)
                 {

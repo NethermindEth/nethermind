@@ -2381,7 +2381,7 @@ namespace Nethermind.Evm
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
                             if (spec.IsEip3540Enabled &&
-                                _byteCodeValidator.HasEOFMagic(initCode) && !_byteCodeValidator.ValidateEofStructure(initCode, spec, out _))
+                                _byteCodeValidator.HasEOFMagic(initCode) && !_byteCodeValidator.ValidateBytecode(initCode, spec, out _))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

@@ -51,6 +51,8 @@ namespace Nethermind.Evm.Test
         {
             IsEip3670Enabled = false,
             IsEip4200Enabled = false,
+            IsEip4750Enabled = false,
+            IsEip5450Enabled = false,
         });
         // valid code
         [TestCase("0xEF00010100010000", true, 1, 0, true)]
@@ -116,6 +118,7 @@ namespace Nethermind.Evm.Test
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false,
+                IsEip5450Enabled = false,
             };
 
 
@@ -688,6 +691,7 @@ namespace Nethermind.Evm.Test
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
                 IsEip4750Enabled = false,
+                IsEip5450Enabled = false,
             };
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);

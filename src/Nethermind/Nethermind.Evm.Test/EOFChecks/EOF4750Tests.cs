@@ -49,7 +49,8 @@ namespace Nethermind.Evm.Test
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
             IsEip4200Enabled = true,
-            IsEip4750Enabled = true
+            IsEip4750Enabled = true,
+            IsEip5450Enabled = false,
         });
 
         public class FunctionCase
@@ -452,7 +453,7 @@ namespace Nethermind.Evm.Test
 
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip4750Enabled = true
+                IsEip5450Enabled = false
             };
 
 

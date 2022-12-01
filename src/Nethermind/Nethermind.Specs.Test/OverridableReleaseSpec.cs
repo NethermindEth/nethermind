@@ -195,5 +195,18 @@ namespace Nethermind.Specs.Test
                 _overridenEip4750Status = value;
             }
         }
+
+        private bool? _overridenEip5450Status;
+        public bool IsEip5450Enabled
+        {
+            get
+            {
+                return _overridenEip5450Status ?? _spec.IsEip5450Enabled;
+            }
+            set
+            {
+                _overridenEip5450Status = value;
+            }
+        }
     }
 }

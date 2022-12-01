@@ -210,6 +210,39 @@ namespace Nethermind.Evm
                 _ => true
             };
         }
+
+        public static (int InputCount, int immediated, int OutputCount) StackRequirements(this Instruction instruction, IReleaseSpec spec) => instruction switch
+        {
+            Instruction.STOP or Instruction.POP or Instruction.JUMPDEST or Instruction.INVALID or Instruction.CALLF or Instruction.RETF => (0, instruction is Instruction.CALLF ? 2 : 0, 0),
+            Instruction.ADD or Instruction.MUL or Instruction.SUB or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD or
+            Instruction.EXP or Instruction.SIGNEXTEND or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT or Instruction.EQ or
+            Instruction.AND or Instruction.OR or Instruction.XOR or Instruction.BYTE or Instruction.SHL or Instruction.SHR or Instruction.SAR or Instruction.SHA3 => (2, 0, 1),
+            Instruction.ADDMOD or Instruction.MULMOD or Instruction.CALLDATACOPY or Instruction.CREATE => (3, 0, 1),
+            Instruction.ISZERO or Instruction.NOT or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or
+            Instruction.BLOCKHASH or Instruction.SLOAD or Instruction.MLOAD or Instruction.TLOAD => (1, 0, 1),
+            Instruction.ORIGIN or Instruction.ADDRESS or Instruction.CALLER or Instruction.CALLVALUE or
+            Instruction.CALLDATALOAD or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.GASPRICE or
+            Instruction.RETURNDATASIZE or Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or
+            Instruction.PREVRANDAO or Instruction.GASLIMIT or Instruction.CHAINID or Instruction.SELFBALANCE or
+            Instruction.BASEFEE or Instruction.PC or Instruction.MSIZE or Instruction.GAS => (0, 0, 1),
+            Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.JUMPI or Instruction.RETURN or Instruction.REVERT or Instruction.TSTORE => (2, 0, 0),
+            Instruction.CODECOPY or Instruction.RETURNDATACOPY => (3, 0, 0),
+            Instruction.JUMP or Instruction.SELFDESTRUCT or Instruction.JUMPSUB => (1, 0, 0),
+            Instruction.CALL or Instruction.CALLCODE => (7, 0, 1),
+            Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 0, 1),
+            Instruction.EXTCODECOPY => (4, 0, 0),
+            Instruction.CREATE2 => (4, 0, 1),
+
+            Instruction.RJUMP   when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled ? (0, 2, 0) : (0, 0, 0),
+            Instruction.RJUMPI when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled ? (1, 2, 0) : (0, 0, 0),
+
+            >= Instruction.LOG0 and <= Instruction.LOG4 => (2 + instruction - Instruction.LOG0, 0, 0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, instruction - Instruction.PUSH0, instruction - Instruction.PUSH0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, 0,  instruction - Instruction.DUP1 + 2),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, 0, instruction - Instruction.SWAP1 + 2),
+            _ => throw new NotImplementedException()
+        };
+
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
         {
             spec ??= Frontier.Instance;
@@ -224,7 +257,15 @@ namespace Nethermind.Evm
 
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
-            Instruction.RJUMP or Instruction.RJUMPI => true,
+            Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF or Instruction.RETF => true,
+            _ => false
+        };
+
+        public static bool IsTerminatingInstruction(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
+        {
+            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            Instruction.RETF => spec?.IsEip4750Enabled ?? true,
+            // Instruction.SELFDESTRUCT => true
             _ => false
         };
     }
