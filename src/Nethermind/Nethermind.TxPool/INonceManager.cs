@@ -10,7 +10,6 @@ namespace Nethermind.TxPool;
 public interface INonceManager
 {
     UInt256 ReserveNonce(Address address);
-    void ReleaseNonce(Address address, UInt256 nonce);
-    bool IsNonceUsed(Address address, UInt256 nonce);
-    void SetTransactionHash(Address address, UInt256 nonce, Keccak hash);
+    void TxAccepted(Address address);
+    void TxRejected(Address address);
 }

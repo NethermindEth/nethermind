@@ -974,46 +974,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
-        {
-            _txPool = CreatePool();
-            var nonceA1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceB1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-
-            nonceA1.Should().Be(0);
-            nonceA2.Should().Be(1);
-            nonceA3.Should().Be(2);
-            nonceB1.Should().Be(0);
-            nonceB2.Should().Be(1);
-            nonceB3.Should().Be(2);
-        }
-
-        [Test]
-        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
-        {
-            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
-            const int reservationsCount = 1000;
-            _txPool = CreatePool();
-            ConcurrentQueue<UInt256> nonces = new();
-
-            var result = Parallel.For(0, reservationsCount, i =>
-            {
-                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(TestItem.AddressA));
-            });
-
-            result.IsCompleted.Should().BeTrue();
-            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            nonces.Enqueue(nonce);
-            nonce.Should().Be(new UInt256(reservationsCount));
-            nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
-        }
-
-        [Test]
-        public void should_return_own_nonce_already_used_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
+        public void should_return_feeTooLowTooCompete_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
         {
             _txPool = CreatePool();
             var result1 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressA), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
@@ -1021,7 +982,7 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             var result2 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressB), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
-            result2.Should().Be(AcceptTxResult.OwnNonceAlreadyUsed);
+            result2.Should().Be(AcceptTxResult.FeeTooLowToCompete);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
         }

@@ -1,139 +1,68 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.TxPool;
 
 public class NonceManager : INonceManager
 {
-    private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new();
+    private readonly ConcurrentDictionary<Address, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
-    private readonly ILogger _logger;
 
-    private readonly object _locker = new();
-
-    public NonceManager(IAccountStateProvider accounts, ILogger logger)
+    public NonceManager(IAccountStateProvider accounts)
     {
-        _logger = logger;
         _accounts = accounts;
     }
 
     public UInt256 ReserveNonce(Address address)
     {
-        lock (_locker)
+        AddressNonceManager addressNonceManager =
+            _addressNonceManagers.GetOrAdd(address, v => new AddressNonceManager(_accounts.GetAccount(v).Nonce));
+        return addressNonceManager.ReserveNonce();
+    }
+
+    public void TxAccepted(Address address)
+    {
+        if (_addressNonceManagers.TryGetValue(address, out AddressNonceManager? addressNonceManager))
         {
-            UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(address, a =>
-            {
-                currentNonce = _accounts.GetAccount(address).Nonce;
-                return new AddressNonces(currentNonce);
-            }, (a, n) =>
-            {
-                currentNonce = n.ReserveNonce();
-                return n;
-            });
-            return currentNonce;
+            addressNonceManager.TxAccepted();
         }
     }
 
-    public void ReleaseNonce(Address address, UInt256 nonce)
+    public void TxRejected(Address address)
     {
-        lock (_locker)
+        if (_addressNonceManagers.TryGetValue(address, out AddressNonceManager? addressNonceManager))
         {
-            if (_nonces.TryGetValue(address, out AddressNonces? addressNonces))
-            {
-                addressNonces.Nonces.TryRemove(nonce, out _);
-                if (addressNonces.Nonces.IsEmpty)
-                {
-                    _nonces.TryRemove(address, out _);
-                }
-            }
+            addressNonceManager.TxRejected();
         }
     }
 
-    public bool IsNonceUsed(Address address, UInt256 nonce)
+    private class AddressNonceManager
     {
-        lock (_locker)
+        private UInt256 _currentNonce;
+        private static Mutex mutex = new();
+
+        public AddressNonceManager(UInt256 startNonce)
         {
-            if (!_nonces.TryGetValue(address, out var addressNonces))
-            {
-                return false;
-            }
-
-            if (!addressNonces.Nonces.TryGetValue(nonce, out NonceInfo? nonceInfo))
-            {
-                return false;
-            }
-
-            if (nonceInfo.TransactionHash is not null)
-            {
-                // Nonce conflict
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Nonce: {nonce} was already used in transaction: '{nonceInfo.TransactionHash}' and cannot be reused by transaction.");
-
-                return true;
-            }
-            return false;
-        }
-    }
-
-    public void SetTransactionHash(Address address, UInt256 nonce, Keccak hash)
-    {
-        lock (_locker)
-        {
-            if (!_nonces.TryGetValue(address, out var addressNonces))
-            {
-                addressNonces = new AddressNonces(_accounts.GetAccount(address).Nonce);
-                _nonces.TryAdd(address, addressNonces);
-            }
-
-            if (!addressNonces.Nonces.TryGetValue(nonce, out NonceInfo? nonceInfo))
-            {
-                nonceInfo = new NonceInfo(nonce);
-                addressNonces.Nonces.TryAdd(nonce, nonceInfo);
-            }
-
-            nonceInfo.TransactionHash = hash;
-        }
-    }
-
-    private class AddressNonces
-    {
-        private NonceInfo _currentNonceInfo;
-
-        public ConcurrentDictionary<UInt256, NonceInfo> Nonces { get; } = new();
-
-        public AddressNonces(UInt256 startNonce)
-        {
-            _currentNonceInfo = new NonceInfo(startNonce);
-            Nonces.TryAdd(_currentNonceInfo.Value, _currentNonceInfo);
+            _currentNonce = startNonce;
         }
 
         public UInt256 ReserveNonce()
         {
-            UInt256 result = _currentNonceInfo.Value + 1;
-            _currentNonceInfo = new NonceInfo(result);
-            return result;
+            mutex.WaitOne();
+            return _currentNonce;
         }
-    }
 
-    private class NonceInfo
-    {
-        public UInt256 Value { get; }
-
-        public Keccak? TransactionHash { get; set; }
-
-        public NonceInfo(in UInt256 value)
+        public void TxAccepted()
         {
-            Value = value;
+            _currentNonce += 1;
+            mutex.ReleaseMutex();
         }
+
+        public void TxRejected() => mutex.ReleaseMutex();
     }
 }

@@ -260,15 +260,17 @@ namespace Nethermind.Init.Steps
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            NonceReservingTxSealer nonceReservingTxSealer =
-                new(txSigner, getApi.Timestamper, txPool, getApi.EthereumEcdsa!);
-            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer);
+            TxSealer nonceReservingTxSealer =
+                new(txSigner, getApi.Timestamper);
+            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
+            setApi.NonceManager = nonceManager;
 
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 

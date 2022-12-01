@@ -19,13 +19,17 @@ namespace Nethermind.Facade.Test
         private ITxSender _txSender;
         private ITxPool _txPool;
         private ITxSigner _txSigner;
+        private INonceManager _nonceManager;
+        private IEthereumEcdsa _ecdsa;
 
         [SetUp]
         public void SetUp()
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default));
+            _nonceManager = Substitute.For<INonceManager>();
+            _ecdsa = Substitute.For<IEthereumEcdsa>();
+            _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }
 
         [Test]
