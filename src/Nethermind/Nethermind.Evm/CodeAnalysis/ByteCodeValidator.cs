@@ -28,9 +28,9 @@ namespace Nethermind.Evm.CodeAnalysis
             }
 
             header = null;
-            return skipEip3541 || !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
+            return !skipEip3541 && !CodeDepositHandler.CodeIsInvalid(_spec, code.ToArray());
         }
-        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, bool skipEip3541 = true)
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec, bool skipEip3541 = false)
                 => ValidateBytecode(code, _spec, out _, skipEip3541);
     }
 }

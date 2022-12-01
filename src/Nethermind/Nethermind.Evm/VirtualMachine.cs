@@ -199,7 +199,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec))
+                                else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec, false))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -244,7 +244,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !_byteCodeValidator.ValidateBytecode(callResult.Output, spec);
+                            bool invalidCode = !_byteCodeValidator.ValidateBytecode(callResult.Output, spec, false);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -2381,7 +2381,7 @@ namespace Nethermind.Evm
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
                             if (spec.IsEip3540Enabled &&
-                                _byteCodeValidator.HasEOFMagic(initCode) && !_byteCodeValidator.ValidateBytecode(initCode, spec, out _))
+                                _byteCodeValidator.HasEOFMagic(initCode) && !_byteCodeValidator.ValidateBytecode(initCode, spec, out _, skipEip3541: true))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();

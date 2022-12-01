@@ -379,7 +379,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (!ByteCodeValidator.Instance.ValidateBytecode(substate.Output.Span, spec))
+                        if (!ByteCodeValidator.Instance.ValidateBytecode(substate.Output.Span, spec, false))
                         {
                             throw new InvalidCodeException();
                         }
