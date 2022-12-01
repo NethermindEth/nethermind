@@ -349,7 +349,7 @@ namespace Nethermind.Evm
             Dictionary<int, int?> visitedLines = new();
             int peakStackHeight = typesection[funcId * 2];
 
-            Stack<(int Position, int StackHeigth)> workSet= new();
+            Stack<(int Position, int StackHeigth)> workSet = new();
             workSet.Push((0, peakStackHeight));
 
             while (workSet.Count > 0)
@@ -358,21 +358,22 @@ namespace Nethermind.Evm
                 while (true)
                 {
                     Instruction opcode = (Instruction)code[pos];
-                    (var inputs, var immediates, var  outputs) = opcode.StackRequirements(spec);
+                    (var inputs, var immediates, var outputs) = opcode.StackRequirements(spec);
 
-                    if(visitedLines.ContainsKey(pos))
+                    if (visitedLines.ContainsKey(pos))
                     {
                         if (stackHeight != visitedLines[pos])
                         {
                             return false;
                         }
                         else return true;
-                    } else
+                    }
+                    else
                     {
                         visitedLines[pos] = stackHeight;
                     }
 
-                    if(opcode is Instruction.CALLF)
+                    if (opcode is Instruction.CALLF)
                     {
                         var sectionIndex = code.Slice(pos + 1, 2).ReadEthUInt16();
                         inputs = typesection[sectionIndex * 2];
@@ -391,19 +392,19 @@ namespace Nethermind.Evm
                     {
                         case Instruction.RJUMP:
                             {
-                                var jumpDestination= code.Slice(pos + 1, 2).ReadEthInt16();
+                                var jumpDestination = code.Slice(pos + 1, 2).ReadEthInt16();
                                 pos += immediates + 1 + jumpDestination;
                                 break;
                             }
                         case Instruction.RJUMPI:
                             {
-                            
+
                                 var jumpDestination = code.Slice(pos + 1, 2).ReadEthInt16();
                                 workSet.Push((pos + immediates + 1 + jumpDestination, stackHeight));
                                 pos += immediates + 1;
                                 break;
                             }
-                        default :
+                        default:
                             {
                                 if (opcode.IsTerminatingInstruction())
                                 {
@@ -412,11 +413,12 @@ namespace Nethermind.Evm
                                     {
                                         return false;
                                     }
-                                } else
+                                }
+                                else
                                 {
                                     pos += 1 + immediates;
                                 }
-                               break;
+                                break;
                             }
                     }
 
@@ -424,7 +426,7 @@ namespace Nethermind.Evm
 
             }
             return peakStackHeight <= 1024;
-        } 
+        }
         private bool ValidateSectionInstructions(ushort sectionId, ref ReadOnlySpan<byte> code, EofHeader header, IReleaseSpec spec)
         {
             Instruction? opcode = null;
