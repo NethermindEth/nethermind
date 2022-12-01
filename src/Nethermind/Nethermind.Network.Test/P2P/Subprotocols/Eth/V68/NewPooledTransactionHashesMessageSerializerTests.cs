@@ -58,11 +58,4 @@ public class NewPooledTransactionHashesMessageSerializerTests
             "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
     }
 
-    [Test]
-    public void Empty_to_string()
-    {
-        NewPooledTransactionHashesMessage68 message
-            = new(new byte[] { }, new int[] { }, new Keccak[] { });
-        _ = message.ToString();
-    }
 }
