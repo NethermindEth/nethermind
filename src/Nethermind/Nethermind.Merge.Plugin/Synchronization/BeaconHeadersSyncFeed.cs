@@ -38,6 +38,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
 
+    protected override MeasuredProgress HeadersSyncQueueReport => _syncReport.BeaconHeadersInQueue;
+
     public BeaconHeadersSyncFeed(
         IPoSSwitcher poSSwitcher,
         ISyncModeSelector syncModeSelector,
