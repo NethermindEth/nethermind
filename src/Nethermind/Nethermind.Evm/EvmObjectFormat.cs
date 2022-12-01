@@ -366,7 +366,7 @@ namespace Nethermind.Evm
                         {
                             return false;
                         }
-                        else return true;
+                        break;
                     }
                     else
                     {

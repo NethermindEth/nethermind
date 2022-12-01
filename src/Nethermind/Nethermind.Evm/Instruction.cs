@@ -211,9 +211,9 @@ namespace Nethermind.Evm
             };
         }
 
-        public static (int InputCount, int immediated, int OutputCount) StackRequirements(this Instruction instruction, IReleaseSpec spec) => instruction switch
+        public static (int InputCount, int immediates, int OutputCount) StackRequirements(this Instruction instruction, IReleaseSpec spec) => instruction switch
         {
-            Instruction.STOP or Instruction.POP or Instruction.JUMPDEST or Instruction.INVALID or Instruction.CALLF or Instruction.RETF => (0, instruction is Instruction.CALLF ? 2 : 0, 0),
+            Instruction.STOP or Instruction.JUMPDEST or Instruction.INVALID or Instruction.CALLF or Instruction.RETF => (0, instruction is Instruction.CALLF ? 2 : 0, 0),
             Instruction.ADD or Instruction.MUL or Instruction.SUB or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD or
             Instruction.EXP or Instruction.SIGNEXTEND or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT or Instruction.EQ or
             Instruction.AND or Instruction.OR or Instruction.XOR or Instruction.BYTE or Instruction.SHL or Instruction.SHR or Instruction.SAR or Instruction.SHA3 => (2, 0, 1),
@@ -227,7 +227,7 @@ namespace Nethermind.Evm
             Instruction.BASEFEE or Instruction.PC or Instruction.MSIZE or Instruction.GAS => (0, 0, 1),
             Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.JUMPI or Instruction.RETURN or Instruction.REVERT or Instruction.TSTORE => (2, 0, 0),
             Instruction.CODECOPY or Instruction.RETURNDATACOPY => (3, 0, 0),
-            Instruction.JUMP or Instruction.SELFDESTRUCT or Instruction.JUMPSUB => (1, 0, 0),
+            Instruction.JUMP or Instruction.SELFDESTRUCT or Instruction.POP or Instruction.JUMPSUB => (1, 0, 0),
             Instruction.CALL or Instruction.CALLCODE => (7, 0, 1),
             Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 0, 1),
             Instruction.EXTCODECOPY => (4, 0, 0),
