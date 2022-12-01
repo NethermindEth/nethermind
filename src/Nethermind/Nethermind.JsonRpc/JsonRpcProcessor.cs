@@ -23,7 +23,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
@@ -39,10 +38,10 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogger _logger;
-        private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
+        private readonly IdConverter _idConverter = new();
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
@@ -108,37 +107,32 @@ namespace Nethermind.JsonRpc
         /// <returns></returns>
         private JsonRpcRequest JTokenToJsonRpcRequest(JToken token)
         {
-            JsonRpcRequest jsonRpcRequest = new JsonRpcRequest();
+            JsonRpcRequest jsonRpcRequest = new();
 
-            JToken? jsonRpcField = token["jsonrpc"];
+            JToken? jsonRpcField = token["jsonrpc"] ?? token["JsonRpc"];
             if (jsonRpcField != null)
             {
                 jsonRpcRequest.JsonRpc = jsonRpcField.Value<string>();
             }
 
-            JToken? methodField = token["method"];
+            JToken? methodField = token["method"] ?? token["Method"];
             if (methodField != null)
             {
                 jsonRpcRequest.Method = methodField.Value<string>();
             }
 
-            JToken? idField = token["id"];
+            JToken? idField = token["id"] ?? token["Id"];
             if (idField != null)
             {
                 // Not sure what is the logic here.. not gonna unuse the IdConverter
-                JTokenReader reader = new JTokenReader(idField);
+                JTokenReader reader = new(idField);
                 if (reader.Read())
                 {
-                    jsonRpcRequest.Id = new IdConverter().ReadJson(reader, null, null, null);
+                    jsonRpcRequest.Id = _idConverter.ReadJson(reader, null, null, null);
                 }
             }
 
-            JToken? paramsField = token["params"];
-            if (paramsField == null)
-            {
-                paramsField = token["Params"];
-            }
-
+            JToken? paramsField = token["params"] ?? token["Params"];
             if (paramsField != null)
             {
                 if (paramsField is JArray asArray)
