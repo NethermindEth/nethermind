@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             lock (_syncCommit)
             {
-                tree.Commit(blockNumber);
+                tree.Commit(blockNumber, skipRoot: true);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
