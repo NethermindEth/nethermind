@@ -31,7 +31,7 @@ namespace Nethermind.HealthChecks
         private readonly ILogger _logger;
         private readonly IAvailableSpaceGetter _availableSpaceGetter;
         private readonly ITimer _timer;
-        private static readonly int CheckPeriodMinutes = 5;
+        private static readonly int CheckPeriodMinutes = 1;
 
         public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter, ITimerFactory timerFactory)
         {
@@ -44,18 +44,20 @@ namespace Nethermind.HealthChecks
 
         private void CheckDiskSpace(object sender, EventArgs e)
         {
-            (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace();
-            if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
+            foreach((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
             {
-                if (_logger.IsError)
-                    _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
-                Environment.Exit(ExitCodes.LowDiskSpace);
-            }
-            if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
-            {
-                double freeSpaceGB = (double)freeSpace / 1.GiB();
-                if (_logger.IsWarn)
-                    _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
+                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
+                    Environment.Exit(ExitCodes.LowDiskSpace);
+                }
+                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                {
+                    double freeSpaceGB = (double)freeSpace / 1.GiB();
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
+                }
             }
         }
 

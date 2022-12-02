@@ -14,31 +14,76 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Nethermind.HealthChecks
 {
     public interface IAvailableSpaceGetter
     {
-        (long, double) GetAvailableSpace();
+        IEnumerable<(long, double)> GetAvailableSpace();
     }
 
     public class AvailableSpaceGetter : IAvailableSpaceGetter
     {
-        private readonly DriveInfo _driveInfo;
+        private readonly DriveInfo[] _driveInfos;
         public AvailableSpaceGetter(string location)
         {
-            _driveInfo = new(location);
+            DirectoryInfo diTop = new(location);
+            if (diTop.Exists)
+            {
+                HashSet<DriveInfo> driveInfos = new();
+                //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
+                //gives instances with these paths (and not logical drive)
+                DriveInfo[] allDrives = DriveInfo.GetDrives();
+                DriveInfo topLevelDrive = FindDriveForDirectory(allDrives, diTop);
+                if (topLevelDrive != null)
+                    driveInfos.Add(topLevelDrive);
+
+                foreach (DirectoryInfo di in diTop.EnumerateDirectories())
+                {
+                    //only want to handle symlinks - otherwise will be on same drive as parent
+                    if (di.LinkTarget != null)
+                    {
+                        DriveInfo matchedDrive = FindDriveForDirectory(allDrives, diTop);
+                        if (matchedDrive != null)
+                            driveInfos.Add(matchedDrive);
+                    }
+                }
+                _driveInfos = driveInfos.ToArray();
+            }
+            else
+            {
+                _driveInfos = Array.Empty<DriveInfo>();
+            }
+        }
+
+        private static DriveInfo FindDriveForDirectory(DriveInfo[] drives, DirectoryInfo di)
+        {
+            string dPath = di.LinkTarget ?? di.FullName;
+            IEnumerable<DriveInfo> candidateDrives = drives.Where(drive => dPath.StartsWith(drive.RootDirectory.FullName));
+            if (candidateDrives.Any())
+            {
+                //get the longest matching drive path (avoid '/' on linux)
+                return candidateDrives.Aggregate(candidateDrives.First(),
+                                    (max, cur) => max.RootDirectory.FullName.Length > cur.RootDirectory.FullName.Length ? max : cur);
+            }
+            return null;
         }
 
         /// <summary>
-        /// Returns free space in bytes and as percentage of total space on disk derived from the location used to construct
+        /// Returns free space in bytes and as percentage of total space on all logical drives derived from the location used to construct
         /// </summary>
         /// <returns></returns>
-        public (long, double) GetAvailableSpace()
+        public IEnumerable<(long, double)> GetAvailableSpace()
         {
-            double freeSpacePcnt = (double)_driveInfo.AvailableFreeSpace / _driveInfo.TotalSize * 100;
-            return new(_driveInfo.AvailableFreeSpace, freeSpacePcnt);
+            foreach (DriveInfo driveInfo in _driveInfos)
+            {
+                double freeSpacePcnt = (double)driveInfo.AvailableFreeSpace / driveInfo.TotalSize * 100;
+                yield return new(driveInfo.AvailableFreeSpace, freeSpacePcnt);
+            }
         }
     }
 }

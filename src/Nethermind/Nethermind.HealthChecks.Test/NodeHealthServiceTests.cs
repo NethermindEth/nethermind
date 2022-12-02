@@ -19,7 +19,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
@@ -61,7 +60,7 @@ namespace Nethermind.HealthChecks.Test
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            availableSpaceGetter.GetAvailableSpace().Returns((_freeSpaceBytes, test.AvailableDiskSpacePcnt));
+            availableSpaceGetter.GetAvailableSpace().Returns(_ => new(long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
@@ -104,7 +103,7 @@ namespace Nethermind.HealthChecks.Test
             api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
             api.JsonRpcLocalStats!.GetMethodStats("engine_exchangeTransitionConfigurationV1").Returns(methodStats);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            availableSpaceGetter.GetAvailableSpace().Returns((_freeSpaceBytes, test.AvailableDiskSpacePcnt));
+            availableSpaceGetter.GetAvailableSpace().Returns(_ => new (long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
 
             api.SpecProvider = Substitute.For<ISpecProvider>();
             api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);

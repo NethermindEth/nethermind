@@ -130,12 +130,14 @@ namespace Nethermind.HealthChecks
 
             if (_availableSpaceGetter != null && _healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
             {
-                (long freeSpace, double freeSpacePcnt) = _availableSpaceGetter.GetAvailableSpace();
-                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                foreach((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
                 {
-                    double freeSpaceGB = (double)freeSpace / 1.GiB();
-                    AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
-                    healthy &= false;
+                    if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                    {
+                        double freeSpaceGB = (double)freeSpace / 1.GiB();
+                        AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
+                        healthy &= false;
+                    }
                 }
             }
 
