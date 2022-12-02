@@ -98,7 +98,7 @@ namespace Nethermind.TxPool
             _headInfo.HeadChanged += OnHeadChange;
 
             _filterPipeline.Add(new NullHashTxFilter());
-            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
+            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
@@ -319,6 +319,7 @@ namespace Nethermind.TxPool
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
+            if (_logger.IsInfo) _logger.Info($"SetLongTerm Tx in _hashCache. TxHash: {tx.Hash}, Tx: {tx}");
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             Metrics.TransactionCount = _transactions.Count;

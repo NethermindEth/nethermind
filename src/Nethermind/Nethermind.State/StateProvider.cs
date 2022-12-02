@@ -159,6 +159,8 @@ namespace Nethermind.State
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
+            if (address == new Address("0x0000000000000000000000000000000000001104"))
+                _logger.Info($"balanceChange: {isSubtracting} {balanceChange}. StackTrace {new System.Diagnostics.StackTrace()}");
             _needsStateRootUpdate = true;
 
             Account GetThroughCacheCheckExists()
