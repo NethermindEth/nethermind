@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
@@ -292,9 +279,9 @@ namespace Nethermind.Network
                             _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
-                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession != null && x.Value.InSession != null)} | " +
-                                          $"[Out: {activePeers.Count(x => x.Value.OutSession != null)} | " +
-                                          $"In: {activePeers.Count(x => x.Value.InSession != null)}]");
+                                          $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
+                                          $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
+                                          $"In: {activePeers.Count(x => x.Value.InSession is not null)}]");
                         }
 
                         previousActivePeersCount = activePeersCount;
@@ -392,7 +379,7 @@ namespace Nethermind.Network
             {
                 _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
                 Interlocked.Increment(ref _failedInitialConnect);
-                if (peer.OutSession != null)
+                if (peer.OutSession is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                     peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
@@ -414,6 +401,7 @@ namespace Nethermind.Network
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)
             {
+                Interlocked.Increment(ref Metrics.PeerCount);
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
             }
             else
@@ -427,6 +415,10 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
             // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
@@ -759,7 +751,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
-            if (session.RemoteNodeId == null)
+            if (session.RemoteNodeId is null)
             {
                 // this happens when we have a disconnect on incoming connection before handshake
                 if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
@@ -833,7 +825,7 @@ namespace Nethermind.Network
 
         private void ManageNewRemoteNodeId(ISession session)
         {
-            if (session.ObsoleteRemoteNodeId == null)
+            if (session.ObsoleteRemoteNodeId is null)
             {
                 return;
             }

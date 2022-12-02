@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -26,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules
     {
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
-            if (blockFinder.Head == null)
+            if (blockFinder.Head is null)
             {
                 return new SearchResult<BlockHeader>("Incorrect head block", ErrorCodes.InternalError);
             }
@@ -37,10 +24,10 @@ namespace Nethermind.JsonRpc.Modules
             if (blockParameter.RequireCanonical)
             {
                 header = blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header == null && !allowNulls)
+                if (header is null && !allowNulls)
                 {
                     header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header != null)
+                    if (header is not null)
                     {
                         return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                     }
@@ -51,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules
                 header = blockFinder.FindHeader(blockParameter);
             }
 
-            return header == null && !allowNulls
+            return header is null && !allowNulls
                 ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
@@ -62,10 +49,10 @@ namespace Nethermind.JsonRpc.Modules
             if (blockParameter.RequireCanonical)
             {
                 block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (block == null && !allowNulls)
+                if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header != null)
+                    if (header is not null)
                     {
                         return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                     }
@@ -76,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules
                 block = blockFinder.FindBlock(blockParameter);
             }
 
-            if (block == null)
+            if (block is null)
             {
                 if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
                 {
@@ -97,12 +84,12 @@ namespace Nethermind.JsonRpc.Modules
         public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
         {
             SearchResult<Block> startingBlock = SearchForBlock(blockFinder, fromBlock);
-            if (startingBlock.IsError || startingBlock.Object == null)
+            if (startingBlock.IsError || startingBlock.Object is null)
                 yield return startingBlock;
             else
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
-                if (finalBlockHeader.IsError || finalBlockHeader.Object == null)
+                if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
                 bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);

@@ -1,23 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only 
 
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool
 {
@@ -25,11 +14,16 @@ namespace Nethermind.TxPool
     public class NonceReservingTxSealer : TxSealer
     {
         private readonly ITxPool _txPool;
+        private readonly IEthereumEcdsa _ecdsa;
 
-        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool)
+        public NonceReservingTxSealer(ITxSigner txSigner,
+            ITimestamper timestamper,
+            ITxPool txPool,
+            IEthereumEcdsa ecdsa)
             : base(txSigner, timestamper)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         }
 
         public override ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
@@ -37,6 +31,9 @@ namespace Nethermind.TxPool
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             if (manageNonce)
             {
+                tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+                if (tx.SenderAddress is null)
+                    throw new ArgumentNullException(nameof(tx.SenderAddress));
                 tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
                 txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             }

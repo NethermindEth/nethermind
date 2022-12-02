@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Net;
@@ -47,6 +34,7 @@ namespace Nethermind.Network.Rlpx
         private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
+        private TimeSpan _sendLatency;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,
@@ -54,7 +42,8 @@ namespace Nethermind.Network.Rlpx
             ISession session,
             HandshakeRole role,
             ILogManager logManager,
-            IEventExecutorGroup group)
+            IEventExecutorGroup group,
+            TimeSpan sendLatency)
         {
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -64,6 +53,7 @@ namespace Nethermind.Network.Rlpx
             _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _initCompletionSource = new TaskCompletionSource<object>();
+            _sendLatency = sendLatency;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -191,7 +181,7 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
 
-            PacketSender packetSender = new(_serializationService, _logManager);
+            PacketSender packetSender = new(_serializationService, _logManager, _sendLatency);
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(packetSender);
 

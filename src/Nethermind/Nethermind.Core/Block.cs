@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -88,7 +75,7 @@ namespace Nethermind.Core
 
         public long GasUsed => Header.GasUsed; // do not add setter here
 
-        public UInt256 Timestamp => Header.Timestamp; // do not add setter here
+        public ulong Timestamp => Header.Timestamp; // do not add setter here
 
         public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 
@@ -114,14 +101,14 @@ namespace Nethermind.Core
             return format switch
             {
                 Format.Full => ToFullString(),
-                Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
-                Format.HashNumberAndTx => Hash == null
+                Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
+                Format.HashNumberAndTx => Hash is null
                     ? $"{Number} null, tx count: {Body.Transactions.Length}"
                     : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
-                Format.HashNumberDiffAndTx => Hash == null
+                Format.HashNumberDiffAndTx => Hash is null
                     ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
                     : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
-                _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
+                _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
 

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -62,8 +49,8 @@ namespace Nethermind.Merge.Plugin
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
         private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
-        public string Name => "Merge";
-        public string Description => "Merge plugin for ETH1-ETH2";
+        public virtual string Name => "Merge";
+        public virtual string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
         public virtual bool MergeEnabled => _mergeConfig.Enabled &&
@@ -85,11 +72,11 @@ namespace Nethermind.Merge.Plugin
 
             if (MergeEnabled)
             {
-                if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
-                if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
-                if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
-                if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
-                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+                if (_api.DbProvider is null) throw new ArgumentException(nameof(_api.DbProvider));
+                if (_api.BlockTree is null) throw new ArgumentException(nameof(_api.BlockTree));
+                if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
+                if (_api.ChainSpec is null) throw new ArgumentException(nameof(_api.ChainSpec));
+                if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
                 EnsureReceiptAvailable();
@@ -133,10 +120,10 @@ namespace Nethermind.Merge.Plugin
             // it does not get marked as main causing some issue on eth_getLogs.
             Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
             Block? block = _api.BlockTree!.FindBlock(blockHash);
-            if (block != null)
+            if (block is not null)
             {
                 ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
-                if (level == null)
+                if (level is null)
                 {
                     _logger.Warn("Unable to fix transition block. Unable to find chain level info.");
                     return;
@@ -224,7 +211,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool HasTtd()
         {
-            return _api.SpecProvider?.TerminalTotalDifficulty != null || _mergeConfig.TerminalTotalDifficulty != null;
+            return _api.SpecProvider?.TerminalTotalDifficulty is not null || _mergeConfig.TerminalTotalDifficulty is not null;
         }
 
         public Task InitNetworkProtocol()
@@ -234,9 +221,9 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
-                if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
-                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
-                if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
+                if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
+                if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
+                if (_api.HeaderValidator is null) throw new ArgumentException(nameof(_api.HeaderValidator));
 
                 MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,
