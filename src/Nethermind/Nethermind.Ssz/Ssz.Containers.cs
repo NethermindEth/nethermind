@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.Linq;
-using Nethermind.Core2;
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
-    public partial class Ssz
+    public static partial class Ssz
     {
         private const int VarOffsetSize = sizeof(uint);
 

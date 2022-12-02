@@ -10,9 +10,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
       <ProjectReference Include="..\Nethermind.Native\Nethermind.Native.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
+      <ProjectReference Include="..\Nethermind.Serialization\Nethermind.Serialization.csproj" />
     </ItemGroup>
 
     <ItemGroup>

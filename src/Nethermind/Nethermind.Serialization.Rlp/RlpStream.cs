@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
@@ -41,6 +41,16 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(Block value)
         {
             _blockDecoder.Encode(this, value);
+        }
+
+        public void Encode(ulong[] value)
+        {
+            var len = value.Sum(x => Rlp.LengthOf(x));
+            StartSequence(len);
+            for (int i = 0; i < value.Length; i++)
+            {
+                Encode(value[i]);
+            }
         }
 
         public void Encode(BlockHeader value)
@@ -697,7 +707,7 @@ namespace Nethermind.Serialization.Rlp
             return new Keccak(keccakSpan.ToArray());
         }
 
-        public Address? DecodeAddress()
+        public Address? DecodeAddress(bool fixedLengthEncoding = true)
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -705,13 +715,13 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            if (prefix != 128 + 20)
+            if (fixedLengthEncoding && prefix != 128 + 20)
             {
                 throw new RlpException(
                     $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
-            byte[] buffer = Read(20).ToArray();
+            byte[] buffer = Read(prefix - 0x80).ToArray();
             return new Address(buffer);
         }
 
@@ -731,6 +741,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return new UInt256(byteSpan, true);
+        }
+
+        public UInt256 DecodeUInt256Being4ULongs()
+        {
+            return new UInt256(DecodeULong(), DecodeULong(), DecodeULong(), DecodeULong());
         }
 
         public UInt256? DecodeNullableUInt256()

@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -77,6 +80,78 @@ namespace Nethermind.Merkleization
         public static void Ize(out UInt256 root, BlsPublicKey container)
         {
             Ize(out root, container.Bytes);
+        }
+
+        public static void Ize(out UInt256 root, Transaction transaction)
+        {
+            Merkleizer merkleizer = new(NextPowerOfTwoExponent(11));
+
+            merkleizer.Feed(transaction.ChainId ?? 0);
+            merkleizer.Feed(transaction.Nonce);
+            merkleizer.Feed(transaction.GasPrice);
+            merkleizer.Feed(transaction.DecodedMaxFeePerGas);
+            merkleizer.Feed((ulong)transaction.GasLimit);
+            merkleizer.Feed(transaction.To);
+            merkleizer.Feed(transaction.Value);
+            Ize(out UInt256 dataRoot, transaction.Data ?? Array.Empty<byte>(), 1 << 24);
+            MixIn(ref dataRoot, transaction.Data?.Length ?? 0);
+            merkleizer.Feed(dataRoot);
+            merkleizer.Feed(transaction.AccessList);
+            merkleizer.Feed((transaction.MaxFeePerDataGas ?? 0));
+
+            var blobVersionedHashes = new UInt256[transaction.BlobVersionedHashes?.Length ?? 0];
+            for (int i = 0; i < blobVersionedHashes.Length; i++)
+            {
+                UInt256.CreateFromLittleEndian(out blobVersionedHashes[i], transaction.BlobVersionedHashes![i]);
+            }
+            Ize(out UInt256 blobVersionedHashesRoot, blobVersionedHashes, 1 << 24);
+            MixIn(ref blobVersionedHashesRoot, blobVersionedHashes.Length);
+            merkleizer.Feed(blobVersionedHashesRoot);
+            merkleizer.CalculateRoot(out root);
+        }
+
+        internal static void Ize(out UInt256 root, AccessList? accessList)
+        {
+            if (accessList is null || accessList.Data is null)
+            {
+                Ize(out root, Array.Empty<UInt256>(), 1 << 24);
+                MixIn(ref root, 0);
+            }
+            else
+            {
+                UInt256[] items = new UInt256[accessList.Data.Count];
+                int i = 0;
+                foreach (KeyValuePair<Address, IReadOnlySet<Int256.UInt256>> addressSlotsPair in accessList.Data)
+                {
+                    Ize(out items[i++], addressSlotsPair);
+                }
+                Ize(out root, items, 1 << 24);
+                MixIn(ref root, items.Length);
+            }
+        }
+
+        internal static void Ize(out UInt256 root, KeyValuePair<Address, IReadOnlySet<Int256.UInt256>> addressAccountsPair)
+        {
+            Ize(out UInt256 addressRoot, addressAccountsPair.Key);
+
+            UInt256[] slots = new UInt256[addressAccountsPair.Value.Count];
+            int i = 0;
+            foreach (Int256.UInt256 slot in addressAccountsPair.Value)
+            {
+                UInt256.CreateFromLittleEndian(out slots[i], slot.ToBigEndian());
+                i++;
+            }
+            Ize(out UInt256 slotsRoot, slots, 1 << 24);
+            MixIn(ref slotsRoot, addressAccountsPair.Value.Count);
+
+            Ize(out root, new[] { addressRoot, slotsRoot });
+        }
+
+        internal static void Ize(out UInt256 root, Address address)
+        {
+            byte[] data = new byte[32];
+            address.Bytes.CopyTo(data, 0);
+            UInt256.CreateFromLittleEndian(out root, data.AsSpan());
         }
 
         public static void Ize(out UInt256 root, BlsSignature container)

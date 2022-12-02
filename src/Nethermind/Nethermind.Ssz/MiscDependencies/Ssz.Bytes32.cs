@@ -17,6 +17,13 @@ namespace Nethermind.Ssz
             return span.ToArray();
         }
 
+        public static ReadOnlySpan<byte> DecodeBytes(ReadOnlySpan<byte> span, int count, ref int offset)
+        {
+            ReadOnlySpan<byte> bytes = span[offset..(offset+count)];
+            offset += count;
+            return bytes;
+        }
+
         public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span)
         {
             return new Bytes32(span);

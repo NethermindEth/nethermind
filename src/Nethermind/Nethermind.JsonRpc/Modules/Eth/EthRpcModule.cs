@@ -34,6 +34,7 @@ using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
 using Transaction = Nethermind.Core.Transaction;
+using Nethermind.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -330,7 +331,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = MixedEncoding.Decode(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.NetworkWrapper);
             return await SendTx(tx);
         }
         catch (RlpException)
