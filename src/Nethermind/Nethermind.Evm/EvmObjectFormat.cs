@@ -352,9 +352,9 @@ namespace Nethermind.Evm
             Stack<(int Position, int StackHeigth)> workSet = new();
             workSet.Push((0, peakStackHeight));
 
-            while (workSet.Count > 0)
+            while (workSet.TryPop(out var worklet))
             {
-                (int pos, int stackHeight) = workSet.Pop();
+                (int pos, int stackHeight) = worklet;
                 while (true)
                 {
                     Instruction opcode = (Instruction)code[pos];
@@ -364,6 +364,10 @@ namespace Nethermind.Evm
                     {
                         if (stackHeight != visitedLines[pos])
                         {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-5450 : Branch joint line has invalid stack height");
+                            }
                             return false;
                         }
                         break;
@@ -382,6 +386,10 @@ namespace Nethermind.Evm
 
                     if (stackHeight < inputs)
                     {
+                        if (LoggingEnabled)
+                        {
+                            _logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {stackHeight}");
+                        }
                         return false;
                     }
 
@@ -411,6 +419,10 @@ namespace Nethermind.Evm
                                     var expectedHeight = opcode is Instruction.RETF ? typesection[funcId * 2 + 1] : 0;
                                     if (expectedHeight != stackHeight)
                                     {
+                                        if (LoggingEnabled)
+                                        {
+                                            _logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                                        }
                                         return false;
                                     }
                                 }

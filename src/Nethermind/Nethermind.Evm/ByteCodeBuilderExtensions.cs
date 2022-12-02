@@ -55,6 +55,16 @@ namespace Nethermind.Evm
             }
             return @this;
         }
+
+
+        internal static Prepare PutSequence(this Prepare @this, params Instruction[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+            {
+                @this.Op(args[i]);
+            }
+            return @this;
+        }
         #endregion
 
         public static Prepare COMMENT(this Prepare @this, string comment) => @this;

@@ -49,13 +49,7 @@ namespace Nethermind.Evm.Test
     public class EOF5450Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
-        {
-            IsEip4200Enabled = true,
-            IsEip4750Enabled = true,
-            IsEip5450Enabled = true,
-        });
-
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
 
         public static IEnumerable<TestCase2> Eip5450TestCases
         {
@@ -310,6 +304,71 @@ namespace Nethermind.Evm.Test
                     Data = Bytes.FromHexString("deadbeef"),
                     Result = (StatusCode.Failure, null),
                     Description = "jump results in stack underflow"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .RJUMP(2)
+                        .PushSequence(
+                                Enumerable.Range(0, 3)
+                                          .Select(i => (UInt256?)i)
+                                          .ToArray()
+                        ).PushData(3)
+                         .CALLF(1)
+                         .POP()
+                         .STOP()
+                         .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .ADD(54)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 1
+                        }
+                    },
+                    Data = Bytes.FromHexString("deadbeef"),
+                    Result = (StatusCode.Failure, null),
+                    Description = "Stack is not empty after main"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .RJUMP(2)
+                        .PushSequence(
+                            Enumerable.Range(0, 1025)
+                                        .Select(i => (UInt256?)i)
+                                        .ToArray()
+                        )
+                        .PushData(3)
+                        .CALLF(1)
+                        .PutSequence(
+                            Enumerable.Range(0, 1023)
+                                        .Select(_ => Instruction.POP)
+                                        .ToArray()
+                        )
+                        .STOP()
+                         .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .ADD(54)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 1
+                        }
+                    },
+                    Data = Bytes.FromHexString("deadbeef"),
+                    Result = (StatusCode.Failure, null),
+                    Description = "max items in stack is 1025"
                 };
             }
         }

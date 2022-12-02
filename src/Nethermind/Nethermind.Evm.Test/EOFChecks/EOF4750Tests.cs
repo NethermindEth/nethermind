@@ -48,8 +48,6 @@ namespace Nethermind.Evm.Test
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
-            IsEip4200Enabled = true,
-            IsEip4750Enabled = true,
             IsEip5450Enabled = false,
         });
 
