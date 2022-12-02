@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                         stream.StartSequence(itemLength);
                         stream.Encode(slot.Path);
-                        stream.EncodeSpan(slot.SlotRlpValue);
+                        stream.Encode(slot.SlotRlpValue);
                     }
 
                 }
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 stream.StartSequence(proofsLength);
                 for (int i = 0; i < message.Proofs.Length; i++)
                 {
-                    stream.EncodeSpan(message.Proofs[i]);
+                    stream.Encode(message.Proofs[i]);
                 }
             }
         }

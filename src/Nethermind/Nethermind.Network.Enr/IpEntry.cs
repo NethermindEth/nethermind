@@ -25,6 +25,6 @@ public class IpEntry : EnrContentEntry<IPAddress>
     {
         Span<byte> bytes = stackalloc byte[4];
         Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.EncodeSpan(bytes);
+        rlpStream.Encode(bytes);
     }
 }

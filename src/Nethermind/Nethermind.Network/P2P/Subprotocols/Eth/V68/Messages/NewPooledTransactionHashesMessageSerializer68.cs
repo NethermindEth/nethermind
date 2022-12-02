@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(totalSize);
-            rlpStream.EncodeList(message.Types);
+            rlpStream.Encode(message.Types);
 
             rlpStream.StartSequence(sizesLength);
             for (int i = 0; i < message.Sizes.Count; ++i)

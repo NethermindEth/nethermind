@@ -39,16 +39,16 @@ namespace Nethermind.AccountAbstraction.Data
 
             stream.Encode(op.Sender);
             stream.Encode(op.Nonce);
-            stream.EncodeSpan(op.InitCode);
-            stream.EncodeSpan(op.CallData);
+            stream.Encode(op.InitCode);
+            stream.Encode(op.CallData);
             stream.Encode(op.CallGas);
             stream.Encode(op.VerificationGas);
             stream.Encode(op.PreVerificationGas);
             stream.Encode(op.MaxFeePerGas);
             stream.Encode(op.MaxPriorityFeePerGas);
             stream.Encode(op.Paymaster);
-            stream.EncodeSpan(op.PaymasterData);
-            stream.EncodeSpan(op.Signature);
+            stream.Encode(op.PaymasterData);
+            stream.Encode(op.Signature);
             stream.Encode(entryPoint);
         }
 

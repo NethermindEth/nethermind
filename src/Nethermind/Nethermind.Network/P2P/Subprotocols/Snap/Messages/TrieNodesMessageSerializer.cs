@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.StartSequence(nodesLength);
             for (int i = 0; i < message.Nodes.Length; i++)
             {
-                rlpStream.EncodeSpan(message.Nodes[i]);
+                rlpStream.Encode(message.Nodes[i]);
             }
         }
 

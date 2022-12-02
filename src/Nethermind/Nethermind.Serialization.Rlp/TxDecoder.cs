@@ -165,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.EncodeSpan(item.Data);
+            stream.Encode(item.Data);
         }
 
         private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
@@ -176,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.EncodeSpan(item.Data);
+            stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.EncodeSpan(item.Data);
+            stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -381,14 +381,14 @@ namespace Nethermind.Serialization.Rlp
             if (item.Signature is null)
             {
                 stream.Encode(0);
-                stream.EncodeSpan(Bytes.Empty);
-                stream.EncodeSpan(Bytes.Empty);
+                stream.Encode(Bytes.Empty);
+                stream.Encode(Bytes.Empty);
             }
             else
             {
                 stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
-                stream.EncodeSpan(item.Signature.RAsSpan.WithoutLeadingZeros());
-                stream.EncodeSpan(item.Signature.SAsSpan.WithoutLeadingZeros());
+                stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
+                stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
             }
         }
 

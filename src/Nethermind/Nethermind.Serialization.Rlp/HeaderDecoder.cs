@@ -173,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(header.GasLimit);
             rlpStream.Encode(header.GasUsed);
             rlpStream.Encode(header.Timestamp);
-            rlpStream.EncodeSpan(header.ExtraData);
+            rlpStream.Encode(header.ExtraData);
 
             if (notForSealing)
             {
@@ -181,7 +181,7 @@ namespace Nethermind.Serialization.Rlp
                 if (isAuRa)
                 {
                     rlpStream.Encode(header.AuRaStep!.Value);
-                    rlpStream.EncodeSpan(header.AuRaSignature);
+                    rlpStream.Encode(header.AuRaSignature);
                 }
                 else
                 {

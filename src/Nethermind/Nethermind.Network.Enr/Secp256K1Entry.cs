@@ -22,6 +22,6 @@ public class Secp256K1Entry : EnrContentEntry<CompressedPublicKey>
 
     protected override void EncodeValue(RlpStream rlpStream)
     {
-        rlpStream.EncodeSpan(Value.Bytes);
+        rlpStream.Encode(Value.Bytes);
     }
 }

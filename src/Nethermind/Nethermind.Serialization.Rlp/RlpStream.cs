@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -423,11 +424,11 @@ namespace Nethermind.Serialization.Rlp
                 value.ToBigEndian(bytes);
                 if (length != -1)
                 {
-                    EncodeSpan(bytes.Slice(bytes.Length - length, length));
+                    Encode(bytes.Slice(bytes.Length - length, length));
                 }
                 else
                 {
-                    EncodeSpan(bytes.WithoutLeadingZeros());
+                    Encode(bytes.WithoutLeadingZeros());
                 }
             }
         }
@@ -441,11 +442,17 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // todo: can avoid allocation here but benefit is rare
-                EncodeSpan(Encoding.ASCII.GetBytes(value));
+                Encode(Encoding.ASCII.GetBytes(value));
             }
         }
 
-        public void EncodeSpan(Span<byte> input)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(byte[] input)
+        {
+            Encode(input.AsSpan());
+        }
+
+        public void Encode(Span<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -471,7 +478,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void EncodeList(IReadOnlyList<byte> input)
+        public void Encode(IReadOnlyList<byte> input)
         {
             if (input.Count == 0)
             {
