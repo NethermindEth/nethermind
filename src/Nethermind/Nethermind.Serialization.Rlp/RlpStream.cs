@@ -137,13 +137,19 @@ namespace Nethermind.Serialization.Rlp
             Data[Position++] = byteToWrite;
         }
 
-        public virtual void WriteByteSpan(Span<byte> bytesToWrite)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Write(byte[] bytesToWrite)
+        {
+            Write(bytesToWrite.AsSpan());
+        }
+
+        public virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
         }
 
-        public virtual void WriteByteList(IReadOnlyList<byte> bytesToWrite)
+        public virtual void Write(IReadOnlyList<byte> bytesToWrite)
         {
             for (int i = 0; i < bytesToWrite.Count; ++i)
             {
@@ -176,16 +182,16 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
-                WriteByteSpan(Rlp.OfEmptyTreeHash.Bytes);
+                Write(Rlp.OfEmptyTreeHash.Bytes);
             }
             else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
             {
-                WriteByteSpan(Rlp.OfEmptyStringHash.Bytes);
+                Write(Rlp.OfEmptyStringHash.Bytes);
             }
             else
             {
                 WriteByte(160);
-                WriteByteSpan(keccak.Bytes);
+                Write(keccak.Bytes);
             }
         }
 
@@ -215,7 +221,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 WriteByte(148);
-                WriteByteSpan(address.Bytes);
+                Write(address.Bytes);
             }
         }
 
@@ -227,7 +233,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                WriteByteSpan(rlp.Bytes);
+                Write(rlp.Bytes);
             }
         }
 
@@ -249,7 +255,7 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(185);
                 WriteByte(1);
                 WriteByte(0);
-                WriteByteSpan(bloom.Bytes);
+                Write(bloom.Bytes);
             }
         }
 
@@ -290,7 +296,7 @@ namespace Nethermind.Serialization.Rlp
             Rlp rlp = bigInteger == 0
                 ? Rlp.OfEmptyByteArray
                 : Rlp.Encode(bigInteger.ToBigEndianByteArray(outputLength));
-            WriteByteSpan(rlp.Bytes);
+            Write(rlp.Bytes);
         }
 
         public void Encode(long value)
@@ -466,7 +472,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 WriteByte(smallPrefix);
-                WriteByteSpan(input);
+                Write(input);
             }
             else
             {
@@ -474,7 +480,7 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Length);
-                WriteByteSpan(input);
+                Write(input);
             }
         }
 
@@ -492,7 +498,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 byte smallPrefix = (byte)(input.Count + 128);
                 WriteByte(smallPrefix);
-                WriteByteList(input);
+                Write(input);
             }
             else
             {
@@ -500,7 +506,7 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Count);
-                WriteByteList(input);
+                Write(input);
             }
         }
 

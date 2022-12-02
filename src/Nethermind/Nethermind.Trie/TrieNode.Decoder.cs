@@ -64,7 +64,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.WriteByteSpan(nodeRef.FullRlp);
+                    rlpStream.Write(nodeRef.FullRlp);
                 }
                 else
                 {
