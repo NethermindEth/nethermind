@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -260,6 +261,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
+    [Ignore("Block hash is incorrect")]
     public virtual async Task engine_newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
