@@ -29,6 +29,7 @@ namespace Ethereum.Test.Base
             network = network.Replace("London+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3860", "Shanghai");
+            network = network.Replace("GrayGlacier+3855", "Shanghai");
             network = network.Replace("Merge+3540+3670", "Shanghai");
             return network switch
             {
