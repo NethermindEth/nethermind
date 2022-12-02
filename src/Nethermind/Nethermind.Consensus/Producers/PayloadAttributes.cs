@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Text;
@@ -37,11 +37,7 @@ public class PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            sb.AppendLine($", {nameof(Withdrawals)}: ");
-
-            // Consider limiting the output
-            foreach (var withdrawal in Withdrawals)
-                sb.AppendLine(withdrawal.ToString($"{indentation}    "));
+            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
         sb.Append('}');

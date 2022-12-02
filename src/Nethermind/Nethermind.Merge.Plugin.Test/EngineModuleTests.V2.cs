@@ -430,4 +430,12 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash));
         fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
+
+    [Test]
+    public void PayloadAttributes_ToString_returns_expected_results()
+    {
+        PayloadAttributes payloadAttributes = new() { Timestamp = 1, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = new[] { TestItem.WithdrawalA_1Eth } };
+        string actual = payloadAttributes.ToString();
+        Assert.AreEqual("PayloadAttributes {Timestamp: 1, PrevRandao: 0x321c2cb0b0673952956a3bfa56cf1ce4df0cd3371ad51a2c5524561250b01836, SuggestedFeeRecipient: 0x65942aaf2c32a1aca4f14e82e94fce91960893a2, Withdrawals count: 1}", actual);
+    }
 }
