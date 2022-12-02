@@ -68,22 +68,19 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override AllocationContexts Contexts => AllocationContexts.Headers;
 
+    private long ExpectedPivotNumber =>
+        _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
+
+    private Keccak ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
+
     public override void InitializeFeed()
     {
         _chainMerged = false;
 
         // First, we assume pivot
-        _pivotNumber = _pivot.PivotNumber;
-        _nextHeaderHash = _pivot.PivotHash ?? Keccak.Zero;
+        _pivotNumber = ExpectedPivotNumber;
+        _nextHeaderHash = ExpectedPivotHash;
         _nextHeaderDiff = _poSSwitcher.FinalTotalDifficulty;
-
-        // This is probably whats going to happen. We probably should just set the pivot directly to the parent of FcU head,
-        // but pivot underlying data is a Header, which we may not have. Maybe later we'll clean this up.
-        if (_pivot.PivotParentHash is not null)
-        {
-            _pivotNumber = _pivotNumber - 1;
-            _nextHeaderHash = _pivot.PivotParentHash;
-        }
 
         long startNumber = _pivotNumber;
 
@@ -123,7 +120,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {
-        if (_pivotNumber != _pivot.PivotNumber)
+        if (_pivotNumber != ExpectedPivotNumber)
         {
             // Pivot changed during the sync. Need to reset the states
             PostFinishCleanUp();
