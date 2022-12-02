@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -117,6 +119,18 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _sent.Clear(); // we my still be waiting for some bad branches
         _syncReport.HeadersInQueue.Update(0L);
         _syncReport.HeadersInQueue.MarkEnd();
+    }
+
+    public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+    {
+        if (_pivotNumber != _pivot.PivotNumber)
+        {
+            // Pivot changed during the sync. Need to reset the states
+            PostFinishCleanUp();
+            InitializeFeed();
+        }
+
+        return base.PrepareRequest(cancellationToken);
     }
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
