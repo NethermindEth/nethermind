@@ -61,7 +61,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="tx"></param>
@@ -73,7 +73,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="tx"></param>
         /// <param name="useSignatureChainId"></param>
@@ -88,15 +88,17 @@ namespace Nethermind.Crypto
             useSignatureChainId &= tx.Signature.ChainId.HasValue;
 
             // feels like it is the same check twice
-            bool applyEip155 = useSignatureChainId
-                               || tx.Signature.V == _chainIdValue * 2 + 35ul
-                               || tx.Signature.V == _chainIdValue * 2 + 36ul;
+            bool applyEip155 = useSignatureChainId || (
+                    tx.Signature.V != 27 &&
+                    tx.Signature.V != 28 &&
+                    tx.Signature.V != 0 &&
+                    tx.Signature.V != 1);
 
             ulong chainId;
             switch (tx.Type)
             {
-                case TxType.Legacy when useSignatureChainId:
-                    chainId = tx.Signature.ChainId.Value;
+                case TxType.Legacy when applyEip155:
+                    chainId = tx.Signature.ChainId ?? throw new InvalidOperationException("Could not get chain id");
                     break;
                 case TxType.Legacy:
                     chainId = _chainIdValue;
@@ -104,6 +106,11 @@ namespace Nethermind.Crypto
                 default:
                     chainId = tx.ChainId!.Value;
                     break;
+            }
+
+            if (chainId != _chainIdValue)
+            {
+                throw new InvalidDataException($"Wrong chain id, expected {_chainIdValue} got {chainId}");
             }
 
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
