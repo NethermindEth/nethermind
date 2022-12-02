@@ -339,7 +339,7 @@ public class BeaconHeadersSyncTests
             PivotTotalDifficulty = "0"
         };
 
-        int chainLength = 1000;
+        int chainLength = 111;
         int pivotNumber = 100;
 
         Context ctx = new()
@@ -348,8 +348,7 @@ public class BeaconHeadersSyncTests
         };
         ctx.SetupRemoteBlockTreeOfLength(chainLength);
 
-        BlockHeader pivot = ctx.RemoteBlockTree.FindHeader(pivotNumber);
-        ctx.BeaconPivot.EnsurePivot(pivot);
+        ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber));
 
         ctx.Feed.InitializeFeed();
 
@@ -376,8 +375,8 @@ public class BeaconHeadersSyncTests
             .ToArray();
         ctx.Feed.HandleResponse(request);
 
+        // It should complete successfully
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-
         request = await ctx.Feed.PrepareRequest();
         request.Should().BeNull();
     }
