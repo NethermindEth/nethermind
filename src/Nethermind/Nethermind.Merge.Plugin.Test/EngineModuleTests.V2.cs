@@ -77,7 +77,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        Keccak blockHash = new("0xed14029504c440624047d5d0223899fb2c8abc4550464ac21e8f42ccdbb472d3");
         ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
