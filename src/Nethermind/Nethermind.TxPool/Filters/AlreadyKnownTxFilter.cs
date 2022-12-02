@@ -34,7 +34,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.AlreadyKnown;
             }
 
-            if (_logger.IsInfo) _logger.Info($"SetForCurrentBlock Tx in _hashCache. TxHash: {tx.Hash}, Tx: {tx}");
+            if (_logger.IsInfo) _logger.Info($"SetForCurrentBlock Tx in _hashCache. TxHash: {tx.Hash}, Tx: {tx} StackTrace {new System.Diagnostics.StackTrace()}");
             _hashCache.SetForCurrentBlock(tx.Hash!);
 
             return AcceptTxResult.Accepted;
