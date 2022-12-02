@@ -44,7 +44,7 @@ namespace Nethermind.HealthChecks
 
         private void CheckDiskSpace(object sender, EventArgs e)
         {
-            foreach((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
+            foreach ((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
             {
                 if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
                 {

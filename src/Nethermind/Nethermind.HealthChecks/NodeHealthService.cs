@@ -130,7 +130,7 @@ namespace Nethermind.HealthChecks
 
             if (_availableSpaceGetter != null && _healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
             {
-                foreach((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
+                foreach ((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
                 {
                     if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                     {

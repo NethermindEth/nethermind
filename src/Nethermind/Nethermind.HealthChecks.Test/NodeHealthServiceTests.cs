@@ -60,7 +60,7 @@ namespace Nethermind.HealthChecks.Test
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            availableSpaceGetter.GetAvailableSpace().Returns(_ => new(long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
+            availableSpaceGetter.GetAvailableSpace().Returns(_ => new (long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
