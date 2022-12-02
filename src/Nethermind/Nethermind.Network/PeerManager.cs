@@ -185,7 +185,7 @@ namespace Nethermind.Network
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
 
-#region Inactive peer loop handling. Peer may be discovered but inactive.
+        #region Inactive peer loop handling. Peer may be discovered but inactive.
 
         private class CandidateSelection
         {
@@ -566,9 +566,9 @@ namespace Nethermind.Network
             }
         }
 
-#endregion
+        #endregion
 
-#region Outgoing connection handling
+        #region Outgoing connection handling
 
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer)
@@ -655,9 +655,9 @@ namespace Nethermind.Network
             AddSession(session, peer);
         }
 
-#endregion
+        #endregion
 
-#region Incoming connection handling
+        #region Incoming connection handling
 
         private void ProcessIncomingConnection(ISession session)
         {
@@ -710,7 +710,7 @@ namespace Nethermind.Network
             }
         }
 
-#endregion
+        #endregion
 
         private bool CanConnectToPeer(Peer peer)
         {
