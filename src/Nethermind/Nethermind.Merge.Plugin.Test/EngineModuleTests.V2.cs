@@ -193,7 +193,8 @@ public partial class EngineModuleTests
     public virtual async Task engine_forkchoiceUpdatedV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals
+        IEnumerable<Withdrawal>? Withdrawals,
+        string BlockHash
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
@@ -261,16 +262,16 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
-    [Ignore("Block hash is incorrect")]
     public virtual async Task engine_newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals
+        IEnumerable<Withdrawal>? Withdrawals,
+        string BlockHash
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        Keccak blockHash = new("0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        Keccak blockHash = new(input.BlockHash);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -314,11 +315,20 @@ public partial class EngineModuleTests
     protected static IEnumerable<(
         IReleaseSpec spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals
+        IEnumerable<Withdrawal>? Withdrawals,
+        string blockHash
         )> GetWithdrawalValidationValues()
     {
-        yield return (Shanghai.Instance, "Withdrawals cannot be null {0}when EIP-4895 activated.", null);
-        yield return (London.Instance, "Withdrawals must be null {0}when EIP-4895 not activated.", Enumerable.Empty<Withdrawal>());
+        yield return (
+            Shanghai.Instance,
+            "Withdrawals cannot be null {0}when EIP-4895 activated.",
+            null,
+            "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+        yield return (
+            London.Instance,
+            "Withdrawals must be null {0}when EIP-4895 not activated.",
+            Enumerable.Empty<Withdrawal>(),
+            "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98");
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
@@ -380,6 +390,59 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
+    {
+        // Shanghai fork, ForkActivation.Timestamp = 3
+        CustomSpecProvider specProvider = new(
+            (new ForkActivation(0, null), ArrowGlacier.Instance),
+            (new ForkActivation(0, 3), Shanghai.Instance)
+            );
+
+        // Genesis, Timestamp = 1
+        using MergeTestBlockchain chain = await CreateBlockChain(specProvider);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        // Block without withdrawals, Timestamp = 2
+        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
+        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        // Block with withdrawals, Timestamp = 3
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 2,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
+        };
+        ExecutionPayload payloadWithWithdrawals = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
+        ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals);
+
+        resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
+            new(payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash));
+
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    // This test seems redundant
+    [Test]
+    public void Should_print_payload_attributes_as_expected()
+    {
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
+        };
+
+        payloadAttributes.ToString().Should().Be(
+            "PayloadAttributes {Timestamp: 1, PrevRandao: 0x321c2cb0b0673952956a3bfa56cf1ce4df0cd3371ad51a2c5524561250b01836, SuggestedFeeRecipient: 0x65942aaf2c32a1aca4f14e82e94fce91960893a2, Withdrawals count: 1}");
+    }
+
     private static async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
@@ -407,37 +470,5 @@ public partial class EngineModuleTests
             new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
             new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
         }, new[] { (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()), (TestItem.AddressF, 6.Ether()) });
-    }
-
-    [Test]
-    public async Task Withdrawals_transition()
-    {
-        // Shanghai fork, ForkActivation.Timestamp = 3
-        CustomSpecProvider specProvider = new((new ForkActivation(0, null), ArrowGlacier.Instance), (new ForkActivation(0, 3), Shanghai.Instance));
-
-        // Genesis, Timestamp = 1
-        using MergeTestBlockchain chain = await CreateBlockChain(specProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        // Block without withdrawals, Timestamp = 2
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
-        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
-        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-
-        // Block with withdrawals, Timestamp = 3
-        PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 2, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = new[] { TestItem.WithdrawalA_1Eth } };
-        ExecutionPayload payloadWithWithdrawals = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
-        ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals);
-        resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash));
-        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-    }
-
-    [Test]
-    public void PayloadAttributes_ToString_returns_expected_results()
-    {
-        PayloadAttributes payloadAttributes = new() { Timestamp = 1, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = new[] { TestItem.WithdrawalA_1Eth } };
-        string actual = payloadAttributes.ToString();
-        Assert.AreEqual("PayloadAttributes {Timestamp: 1, PrevRandao: 0x321c2cb0b0673952956a3bfa56cf1ce4df0cd3371ad51a2c5524561250b01836, SuggestedFeeRecipient: 0x65942aaf2c32a1aca4f14e82e94fce91960893a2, Withdrawals count: 1}", actual);
     }
 }

@@ -54,7 +54,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override async Task engine_newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals
+        IEnumerable<Withdrawal>? Withdrawals,
+        string BlockHash
         ) input)
     {
         await Task.CompletedTask;
