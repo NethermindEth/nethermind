@@ -41,11 +41,11 @@ public class DeserializeBenchmarks
         _context = new JsonRpcContext(RpcEndpoint.Http);
 
         _testRpcModule = Substitute.For<ITestRpcModule>();
-        RpcModuleProvider moduleProvider = new(fileSystem, jsonRpcConfig, LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(fileSystem, jsonRpcConfig, NullLogManager.Instance);
         moduleProvider.Register(new SingletonModulePool<ITestRpcModule>(new SingletonFactory<ITestRpcModule>(_testRpcModule), true));
-        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, jsonRpcConfig);
+        JsonRpcService jsonRpcService = new(moduleProvider, NullLogManager.Instance, jsonRpcConfig);
 
-        _jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, new EthereumJsonSerializer(), jsonRpcConfig, fileSystem, LimboLogs.Instance);
+        _jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, new EthereumJsonSerializer(), jsonRpcConfig, fileSystem, NullLogManager.Instance);
 
         payload = await File.ReadAllTextAsync(Path.Combine(TestContext.CurrentContext.TestDirectory, "Data",
             "samplenewpayload.json"));
@@ -54,12 +54,16 @@ public class DeserializeBenchmarks
     [Benchmark]
     public async Task BenchmarkDeserialize()
     {
-        IList<JsonRpcResult> result = await _jsonRpcProcessor
-            .ProcessAsync(new StringReader(payload), _context)
-            .ToListAsync();
+        // If I run it only once, for some reason, the benchmark does not show much different, even though it seems to
+        // be triggering this call multiple time
+        for (int i = 0; i < 10; i++)
+        {
+            IList<JsonRpcResult> result = await _jsonRpcProcessor
+                .ProcessAsync(new StringReader(payload), _context)
+                .ToListAsync();
 
-        result.Should().HaveCount(1);
-        _testRpcModule.Received().test_rpcbenchmark(Arg.Any<ExecutionPayloadV1>());
+            result.Should().HaveCount(1);
+        }
     }
 
     [RpcModule(ModuleType.Engine)]
