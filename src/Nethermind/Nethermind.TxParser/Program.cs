@@ -16,7 +16,8 @@ while (true)
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input));
         TxValidator txValidator = new TxValidator(ChainId.Mainnet);
-        if(txValidator.IsWellFormed(tx, GrayGlacier.Instance)) {
+        if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
+        {
             EthereumEcdsa ecdsa = new(ChainId.Mainnet, SimpleConsoleLogManager.Instance);
             Address? sender = ecdsa.RecoverAddress(tx);
             if (sender == null)
@@ -24,7 +25,9 @@ while (true)
                 throw new InvalidDataException("Could not recover sender address");
             }
             Console.WriteLine(sender);
-        } else {
+        }
+        else
+        {
             throw new InvalidDataException("Transaction is not well formed");
         }
     }
