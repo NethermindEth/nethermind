@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable disable 
+#nullable disable
 
 using System;
 using System.Collections.Generic;
@@ -120,8 +120,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(11, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsTrue(db.KeyExists(rootHash));
+            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(db.KeyExists(rootHash));
         }
 
         [Test]
@@ -144,8 +144,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(11, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsTrue(db.KeyExists(rootHash));
+            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(db.KeyExists(rootHash));
         }
 
         [Test]
@@ -161,8 +161,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(11, db.Keys.Count);  // we don't have the proofs so we persist all nodes
-            Assert.IsTrue(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
+            Assert.AreEqual(10, db.Keys.Count);  // we don't have the proofs so we persist all nodes
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
         [Test]
@@ -211,8 +211,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Assert.AreEqual(AddRangeResult.OK, result1);
             Assert.AreEqual(AddRangeResult.OK, result2);
             Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(11, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsTrue(db.KeyExists(rootHash));
+            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(db.KeyExists(rootHash));
         }
 
         [Test]
