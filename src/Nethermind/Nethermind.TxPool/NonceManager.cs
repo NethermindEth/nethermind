@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -41,10 +42,19 @@ public class NonceManager : INonceManager
         }
     }
 
+    public void TxWithNonceReceived(Address address, UInt256 nonce)
+    {
+        AddressNonceManager addressNonceManager =
+            _addressNonceManagers.GetOrAdd(address, v => new AddressNonceManager(_accounts.GetAccount(v).Nonce));
+        addressNonceManager.TxWithNonceReceived(nonce);
+    }
+
     private class AddressNonceManager
     {
+        private HashSet<UInt256> _usedNonces = new();
+        private UInt256 _reservedNonce;
         private UInt256 _currentNonce;
-        private static Mutex mutex = new();
+        private static readonly Mutex _mutex = new();
 
         public AddressNonceManager(UInt256 startNonce)
         {
@@ -53,16 +63,28 @@ public class NonceManager : INonceManager
 
         public UInt256 ReserveNonce()
         {
-            mutex.WaitOne();
+            _mutex.WaitOne();
+            _reservedNonce = _currentNonce;
             return _currentNonce;
         }
 
         public void TxAccepted()
         {
-            _currentNonce += 1;
-            mutex.ReleaseMutex();
+            _usedNonces.Add(_reservedNonce);
+            while (_usedNonces.Contains(_currentNonce))
+            {
+                _currentNonce++;
+            }
+
+            _mutex.ReleaseMutex();
         }
 
-        public void TxRejected() => mutex.ReleaseMutex();
+        public void TxWithNonceReceived(UInt256 nonce)
+        {
+            _mutex.WaitOne();
+            _reservedNonce = nonce;
+        }
+
+        public void TxRejected() => _mutex.ReleaseMutex();
     }
 }
