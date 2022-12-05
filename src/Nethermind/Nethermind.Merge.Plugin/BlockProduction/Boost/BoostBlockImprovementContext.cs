@@ -20,6 +20,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 {
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
+    private readonly FeesTracer _feesTracer = new();
     private CancellationTokenSource? _cancellationTokenSource;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
@@ -48,10 +49,11 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);
+        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
             CurrentBestBlock = block;
+            BlockFees = _feesTracer.Fees;
             UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
         }
@@ -61,6 +63,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
     public Task<Block?> ImprovementTask { get; }
     public Block? CurrentBestBlock { get; private set; }
+    public UInt256 BlockFees { get; private set; }
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 

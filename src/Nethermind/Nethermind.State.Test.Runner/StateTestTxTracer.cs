@@ -31,6 +31,7 @@ namespace Nethermind.State.Test.Runner
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -231,6 +232,11 @@ namespace Nethermind.State.Test.Runner
         public StateTestTxTrace BuildResult()
         {
             return _trace;
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
     }
 }

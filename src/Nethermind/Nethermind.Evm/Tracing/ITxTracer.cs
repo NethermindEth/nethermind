@@ -53,6 +53,11 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         bool IsTracingAccess { get; }
 
+        /// <summary>
+        /// Traces fees and burned fees
+        /// </summary>
+        bool IsTracingFees { get; }
+
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
@@ -145,5 +150,6 @@ namespace Nethermind.Evm.Tracing
         void ReportRefund(long refund);
         void ReportExtraGasPressure(long extraGasPressure);
         void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+        void ReportFees(UInt256 fees, UInt256 burntFees);
     }
 }

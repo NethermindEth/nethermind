@@ -40,6 +40,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess => true;
+        public bool IsTracingFees => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -93,5 +94,6 @@ namespace Nethermind.Evm.Tracing
         public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
         public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
     }
 }
