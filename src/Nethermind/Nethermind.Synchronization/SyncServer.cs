@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization
                 {
                     if (!_blockTree.IsKnownBlock(block.Number, block.Hash))
                     {
-	                    // we null total difficulty for a block in a block tree as we don't trust the message
+                        // we null total difficulty for a block in a block tree as we don't trust the message
                         UInt256? totalDifficulty = block.TotalDifficulty;
 
                         // Recalculate total difficulty as we don't trust total difficulty from gossip
