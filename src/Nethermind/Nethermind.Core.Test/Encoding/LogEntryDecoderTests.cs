@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((LogEntry)null);
+            Rlp rlp = Rlp.Encode((LogEntry)null!);
             LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
             Assert.Null(decoded);
         }
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test.Encoding
             LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp encoded = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes));
+            LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
 
             Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
             Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");

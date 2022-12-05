@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -26,12 +26,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         private const string WitnessNotFoundResponse =
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"Witness unavailable\"},\"id\":67}";
 
-        private IBlockFinder _blockFinder;
+        private IBlockFinder _blockFinder = null!;
 
-        private WitnessCollector _witnessRepository;
-        private WitnessRpcModule _witnessRpcModule;
+        private WitnessCollector _witnessRepository = null!;
+        private WitnessRpcModule _witnessRpcModule = null!;
 
-        private Block _block;
+        private Block _block = null!;
 
 
         [SetUp]
@@ -48,12 +48,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetOneWitnessHash()
         {
-            _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
+            _blockFinder.FindHeader((BlockParameter)null!).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
 
             using IDisposable tracker = _witnessRepository.TrackOnThisThread();
-            _witnessRepository.Add(_block.Hash);
-            _witnessRepository.Persist(_block.Hash);
+            _witnessRepository.Add(_block.Hash!);
+            _witnessRepository.Persist(_block.Hash!);
 
             string serialized = RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
             serialized.Should().Be(GetOneWitnessHashResponse);
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void WitnessNotFound()
         {
-            _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
+            _blockFinder.FindHeader((BlockParameter)null!).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
 
             string serialized =
