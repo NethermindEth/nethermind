@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
@@ -48,8 +49,6 @@ public class NonceManagerTests
     [Test]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
     {
-
-
         var nonceA1 = _nonceManager.ReserveNonce(TestItem.AddressA);
         _nonceManager.TxAccepted(TestItem.AddressA);
         var nonceA2 = _nonceManager.ReserveNonce(TestItem.AddressA);
@@ -93,5 +92,70 @@ public class NonceManagerTests
         nonces.Enqueue(nonce);
         nonce.Should().Be(new UInt256(reservationsCount));
         nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
+    }
+
+    [Test]
+    public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
+    {
+        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(1);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+
+        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 2);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(3);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(4);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(6);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+    }
+
+    [Test]
+    public void should_reuse_nonce_if_tx_rejected()
+    {
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        _nonceManager.TxRejected(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+
+        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 2);
+        _nonceManager.TxRejected(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(1);
+        _nonceManager.TxAccepted(TestItem.AddressA);
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(2);
+    }
+
+    [Test]
+    [Repeat(10)]
+    public void should_lock_on_same_account()
+    {
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        Task task = Task.Run(() =>
+        {
+            _nonceManager.ReserveNonce(TestItem.AddressA);
+        });
+        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
+        task.Wait(ts);
+        task.IsCompleted.Should().Be(false);
+    }
+
+    [Test]
+    [Repeat(10)]
+    public void should_not_lock_on_different_accounts()
+    {
+        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        Task task = Task.Run(() =>
+        {
+            _nonceManager.ReserveNonce(TestItem.AddressB).Should().Be(0);
+        });
+        TimeSpan ts = TimeSpan.FromMilliseconds(1000);
+        task.Wait(ts);
+        task.IsCompleted.Should().Be(true);
     }
 }

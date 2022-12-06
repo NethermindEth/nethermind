@@ -54,7 +54,7 @@ public class NonceManager : INonceManager
         private HashSet<UInt256> _usedNonces = new();
         private UInt256 _reservedNonce;
         private UInt256 _currentNonce;
-        private static readonly Mutex _mutex = new();
+        private readonly Mutex _mutex = new();
 
         public AddressNonceManager(UInt256 startNonce)
         {
