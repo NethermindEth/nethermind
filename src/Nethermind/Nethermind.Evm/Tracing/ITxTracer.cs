@@ -120,6 +120,10 @@ namespace Nethermind.Evm.Tracing
         /// <summary>
         /// Traces fees and burned fees
         /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="ReportFees"/>
+        /// </remarks>
         bool IsTracingFees { get; }
 
         /// <summary>
@@ -203,7 +207,7 @@ namespace Nethermind.Evm.Tracing
             ReportStackPush(stackItem.ToArray().AsSpan());
         }
 
-        /// <summary>        
+        /// <summary>
         /// </summary>
         /// <param name="stackItem"></param>
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
@@ -270,7 +274,7 @@ namespace Nethermind.Evm.Tracing
             ReportMemoryChange(offset, data.ToArray());
         }
 
-        /// <summary>        
+        /// <summary>
         /// </summary>
         /// <param name="offset"></param>
         /// <param name="data"></param>
@@ -415,6 +419,13 @@ namespace Nethermind.Evm.Tracing
         /// <param name="accessedStorageCells">cell</param>
         /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
         void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+
+        /// <summary>
+        /// Reports fees of a transaction
+        /// </summary>
+        /// <param name="fees">Fees sent to block author</param>
+        /// <param name="burntFees">EIP-1559 burnt fees</param>
+        /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
         void ReportFees(UInt256 fees, UInt256 burntFees);
     }
 }
