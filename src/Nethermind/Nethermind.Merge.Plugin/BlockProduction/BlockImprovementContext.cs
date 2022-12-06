@@ -8,12 +8,14 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
     private CancellationTokenSource? _cancellationTokenSource;
+    private readonly FeesTracer _feesTracer = new();
 
     public BlockImprovementContext(Block currentBestBlock,
         IManualBlockProductionTrigger blockProductionTrigger,
@@ -26,13 +28,14 @@ public class BlockImprovementContext : IBlockImprovementContext
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = blockProductionTrigger
-            .BuildBlock(parentHeader, _cancellationTokenSource.Token, NullBlockTracer.Instance, payloadAttributes)
+            .BuildBlock(parentHeader, _cancellationTokenSource.Token, _feesTracer, payloadAttributes)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
     }
 
     public Task<Block?> ImprovementTask { get; }
 
     public Block? CurrentBestBlock { get; private set; }
+    public UInt256 BlockFees { get; private set; }
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
@@ -41,6 +44,7 @@ public class BlockImprovementContext : IBlockImprovementContext
             if (task.Result is not null)
             {
                 CurrentBestBlock = task.Result;
+                BlockFees = _feesTracer.Fees;
             }
         }
 

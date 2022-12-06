@@ -118,6 +118,11 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingAccess { get; }
 
         /// <summary>
+        /// Traces fees and burned fees
+        /// </summary>
+        bool IsTracingFees { get; }
+
+        /// <summary>
         /// Transaction completed successfully
         /// </summary>
         /// <param name="recipient">Transaction recipient</param>
@@ -410,5 +415,6 @@ namespace Nethermind.Evm.Tracing
         /// <param name="accessedStorageCells">cell</param>
         /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
         void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+        void ReportFees(UInt256 fees, UInt256 burntFees);
     }
 }
