@@ -103,7 +103,6 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
-            // _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonceManager, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
