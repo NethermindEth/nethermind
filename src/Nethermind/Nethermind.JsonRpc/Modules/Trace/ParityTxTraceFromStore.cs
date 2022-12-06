@@ -69,7 +69,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)]
         public long BlockNumber { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }

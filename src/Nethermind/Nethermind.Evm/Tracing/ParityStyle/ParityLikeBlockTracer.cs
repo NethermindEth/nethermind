@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -52,7 +53,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     Value = rewardValue,
                     Author = author,
                     CallType = "reward",
-                    TraceAddress = new int[] { },
+                    TraceAddress = Array.Empty<int>(),
                     Type = "reward",
                     Result = null
                 };
