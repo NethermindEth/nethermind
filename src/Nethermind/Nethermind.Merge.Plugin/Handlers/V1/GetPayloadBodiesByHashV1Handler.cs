@@ -25,15 +25,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> HandleAsync(Keccak[] blockHashes)
         {
-            List<ExecutionPayloadBodyV1Result?> payloadBodies = new(blockHashes.Length);
-            foreach (Keccak hash in blockHashes)
+            var payloadBodies = new ExecutionPayloadBodyV1Result?[blockHashes.Length];
+            for (int i = 0; i < blockHashes.Length; ++i)
             {
-                Block? block = _blockTree.FindBlock(hash);
+                Block? block = _blockTree.FindBlock(blockHashes[i]);
 
-                payloadBodies.Add(block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null);
+                payloadBodies[i] = block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null;
             }
 
-            return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies.ToArray()));
+            return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies));
         }
     }
 }

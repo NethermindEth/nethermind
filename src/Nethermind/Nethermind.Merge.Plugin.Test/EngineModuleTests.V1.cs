@@ -221,7 +221,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
-            var result = rpc.engine_getPayloadBodiesByRangeV1(0, 257);
+            var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
             result.Result.ErrorCode.Should().Be(-32005);
         }
 
