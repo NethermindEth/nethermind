@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -20,7 +21,7 @@ namespace Nethermind.JsonRpc.TraceStore.Tests;
 public class TraceStorePrunerTests
 {
     [Test]
-    public void prunes_old_blocks()
+    public async Task prunes_old_blocks()
     {
         IEnumerable<Keccak> GenerateTraces(MemDb db, BlockTree tree)
         {
@@ -59,6 +60,7 @@ public class TraceStorePrunerTests
         List<Keccak> keys = GenerateTraces(memDb, blockTree).ToList();
         keys.Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null);
         AddNewBlocks(blockTree);
+        await Task.Delay(100);
         keys.Skip(3).Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null); // too old were not removed
         keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b == null); // those were removed
 

@@ -26,14 +26,15 @@ public class DbPersistingBlockTracerTests
         DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
             new(parityTracer, memDb, serializer, LimboLogs.Instance);
 
-        Block block = Build.A.Block.TestObject;
+        Transaction transaction = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(transaction).TestObject;
         dbPersistingTracer.StartNewBlockTrace(block);
-        dbPersistingTracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+        dbPersistingTracer.StartNewTxTrace(transaction);
         dbPersistingTracer.EndTxTrace();
         dbPersistingTracer.EndBlockTrace();
 
         List<ParityLikeTxTrace>? traces = serializer.Deserialize(memDb.Get(block.Hash!));
-        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[] { new() { BlockHash = new Keccak("0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6"), TransactionPosition = -1 } });
+        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[] { new() { BlockHash = block.Hash, TransactionPosition = 0 } });
 
     }
 }
