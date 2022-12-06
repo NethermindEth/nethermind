@@ -238,7 +238,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     private ParityLikeTxTrace? GetTxTrace(Block block, Keccak txHash, List<ParityLikeTxTrace> traces)
     {
         int index = traces.FindIndex(t => t.TransactionHash == txHash);
-        return index != -1 && index < traces.Count ? traces[index] : null;
+        return index != -1 ? traces[index] : null;
     }
 
     private void FilterTraces(List<ParityLikeTxTrace> traces, ParityTraceTypes traceTypes)
