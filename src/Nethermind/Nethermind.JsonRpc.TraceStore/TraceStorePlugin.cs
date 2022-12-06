@@ -20,11 +20,11 @@ public class TraceStorePlugin : INethermindPlugin
     private INethermindApi _api = null!;
     private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
-    private IDbWithSpan _db = null!;
+    private IDbWithSpan? _db;
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger = null!;
-    private ITraceSerializer<ParityLikeTxTrace> _traceSerializer = null!;
+    private ITraceSerializer<ParityLikeTxTrace>? _traceSerializer;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
@@ -66,7 +66,7 @@ public class TraceStorePlugin : INethermindPlugin
             // Setup tracing
             ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db, _traceSerializer, _logManager);
+                new(parityTracer, _db!, _traceSerializer!, _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
         }
 
@@ -81,7 +81,7 @@ public class TraceStorePlugin : INethermindPlugin
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
-                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer, _logManager);
+                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager);
                 apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
             }
         }
@@ -91,8 +91,12 @@ public class TraceStorePlugin : INethermindPlugin
 
     public ValueTask DisposeAsync()
     {
-        _pruner?.Dispose();
-        _db.Dispose();
+        if (Enabled)
+        {
+            _pruner?.Dispose();
+            _db?.Dispose();
+        }
+
         return default;
     }
 }
