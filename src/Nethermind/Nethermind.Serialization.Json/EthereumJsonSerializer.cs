@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Nethermind.Core.Collections;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -14,14 +15,18 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private readonly int? _maxDepth;
         private JsonSerializer _internalSerializer;
         private JsonSerializer _internalReadableSerializer;
 
         private JsonSerializerSettings _settings;
         private JsonSerializerSettings _readableSettings;
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int? maxDepth = null, params JsonConverter[] converters)
         {
+            _maxDepth = maxDepth;
+            BasicConverters.AddRange(converters);
+            ReadableConverters.AddRange(converters);
             RebuildSerializers(maxDepth);
         }
 
@@ -125,7 +130,7 @@ namespace Nethermind.Serialization.Json
             BasicConverters.Add(converter);
             ReadableConverters.Add(converter);
 
-            RebuildSerializers();
+            RebuildSerializers(_maxDepth);
         }
 
         private void RebuildSerializers(int? maxDepth = null)
