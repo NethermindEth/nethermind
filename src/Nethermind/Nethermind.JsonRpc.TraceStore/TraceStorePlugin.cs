@@ -24,7 +24,7 @@ public class TraceStorePlugin : INethermindPlugin
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger = null!;
-    private ITraceSerializer _traceSerializer = null!;
+    private ITraceSerializer<ParityLikeTxTrace> _traceSerializer = null!;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
@@ -41,7 +41,7 @@ public class TraceStorePlugin : INethermindPlugin
         if (Enabled)
         {
             // Setup serialization
-            _traceSerializer = new TraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
+            _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
             _db = (IDbWithSpan)_api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
@@ -66,7 +66,7 @@ public class TraceStorePlugin : INethermindPlugin
             // Setup tracing
             ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, _db, t => _traceSerializer.Serialize(t), _logManager);
+                new(parityTracer, _db, _traceSerializer, _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
         }
 

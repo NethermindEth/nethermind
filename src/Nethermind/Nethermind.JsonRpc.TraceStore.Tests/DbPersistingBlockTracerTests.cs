@@ -22,9 +22,9 @@ public class DbPersistingBlockTracerTests
     {
         ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace);
         MemDb memDb = new();
-        TraceSerializer serializer = new(LimboLogs.Instance);
+        ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
         DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-            new(parityTracer, memDb, t => serializer.Serialize(t), LimboLogs.Instance);
+            new(parityTracer, memDb, serializer, LimboLogs.Instance);
 
         Block block = Build.A.Block.TestObject;
         dbPersistingTracer.StartNewBlockTrace(block);

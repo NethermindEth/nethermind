@@ -9,7 +9,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceSerializer : ITraceSerializer
+public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 {
     private static readonly byte[] _emptyBytes = { 0 };
     private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
@@ -18,11 +18,11 @@ public class TraceSerializer : ITraceSerializer
     private readonly IJsonSerializer _jsonSerializer;
     private readonly bool _verifySerialized;
 
-    public TraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
+    public ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
     {
         _jsonSerializer = new EthereumJsonSerializer(maxDepth);
         _verifySerialized = verifySerialized;
-        _logger = logManager?.GetClassLogger<TraceSerializer>();
+        _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>();
     }
 
     public unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)

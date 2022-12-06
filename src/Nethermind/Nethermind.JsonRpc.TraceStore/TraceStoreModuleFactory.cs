@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -16,7 +17,7 @@ public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     private readonly IDbWithSpan _traceStore;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
-    private readonly ITraceSerializer _traceSerializer;
+    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
     private readonly ILogManager _logManager;
 
     public TraceStoreModuleFactory(
@@ -24,7 +25,7 @@ public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
         IDbWithSpan traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        ITraceSerializer traceSerializer,
+        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
         ILogManager logManager)
     {
         _innerFactory = innerFactory;

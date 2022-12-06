@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.TraceStore;
 public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
 {
     private readonly IDb _db;
-    private readonly Func<IReadOnlyCollection<TTrace>, byte[]> _serialization;
+    private readonly ITraceSerializer<TTrace> _traceSerializer;
     private readonly IBlockTracer _blockTracer;
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
     private Keccak _currentBlockHash = null!;
@@ -30,15 +30,15 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
     /// </summary>
     /// <param name="blockTracer">Internal, actual tracer that does the tracing</param>
     /// <param name="db">Database</param>
-    /// <param name="serialization">Method for serialization</param>
+    /// <param name="traceSerializer">Serializer</param>
     /// <param name="logManager"></param>
     public DbPersistingBlockTracer(BlockTracerBase<TTrace, TTracer> blockTracer,
         IDb db,
-        Func<IReadOnlyCollection<TTrace>, byte[]> serialization,
+        ITraceSerializer<TTrace> traceSerializer,
         ILogManager logManager)
     {
         _db = db;
-        _serialization = serialization;
+        _traceSerializer = traceSerializer;
         _blockTracer = _tracerWithResults = blockTracer;
         _logger = logManager.GetClassLogger<DbPersistingBlockTracer<TTrace, TTracer>>();
     }
@@ -63,7 +63,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
     {
         _blockTracer.EndBlockTrace();
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
-        byte[] tracesSerialized = _serialization(result);
+        byte[] tracesSerialized = _traceSerializer.Serialize(result);
         Keccak currentBlockHash = _currentBlockHash;
         long currentBlockNumber = _currentBlockNumber;
         _db.Set(currentBlockHash, tracesSerialized);

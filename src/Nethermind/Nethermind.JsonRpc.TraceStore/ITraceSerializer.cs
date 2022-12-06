@@ -5,9 +5,9 @@ using Nethermind.Evm.Tracing.ParityStyle;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public interface ITraceSerializer
+public interface ITraceSerializer<TTrace>
 {
-    unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized);
-    List<ParityLikeTxTrace>? Deserialize(Stream serialized);
-    byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces);
+    unsafe List<TTrace>? Deserialize(Span<byte> serialized);
+    List<TTrace>? Deserialize(Stream serialized);
+    byte[] Serialize(IReadOnlyCollection<TTrace> traces);
 }

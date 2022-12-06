@@ -123,7 +123,7 @@ public class TraceStoreRpcModuleTests
             Store = new MemDb();
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
-            TraceSerializer serializer = new(LimboLogs.Instance);
+            ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
             Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance);
             Keccak dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Keccak dbBlock = BlockFinder.Head!.Hash!;

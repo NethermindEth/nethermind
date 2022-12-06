@@ -25,9 +25,9 @@ public class TraceStorePrunerTests
         IEnumerable<Keccak> GenerateTraces(MemDb db, BlockTree tree)
         {
             ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace);
-            TraceSerializer serializer = new(LimboLogs.Instance);
+            ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
             DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
-                new(parityTracer, db, t => serializer.Serialize(t), LimboLogs.Instance);
+                new(parityTracer, db, serializer, LimboLogs.Instance);
 
             Block? current = tree.Head;
             while (current is not null)

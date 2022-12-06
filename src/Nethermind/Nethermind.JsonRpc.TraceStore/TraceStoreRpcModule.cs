@@ -24,7 +24,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     private readonly ITraceRpcModule _traceModule;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
-    private readonly ITraceSerializer _traceSerializer;
+    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
     private readonly ILogger _logger;
 
     private static readonly IDictionary<ParityTraceTypes, Action<ParityLikeTxTrace>> _filters = new Dictionary<ParityTraceTypes, Action<ParityLikeTxTrace>>
@@ -39,7 +39,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         IDbWithSpan traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        ITraceSerializer traceSerializer,
+        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
         ILogManager logManager)
     {
         _traceStore = traceStore;
