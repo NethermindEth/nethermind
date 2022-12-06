@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -186,7 +173,7 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
+                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
                     MainnetSpecProvider.Instance,
                     _cliqueConfig,
                     nodeLogManager);
@@ -215,7 +202,7 @@ namespace Nethermind.Clique.Test
                 UInt256 difficulty = new(1);
                 long number = 0L;
                 int gasLimit = 4700000;
-                UInt256 timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
+                ulong timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
                 extraDataHex += TestItem.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);
                 extraDataHex += TestItem.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);
@@ -428,7 +415,7 @@ namespace Nethermind.Clique.Test
             public Block GetBlock(PrivateKey privateKey, long number)
             {
                 Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
-                if (block == null)
+                if (block is null)
                 {
                     throw new InvalidOperationException($"Cannot find block {number}");
                 }

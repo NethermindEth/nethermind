@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -35,11 +22,12 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
         {
-            long blockNumberParam = isShanghai ? BlockNumber : BlockNumber - 1;
+            ulong timestampParam = isShanghai ? Timestamp : Timestamp - 1;
             Prepare codeInitializer = Prepare.EvmCode;
             for (int i = 0; i < repeat; i++)
             {
@@ -47,7 +35,7 @@ namespace Nethermind.Evm.Test
             }
 
             byte[] code = codeInitializer.Done;
-            TestAllTracerWithOutput receipt = Execute(blockNumberParam, 1_000_000, code);
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 1_000_000, code, timestamp: timestampParam);
             return receipt;
         }
 

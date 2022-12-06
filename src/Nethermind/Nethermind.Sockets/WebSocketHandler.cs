@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -35,7 +38,7 @@ namespace Nethermind.Sockets
                     if (t.IsFaulted)
                     {
                         Exception? innerException = t.Exception;
-                        while (innerException?.InnerException != null)
+                        while (innerException?.InnerException is not null)
                         {
                             innerException = innerException.InnerException;
                         }

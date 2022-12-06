@@ -1,25 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -56,9 +42,9 @@ namespace Nethermind.Blockchain.Filters
         public IEnumerable<T> GetFilters<T>() where T : FilterBase =>
             _filters.Select(f => f.Value).OfType<T>();
 
-        public T GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
                 ? filter as T
-                : throw new InvalidOperationException($"Filter with ID {filterId} not found");
+                : null;
 
         public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
@@ -112,7 +98,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
-            if (topics == null)
+            if (topics is null)
             {
                 return SequenceTopicsFilter.AnyTopic;
             }
@@ -130,7 +116,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
-            if (filterTopic == null)
+            if (filterTopic is null)
             {
                 return AnyTopic.Instance;
             }
@@ -192,7 +178,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = obj as IEnumerable<string>;
-            if (topics == null)
+            if (topics is null)
             {
                 return null;
             }

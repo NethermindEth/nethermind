@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -206,7 +192,7 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             Keccak notExistingHash = TestItem.KeccakH;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            ulong timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
 
@@ -342,14 +328,14 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc)
         {
             Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            ulong timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
             return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient);
         }
 
         private async Task<ExecutionPayloadV1> PrepareAndGetPayloadResultV1(
-            IEngineRpcModule rpc, Keccak currentHead, UInt256 timestamp, Keccak random, Address feeRecipient)
+            IEngineRpcModule rpc, Keccak currentHead, ulong timestamp, Keccak random, Address feeRecipient)
         {
             PayloadAttributes? payloadAttributes = new()
             {
@@ -1209,7 +1195,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            ulong timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = TestItem.AddressC;
             string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -1273,7 +1259,7 @@ namespace Nethermind.Merge.Plugin.Test
         private async Task<ExecutionPayloadV1> BuildAndSendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain, bool waitForBlockImprovement)
         {
             Keccak head = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            ulong timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
             ExecutionPayloadV1 executionPayload = await BuildAndGetPayloadResult(rpc, chain, head,
@@ -1286,7 +1272,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task<ExecutionPayloadV1> BuildAndGetPayloadOnBranch(
             IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
-            UInt256 timestamp, Keccak random, Address feeRecipient)
+            ulong timestamp, Keccak random, Address feeRecipient)
         {
             PayloadAttributes payloadAttributes =
                 new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
@@ -1572,7 +1558,7 @@ namespace Nethermind.Merge.Plugin.Test
         private async Task<ExecutionPayloadV1> BuildAndGetPayloadResult(
             IEngineRpcModule rpc, MergeTestBlockchain chain, Keccak headBlockHash, Keccak finalizedBlockHash,
             Keccak safeBlockHash,
-            UInt256 timestamp, Keccak random, Address feeRecipient, bool waitForBlockImprovement = true)
+            ulong timestamp, Keccak random, Address feeRecipient, bool waitForBlockImprovement = true)
         {
             using SemaphoreSlim blockImprovementLock = new(0);
             if (waitForBlockImprovement)
@@ -1610,7 +1596,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             Keccak parentHead = chain.BlockTree.Head!.ParentHash!;
 
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            ulong timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
 

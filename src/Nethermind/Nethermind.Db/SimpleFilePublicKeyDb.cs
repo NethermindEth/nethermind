@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -45,7 +32,7 @@ namespace Nethermind.Db
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (dbDirectoryPath == null) throw new ArgumentNullException(nameof(dbDirectoryPath));
+            if (dbDirectoryPath is null) throw new ArgumentNullException(nameof(dbDirectoryPath));
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";
@@ -63,7 +50,7 @@ namespace Nethermind.Db
             get => _cache[key];
             set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _cache.TryRemove(key, out _);
                 }
@@ -121,7 +108,7 @@ namespace Nethermind.Db
                 using StreamWriter streamWriter = new(DbPath);
                 foreach ((byte[] key, byte[] value) in snapshot)
                 {
-                    if (value != null)
+                    if (value is not null)
                     {
                         key.StreamHex(streamWriter);
                         streamWriter.Write(',');
@@ -167,7 +154,7 @@ namespace Nethermind.Db
             {
                 try
                 {
-                    if (BackupPath != null && File.Exists(BackupPath))
+                    if (BackupPath is not null && File.Exists(BackupPath))
                     {
                         if (File.Exists(_dbPath))
                         {
