@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+
 namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
@@ -44,5 +46,23 @@ namespace Nethermind.Serialization.Rlp
 
             return Rlp.Encode(rlpSequence);
         }
+
+        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            if (items == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+
+            Rlp[] rlpSequence = new Rlp[items.Count];
+            int i = 0;
+            foreach (T? item in items)
+            {
+                rlpSequence[i++] = item == null ? Rlp.OfEmptySequence : decoder.Encode(item, behaviors);
+            }
+
+            return Rlp.Encode(rlpSequence);
+        }
+
     }
 }
