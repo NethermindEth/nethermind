@@ -81,10 +81,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                     await Blockchain.AddBlock(transactions.ToArray());
                 }
             }
-            public ITraceRpcModule TraceRpcModule { get; private set; }
-            public IJsonRpcConfig JsonRpcConfig { get; private set; }
 
-            public TestRpcBlockchain Blockchain { get; set; }
+            public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
+            public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
+            public TestRpcBlockchain Blockchain { get; set; } = null!;
 
         }
         [Test]

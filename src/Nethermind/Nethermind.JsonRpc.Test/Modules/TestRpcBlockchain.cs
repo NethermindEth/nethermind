@@ -35,14 +35,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IEthRpcModule? EthRpcModule { get; private set; }
-        public IBlockchainBridge? Bridge { get; private set; }
-        public ITxSealer? TxSealer { get; private set; }
-        public ITxSender? TxSender { get; private set; }
-        public ILogFinder? LogFinder { get; private set; }
+        public IEthRpcModule EthRpcModule { get; private set; } = null!;
+        public IBlockchainBridge Bridge { get; private set; } = null!;
+        public ITxSealer TxSealer { get; private set; } = null!;
+        public ITxSender TxSender { get; private set; } = null!;
+        public ILogFinder LogFinder { get; private set; } = null!;
 
-        public IReceiptFinder? ReceiptFinder { get; private set; }
-        public IGasPriceOracle? GasPriceOracle { get; private set; }
+        public IReceiptFinder ReceiptFinder { get; private set; } = null!;
+        public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);

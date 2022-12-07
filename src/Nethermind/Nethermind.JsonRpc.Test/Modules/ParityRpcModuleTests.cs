@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction1.Signature!.V = 37;
-            stateProvider.CreateAccount(transaction1.SenderAddress, UInt256.UInt128MaxValue);
+            stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
             var transaction2 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
