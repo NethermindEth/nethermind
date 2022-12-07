@@ -116,5 +116,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
         /// </summary>
         public ulong? Eip3651TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// this feild will indicate the timestamp at which this Verkle Trees will be enabled.
+        /// </summary>
+        public ulong? VerkleTreeTransitionTimestamp { get; set; }
     }
 }

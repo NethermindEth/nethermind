@@ -230,7 +230,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -266,6 +266,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
+        /// State - Verkle Trees
+        /// </summary>
+        bool IsVerkleTreeEipEnabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -279,7 +284,7 @@ namespace Nethermind.Core.Specs
 
         public long Eip1559TransitionBlock { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -349,5 +354,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue => null;
 
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool VerkleTreeEnabled => IsVerkleTreeEipEnabled;
     }
 }
