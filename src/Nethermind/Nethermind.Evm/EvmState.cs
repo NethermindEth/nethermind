@@ -1,5 +1,18 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+//
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+//
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Concurrent;
@@ -38,7 +51,7 @@ namespace Nethermind.Evm
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// compound noun 'return stack' which is a stack of subroutine return values.
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
@@ -106,14 +119,21 @@ namespace Nethermind.Evm
         // As we can add here from VM, we need it as ICollection
         public ICollection<LogEntry> Logs => _logs;
 
+        /// <summary>
+        /// Verkle Tree: to maintain a list of all accessed subtrees and leaves
+        /// </summary>
+        public IVerkleWitness VerkleTreeWitness => _verkleWitness;
+
         private readonly JournalSet<Address> _accessedAddresses;
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
+        private readonly IVerkleWitness _verkleWitness;
         private readonly int _accessedAddressesSnapshot;
         private readonly int _accessedStorageKeysSnapshot;
         private readonly int _destroyListSnapshot;
         private readonly int _logsSnapshot;
+        private readonly int _verkleWitnessSnapshot;
 
         public int DataStackHead = 0;
 
@@ -137,7 +157,33 @@ namespace Nethermind.Evm
                 false,
                 null,
                 isContinuation,
-                false)
+                false,
+                new VerkleWitness())
+        {
+            GasAvailable = gasAvailable;
+            Env = env;
+        }
+
+        public EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            bool isTopLevel,
+            Snapshot snapshot,
+            bool isContinuation,
+            IVerkleWitness verkleWitness)
+            : this(gasAvailable,
+                env,
+                executionType,
+                isTopLevel,
+                snapshot,
+                0L,
+                0L,
+                false,
+                null,
+                isContinuation,
+                false,
+                verkleWitness)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -154,7 +200,35 @@ namespace Nethermind.Evm
             bool isStatic,
             EvmState? stateForAccessLists,
             bool isContinuation,
-            bool isCreateOnPreExistingAccount)
+            bool isCreateOnPreExistingAccount) :
+            this(gasAvailable,
+                env,
+                executionType,
+                isTopLevel,
+                snapshot,
+                outputDestination,
+                outputLength,
+                isStatic,
+                stateForAccessLists,
+                isContinuation,
+                isCreateOnPreExistingAccount,
+                new VerkleWitness()
+            )
+        { }
+
+        internal EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            bool isTopLevel,
+            Snapshot snapshot,
+            long outputDestination,
+            long outputLength,
+            bool isStatic,
+            EvmState? stateForAccessLists,
+            bool isContinuation,
+            bool isCreateOnPreExistingAccount,
+            IVerkleWitness verkleWitness)
         {
             if (isTopLevel && isContinuation)
             {
@@ -172,6 +246,7 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+            _verkleWitness = verkleWitness;
             if (stateForAccessLists is not null)
             {
                 // if we are sub-call, then we use the main collection for this transaction
@@ -179,6 +254,7 @@ namespace Nethermind.Evm
                 _accessedStorageCells = stateForAccessLists._accessedStorageCells;
                 _destroyList = stateForAccessLists._destroyList;
                 _logs = stateForAccessLists._logs;
+                _verkleWitness = stateForAccessLists._verkleWitness;
             }
             else
             {
@@ -187,12 +263,15 @@ namespace Nethermind.Evm
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
                 _logs = new JournalCollection<LogEntry>();
+                _verkleWitness = new VerkleWitness();
             }
 
             _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
             _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
             _destroyListSnapshot = _destroyList.TakeSnapshot();
             _logsSnapshot = _logs.TakeSnapshot();
+
+            _verkleWitnessSnapshot = _verkleWitness.TakeSnapshot();
 
         }
 
@@ -288,6 +367,7 @@ namespace Nethermind.Evm
                 _destroyList.Restore(_destroyListSnapshot);
                 _accessedAddresses.Restore(_accessedAddressesSnapshot);
                 _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
+                _verkleWitness.Restore(_verkleWitnessSnapshot);
             }
         }
     }
