@@ -1,7 +1,7 @@
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Exceptions;
-using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test;

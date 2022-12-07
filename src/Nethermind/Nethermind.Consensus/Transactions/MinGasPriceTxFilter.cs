@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only 
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -35,6 +35,7 @@ namespace Nethermind.Consensus.Transactions
             UInt256 premiumPerGas = tx.GasPrice;
             UInt256 baseFeePerGas = UInt256.Zero;
             long blockNumber = (parentHeader?.Number ?? 0) + 1;
+            // SecondsPerSlot fix incoming
             ulong blockTimestamp = (parentHeader?.Timestamp ?? 0) + _blocksConfig.SecondsPerSlot;
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber, blockTimestamp);
             if (spec.IsEip1559Enabled)

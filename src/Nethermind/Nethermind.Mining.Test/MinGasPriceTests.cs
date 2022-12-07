@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only 
 
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.TxPool;

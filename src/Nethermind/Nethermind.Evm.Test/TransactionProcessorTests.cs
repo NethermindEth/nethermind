@@ -23,6 +23,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Evm.Test
 {

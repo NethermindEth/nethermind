@@ -30,8 +30,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
-using Nethermind.Evm;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {

@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Reflection;
-using Nethermind.Config;
-using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm
+namespace Nethermind.Config
 {
     public interface IBlocksConfig : IConfig
     {

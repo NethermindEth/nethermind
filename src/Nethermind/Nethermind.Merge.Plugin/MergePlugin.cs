@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

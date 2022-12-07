@@ -17,7 +17,7 @@ using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
-using Nethermind.Evm;
+using Nethermind.Config;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

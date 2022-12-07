@@ -4,8 +4,8 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin
 {

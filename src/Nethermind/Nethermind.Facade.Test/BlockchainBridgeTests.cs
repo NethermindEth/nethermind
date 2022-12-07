@@ -27,7 +27,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
+using Nethermind.Config;
 
 namespace Nethermind.Facade.Test
 {

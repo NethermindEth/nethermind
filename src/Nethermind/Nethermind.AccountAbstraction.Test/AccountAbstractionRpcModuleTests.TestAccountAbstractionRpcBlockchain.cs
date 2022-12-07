@@ -39,7 +39,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
-using Nethermind.Evm;
+using Nethermind.Config;
 
 namespace Nethermind.AccountAbstraction.Test
 {

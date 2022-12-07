@@ -9,7 +9,6 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Exceptions;
-using Nethermind.Evm;
 
 namespace Nethermind.Init.Steps
 {
