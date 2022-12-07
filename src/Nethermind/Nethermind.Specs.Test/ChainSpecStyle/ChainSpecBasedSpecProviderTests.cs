@@ -699,7 +699,8 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
-                Eip2537TransitionTimestamp = 1000000024
+                Eip2537TransitionTimestamp = 1000000024,
+                VerkleTreeTransitionTimestamp = 1000000030
             }
         };
 
@@ -778,6 +779,8 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3860Enabled = true;
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
+        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
+        TestTransitions((40001L, 1000000030), r => { r.IsVerkleTreeEipEnabled = true; });
     }
 
     private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()

@@ -147,6 +147,13 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        private ulong? _overridenVerkleTreeTransitionTimeStamp;
+        public ulong VerkleTreeTransitionTimeStamp
+        {
+            get =>_overridenVerkleTreeTransitionTimeStamp ?? _spec.VerkleTreeTransitionTimeStamp;
+            set => _overridenVerkleTreeTransitionTimeStamp = value;
+        }
+
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
@@ -155,5 +162,6 @@ namespace Nethermind.Specs.Test
         public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
         public bool IsEip5656Enabled => _spec.IsEip5656Enabled;
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
+        public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
     }
 }

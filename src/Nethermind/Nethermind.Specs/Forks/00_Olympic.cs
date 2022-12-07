@@ -24,6 +24,7 @@ namespace Nethermind.Specs.Forks
             IsEip3607Enabled = true;
             MaximumUncleCount = 2;
             Eip1559TransitionBlock = long.MaxValue;
+            VerkleTreeTransitionTimeStamp = ulong.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
         }
