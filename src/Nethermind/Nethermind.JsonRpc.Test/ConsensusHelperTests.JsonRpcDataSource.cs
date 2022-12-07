@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Net.Http;
@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private abstract class JsonRpcDataSource<T> : IConsensusDataSource<T>
+        private abstract class JsonRpcDataSource<T2> : IConsensusDataSource<T2>
         {
             private readonly Uri _uri;
             protected readonly IJsonSerializer _serializer;
@@ -57,10 +57,10 @@ namespace Nethermind.JsonRpc.Test
                 public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
-            public virtual async Task<(T, string)> GetData()
+            public virtual async Task<(T2, string)> GetData()
             {
                 string jsonData = await GetJsonData();
-                return (_serializer.Deserialize<JsonRpcSuccessResponse<T>>(jsonData).Result, jsonData);
+                return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
             }
 
             public abstract Task<string> GetJsonData();

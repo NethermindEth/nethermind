@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Test
             _enabledModules = new[] { ModuleType.Eth, ModuleType.Web3, ModuleType.Net };
         }
 
-        private string[] _enabledModules;
+        private string[] _enabledModules = null!;
 
         [TearDown]
         public void TearDown()

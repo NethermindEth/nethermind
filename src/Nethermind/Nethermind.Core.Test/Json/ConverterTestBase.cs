@@ -20,9 +20,11 @@ namespace Nethermind.Core.Test.Json
             serializer.Serialize(writer, item);
             string result = builder.ToString();
             JsonReader reader = new JsonTextReader(new StringReader(result));
-            T deserialized = serializer.Deserialize<T>(reader);
+            T? deserialized = serializer.Deserialize<T>(reader);
 
+#pragma warning disable CS8604
             Assert.True(equalityComparer(item, deserialized));
+#pragma warning restore CS8604
         }
     }
 }

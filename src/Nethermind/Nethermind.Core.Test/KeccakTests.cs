@@ -59,14 +59,14 @@ namespace Nethermind.Core.Test
         [Test]
         public void Null_string()
         {
-            string result = Keccak.Compute((string)null).ToString();
+            string result = Keccak.Compute((string)null!).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
         [Test]
         public void Null_bytes()
         {
-            string result = Keccak.Compute((byte[])null).ToString();
+            string result = Keccak.Compute((byte[])null!).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
@@ -82,9 +82,13 @@ namespace Nethermind.Core.Test
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
         public void Compare(string a, string b, int result)
         {
+#pragma warning disable CS8600
             Keccak keccakA = a is null ? null : new Keccak(a);
             Keccak keccakB = b is null ? null : new Keccak(b);
+#pragma warning restore CS8600
+#pragma warning disable CS8602
             Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
+#pragma warning restore CS8602
         }
 
         [Test]
