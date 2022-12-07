@@ -39,10 +39,10 @@ namespace Nethermind.JsonRpc.Test
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
-        private IJsonRpcService _jsonRpcService;
-        private IConfigProvider _configurationProvider;
-        private ILogManager _logManager;
-        private JsonRpcContext _context;
+        private IJsonRpcService _jsonRpcService = null!;
+        private IConfigProvider _configurationProvider = null!;
+        private ILogManager _logManager = null!;
+        private JsonRpcContext _context = null!;
 
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
         {
@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Test
                 address = "0x1f88f1f195afa192cfee860698584c030f4c9db2",
                 topics = new List<object>
                 {
-                    "0x000000000000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b", null,
+                    "0x000000000000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b", null!,
                     new[]
                     {
                         "0x000000000000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b",

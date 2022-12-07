@@ -576,7 +576,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await blockchain.AddBlock(transaction);
             string[] traceTypes = { "trace" };
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
-            Assert.AreEqual(TestItem.AddressB, traces.Data.Action.From);
+            Assert.AreEqual(TestItem.AddressB, traces.Data.Action!.From);
             Assert.AreEqual(TestItem.AddressC, traces.Data.Action.To);
             Assert.AreEqual("call", traces.Data.Action.CallType);
             Assert.IsTrue(traces.GetResult().ResultType == ResultType.Success);
@@ -605,7 +605,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await blockchain.AddBlock(transaction);
             string[] traceTypes = { "rewards" };
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
-            Assert.AreEqual("reward", traces.Data.Action.CallType);
+            Assert.AreEqual("reward", traces.Data.Action!.CallType);
             Assert.AreEqual(UInt256.Parse("2000000000000000000"), traces.Data.Action.Value);
             Assert.IsTrue(traces.GetResult().ResultType == ResultType.Success);
         }

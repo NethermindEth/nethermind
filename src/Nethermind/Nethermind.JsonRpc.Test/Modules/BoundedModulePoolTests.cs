@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class BoundedModulePoolTests
     {
-        private BoundedModulePool<IEthRpcModule> _modulePool;
+        private BoundedModulePool<IEthRpcModule> _modulePool = null!;
 
         [SetUp]
         public async Task Initialize()
