@@ -8,6 +8,7 @@ using System.Linq;
 using Castle.Core.Internal;
 using FluentAssertions;
 using FluentAssertions.Json;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
