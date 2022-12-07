@@ -77,13 +77,12 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            int itemsRemaining = decoderContext.ReadNumberOfItemsRemaining(headerCheck);
-            if (itemsRemaining >= 1)
+            if (decoderContext.Position < headerCheck)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             }
 
-            if (itemsRemaining >= 2)
+            if (decoderContext.Position < headerCheck)
             {
                 blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
             }

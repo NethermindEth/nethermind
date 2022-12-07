@@ -389,6 +389,24 @@ namespace Nethermind.Merkleization
             }
         }
 
+        public static void Ize(out UInt256 root, Span<byte> value, ulong maxLength = 0U)
+        {
+            const int typeSize = sizeof(byte);
+            ulong limit = (maxLength * typeSize + 31) / 32;
+            int partialChunkLength = value.Length % (32 / typeSize);
+            if (partialChunkLength > 0)
+            {
+                Span<byte> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+                Span<byte> lastChunk = stackalloc byte[32 / typeSize];
+                value[^partialChunkLength..].CopyTo(lastChunk);
+                Ize(out root, MemoryMarshal.Cast<byte, Chunk>(fullChunks), MemoryMarshal.Cast<byte, Chunk>(lastChunk), limit);
+            }
+            else
+            {
+                Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value), limit);
+            }
+        }
+
         public static void Ize(out UInt256 root, Span<UInt128> value)
         {
             const int typeSize = 16;

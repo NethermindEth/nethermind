@@ -233,6 +233,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithMaxFeePerGas(1)
                 .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
                 .WithChainId(TestBlockchainIds.ChainId)
+                .WithBlobVersionedHashes(1)
                 .WithSignature(signature).TestObject;
 
             TxValidator txValidator = new(TestBlockchainIds.ChainId);

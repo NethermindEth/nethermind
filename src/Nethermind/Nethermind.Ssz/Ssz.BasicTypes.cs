@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Dirichlet.Numerics;
+using UInt256 = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Ssz
 {
@@ -43,6 +44,13 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, UInt256 value, ref int offset)
+        {
+            Encode(span.Slice(offset, 32), value);
+            offset += 32;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, bool value, ref int offset)
         {
             Encode(span.Slice(offset, 1), value);
@@ -57,6 +65,10 @@ namespace Nethermind.Ssz
         public static void Encode(Span<byte> span, byte value)
         {
             span[0] = value;
+        }
+        public static void Encode(Span<byte> span, byte value, ref int offset)
+        {
+            span[offset++] = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -193,7 +205,7 @@ namespace Nethermind.Ssz
         public static void Encode(Span<byte> span, ReadOnlySpan<byte> value)
         {
             const int typeSize = 1;
-            if (span.Length != value.Length * typeSize)
+            if (span.Length < value.Length * typeSize)
             {
                 ThrowTargetLength<byte[]>(span.Length, value.Length);
             }
@@ -208,7 +220,7 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte DecodeByte(Span<byte> span)
+        public static byte DecodeByte(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 1;
             if (span.Length != expectedLength)
@@ -217,6 +229,12 @@ namespace Nethermind.Ssz
             }
 
             return span[0];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte DecodeByte(ReadOnlySpan<byte> span, ref int offset)
+        {
+            return span[offset++];
         }
 
         public static ushort DecodeUShort(Span<byte> span)
@@ -276,7 +294,7 @@ namespace Nethermind.Ssz
             return result;
         }
 
-        public static UInt256 DecodeUInt256(Span<byte> span)
+        public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 32;
             if (span.Length != expectedLength)
@@ -288,8 +306,18 @@ namespace Nethermind.Ssz
             ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
             ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(16, 8));
             ulong s3 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(24, 8));
-            UInt256.Create(out UInt256 result, s0, s1, s2, s3);
-            return result;
+            return new UInt256(s0, s1, s2, s3);
+        }
+
+        public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span, ref int offset)
+        {
+            ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, 8));
+            ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset + 8, 8));
+            ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset + 16, 8));
+            ulong s3 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset + 24, 8));
+
+            offset += 32;
+            return new UInt256(s0, s1, s2, s3);
         }
 
         public static UInt256[] DecodeUInts256(Span<byte> span)
@@ -304,6 +332,19 @@ namespace Nethermind.Ssz
             for (int i = 0; i < span.Length / typeSize; i++)
             {
                 result[i] = DecodeUInt256(span.Slice(i * typeSize, typeSize));
+            }
+
+            return result;
+        }
+
+        public static byte[][] DecodeBytesArrays(ReadOnlySpan<byte> span, int itemsCount, int itemLength, ref int offset)
+        {
+            byte[][] result = new byte[itemsCount][];
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+                result[i] = span.Slice(offset, itemLength).ToArray();
+                offset += itemLength;
             }
 
             return result;

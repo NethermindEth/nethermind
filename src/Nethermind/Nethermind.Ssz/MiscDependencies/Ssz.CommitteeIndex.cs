@@ -4,12 +4,11 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
-    public partial class Ssz
+    public static partial class Ssz
     {
         public const int CommitteeIndexLength = sizeof(ulong);
 

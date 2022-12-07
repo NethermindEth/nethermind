@@ -38,7 +38,7 @@ namespace Nethermind.State.Proofs
             // a temporary trie would be a trie that exists to create a state root only and then be disposed of
             for (int i = 0; i < txs.Count; i++)
             {
-                Rlp transactionRlp = _txDecoder.Encode(txs[i], RlpBehaviors.SkipTypedWrapping);
+                Rlp transactionRlp = _txDecoder.Encode(txs[i], RlpBehaviors.SkipTypedWrapping | RlpBehaviors.Raw);
                 Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
 

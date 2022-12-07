@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using System.Collections.Generic;
 using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
+using Nethermind.Crypto;
+using Nethermind.Core.Extensions;
+using System.Linq;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Core.Test
 {

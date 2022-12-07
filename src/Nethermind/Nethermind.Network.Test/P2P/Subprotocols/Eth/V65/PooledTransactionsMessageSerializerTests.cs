@@ -70,5 +70,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _ = message.ToString();
             _ = message2.ToString();
         }
+
+        [Test]
+        public void Roundtrip_different_txs()
+        {
+            PooledTransactionsMessageSerializer serializer = new();
+            PooledTransactionsMessage message = new(Build.A.BunchOfTransactions());
+
+            SerializerTester.TestZero(serializer, message);
+        }
     }
 }

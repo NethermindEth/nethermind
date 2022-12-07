@@ -17,14 +17,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
+            BlockBodiesMessageSerializer serializer = new();
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            Address to = Build.An.Address.FromNumber(1).TestObject;
-            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(NetworkId.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            tx.SenderAddress = null;
-            BlockBodiesMessage message = new();
-            message.Bodies = new[] { new BlockBody(new[] { tx }, new[] { header }) };
+            BlockBodiesMessage message = new()
+            {
+                Bodies = new[] { new BlockBody(Build.A.BunchOfTransactions(), new[] { header }) }
+            };
 
-            BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
             SerializerTester.TestZero(serializer, message);
         }
 

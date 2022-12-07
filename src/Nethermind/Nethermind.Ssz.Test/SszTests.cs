@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
+using UInt256 = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Ssz.Test
 {

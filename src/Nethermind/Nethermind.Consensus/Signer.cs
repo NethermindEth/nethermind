@@ -45,7 +45,7 @@ namespace Nethermind.Consensus
 
         public ValueTask Sign(Transaction tx)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            Keccak hash = Keccak.Compute(Rlp.EncodeForSigning(tx, true, _chainId));
             tx.Signature = Sign(hash);
             tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
             return default;

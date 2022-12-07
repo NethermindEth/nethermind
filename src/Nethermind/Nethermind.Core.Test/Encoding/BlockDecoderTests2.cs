@@ -64,7 +64,7 @@ public class BlockDecoderTests
         var block =
             Build.A.Block
                 .WithNumber(1)
-                .WithTransactions(new Transaction[]{  Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(new []{ new byte[32] }).TestObject })
+                .WithTransactions(Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(new []{ new byte[32] }).TestObject)
                 .WithUncles(Build.A.BlockHeader.TestObject)
                 .WithWithdrawals(8)
                 .WithExcessDataGas(0)
