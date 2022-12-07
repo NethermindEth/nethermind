@@ -16,6 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         private (ForkActivation Activation, ReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
+        private long _biggestBlockTransition;
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec)
         {
@@ -99,10 +100,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 transitionBlockNumbers.Add(bombDelay.Key);
             }
-
+            _biggestBlockTransition = transitionBlockNumbers.Last();
             TransitionActivations = transitionBlockNumbers.Skip(1).Select(bn => new ForkActivation(bn))
                 .Union(
-                transitionTimestamps.Select(ts => new ForkActivation(transitionBlockNumbers.Last(), ts))
+                transitionTimestamps.Select(ts => new ForkActivation(_biggestBlockTransition, ts))
                 )
                 .ToArray();
             _transitions = new (ForkActivation, ReleaseSpec Release)[transitionBlockNumbers.Count + transitionTimestamps.Count];
@@ -225,7 +226,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
-            if (activation.Timestamp is null)
+            if (activation.Timestamp is null || activation.BlockNumber > _biggestBlockTransition)
             {
                 return _transitions.TryGetSearchedItem(activation,
                     CompareTransitionOnBlock,
@@ -238,15 +239,15 @@ namespace Nethermind.Specs.ChainSpecStyle
             for (int i = 0; i < _transitions.Length; i++)
             {
                 (ForkActivation Activation, IReleaseSpec Release) transition = _transitions[i];
-                long currentBlockNumber = transition.Activation.BlockNumber;
-                if (currentBlockNumber <= activation.BlockNumber && currentBlockNumber > biggestBlockNumber)
-                    biggestBlockNumber = currentBlockNumber;
+                long transitionBlockNumber = transition.Activation.BlockNumber;
+                if (transitionBlockNumber <= activation.BlockNumber && transitionBlockNumber > biggestBlockNumber)
+                    biggestBlockNumber = transitionBlockNumber;
             }
             for (int i = 0; i < _transitions.Length; i++)
             {
                 (ForkActivation Activation, IReleaseSpec Release) transition = _transitions[i];
-                long currentBlockNumber = transition.Activation.BlockNumber;
-                if (currentBlockNumber == biggestBlockNumber)
+                long transitionBlockNumber = transition.Activation.BlockNumber;
+                if (transitionBlockNumber == biggestBlockNumber)
                     filterdByBlockNumber.Add(transition);
             }
             if (filterdByBlockNumber.Count == 1)

@@ -91,14 +91,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3198Enabled = true;
-            List<ForkActivation> forkActivationsToTest2 = new()
-            {
-                (2, 4662),
-                (3, 4662),
-                (3, 4671),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest2);
             expectedSpec.IsEip3675Enabled = true;
             List<ForkActivation> forkActivationsToTest3 = new()
             {
