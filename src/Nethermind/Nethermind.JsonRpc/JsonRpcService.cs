@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -29,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc;
@@ -123,11 +111,18 @@ public class JsonRpcService : IJsonRpcService
         (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
     {
         ParameterInfo[] expectedParameters = method.Info.GetParameters();
-        string?[] providedParameters = request.Params ?? Array.Empty<string>();
+        JToken?[] providedParameters = request.Params?.ToArray() ?? Array.Empty<JToken>();
 
         LogRequest(methodName, providedParameters, expectedParameters);
 
-        int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
+        int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count((token) =>
+        {
+            if (token.Type == JTokenType.Null) return true;
+
+            if (token.Type == JTokenType.String && string.IsNullOrEmpty(token.Value<string>())) return true;
+
+            return false;
+        }));
         int explicitNullableParamsCount = 0;
 
         if (missingParamsCount != 0)
@@ -172,7 +167,7 @@ public class JsonRpcService : IJsonRpcService
             parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
             if (parameters is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
+                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters.Select(token => token.ToString()))}]");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
             }
         }
@@ -202,11 +197,11 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (TargetParameterCountException e)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
         catch (TargetInvocationException e) when (e.InnerException is JsonException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
         }
         catch (Exception e) when (e.InnerException is OperationCanceledException)
         {
@@ -215,7 +210,7 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (Exception e) when (e.InnerException is InsufficientBalanceException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
         }
         finally
         {
@@ -247,7 +242,7 @@ public class JsonRpcService : IJsonRpcService
         return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
     }
 
-    private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
+    private void LogRequest(string methodName, JToken?[] providedParameters, ParameterInfo[] expectedParameters)
     {
         if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
         {
@@ -264,7 +259,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 string? parameter = expectedParameters.ElementAtOrDefault(i)?.Name == "passphrase"
                     ? "{passphrase}"
-                    : providedParameters[i];
+                    : providedParameters[i].ToString();
 
                 if (paramsLength > _maxLoggedRequestParametersCharacters)
                 {
@@ -290,14 +285,14 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, string?[] providedParameters, int missingParamsCount)
+    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JToken?[] providedParameters, int missingParamsCount)
     {
         try
         {
             List<object> executionParameters = new List<object>();
             for (int i = 0; i < providedParameters.Length; i++)
             {
-                string providedParameter = providedParameters[i];
+                JToken providedParameter = providedParameters[i];
                 ParameterInfo expectedParameter = expectedParameters[i];
                 Type paramType = expectedParameter.ParameterType;
                 if (paramType.IsByRef)
@@ -305,7 +300,7 @@ public class JsonRpcService : IJsonRpcService
                     paramType = paramType.GetElementType();
                 }
 
-                if (string.IsNullOrWhiteSpace(providedParameter))
+                if (providedParameter == null || providedParameter.Type == JTokenType.Null)
                 {
                     if (providedParameter is null && IsNullableParameter(expectedParameter))
                     {
@@ -322,25 +317,27 @@ public class JsonRpcService : IJsonRpcService
                 if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
                 {
                     IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                    jsonRpcParam!.ReadJson(_serializer, providedParameter);
+                    // TODO: make IJsonRpcParam accept JToken
+                    jsonRpcParam!.ReadJson(_serializer, providedParameter.ToString());
                     executionParam = jsonRpcParam;
                 }
                 else if (paramType == typeof(string))
                 {
-                    executionParam = providedParameter;
+                    executionParam = providedParameter.ToString();
                 }
                 else if (paramType == typeof(string[]))
                 {
-                    executionParam = _serializer.Deserialize<string[]>(new JsonTextReader(new StringReader(providedParameter)));
+                    executionParam = _serializer.Deserialize<string[]>(new JTokenReader(providedParameter));
                 }
                 else
                 {
-                    if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
+                    if (providedParameter.Type is JTokenType.Array or JTokenType.Object)
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                        executionParam = _serializer.Deserialize(new JTokenReader(providedParameter), paramType);
                     }
                     else
                     {
+                        // I don't know why this is the case
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
                     }
                 }
@@ -402,7 +399,7 @@ public class JsonRpcService : IJsonRpcService
 
     private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
         JsonRpcErrorResponse response = new(disposableAction)
         {
             Error = new Error

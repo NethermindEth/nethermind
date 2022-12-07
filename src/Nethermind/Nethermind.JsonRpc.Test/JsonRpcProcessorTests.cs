@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -38,8 +25,8 @@ namespace Nethermind.JsonRpc.Test
     public class JsonRpcProcessorTests
     {
         private readonly bool _returnErrors;
-        private IFileSystem _fileSystem;
-        private JsonRpcContext _context;
+        private IFileSystem _fileSystem = null!;
+        private JsonRpcContext _context = null!;
 
         private JsonRpcErrorResponse _errorResponse = new();
 
@@ -53,7 +40,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
             service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? (JsonRpcResponse)new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-            service.GetErrorResponse(0, null).ReturnsForAnyArgs(_errorResponse);
+            service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
             _fileSystem = Substitute.For<IFileSystem>();
@@ -67,7 +54,7 @@ namespace Nethermind.JsonRpc.Test
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
-        private JsonRpcProcessor _jsonRpcProcessor;
+        private JsonRpcProcessor _jsonRpcProcessor = null!;
 
         [Test]
         public async Task Can_process_guid_ids()

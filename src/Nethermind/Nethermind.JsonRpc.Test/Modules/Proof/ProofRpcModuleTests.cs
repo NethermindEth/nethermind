@@ -1,21 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -41,11 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.Tracing;
-using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules;
 using NSubstitute;
-using NSubstitute.Core.DependencyInjection;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -774,12 +756,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             TestCallWithStorageAndCode(code, 0, TestItem.AddressD);
         }
 
-        private CallResultWithProof TestCallWithCode(byte[] code, Address from = null)
+        private CallResultWithProof TestCallWithCode(byte[] code, Address? from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
 
             Keccak root = stateProvider.StateRoot;
-            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
             Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
@@ -798,10 +780,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                ProofVerifier.VerifyOneProof(accountProof.Proof, block.StateRoot);
-                foreach (StorageProof storageProof in accountProof.StorageProofs)
+                ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                foreach (StorageProof storageProof in accountProof.StorageProofs!)
                 {
-                    ProofVerifier.VerifyOneProof(storageProof.Proof, accountProof.StorageRoot);
+                    ProofVerifier.VerifyOneProof(storageProof.Proof!, accountProof.StorageRoot);
                 }
             }
 
@@ -812,7 +794,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             return callResultWithProof;
         }
 
-        private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
+        private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
             StorageProvider storageProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
@@ -830,7 +812,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             Keccak root = stateProvider.StateRoot;
 
-            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
+            Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
             Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
@@ -852,15 +834,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             Span<byte> span = stackalloc byte[32];
             new UInt256(0).ToBigEndian(span);
-            Keccak k0 = Keccak.Compute(span);
+            Keccak unused = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
-            Keccak k1 = Keccak.Compute(span);
+            Keccak unused1 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
-            Keccak k2 = Keccak.Compute(span);
+            Keccak unused2 = Keccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
