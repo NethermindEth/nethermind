@@ -4,16 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Verkle.Utils;
 
 namespace Nethermind.Trie;
-
-public static class PedersenHash
-{
-    public static byte[] CalculatePedersenHash(Span<byte> keyPrefix)
-    {
-        throw new ArgumentException();
-    }
-}
 
 public static unsafe class VerkleUtils
 {
@@ -35,18 +28,12 @@ public static unsafe class VerkleUtils
     public static byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
     {
         // allocate the array on stack
-        Span<byte> keyPrefix = stackalloc byte[64];
+        Span<byte> keyPrefix = stackalloc byte[32];
         // first 12 bytes are '0' padding to convert 12 byte address -> 32 bytes
-        // Span<byte> cursor = keyPrefix.Slice(12);
-        Span<byte> cursor = keyPrefix.Slice(0);
-        address.Bytes.CopyTo(cursor);
+        Span<byte> cursor = keyPrefix.Slice(12);
         // copy the address to the remaining 20 bytes -
-        //TODO: correct this when geth corrects it, it should be left padded and not right
-        // cursor = cursor.Slice(20);
-        cursor = cursor.Slice(32);
-        // copy the tree index to the remaining 32 bytes
-        treeIndex.ToBigEndian(cursor);
-        byte[] prefix = PedersenHash.CalculatePedersenHash(keyPrefix);
+        address.Bytes.CopyTo(cursor);
+        byte[] prefix = PedersenHash.Hash(keyPrefix.ToArray(), treeIndex);
         prefix[31] = 0;
         return prefix;
     }

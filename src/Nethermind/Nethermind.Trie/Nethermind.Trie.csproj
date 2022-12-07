@@ -14,4 +14,8 @@
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Nethermind.Verkle.Utils" Version="0.0.1-alpha" />
+    </ItemGroup>
+
 </Project>
