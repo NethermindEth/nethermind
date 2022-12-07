@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -212,6 +212,7 @@ namespace Nethermind.Mev.Execution
             public long GasSpent { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
+            public bool IsTracingFees => false;
 
             public bool Success { get; private set; }
             public string? Error { get; private set; }
@@ -367,6 +368,11 @@ namespace Nethermind.Mev.Execution
             }
 
             public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void ReportFees(UInt256 fees, UInt256 burntFees)
             {
                 throw new NotImplementedException();
             }

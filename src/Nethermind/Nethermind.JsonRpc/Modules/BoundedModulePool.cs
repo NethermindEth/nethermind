@@ -55,6 +55,6 @@ namespace Nethermind.JsonRpc.Modules
             _semaphore.Release();
         }
 
-        public IRpcModuleFactory<T> Factory { get; set; }
+        public IRpcModuleFactory<T> Factory { get; }
     }
 }

@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test.Builders
     /// <typeparam name="T"></typeparam>
     public abstract class BuilderBase<T>
     {
-        protected internal T TestObjectInternal { get; set; }
+        protected internal T TestObjectInternal { get; set; } = default!;
 
         public T TestObject
         {

@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,24 +30,23 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IEthRpcModule EthRpcModule { get; private set; }
-        public IBlockchainBridge Bridge { get; private set; }
-        public ITxSealer TxSealer { get; private set; }
-        public ITxSender TxSender { get; private set; }
-        public ILogFinder LogFinder { get; private set; }
+        public IEthRpcModule EthRpcModule { get; private set; } = null!;
+        public IBlockchainBridge Bridge { get; private set; } = null!;
+        public ITxSealer TxSealer { get; private set; } = null!;
+        public ITxSender TxSender { get; private set; } = null!;
+        public ILogFinder LogFinder { get; private set; } = null!;
 
-        public IReceiptFinder ReceiptFinder { get; private set; }
-        public IGasPriceOracle GasPriceOracle { get; private set; }
+        public IReceiptFinder ReceiptFinder { get; private set; } = null!;
+        public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
-        public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
+        public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>

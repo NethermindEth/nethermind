@@ -43,21 +43,21 @@ namespace Nethermind.Core.Test.Blockchain
     public class TestBlockchain : IDisposable
     {
         public const int DefaultTimeout = 4000;
-        public IStateReader StateReader { get; private set; }
-        public IEthereumEcdsa EthereumEcdsa { get; private set; }
-        public INonceManager NonceManager { get; private set; }
-        public TransactionProcessor TxProcessor { get; set; }
-        public IStorageProvider Storage { get; set; }
-        public IReceiptStorage ReceiptStorage { get; set; }
-        public ITxPool TxPool { get; set; }
+        public IStateReader StateReader { get; private set; } = null!;
+        public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
+        public INonceManager NonceManager { get; private set; } = null!;
+        public TransactionProcessor TxProcessor { get; set; } = null!;
+        public IStorageProvider Storage { get; set; } = null!;
+        public IReceiptStorage ReceiptStorage { get; set; } = null!;
+        public ITxPool TxPool { get; set; } = null!;
         public IDb CodeDb => DbProvider.CodeDb;
-        public IBlockProcessor BlockProcessor { get; set; }
-        public IBlockchainProcessor BlockchainProcessor { get; set; }
+        public IBlockProcessor BlockProcessor { get; set; } = null!;
+        public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
-        public IBlockPreprocessorStep BlockPreprocessorStep { get; set; }
+        public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
 
-        public IBlockProcessingQueue BlockProcessingQueue { get; set; }
-        public IBlockTree BlockTree { get; set; }
+        public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
+        public IBlockTree BlockTree { get; set; } = null!;
 
         public IBlockFinder BlockFinder
         {
@@ -65,47 +65,47 @@ namespace Nethermind.Core.Test.Blockchain
             set => _blockFinder = value;
         }
 
-        public IJsonSerializer JsonSerializer { get; set; }
-        public IStateProvider State { get; set; }
-        public IReadOnlyStateProvider ReadOnlyState { get; private set; }
+        public IJsonSerializer JsonSerializer { get; set; } = null!;
+        public IStateProvider State { get; set; } = null!;
+        public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
         public IDb StateDb => DbProvider.StateDb;
-        public TrieStore TrieStore { get; set; }
-        public IBlockProducer BlockProducer { get; private set; }
-        public IDbProvider DbProvider { get; set; }
-        public ISpecProvider SpecProvider { get; set; }
+        public TrieStore TrieStore { get; set; } = null!;
+        public IBlockProducer BlockProducer { get; private set; } = null!;
+        public IDbProvider DbProvider { get; set; } = null!;
+        public ISpecProvider SpecProvider { get; set; } = null!;
 
-        public ISealEngine SealEngine { get; set; }
+        public ISealEngine SealEngine { get; set; } = null!;
 
-        public ITransactionComparerProvider TransactionComparerProvider { get; set; }
+        public ITransactionComparerProvider TransactionComparerProvider { get; set; } = null!;
 
-        public IPoSSwitcher PoSSwitcher { get; set; }
+        public IPoSSwitcher PoSSwitcher { get; set; } = null!;
 
         protected TestBlockchain()
         {
         }
 
-        public string SealEngineType { get; set; }
+        public string SealEngineType { get; set; } = null!;
 
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-        public SemaphoreSlim _resetEvent;
-        private ManualResetEvent _suggestedBlockResetEvent;
+        public SemaphoreSlim _resetEvent = null!;
+        private ManualResetEvent _suggestedBlockResetEvent = null!;
         private AutoResetEvent _oneAtATime = new(true);
-        private IBlockFinder _blockFinder;
+        private IBlockFinder _blockFinder = null!;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
-        private TrieStoreBoundaryWatcher _trieStoreWatcher;
-        public IHeaderValidator HeaderValidator { get; set; }
+        private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
+        public IHeaderValidator HeaderValidator { get; set; } = null!;
 
-        public IBlockValidator BlockValidator { get; set; }
+        public IBlockValidator BlockValidator { get; set; } = null!;
         public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
-        public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
+        public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
 
-        public ManualTimestamper Timestamper { get; protected set; }
+        public ManualTimestamper Timestamper { get; protected set; } = null!;
 
-        public ProducedBlockSuggester Suggester { get; protected set; }
+        public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
-            BlockProducer.Start();
+            await BlockProducer.Start();
             Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
 
             _resetEvent = new SemaphoreSlim(0);
@@ -278,7 +278,7 @@ namespace Nethermind.Core.Test.Blockchain
             return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 
-        public BlockBuilder GenesisBlockBuilder { get; set; }
+        public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
         protected virtual Block GetGenesisBlock()
         {
@@ -395,7 +395,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
         {
-            UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
             Transaction tx = Builders.Build.A.Transaction
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .To(address)
@@ -407,7 +407,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
         {
-            UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
             Transaction tx = Builders.Build.A.Transaction
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .To(address)
