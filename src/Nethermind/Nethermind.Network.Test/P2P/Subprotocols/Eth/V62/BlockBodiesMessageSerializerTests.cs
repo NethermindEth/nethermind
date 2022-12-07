@@ -71,5 +71,7 @@ public class BlockBodiesMessageSerializerTests
                         .TestObject
                 })
         };
+
+        // TODO: Add Bodies = new[] { new BlockBody(Build.A.BunchOfTransactions(), new[] { header }) }
     }
 }

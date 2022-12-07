@@ -140,7 +140,7 @@ public class ExecutionPayload
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => Transactions
-        .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
+        .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.Raw))
         .ToArray();
 
     /// <summary>

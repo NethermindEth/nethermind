@@ -169,7 +169,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
         {
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
-            Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
+            Rlp rlpResult = Rlp.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
         }
 

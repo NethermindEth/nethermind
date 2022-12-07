@@ -15,7 +15,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public static partial class TestItem
     {
-        public static Random Random { get; } = new();
+        public static Random Random { get; } = new(1337);
         private static readonly AccountDecoder _accountDecoder = new();
 
         static TestItem()

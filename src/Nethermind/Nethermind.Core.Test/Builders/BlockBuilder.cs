@@ -242,6 +242,12 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
+        public BlockBuilder WithExcessDataGas(UInt256 excessDataGas)
+        {
+            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
+            return this;
+        }
+
         public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal

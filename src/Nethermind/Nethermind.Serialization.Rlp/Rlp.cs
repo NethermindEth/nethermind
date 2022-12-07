@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -217,93 +218,11 @@ namespace Nethermind.Serialization.Rlp
             return Encode(rlpSequence);
         }
 
-        public static Rlp Encode(Transaction transaction)
+        public static Span<byte> EncodeForSigning(Transaction item, bool isEip155Enabled, ulong chainId)
         {
-            return Encode(transaction, false);
-        }
-
-        public static Rlp Encode(
-            Transaction transaction,
-            bool forSigning,
-            bool isEip155Enabled = false,
-            ulong chainId = 0)
-        {
-            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
-            if (!forSigning || includeSigChainIdHack)
-            {
-                extraItems += 3; // sig fields
-            }
-
-            if (transaction.Type != TxType.Legacy)
-            {
-                extraItems += 2; // chainID + accessList
-            }
-
-            Rlp[] sequence = new Rlp[6 + extraItems];
-            int position = 0;
-
-            if (transaction.Type != TxType.Legacy)
-            {
-                sequence[position++] = Encode(transaction.ChainId ?? 0);
-            }
-
-            sequence[position++] = Encode(transaction.Nonce);
-
-            if (transaction.IsEip1559)
-            {
-                sequence[position++] = Encode(transaction.MaxPriorityFeePerGas);
-                sequence[position++] = Encode(transaction.DecodedMaxFeePerGas);
-            }
-            else
-            {
-                sequence[position++] = Encode(transaction.GasPrice);
-            }
-
-            sequence[position++] = Encode(transaction.GasLimit);
-            sequence[position++] = Encode(transaction.To);
-            sequence[position++] = Encode(transaction.Value);
-            sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type != TxType.Legacy)
-            {
-                sequence[position++] = Encode(transaction.AccessList);
-            }
-
-            if (forSigning)
-            {
-                if (includeSigChainIdHack)
-                {
-                    sequence[position++] = Encode(chainId);
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                }
-            }
-            else
-            {
-                Signature signature = transaction.Signature;
-                if (signature is null)
-                {
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                }
-                else
-                {
-                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId);
-                    sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
-                    sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());
-                }
-            }
-
-            Debug.Assert(position == 6 + extraItems);
-
-            Rlp result = Encode(sequence);
-            if (transaction.Type != TxType.Legacy)
-            {
-                result = new Rlp(Core.Extensions.Bytes.Concat((byte)transaction.Type, Encode(sequence).Bytes));
-            }
-
-            return result;
+            return GetObjectDecoder<Transaction>() is ISigningHashEncoder<Transaction, TxSignatureHashParams> rlpDecoder ?
+                rlpDecoder.Encode(item, new TxSignatureHashParams { ChainId = chainId, IsEip155Enabled = isEip155Enabled }) :
+                throw new RlpException($"{nameof(Rlp)} does not support encoding {nameof(Transaction)}");
         }
 
         public static Rlp Encode(UInt256? value)
@@ -1424,6 +1343,11 @@ namespace Nethermind.Serialization.Rlp
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
+        }
+
+        public static int LengthOf(ulong[] value)
+        {
+            return Rlp.LengthOfSequence(value.Select(x => Rlp.LengthOf(x)).Sum());
         }
 
         public static int LengthOf(uint _)

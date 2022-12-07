@@ -449,7 +449,7 @@ namespace Nethermind.Core.Crypto
             MemoryMarshal.AsBytes(state.Slice(0, size / sizeof(ulong))).CopyTo(output);
         }
 
-        public void Update(Span<byte> array, int index, int size)
+        public void Update(ReadOnlySpan<byte> array, int index, int size)
         {
             // Bounds checking.
             if (size < 0)
@@ -468,7 +468,7 @@ namespace Nethermind.Core.Crypto
             }
 
             // Create the input buffer
-            Span<byte> input = array;
+            ReadOnlySpan<byte> input = array;
             input = input.Slice(index, size);
 
             // If our provided state is empty, initialize a new one

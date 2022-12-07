@@ -5,10 +5,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
+using CoreUInt256 = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Merkleization
 {
@@ -58,6 +61,11 @@ namespace Nethermind.Merkleization
             FeedAtLevel(chunk, 0);
         }
 
+        public void Feed(CoreUInt256 chunk)
+        {
+            FeedAtLevel(chunk.ToDirichlet(), 0);
+        }
+
         public void Feed(Span<byte> bytes)
         {
             FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
@@ -81,14 +89,14 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
-        public void Feed(byte[]? value)
+        public void Feed(byte[]? value, uint limit = 0)
         {
             if (value is null)
             {
                 return;
             }
 
-            Merkle.Ize(out _chunks[^1], value);
+            Merkle.Ize(out _chunks[^1], value, limit);
             Feed(_chunks[^1]);
         }
 
@@ -122,7 +130,7 @@ namespace Nethermind.Merkleization
             byte[] bytes = new byte[(bitArray.Length + 7) / 8];
             bitArray.CopyTo(bytes, 0);
 
-            Merkle.Ize(out _chunks[^1], bytes, chunkCount);
+            Merkle.Ize(out _chunks[^1], bytes, chunkCount * 32);
             Merkle.MixIn(ref _chunks[^1], bitArray.Length);
             Feed(_chunks[^1]);
         }

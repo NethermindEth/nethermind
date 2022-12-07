@@ -4,14 +4,13 @@
 using System;
 using System.Collections;
 using System.Linq;
-using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
-    public partial class Ssz
+    public static partial class Ssz
     {
         public static int BeaconStateDynamicOffset()
         {

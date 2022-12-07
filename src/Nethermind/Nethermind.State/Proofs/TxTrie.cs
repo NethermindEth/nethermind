@@ -30,8 +30,7 @@ public class TxTrie : PatriciaTrie<Transaction>
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
         foreach (var transaction in list)
         {
-            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
-
+            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.Raw);
             Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
         }
     }

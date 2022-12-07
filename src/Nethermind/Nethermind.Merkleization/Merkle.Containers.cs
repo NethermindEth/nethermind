@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -15,18 +18,18 @@ namespace Nethermind.Merkleization
     //     public static int DepositContractTreeDepth { get; private set; }
     //     private static int JustificationBitsLength;
     //     internal static ulong MaximumDepositContracts { get; private set; }
-    //     
+    //
     //     internal static uint MaxValidatorsPerCommittee { get; private set; }
-    //     
+    //
     //     internal static uint SlotsPerEpoch { get; private set; }
     //     internal static int SlotsPerEth1VotingPeriod { get; private set; }
     //     public static int SlotsPerHistoricalRoot { get; private set; }
-    //     
+    //
     //     public static int EpochsPerHistoricalVector { get; private set; }
     //     public static int EpochsPerSlashingsVector { get; private set; }
     //     internal static ulong HistoricalRootsLimit { get; private set; }
     //     internal static ulong ValidatorRegistryLimit { get; private set; }
-    //     
+    //
     //     internal static uint MaxProposerSlashings { get; private set; }
     //     internal static uint MaxAttesterSlashings { get; private set; }
     //     internal static uint MaxAttestations { get; private set; }
@@ -78,6 +81,7 @@ namespace Nethermind.Merkleization
         {
             Ize(out root, container.Bytes);
         }
+
 
         public static void Ize(out UInt256 root, BlsSignature container)
         {

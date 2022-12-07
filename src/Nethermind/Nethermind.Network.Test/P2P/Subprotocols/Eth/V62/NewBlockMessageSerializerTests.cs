@@ -45,6 +45,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Roundtrip_different_txs()
+        {
+            NewBlockMessageSerializer serializer = new();
+            NewBlockMessage message = new() { Block = Build.A.Block.WithTransactions(Build.A.BunchOfTransactions()).TestObject };
+
+            SerializerTester.TestZero(serializer, message);
+        }
+
+        [Test]
         public void To_string()
         {
             NewBlockMessage newBlockMessage = new();

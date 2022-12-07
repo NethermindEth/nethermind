@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
+using Nethermind.Serialization;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
@@ -44,7 +45,7 @@ namespace Nethermind.Crypto
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
 
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
+            Keccak hash = Keccak.Compute(Rlp.EncodeForSigning(tx, isEip155Enabled, _chainIdValue));
             tx.Signature = Sign(privateKey, hash);
 
             if (tx.Type != TxType.Legacy)
@@ -105,8 +106,8 @@ namespace Nethermind.Crypto
                     chainId = tx.ChainId!.Value;
                     break;
             }
+            Keccak hash = Keccak.Compute(Rlp.EncodeForSigning(tx, applyEip155, chainId));
 
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }
 
