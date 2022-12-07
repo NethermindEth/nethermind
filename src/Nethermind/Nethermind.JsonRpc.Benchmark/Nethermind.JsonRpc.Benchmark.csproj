@@ -6,11 +6,18 @@
 
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
+      <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="Data\samplenewpayload.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>

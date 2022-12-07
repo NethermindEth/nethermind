@@ -24,12 +24,12 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// If there were no prior engine_preparePayload call with the corresponding payload_id or the process of building a payload has been cancelled due to the timeout then execution client must respond with error message.
     /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
     /// </remarks>
-    public class GetPayloadHandler : IAsyncHandler<byte[], ExecutionPayload?>
+    public class GetPayloadV1Handler : IAsyncHandler<byte[], ExecutionPayload?>
     {
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
 
-        public GetPayloadHandler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
+        public GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
         {
             _payloadPreparationService = payloadPreparationService;
             _logger = logManager.GetClassLogger();
@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task<ResultWrapper<ExecutionPayload?>> HandleAsync(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
-            Block? block = await _payloadPreparationService.GetPayload(payloadStr);
+            Block? block = (await _payloadPreparationService.GetPayload(payloadStr))?.CurrentBestBlock;
 
             if (block is null)
             {

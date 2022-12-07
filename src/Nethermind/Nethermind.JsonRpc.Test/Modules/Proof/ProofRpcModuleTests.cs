@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -28,11 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.Tracing;
-using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules;
 using NSubstitute;
-using NSubstitute.Core.DependencyInjection;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -761,12 +756,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             TestCallWithStorageAndCode(code, 0, TestItem.AddressD);
         }
 
-        private CallResultWithProof TestCallWithCode(byte[] code, Address from = null)
+        private CallResultWithProof TestCallWithCode(byte[] code, Address? from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
 
             Keccak root = stateProvider.StateRoot;
-            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
             Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
@@ -785,10 +780,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                ProofVerifier.VerifyOneProof(accountProof.Proof, block.StateRoot);
-                foreach (StorageProof storageProof in accountProof.StorageProofs)
+                ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                foreach (StorageProof storageProof in accountProof.StorageProofs!)
                 {
-                    ProofVerifier.VerifyOneProof(storageProof.Proof, accountProof.StorageRoot);
+                    ProofVerifier.VerifyOneProof(storageProof.Proof!, accountProof.StorageRoot);
                 }
             }
 
@@ -799,7 +794,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             return callResultWithProof;
         }
 
-        private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
+        private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
             StorageProvider storageProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
@@ -817,7 +812,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             Keccak root = stateProvider.StateRoot;
 
-            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
+            Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
             Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
@@ -839,15 +834,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             Span<byte> span = stackalloc byte[32];
             new UInt256(0).ToBigEndian(span);
-            Keccak k0 = Keccak.Compute(span);
+            Keccak unused = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
-            Keccak k1 = Keccak.Compute(span);
+            Keccak unused1 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
-            Keccak k2 = Keccak.Compute(span);
+            Keccak unused2 = Keccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {

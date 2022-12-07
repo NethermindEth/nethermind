@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -16,13 +17,13 @@ namespace Nethermind.Evm.Tracing
 
         protected BlockTracerBase()
         {
-            TxTraces = new List<TTrace>();
+            TxTraces = new ResettableList<TTrace>();
         }
 
         protected BlockTracerBase(Keccak? txHash)
         {
             _txHash = txHash;
-            TxTraces = new List<TTrace>();
+            TxTraces = new ResettableList<TTrace>();
         }
 
         private TTracer? CurrentTxTracer { get; set; }
@@ -36,7 +37,10 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public abstract void StartNewBlockTrace(Block block);
+        public virtual void StartNewBlockTrace(Block block)
+        {
+            TxTraces.Reset();
+        }
 
         ITxTracer IBlockTracer.StartNewTxTrace(Transaction? tx)
         {
@@ -58,18 +62,15 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public abstract void EndBlockTrace();
+        public virtual void EndBlockTrace() { }
 
         protected virtual bool ShouldTraceTx(Transaction? tx)
         {
             return IsTracingEntireBlock || tx?.Hash == _txHash;
         }
 
-        protected List<TTrace> TxTraces { get; }
+        protected ResettableList<TTrace> TxTraces { get; }
 
-        public IReadOnlyCollection<TTrace> BuildResult()
-        {
-            return TxTraces;
-        }
+        public IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
     }
 }

@@ -28,13 +28,13 @@ namespace Nethermind.Blockchain.Test.Find
 {
     public class LogFinderTests
     {
-        private IBlockTree _blockTree;
-        private BlockTree _rawBlockTree;
-        private IReceiptStorage _receiptStorage;
-        private LogFinder _logFinder;
-        private IBloomStorage _bloomStorage;
-        private IReceiptsRecovery _receiptsRecovery;
-        private Block headTestBlock;
+        private IBlockTree _blockTree = null!;
+        private BlockTree _rawBlockTree = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private LogFinder _logFinder = null!;
+        private IBloomStorage _bloomStorage = null!;
+        private IReceiptsRecovery _receiptsRecovery = null!;
+        private Block _headTestBlock = null!;
 
         [SetUp]
         public void SetUp()
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Find
             _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
             _rawBlockTree = Build.A.BlockTree()
                 .WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder)
-                .OfChainLength(out headTestBlock, 5)
+                .OfChainLength(out _headTestBlock, 5)
                 .TestObject;
             _blockTree = _rawBlockTree;
             _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Find
         private void SetupHeadWithNoTransaction()
         {
             Block blockWithNoTransaction = Build.A.Block
-                .WithParent(headTestBlock)
+                .WithParent(_headTestBlock)
                 .TestObject;
             _rawBlockTree.SuggestBlock(blockWithNoTransaction)
                 .Should().Be(AddBlockResult.Added);

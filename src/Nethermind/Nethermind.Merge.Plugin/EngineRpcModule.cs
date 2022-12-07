@@ -17,6 +17,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1;
+        private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
         private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
         private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
@@ -28,6 +29,7 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
+            IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
             IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -36,6 +38,7 @@ namespace Nethermind.Merge.Plugin
             ILogManager logManager)
         {
             _getPayloadHandlerV1 = getPayloadHandlerV1;
+            _getPayloadHandlerV2 = getPayloadHandlerV2;
             _newPayloadV1Handler = newPayloadV1Handler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
@@ -46,9 +49,11 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 
-        public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
+        public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
+            _getPayloadHandlerV1.HandleAsync(payloadId);
 
-        public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV2(byte[] payloadId) => _getPayloadHandlerV1.HandleAsync(payloadId);
+        public async Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId) =>
+            await _getPayloadHandlerV2.HandleAsync(payloadId);
 
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         {

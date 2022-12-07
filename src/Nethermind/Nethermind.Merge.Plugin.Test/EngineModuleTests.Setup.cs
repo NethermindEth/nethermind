@@ -63,7 +63,10 @@ namespace Nethermind.Merge.Plugin.Test
             invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
-                new GetPayloadHandler(
+                new GetPayloadV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new GetPayloadV2Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
                 new NewPayloadHandler(

@@ -79,24 +79,31 @@ public partial class EngineModuleTests
         }));
 
         Keccak blockHash = new("0xed14029504c440624047d5d0223899fb2c8abc4550464ac21e8f42ccdbb472d3");
-        ExecutionPayload expectedPayload = new()
-        {
-            BaseFeePerGas = 0,
-            BlockHash = blockHash,
-            BlockNumber = 1,
-            ExtraData = Bytes.FromHexString("0x4e65746865726d696e64"), // Nethermind
-            FeeRecipient = feeRecipient,
-            GasLimit = chain.BlockTree.Head!.GasLimit,
-            GasUsed = 0,
-            LogsBloom = Bloom.Empty,
-            ParentHash = startingHead,
-            PrevRandao = prevRandao,
-            ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-            StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
-            Timestamp = timestamp,
-            Transactions = Array.Empty<byte[]>(),
-            Withdrawals = withdrawals
-        };
+        Block block = new(
+            new(
+                startingHead,
+                Keccak.OfAnEmptySequenceRlp,
+                feeRecipient,
+                UInt256.Zero,
+                1,
+                chain.BlockTree.Head!.GasLimit,
+                timestamp,
+                Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
+                )
+            {
+                BaseFeePerGas = 0,
+                Bloom = Bloom.Empty,
+                GasUsed = 0,
+                Hash = blockHash,
+                MixHash = prevRandao,
+                ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
+                StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+            },
+            Array.Empty<Transaction>(),
+            Array.Empty<BlockHeader>(),
+            withdrawals
+        );
+        GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
 
         response = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -109,7 +116,7 @@ public partial class EngineModuleTests
         }));
 
         response = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
-            chain.JsonSerializer.Serialize(expectedPayload));
+            chain.JsonSerializer.Serialize(new ExecutionPayload(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -374,8 +381,8 @@ public partial class EngineModuleTests
         foreach (Withdrawal[] withdrawal in input.Withdrawals)
         {
             PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 1, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = withdrawal };
-            ExecutionPayload payload = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
-            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload);
+            ExecutionPayload? payload = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV1;
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload!);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
             ResultWrapper<ForkchoiceUpdatedV1Result> resultFcu = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash));
             resultFcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
@@ -416,8 +423,8 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };
-        ExecutionPayload payloadWithWithdrawals = await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes);
-        ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals);
+        ExecutionPayload? payloadWithWithdrawals = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV1;
+        ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals!);
 
         resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -443,13 +450,13 @@ public partial class EngineModuleTests
             "PayloadAttributes {Timestamp: 1, PrevRandao: 0x321c2cb0b0673952956a3bfa56cf1ce4df0cd3371ad51a2c5524561250b01836, SuggestedFeeRecipient: 0x65942aaf2c32a1aca4f14e82e94fce91960893a2, Withdrawals count: 1}");
     }
 
-    private static async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
+    private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
-        ResultWrapper<ExecutionPayload?> getPayloadResult =
+        ResultWrapper<GetPayloadV2Result?> getPayloadResult =
             await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId));
         return getPayloadResult.Data!;
     }

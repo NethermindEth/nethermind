@@ -30,23 +30,14 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => Array.Empty<string>();
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context)
-        {
-            return ModuleResolution.Unknown;
-        }
+        public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
 
-        public (MethodInfo, bool) Resolve(string methodName)
-        {
-            return (null, false);
-        }
+        public (MethodInfo, bool) Resolve(string methodName) => (null, false);
 
-        public Task<IRpcModule> Rent(string methodName, bool canBeShared)
-        {
-            return Null;
-        }
+        public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 
-        public void Return(string methodName, IRpcModule rpcModule)
-        {
-        }
+        public void Return(string methodName, IRpcModule rpcModule) { }
+
+        public IRpcModulePool? GetPool(string moduleType) => null;
     }
 }

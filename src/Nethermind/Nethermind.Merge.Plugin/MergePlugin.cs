@@ -310,7 +310,8 @@ namespace Nethermind.Merge.Plugin
                     TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadHandler(payloadPreparationService, _api.LogManager),
+                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
+                    new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
                     new NewPayloadHandler(
                         _api.BlockValidator,
                         _api.BlockTree,
