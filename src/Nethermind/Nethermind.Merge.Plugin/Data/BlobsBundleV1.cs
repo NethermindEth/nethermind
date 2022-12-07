@@ -28,21 +28,21 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (tx.Type is not TxType.Blob || tx.BlobKzgs is null || tx.Blobs is null)
+            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
             {
                 continue;
             }
 
             for (int cc = 0, bc = 0, pc = 0;
-                 cc < tx.BlobKzgs.Length;
+                 cc < wrapper.Commitments.Length;
                  i++,
                  cc += Ckzg.Ckzg.BytesPerCommitment,
                  bc += Ckzg.Ckzg.BytesPerBlob,
                  pc += Ckzg.Ckzg.BytesPerProof)
             {
-                Commitments[i] = tx.BlobKzgs.AsMemory(cc, Ckzg.Ckzg.BytesPerCommitment);
-                Blobs[i] = tx.Blobs.AsMemory(bc, Ckzg.Ckzg.BytesPerBlob);
-                Proofs[i] = tx.BlobProofs.AsMemory(pc, Ckzg.Ckzg.BytesPerProof);
+                Commitments[i] = wrapper.Commitments.AsMemory(cc, Ckzg.Ckzg.BytesPerCommitment);
+                Blobs[i] = wrapper.Blobs.AsMemory(bc, Ckzg.Ckzg.BytesPerBlob);
+                Proofs[i] = wrapper.Proofs.AsMemory(pc, Ckzg.Ckzg.BytesPerProof);
             }
         }
     }

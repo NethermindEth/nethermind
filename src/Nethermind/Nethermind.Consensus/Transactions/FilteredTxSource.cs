@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 

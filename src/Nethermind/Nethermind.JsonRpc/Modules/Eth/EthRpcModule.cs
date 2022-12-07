@@ -330,7 +330,8 @@ public partial class EthRpcModule : IEthRpcModule
     {
         try
         {
-            Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = Rlp.Decode<Transaction>(transaction,
+                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InNetworkForm);
             return await SendTx(tx);
         }
         catch (RlpException)

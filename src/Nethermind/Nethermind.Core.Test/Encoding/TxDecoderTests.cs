@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -21,10 +22,10 @@ namespace Nethermind.Core.Test.Encoding
     {
         private readonly TxDecoder _txDecoder = new();
 
-        public static IEnumerable<(Transaction, string)> TestCaseSource()
+        public static IEnumerable<(TransactionBuilder<Transaction>, string)> TestObjectsSource()
         {
-            yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
-            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0).TestObject, "basic");
+            yield return (Build.A.Transaction.SignedAndResolved(), "basic");
+            yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0), "basic with nonce=0");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.AccessList)
@@ -33,9 +34,9 @@ namespace Nethermind.Core.Test.Encoding
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
                         {
-                            {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
+                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
                         }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
-                .SignedAndResolved().TestObject, "access list");
+                .SignedAndResolved(), "access list");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.EIP1559)
@@ -45,31 +46,35 @@ namespace Nethermind.Core.Test.Encoding
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
                         {
-                            {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
+                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
                         }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
-                .SignedAndResolved().TestObject, "EIP1559 - access list");
+                .SignedAndResolved(), "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(50)
                 .WithMaxPriorityFeePerGas(10)
                 .WithChainId(0)
-                .SignedAndResolved().TestObject, "EIP 1559");
+                .SignedAndResolved(), "EIP 1559");
             yield return (Build.A.Transaction
                 .WithMaxFeePerGas(2.GWei())
                 .WithType(TxType.EIP1559)
                 .WithGasPrice(0)
                 .WithChainId(1559)
-                .SignedAndResolved().TestObject, "EIP 1559 second test case");
+                .SignedAndResolved(), "EIP 1559 second test case");
         }
+
+        public static IEnumerable<(Transaction, string)> TestCaseSource()
+            => TestObjectsSource().Select(tos => (tos.Item1.TestObject, tos.Item2));
 
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
+            RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
-            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress =
+                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -84,7 +89,8 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress =
+                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -106,7 +112,8 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
-        public void CalculateHash_and_tx_hash_after_decoding_return_the_same_value((string IncomingRlpHex, Keccak Hash) testCase)
+        public void CalculateHash_and_tx_hash_after_decoding_return_the_same_value(
+            (string IncomingRlpHex, Keccak Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
@@ -138,13 +145,15 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
-        public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_with_wrapping((string IncomingRlpHex, Keccak Hash) testCase)
+        public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_with_wrapping(
+            (string IncomingRlpHex, Keccak Hash) testCase)
         {
             ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, false);
         }
 
         [TestCaseSource(nameof(SkipTypedWrappingTestCases))]
-        public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_without_additional_wrapping((string IncomingRlpHex, Keccak Hash) testCase)
+        public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_without_additional_wrapping(
+            (string IncomingRlpHex, Keccak Hash) testCase)
         {
             ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, true);
         }
@@ -156,8 +165,10 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
-            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
+            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext,
+                wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp,
+                wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
             Rlp encoded = _txDecoder.Encode(decoded!);
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
             decoded!.Hash.Should().Be(testCase.Hash);
@@ -166,7 +177,8 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
-        public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
+        public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding(
+            (Transaction Tx, string Description) testCase)
         {
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
@@ -276,7 +288,6 @@ namespace Nethermind.Core.Test.Encoding
                 "b8cb01f8c887796f6c6f76337803843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a094f3a6bbf5039b1a794e5be7628809bdf757c4ff59e5399dec74c61137074f80a049baf92bb5fb2d6c6bf8287fcd75eaea80ad38d1b8d29ce242c4ac51e1067d52",
                 new Keccak("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
             );
-
         }
     }
 }

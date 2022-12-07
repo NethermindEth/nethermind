@@ -55,16 +55,29 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.Position != blockCheck)
             {
-                int withdrawalsLength = rlpStream.ReadSequenceLength();
-                int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
-                withdrawals = new();
-
-                while (rlpStream.Position < withdrawalsCheck)
+                bool lengthWasRead = true;
+                try
                 {
-                    withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                    rlpStream.PeekNextRlpLength();
+                }
+                catch
+                {
+                    lengthWasRead = false;
                 }
 
-                rlpStream.Check(withdrawalsCheck);
+                if (lengthWasRead)
+                {
+                    int withdrawalsLength = rlpStream.ReadSequenceLength();
+                    int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
+                    withdrawals = new();
+
+                    while (rlpStream.Position < withdrawalsCheck)
+                    {
+                        withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                    }
+
+                    rlpStream.Check(withdrawalsCheck);
+                }
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)

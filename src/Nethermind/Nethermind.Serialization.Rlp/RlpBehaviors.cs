@@ -3,21 +3,21 @@
 
 using System;
 
-namespace Nethermind.Serialization.Rlp
+namespace Nethermind.Serialization.Rlp;
+
+[Flags]
+public enum RlpBehaviors
 {
-    [Flags]
-    public enum RlpBehaviors
-    {
-        None,
-        AllowExtraBytes = 1,
-        ForSealing = 2,
-        Storage = 4,
-        Eip658Receipts = 8,
-        AllowUnsigned = 16,
-        SkipTypedWrapping = 32, // introduced after typed transactions. In the network (devp2p) transaction has additional wrapping
-                                // when we're calculating tx hash or sending raw transaction we should skip this wrapping
-                                // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
-                                // without wrapping we're decoding (TransactionType || TransactionPayload)
-        All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
-    }
+    None,
+    AllowExtraBytes = 1,
+    ForSealing = 2,
+    Storage = 4,
+    Eip658Receipts = 8,
+    AllowUnsigned = 16,
+    SkipTypedWrapping = 32, // introduced after typed transactions. In the network (devp2p) transaction has additional wrapping
+                            // when we're calculating tx hash or sending raw transaction we should skip this wrapping
+                            // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
+                            // without wrapping we're decoding (TransactionType || TransactionPayload)
+    InNetworkForm = 64,
+    All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping | InNetworkForm
 }
