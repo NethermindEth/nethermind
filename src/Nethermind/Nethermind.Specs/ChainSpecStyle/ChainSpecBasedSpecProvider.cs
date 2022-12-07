@@ -8,6 +8,7 @@ using System.Reflection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -17,10 +18,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private ChainSpec _chainSpec;
         private long _biggestBlockTransition;
+        private readonly ILogger _logger;
 
-        public ChainSpecBasedSpecProvider(ChainSpec chainSpec)
+        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
+            _logger = logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance;
             BuildTransitions();
         }
 
@@ -226,45 +229,27 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
-            if (activation.Timestamp is null || activation.BlockNumber > _biggestBlockTransition)
+            if (activation.Timestamp is not null)
             {
-                return _transitions.TryGetSearchedItem(activation,
-                    CompareTransitionOnBlock,
-                    out (ForkActivation Activation, ReleaseSpec Release) transition)
-                    ? transition.Release
-                    : GenesisSpec;
-            }
-            List<(ForkActivation Activation, IReleaseSpec Release)> filterdByBlockNumber = new();
-            long biggestBlockNumber = 0;
-            for (int i = 0; i < _transitions.Length; i++)
-            {
-                (ForkActivation Activation, IReleaseSpec Release) transition = _transitions[i];
-                long transitionBlockNumber = transition.Activation.BlockNumber;
-                if (transitionBlockNumber <= activation.BlockNumber && transitionBlockNumber > biggestBlockNumber)
-                    biggestBlockNumber = transitionBlockNumber;
-            }
-            for (int i = 0; i < _transitions.Length; i++)
-            {
-                (ForkActivation Activation, IReleaseSpec Release) transition = _transitions[i];
-                long transitionBlockNumber = transition.Activation.BlockNumber;
-                if (transitionBlockNumber == biggestBlockNumber)
-                    filterdByBlockNumber.Add(transition);
-            }
-            if (filterdByBlockNumber.Count == 1)
-                return filterdByBlockNumber[0].Release;
-            (ForkActivation Activation, IReleaseSpec Release) candidate = filterdByBlockNumber[0];
-            for (int i = 1; i < filterdByBlockNumber.Count; i++)
-            {
-                (ForkActivation Activation, IReleaseSpec Release) transition = filterdByBlockNumber[i];
-                if (filterdByBlockNumber[i].Activation.Timestamp <= activation.Timestamp &&
-                    (candidate.Activation.Timestamp is null
-                    || candidate.Activation.Timestamp < filterdByBlockNumber[i].Activation.Timestamp))
+                for (int i = 0; i < _transitions.Length; i++)
                 {
-                    candidate = filterdByBlockNumber[i];
-                    continue;
+                    if (_transitions[i].Activation.Timestamp is null)
+                        continue;
+                    ulong transitionTimestamp = _transitions[i].Activation.Timestamp.Value;
+                    if (transitionTimestamp < activation.Timestamp)
+                    {
+                        if (_transitions[i].Activation.BlockNumber > activation.BlockNumber)
+                        {
+                            if (_logger.IsWarn) _logger.Warn("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                        }
+                    }
                 }
             }
-            return candidate.Release;
+            return _transitions.TryGetSearchedItem(activation,
+                CompareTransitionOnBlock,
+                out (ForkActivation Activation, ReleaseSpec Release) transition)
+                ? transition.Release
+                : GenesisSpec;
         }
 
         private static int CompareTransitionOnBlock(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Release) transition) =>
