@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Attributes;
@@ -66,6 +67,8 @@ public class BlockHeader
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
     public UInt256? ExcessDataGas { get; set; }
+    public byte[]? VerkleProof { get; set; }
+    public List<byte[][]>? VerkleWitnesses { get; set; }
 
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
         || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
@@ -105,6 +108,16 @@ public class BlockHeader
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
+
+        if (VerkleProof is not null)
+        {
+            builder.AppendLine($"{indent}Verkle Proof: {VerkleProof?.ToHexString()}");
+        }
+
+        if (VerkleWitnesses is not null)
+        {
+            builder.AppendLine($"{indent}Verkle Witness Count- {VerkleWitnesses?.Count}");
+        }
 
         return builder.ToString();
     }

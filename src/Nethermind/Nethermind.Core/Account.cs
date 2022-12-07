@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -11,6 +13,9 @@ namespace Nethermind.Core
         public static Account TotallyEmpty = new();
 
         private static UInt256 _accountStartNonce = UInt256.Zero;
+
+        // todo: change codeHash when this set
+        public byte[]? Code;
 
         /// <summary>
         /// This is a special field that was used by some of the testnets (namely - Morden and Mordor).
@@ -35,6 +40,30 @@ namespace Nethermind.Core
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;
+            CodeSize = 0;
+            Version = UInt256.Zero;
+        }
+
+        public Account(UInt256 balance, UInt256 nonce, Keccak codeHash, UInt256 codeSize, UInt256 version)
+        {
+            Balance = balance;
+            Nonce = nonce;
+            CodeHash = codeHash;
+            StorageRoot = Keccak.EmptyTreeHash;
+            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            CodeSize = codeSize;
+            Version = version;
+        }
+
+        public Account(UInt256 balance, UInt256 nonce, Keccak codeHash)
+        {
+            Balance = balance;
+            Nonce = nonce;
+            CodeHash = codeHash;
+            StorageRoot = Keccak.EmptyTreeHash;
+            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            CodeSize = 0;
+            Version = UInt256.Zero;
         }
 
         private Account()
@@ -44,6 +73,8 @@ namespace Nethermind.Core
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = true;
+            CodeSize = 0;
+            Version = UInt256.Zero;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
@@ -53,6 +84,8 @@ namespace Nethermind.Core
             StorageRoot = storageRoot;
             CodeHash = codeHash;
             IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            CodeSize = 0;
+            Version = UInt256.Zero;
         }
 
         private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
@@ -62,6 +95,8 @@ namespace Nethermind.Core
             StorageRoot = storageRoot;
             CodeHash = codeHash;
             IsTotallyEmpty = isTotallyEmpty;
+            CodeSize = 0;
+            Version = UInt256.Zero;
         }
 
         public bool HasCode => !CodeHash.Equals(Keccak.OfAnEmptyString);
@@ -70,6 +105,8 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
+        public UInt256 CodeSize { get; set; }
+        public UInt256 Version { get; }
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }
@@ -91,9 +128,29 @@ namespace Nethermind.Core
             return new(Nonce, Balance, newStorageRoot, CodeHash, IsTotallyEmpty && newStorageRoot == Keccak.EmptyTreeHash);
         }
 
-        public Account WithChangedCodeHash(Keccak newCodeHash)
+        public Account WithChangedCodeHash(Keccak newCodeHash, byte[]? code = null)
         {
-            return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
+            // TODO: does the code and codeHash match?
+            return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString)
+            {
+                Code = code,
+                CodeSize = new UInt256((ulong) (code?.Length ?? 0))
+            };
+        }
+
+        public Dictionary<byte, byte[]> ToVerkleDict()
+        {
+            Dictionary<byte, byte[]> dict = new Dictionary<byte, byte[]>
+            {
+                [0] = Version.ToLittleEndian(),
+                [1] = Balance.ToLittleEndian(),
+                [2] = Nonce.ToLittleEndian(),
+                [3] = CodeHash.Bytes,
+            };
+
+            if(!CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                dict[4] = CodeSize.ToLittleEndian();
+            return dict;
         }
     }
 }
