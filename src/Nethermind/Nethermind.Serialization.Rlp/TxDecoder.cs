@@ -256,6 +256,7 @@ namespace Nethermind.Serialization.Rlp
                     transaction.Type = (TxType)decoderContext.ReadByte();
                 }
             }
+            bool isRlpTransaction = transaction.Type is not TxType.Blob;
 
             if (transaction.IsRlpEncoded)
             {

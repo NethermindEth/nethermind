@@ -151,7 +151,6 @@ public static partial class Ssz
             Encode(span, (byte)0);
             return;
         }
-
         Encode(span, (byte)1);
         Encode(span.Slice(1, Address.ByteLength), value.Bytes);
     }

@@ -93,6 +93,9 @@ namespace Nethermind.Core.Test.Encoding
             Task.WaitAll(tasks.ToArray());
         }
 
+        public static IEnumerable<(Transaction, string)> TestCaseSource()
+            => TestObjectsSource().Select(tos => (tos.Item1.TestObject, tos.Item2));
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
