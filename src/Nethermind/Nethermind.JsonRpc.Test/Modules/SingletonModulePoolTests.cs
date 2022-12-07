@@ -29,8 +29,8 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SingletonModulePoolTests
     {
-        private SingletonModulePool<IEthRpcModule> _modulePool;
-        private EthModuleFactory _factory;
+        private SingletonModulePool<IEthRpcModule> _modulePool = null!;
+        private EthModuleFactory _factory = null!;
 
         [SetUp]
         public async Task Initialize()

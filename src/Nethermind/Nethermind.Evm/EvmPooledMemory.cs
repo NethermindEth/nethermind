@@ -18,7 +18,7 @@ namespace Nethermind.Evm
 
         private int _lastZeroedSize;
 
-        private byte[] _memory;
+        private byte[]? _memory;
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Evm
 
             if (word.Length < WordSize)
             {
-                Array.Clear(_memory, (int)location, WordSize - word.Length);
+                Array.Clear(_memory!, (int)location, WordSize - word.Length);
             }
 
             word.CopyTo(_memory.AsSpan((int)location + WordSize - word.Length, word.Length));
@@ -40,7 +40,7 @@ namespace Nethermind.Evm
             CheckMemoryAccessViolation(in location, WordSize);
             UpdateSize(in location, 1);
 
-            _memory[(long)location] = value;
+            _memory![(long)location] = value;
         }
 
         public void Save(in UInt256 location, Span<byte> value)
@@ -76,7 +76,7 @@ namespace Nethermind.Evm
             CheckMemoryAccessViolation(in location, (UInt256)value.Length);
             UpdateSize(in location, (UInt256)value.Length);
 
-            Array.Copy(value, 0, _memory, (long)location, value.Length);
+            Array.Copy(value, 0, _memory!, (long)location, value.Length);
         }
 
         public void Save(in UInt256 location, ZeroPaddedSpan value)
@@ -205,14 +205,21 @@ namespace Nethermind.Evm
         {
             int traceLocation = 0;
             List<string> memoryTrace = new();
-            if (_memory is not null)
+
+            while ((ulong)traceLocation < Size)
             {
-                while ((ulong)traceLocation < Size)
+                int sizeAvailable = Math.Min(WordSize, (_memory?.Length ?? 0) - traceLocation);
+                if (sizeAvailable > 0)
                 {
-                    int sizeAvailable = Math.Min(WordSize, (int)Size - traceLocation);
-                    memoryTrace.Add(_memory.Slice(traceLocation, sizeAvailable).ToHexString());
-                    traceLocation = traceLocation + WordSize;
+                    Span<byte> bytes = _memory.AsSpan().Slice(traceLocation, sizeAvailable);
+                    memoryTrace.Add(bytes.ToHexString());
                 }
+                else // Memory might not be initialized
+                {
+                    memoryTrace.Add(Bytes.Zero32.ToHexString());
+                }
+
+                traceLocation += WordSize;
             }
 
             return memoryTrace;

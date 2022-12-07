@@ -94,5 +94,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
             Assert.AreEqual(ModuleResolution.Enabled, fallbackResolution);
         }
+
+        [Test]
+        public void Allows_to_get_modules()
+        {
+            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool);
+            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool);
+        }
+
+        [Test]
+        public void Allows_to_replace_modules()
+        {
+            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool);
+
+            SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool2);
+
+            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool2);
+        }
     }
 }
