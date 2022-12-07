@@ -46,5 +46,7 @@ namespace Nethermind.Consensus.Processing
 
             return true;
         }
+
+        public override string ToString() => Block?.ToString() ?? BlockHash.ToString();
     }
 }

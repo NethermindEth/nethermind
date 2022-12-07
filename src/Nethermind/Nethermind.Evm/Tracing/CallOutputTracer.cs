@@ -24,6 +24,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         public byte[] ReturnValue { get; set; }
 
@@ -184,6 +185,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
             throw new NotImplementedException();
         }

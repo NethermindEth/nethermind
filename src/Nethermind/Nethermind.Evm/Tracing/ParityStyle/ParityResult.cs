@@ -8,8 +8,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     public class ParityTraceResult
     {
         public long GasUsed { get; set; }
-        public byte[] Output { get; set; }
-        public Address Address { get; set; }
-        public byte[] Code { get; set; }
+        public byte[]? Output { get; set; }
+        public Address? Address { get; set; }
+        public byte[]? Code { get; set; }
     }
 }

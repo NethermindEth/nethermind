@@ -25,5 +25,7 @@ namespace Nethermind.Synchronization.Reporting
         MeasuredProgress FastBlocksReceipts { get; }
 
         MeasuredProgress BeaconHeaders { get; }
+
+        MeasuredProgress BeaconHeadersInQueue { get; }
     }
 }

@@ -179,7 +179,10 @@ jobs:
     - name: Nethermind.Sockets.Test
       run: |
         dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
-    - name: Upload Codecov report
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests        
+    - name: Upload Codecov reports
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
       with:

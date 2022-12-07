@@ -45,6 +45,9 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test src/Nethermind/Nethermind.AccountAbstraction.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests -c ${{ env.BUILD_CONFIG }}
 
   neth-tests2:
     name: 'Run Nethermind tests #2'

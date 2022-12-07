@@ -7,10 +7,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public interface IBlockImprovementContext : IDisposable
+public interface IBlockImprovementContext : IBlockProductionContext, IDisposable
 {
     Task<Block?> ImprovementTask { get; }
-    Block? CurrentBestBlock { get; }
     bool Disposed { get; }
     DateTimeOffset StartDateTime { get; }
 }

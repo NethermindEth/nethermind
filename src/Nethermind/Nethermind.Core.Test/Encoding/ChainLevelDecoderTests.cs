@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((ChainLevelInfo)null);
+            Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
             ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
             Assert.Null(decoded);
         }
