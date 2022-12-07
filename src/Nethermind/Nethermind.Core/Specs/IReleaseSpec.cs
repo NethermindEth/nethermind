@@ -263,6 +263,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4844Enabled { get; }
 
         /// <summary>
+        /// State - Verkle Trees
+        /// </summary>
+        bool IsVerkleTreeEipEnabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -271,8 +276,9 @@ namespace Nethermind.Core.Specs
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
+        public ulong VerkleTreeTransitionTimeStamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

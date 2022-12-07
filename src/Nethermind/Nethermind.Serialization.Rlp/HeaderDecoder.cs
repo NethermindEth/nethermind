@@ -16,6 +16,8 @@ namespace Nethermind.Serialization.Rlp
         public static long Eip1559TransitionBlock = long.MaxValue;
         public static ulong WithdrawalTimestamp = ulong.MaxValue;
         public static ulong Eip4844TransitionTimestamp = ulong.MaxValue;
+        public static ulong VerkleTreeTransitionTimestamp = ulong.MaxValue;
+
 
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
