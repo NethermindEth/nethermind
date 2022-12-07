@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -443,9 +430,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         _stateProvider.CreateAccount(gasBeneficiary, fees);
                     }
 
-                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    UInt256 burntFees = !transaction.IsFree() ? (ulong)spentGas * block.BaseFeePerGas : 0;
+
+                    if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
                     {
-                        UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
                         if (!burntFees.IsZero)
                         {
                             if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
@@ -457,6 +445,11 @@ namespace Nethermind.Evm.TransactionProcessing
                                 _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
                             }
                         }
+                    }
+
+                    if (txTracer.IsTracingFees)
+                    {
+                        txTracer.ReportFees(fees, burntFees);
                     }
                 }
             }
