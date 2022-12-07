@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Attributes;
@@ -63,6 +64,8 @@ namespace Nethermind.Core
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
+        public byte[]? VerkleProof { get; set; }
+        public List<byte[][]>? VerkleWitnesses { get; set; }
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
@@ -91,6 +94,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
             builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
             builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
+            builder.AppendLine($"{indent}Verkle Proof: {VerkleProof?.ToHexString()}");
+            builder.AppendLine($"{indent}Verkle Witness Count- {VerkleWitnesses?.Count}");
 
             return builder.ToString();
         }
