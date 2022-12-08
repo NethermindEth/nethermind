@@ -400,7 +400,7 @@ namespace Nethermind.Trie.Pruning
                                 }
                             }
                         }
-                        
+
                         if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
                     }
                     catch (Exception e)
