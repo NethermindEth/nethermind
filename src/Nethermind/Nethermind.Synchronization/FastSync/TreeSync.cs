@@ -63,16 +63,13 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
         private SyncMode _syncMode;
-        private readonly ISnapProvider _snapProvider;
 
-        public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager, ISnapProvider snapProvider)
+        public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _snapProvider = snapProvider;
-            _snapProvider.StateRangesFinished += OnStateRangesFinished;
 
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -854,9 +851,9 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private void OnStateRangesFinished(object? sender, SnapSyncEventArgs e)
+        public void SetSnapSyncData(bool stateRangesFinished, long stateRangesSyncedBytes)
         {
-            _data.SetSnapSyncData(e.StateRangesFinished, e.StateRangesSyncedBytes);
+            _data.SetSnapSyncData(stateRangesFinished, stateRangesSyncedBytes);
         }
 
         private enum AddNodeResult

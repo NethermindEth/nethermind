@@ -89,31 +89,31 @@ namespace Nethermind.Synchronization.SnapSync
         {
             StateTree tree = new(_store, _logManager);
 
-            (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs, _progressTracker);
+            AddAccountRangeResult helperResult = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
-            if (result == AddRangeResult.OK)
+            if (helperResult.Result == AddRangeResult.OK)
             {
-                foreach (var item in accountsWithStorage)
+                foreach (var item in helperResult.AccountsWithStorage)
                 {
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                _progressTracker.EnqueueCodeHashes(codeHashes);
+                _progressTracker.EnqueueCodeHashes(helperResult.CodeHashes);
 
                 _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
-                _progressTracker.MoreAccountsToRight = moreChildrenToRight;
+                _progressTracker.MoreAccountsToRight = helperResult.MoreChildrenToRight;
+                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes);
             }
-            else if (result == AddRangeResult.MissingRootHashInProofs)
+            else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
                 _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
             }
-            else if (result == AddRangeResult.DifferentRootHash)
+            else if (helperResult.Result == AddRangeResult.DifferentRootHash)
             {
                 _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
-            return result;
+            return helperResult.Result;
         }
 
         public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)
@@ -170,11 +170,11 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs, _progressTracker);
+            AddStorageRangeResult helperResult = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
-            if (result == AddRangeResult.OK)
+            if (helperResult.Result == AddRangeResult.OK)
             {
-                if (moreChildrenToRight)
+                if (helperResult.MoreChildrenToRight)
                 {
                     StorageRange range = new()
                     {
@@ -184,21 +184,22 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueStorageRange(range);
                 }
+                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes);
             }
-            else if (result == AddRangeResult.MissingRootHashInProofs)
+            else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
                 _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
-            else if (result == AddRangeResult.DifferentRootHash)
+            else if (helperResult.Result == AddRangeResult.DifferentRootHash)
             {
                 _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
 
-            return result;
+            return helperResult.Result;
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)

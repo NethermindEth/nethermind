@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            (_, _, _, _) = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
+            SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
         }
     }
 }

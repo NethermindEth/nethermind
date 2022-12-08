@@ -33,18 +33,18 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private static object _syncCommit = new();
 
-        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
-            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ProgressTracker progressTracker = null)
+        public static AddAccountRangeResult AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
             Keccak lastHash = accounts[^1].Path;
+            long syncedAcountBytes = 0;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true, null, null);
+                return new AddAccountRangeResult(result, true, null, null);
             }
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rlp is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-                    progressTracker?.UpdateStateSyncedBytes(rlp.Bytes.Length);
+                    syncedAcountBytes += rlp.Bytes.Length;
                 }
             }
 
@@ -75,38 +75,39 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true, null, null);
+                return new AddAccountRangeResult(AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore, progressTracker);
+            syncedAcountBytes += StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
+            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, syncedAcountBytes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight)
-            AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null, ProgressTracker progressTracker = null)
+        public static AddStorageRangeResult
+            AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
             Keccak lastHash = slots.Last().Path;
+            long syncedBytes = 0;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true);
+                return new(result, true);
             }
 
             for (var index = 0; index < slots.Length; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                progressTracker?.UpdateStateSyncedBytes(slot.SlotRlpValue.Length);
+                syncedBytes += slot.SlotRlpValue.Length;
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 
@@ -114,17 +115,17 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true);
+                return new(AddRangeResult.DifferentRootHash, true);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore, progressTracker);
+            syncedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight);
+            return new(AddRangeResult.OK, moreChildrenToRight, syncedBytes);
         }
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak? startingHash, Keccak endHash, Keccak expectedRootHash, byte[][]? proofs = null)
@@ -263,13 +264,14 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store, ProgressTracker progressTracker)
+        private static int StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
-                return;
+                return 0;
             }
 
+            int stichesBytesSize = 0;
             for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
             {
                 TrieNode node = sortedBoundaryList[i];
@@ -299,12 +301,11 @@ namespace Nethermind.Synchronization.SnapSync
                         node.IsBoundaryProofNode = isBoundaryProofNode;
                     }
 
-                    if (!node.IsBoundaryProofNode && progressTracker != null)
-                    {
-                        Interlocked.Add(ref progressTracker.StateStichedBytes, node.FullRlp?.Length ?? 0);
-                    }
+                    if (!node.IsBoundaryProofNode)
+                        stichesBytesSize += node.FullRlp?.Length ?? 0;
                 }
             }
+            return stichesBytesSize;
         }
 
         private static bool IsChildPersisted(TrieNode node, int childIndex, ITrieStore store)

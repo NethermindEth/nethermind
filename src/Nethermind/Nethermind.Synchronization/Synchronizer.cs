@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -69,6 +70,7 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
+        private TreeSync? _treeSync;
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -148,8 +150,8 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager, _snapProvider);
-            _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
+            _treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_syncMode, _treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -167,6 +169,7 @@ namespace Nethermind.Synchronization
         private void StartSnapSyncComponents()
         {
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
+            _snapProvider.StateRangesFinished += OnStateRangesFinished;
             SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
 
             Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
@@ -273,6 +276,15 @@ namespace Nethermind.Synchronization
         {
             _nodeStatsManager.ReportSyncEvent(e.Peer.Node, Convert(e.SyncEvent));
             SyncEvent?.Invoke(this, e);
+        }
+
+        private void OnStateRangesFinished(object? sender, SnapSyncEventArgs e)
+        {
+            if (_treeSync is not null)
+            {
+                if (_logger.IsInfo) _logger.Info($"State Sync (Phase 2 of 2) - already synced data: { e.StateRangesSyncedBytes / 1.MB() } MB");
+                _treeSync.SetSnapSyncData(e.StateRangesFinished, e.StateRangesSyncedBytes);
+            }
         }
 
         public Task StopAsync()
