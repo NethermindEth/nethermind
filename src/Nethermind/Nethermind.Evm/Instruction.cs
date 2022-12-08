@@ -84,6 +84,7 @@ namespace Nethermind.Evm
         GAS = 0x5a,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
@@ -190,6 +191,7 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,
@@ -197,7 +199,7 @@ namespace Nethermind.Evm
                 Instruction.DELEGATECALL => spec.DelegateCallEnabled,
                 Instruction.PUSH0 => spec.IncludePush0Instruction,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled => true,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.BASEFEE => spec.BaseFeeEnabled,
                 Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
                 Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
@@ -212,16 +214,17 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.PREVRANDAO => isPostMerge ? FastEnum.GetName(instruction) : "DIFFICULTY",
-                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "BEGINSUB",
-                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? FastEnum.GetName(instruction) : "RETURNSUB",
+                Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
+                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
+                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
+                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "RETURNSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
 
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
-            Instruction.RJUMP or Instruction.RJUMPI => true,
+            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
             _ => false
         };
     }

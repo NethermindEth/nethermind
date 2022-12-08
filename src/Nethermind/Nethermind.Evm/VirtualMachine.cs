@@ -2920,7 +2920,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidSubroutineEntry;
                             }
                         }
-                    case Instruction.RETURNSUB | Instruction.RJUMPI:
+                    case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
                             if (spec.StaticRelativeJumpsEnabled && CodeContainer.IsEof.Value)
                             {
@@ -2965,32 +2965,56 @@ namespace Nethermind.Evm
                             }
                             break;
                         }
-                    case Instruction.JUMPSUB:
+                    case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (!spec.SubroutinesEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && CodeContainer.IsEof.Value)
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
+                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                                stack.PopUInt256(out var case_v);
+                                var case_v_int = (short)case_v;
+                                var count = codeSection.Slice(programCounter, 2).ReadEthInt16();
+                                var immediateValueSize = 2 + count * 2;
+                                if (case_v_int >= count)
+                                {
+                                    programCounter += immediateValueSize;
+                                }
+                                else
+                                {
+                                    int caseOffset = codeSection.Slice(programCounter + 2 + case_v_int * 2, 2).ReadEthInt16();
+                                    programCounter += immediateValueSize + caseOffset;
+                                }
+                            }
+                            else
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.StackOverflow);
+                                    return CallResult.StackOverflowException;
+                                }
+
+                                vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+
+                                stack.PopUInt256(out UInt256 jumpDest);
+                                Jump(jumpDest, true);
+                                programCounter++;
                             }
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StackOverflow);
-                                return CallResult.StackOverflowException;
-                            }
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
-                            programCounter++;
-
                             break;
                         }
                     default:

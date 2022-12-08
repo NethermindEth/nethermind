@@ -16,8 +16,9 @@ namespace Nethermind.Evm
         public const long BalanceEip150 = 400;
         public const long BalanceEip1884 = 700;
         public const long SLoad = 50;
-        public const long RJump = 5;
-        public const long RJumpi = 7;
+        public const long RJump = 2;
+        public const long RJumpi = 4;
+        public const long RJumpv = 4;
         public const long SLoadEip150 = 200;
         public const long SLoadEip1884 = 800;
         public const long JumpDest = 1;

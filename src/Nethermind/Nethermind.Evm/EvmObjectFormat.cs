@@ -287,6 +287,53 @@ namespace Nethermind.Evm
                             }
                             i += 2;
                         }
+
+                        if (opcode is Instruction.RJUMPV)
+                        {
+                            if (i + 2 > sectionSize)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                                }
+                                header = null; return false;
+                            }
+
+                            var count = code.Slice(i, 2).ReadEthInt16();
+                            if(count < 1)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
+                                }
+                                header = null; return false;
+                            }
+                            if (i + 2 + count * 2 > sectionSize)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                                }
+                                header = null; return false;
+                            }
+                            var immediateValueSize = 2 + count * 2;
+                            immediates.Add(new Range(i, i + count * 2 + 1));
+                            for(int j = i + 2; j < count; j+=2)
+                            {
+                                var offset = code.Slice(j, 2).ReadEthInt16();
+                                var rjumpdest = offset + immediateValueSize + i;
+                                rjumpdests.Add(rjumpdest);
+                                if (rjumpdest < 0 || rjumpdest >= sectionSize)
+                                {
+                                    if (LoggingEnabled)
+                                    {
+                                        _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                                    }
+                                    header = null; return false;
+                                }
+                            }
+                            i += immediateValueSize;
+                        }
                     }
 
                     if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
