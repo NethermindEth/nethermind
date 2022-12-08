@@ -56,7 +56,7 @@ namespace Nethermind.Evm
 
         internal static Prepare DataTable(this Prepare @this, short[] table)
         {
-            for(int i = 0; i< table.Length; i++)
+            for (int i = 0; i < table.Length; i++)
             {
                 @this.Data(BitConverter.GetBytes(table[i]).Reverse().ToArray());
             }

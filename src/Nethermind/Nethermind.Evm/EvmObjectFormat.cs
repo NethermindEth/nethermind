@@ -300,7 +300,7 @@ namespace Nethermind.Evm
                             }
 
                             byte count = code[i];
-                            if(count < 1)
+                            if (count < 1)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -318,7 +318,7 @@ namespace Nethermind.Evm
                             }
                             var immediateValueSize = 1 + count * 2;
                             immediates.Add(new Range(i, i + immediateValueSize - 1));
-                            for(int j = 0; j < count; j+=2)
+                            for (int j = 0; j < count; j += 2)
                             {
                                 var offset = code.Slice(i + 1 + j, 2).ReadEthInt16();
                                 var rjumpdest = offset + immediateValueSize + i;

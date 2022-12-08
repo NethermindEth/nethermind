@@ -246,7 +246,7 @@ namespace Nethermind.Evm.Test
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
-                                .RJUMPV(new short[] { 1, 6}, 0)
+                                .RJUMPV(new short[] { 1, 6 }, 0)
                                 .INVALID()
                                 .ADD(2, 3)
                                 .MSTORE8(0, new byte[] { 1 })
