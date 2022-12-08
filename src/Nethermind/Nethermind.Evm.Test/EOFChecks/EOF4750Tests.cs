@@ -239,6 +239,72 @@ namespace Nethermind.Evm.Test
                         .PushData(23)
                         .PushData(3)
                         .CALLF(1)
+                        .ADD()
+                        .POP()
+                        .STOP()
+                        .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .PushData(23)
+                                .JUMPF(2)
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        },
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .ADD()
+                                .PushData(69)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        }
+                    },
+                    Result = (StatusCode.Success, null),
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
+                        .STOP()
+                        .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .ADD(54)
+                                .JUMPF(2)
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 1
+                        },
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .ADD(54)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 3
+                        }
+                    },
+                    Result = (StatusCode.Failure, "function target of jumpf is incompatible with callee"),
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
                         .STOP()
                         .Done,
                     Functions = new FunctionCase[]
@@ -337,6 +403,40 @@ namespace Nethermind.Evm.Test
                             Body = Prepare.EvmCode
                                 .MUL()
                                 .CALLF(2)
+                                .RETF()
+                                .Done,
+                            InputCount = 2,
+                            OutputCount = 0
+                        },
+
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .ADD(54)
+                                .RJUMP(1)
+                                .INVALID()
+                                .RETF()
+                                .Done,
+                            InputCount = 1,
+                            OutputCount = 0
+                        }
+                    },
+                    Result = (StatusCode.Success, null),
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
+                        .STOP()
+                        .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .CALLF(3)
                                 .RETF()
                                 .Done,
                             InputCount = 2,

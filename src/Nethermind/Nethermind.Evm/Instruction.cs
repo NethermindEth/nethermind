@@ -82,8 +82,10 @@ namespace Nethermind.Evm
         PC = 0x58,
         MSIZE = 0x59,
         GAS = 0x5a,
+        NOP = 0x5b,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
@@ -171,6 +173,7 @@ namespace Nethermind.Evm
         CALL = 0xf1,
         RETF = 0xb1, // FunctionSection
         CALLF = 0xb0, // FunctionSection
+        JUMPF = 0xb2,
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
@@ -192,6 +195,8 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
+                Instruction.CALLF or Instruction.JUMPF or Instruction.RETF => spec.IsEip4750Enabled,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,
@@ -199,14 +204,14 @@ namespace Nethermind.Evm
                 Instruction.DELEGATECALL => spec.DelegateCallEnabled,
                 Instruction.PUSH0 => spec.IncludePush0Instruction,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled => true,
-                Instruction.CALLF or Instruction.RETF when spec.FunctionSections => true,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.BASEFEE => spec.BaseFeeEnabled,
                 Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
                 Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
                 Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
                 Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
                 Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
+                Instruction.JUMP or Instruction.JUMPI => !spec.IsEip4750Enabled,
                 _ => true
             };
         }
@@ -218,13 +223,16 @@ namespace Nethermind.Evm
                 Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
                 Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
+                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "RETURNSUB",
+                Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
 
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
-            Instruction.RJUMP or Instruction.RJUMPI => true,
+            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
+            Instruction.RETF or Instruction.CALLF or Instruction.JUMPF => true,
             _ => false
         };
     }

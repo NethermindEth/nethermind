@@ -339,12 +339,14 @@ namespace Nethermind.Evm
                 return true;
             }
 
-            var (startOffset, sectionSize) = header[sectionId];
-            ReadOnlySpan<byte> code = container.Slice(header.CodeSectionOffsets.Start + startOffset, sectionSize);
+            var (codeSectionBegin, codeSectionSize) = header[sectionId];
+            var (typeSectionBegin, typeSectionSize) = header.TypeSectionOffsets;
+            ReadOnlySpan<byte> code = container.Slice(header.CodeSectionOffsets.Start + codeSectionBegin, codeSectionSize);
+            ReadOnlySpan<byte> typesection = container.Slice(typeSectionBegin, typeSectionSize);
             Instruction? opcode = null;
             HashSet<Range> immediates = new HashSet<Range>();
             HashSet<Int32> rjumpdests = new HashSet<Int32>();
-            for (int i = 0; i < sectionSize;)
+            for (int i = 0; i < codeSectionSize;)
             {
                 opcode = (Instruction)code[i];
                 i++;
@@ -362,7 +364,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + 2 > codeSectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -375,15 +377,62 @@ namespace Nethermind.Evm
                         immediates.Add(new Range(i, i + 1));
                         var rjumpdest = offset + 2 + i;
                         rjumpdests.Add(rjumpdest);
-                        if (rjumpdest < 0 || rjumpdest >= sectionSize)
+                        if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
                         {
                             if (LoggingEnabled)
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
                             }
-                            return false;
+                            header = null; return false;
                         }
                         i += 2;
+                    }
+
+                    if (opcode is Instruction.RJUMPV)
+                    {
+                        if (i + 2 > codeSectionSize)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                            }
+                            header = null; return false;
+                        }
+
+                        byte count = code[i];
+                        if (count < 1)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
+                            }
+                            header = null; return false;
+                        }
+                        if (i + count * 2 > codeSectionSize)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                            }
+                            header = null; return false;
+                        }
+                        var immediateValueSize = 1 + count * 2;
+                        immediates.Add(new Range(i, i + immediateValueSize - 1));
+                        for (int j = 0; j < count; j += 2)
+                        {
+                            var offset = code.Slice(i + 1 + j, 2).ReadEthInt16();
+                            var rjumpdest = offset + immediateValueSize + i;
+                            rjumpdests.Add(rjumpdest);
+                            if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                                }
+                                header = null; return false;
+                            }
+                        }
+                        i += immediateValueSize;
                     }
                 }
 
@@ -391,7 +440,7 @@ namespace Nethermind.Evm
                 {
                     if (opcode is Instruction.CALLF)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + 2 > codeSectionSize)
                         {
                             if (LoggingEnabled)
                             {
@@ -413,6 +462,40 @@ namespace Nethermind.Evm
                         }
                         i += 2;
                     }
+
+                    if (opcode is Instruction.JUMPF)
+                    {
+                        if (i + 2 > codeSectionSize)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4750 : CALLF Argument underflow");
+                            }
+                            return false;
+                        }
+
+                        var targetSectionId = code.Slice(i, 2).ReadEthUInt16();
+                        immediates.Add(new Range(i, i + 1));
+
+                        if (targetSectionId >= header.CodeSize.Length)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4750 : Invalid Section Id");
+                            }
+                            return false;
+                        }
+
+                        if (typesection[targetSectionId * 2 + 1] != typesection[sectionId * 2 + 1])
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4750 : Incompatible Function Type for JUMPF");
+                            }
+                            return false;
+                        }
+                        i += 2;
+                    }
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
@@ -425,7 +508,7 @@ namespace Nethermind.Evm
 
             bool endCorrectly = opcode switch
             {
-                Instruction.RETF when spec.IsEip4750Enabled => true,
+                Instruction.RETF or Instruction.JUMPF when spec.IsEip4750Enabled => true,
                 Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID // or Instruction.SELFDESTRUCT
                     => true,
                 _ => false

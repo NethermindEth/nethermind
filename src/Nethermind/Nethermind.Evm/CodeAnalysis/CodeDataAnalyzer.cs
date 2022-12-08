@@ -88,30 +88,46 @@ namespace Nethermind.Evm.CodeAnalysis
             byte push1 = (byte)Instruction.PUSH1;
             byte push32 = (byte)Instruction.PUSH32;
 
-            byte rjumpi = (byte)Instruction.RJUMPI;
             byte rjump = (byte)Instruction.RJUMP;
+            byte rjumpi = (byte)Instruction.RJUMPI;
+            byte rjumpv = (byte)Instruction.RJUMPV;
 
             byte callf = (byte)Instruction.CALLF;
+            byte jumpf = (byte)Instruction.JUMPF;
 
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi) && (op != callf))
+                if ((op < push1 || op > push32) && (op != rjump && op != rjumpv && op != rjumpi) && (op != callf))
                 {
                     continue;
                 }
 
-                if ((!spec.StaticRelativeJumpsEnabled && (op == rjump || op == rjumpi))
-                || (!spec.FunctionSections && op == callf))
+                if ((!spec.StaticRelativeJumpsEnabled && (op == rjump || op == rjumpi || op == rjumpv))
+                || (!spec.FunctionSections && (op == callf || op == jumpf)))
                 {
                     continue;
                 }
 
-                int numbits = op >= push1 && op <= push32
-                    ? op - push1 + 1
-                    : 2;
+                int numbits;
+                switch ((Instruction)op)
+                {
+                    case Instruction.RJUMP:
+                    case Instruction.JUMPF:
+                    case Instruction.CALLF:
+                    case Instruction.RJUMPI:
+                        numbits = 2;
+                        break;
+                    case Instruction.RJUMPV:
+                        byte count = code[pc];
+                        numbits = count * 2 + 1;
+                        break;
+                    default:
+                        numbits = op - push1 + 1;
+                        break;
+                }
 
                 if (numbits >= 8)
                 {
