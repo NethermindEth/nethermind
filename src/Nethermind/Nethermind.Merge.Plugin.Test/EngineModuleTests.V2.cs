@@ -381,7 +381,7 @@ public partial class EngineModuleTests
         foreach (Withdrawal[] withdrawal in input.Withdrawals)
         {
             PayloadAttributes payloadAttributes = new() { Timestamp = chain.BlockTree.Head!.Timestamp + 1, PrevRandao = TestItem.KeccakH, SuggestedFeeRecipient = TestItem.AddressF, Withdrawals = withdrawal };
-            ExecutionPayload? payload = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV1;
+            ExecutionPayload? payload = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV2;
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload!);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
             ResultWrapper<ForkchoiceUpdatedV1Result> resultFcu = await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash));
@@ -423,7 +423,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };
-        ExecutionPayload? payloadWithWithdrawals = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV1;
+        ExecutionPayload? payloadWithWithdrawals = (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayloadV2;
         ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals!);
 
         resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);

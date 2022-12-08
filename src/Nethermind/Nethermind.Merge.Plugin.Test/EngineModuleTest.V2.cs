@@ -68,10 +68,10 @@ public partial class EngineModuleTests
         await blockImprovementLock.WaitAsync(10000);
         GetPayloadV2Result getPayloadResult = (await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId))).Data!;
 
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayloadV1);
+        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayloadV2);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        UInt256 finalBalance = chain.StateReader.GetBalance(getPayloadResult.ExecutionPayloadV1.StateRoot, feeRecipient);
+        UInt256 finalBalance = chain.StateReader.GetBalance(getPayloadResult.ExecutionPayloadV2.StateRoot, feeRecipient);
 
         (finalBalance - startingBalance).Should().Be(getPayloadResult.BlockValue);
     }

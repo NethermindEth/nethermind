@@ -11,12 +11,12 @@ public class GetPayloadV2Result
     public GetPayloadV2Result(Block block, UInt256 blockFees)
     {
         BlockValue = blockFees;
-        ExecutionPayloadV1 = new(block);
+        ExecutionPayloadV2 = new(block);
     }
 
     public UInt256 BlockValue { get; }
 
-    public ExecutionPayload ExecutionPayloadV1 { get; }
+    public ExecutionPayload ExecutionPayloadV2 { get; }
 
-    public override string ToString() => $"ExecutionPayloadV1: {ExecutionPayloadV1}, Fees: {BlockValue}";
+    public override string ToString() => $"{{ExecutionPayloadV2: {ExecutionPayloadV2}, Fees: {BlockValue}}}";
 }
