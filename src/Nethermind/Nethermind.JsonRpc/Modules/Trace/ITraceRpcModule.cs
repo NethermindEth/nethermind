@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -44,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction([JsonRpcParameter(ExampleValue = "[\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",[\"trace\"]]")] Keccak txHash, string[] traceTypes);
 
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false, ExampleResponse = "[{\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x37f207b3ebda37de11ad2b6d306464e313c4841a\",\"gas\":\"0x3c36\",\"input\":\"0xa9059cbb000000000000000000000000d20d2f4c0b595abedef821a4157b0b990a37dae60000000000000000000000000000000000000000000000008ac7230489e80000\",\"to\":\"0x59a524d1f5dcbde3224fd42171795283596a8103\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x3c36\",\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"transactionHash\":\"0x17dc0fef36bb997c79ee2a0a126d059227000a2d47c9bbd1f49b5902a4e7385a\",\"vmTrace\":null}, (...)]")]
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions([JsonRpcParameter(ExampleValue = "[\"0x88df42\",[\"trace\"]]")] BlockParameter numberOrTag, string[] traceTypes);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions([JsonRpcParameter(ExampleValue = "[\"0x88df42\",[\"trace\"]]")] BlockParameter blockParameter, string[] traceTypes);
 
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc);

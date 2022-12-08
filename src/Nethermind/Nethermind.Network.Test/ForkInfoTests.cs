@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using FluentAssertions;
@@ -133,6 +120,37 @@ namespace Nethermind.Network.Test
         public void Fork_id_and_hash_as_expected_on_sepolia(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
+        }
+
+        [TestCase(0, "0xf64909b1", 1604400, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
+        [TestCase(1604399, "0xf64909b1", 1604400, "Last Byzantium block")]
+        [TestCase(1604400, "0xfde2d083", 2508800, "First Constantinople block")]
+        [TestCase(2508799, "0xfde2d083", 2508800, "Last Constantinople block")]
+        [TestCase(2508800, "0xfc1d8f2f", 7298030, "First Petersburg block")]
+        [TestCase(7298029, "0xfc1d8f2f", 7298030, "Last Petersburg block")]
+        [TestCase(7298030, "0x54d05e6c", 9186425, "First Istanbul block")]
+        [TestCase(9186424, "0x54d05e6c", 9186425, "Last Istanbul block")]
+        [TestCase(9186425, "0xb6e6cd81", 16101500, "First POSDAO Activation block")]
+        [TestCase(16101499, "0xb6e6cd81", 16101500, "Last POSDAO Activation block")]
+        [TestCase(16101500, "0x069a83d9", 19040000, "First Berlin block")]
+        [TestCase(19039999, "0x069a83d9", 19040000, "Last Berlin block")]
+        [TestCase(19040000, "0x018479d3", 0, "First London block")]
+        [TestCase(21735000, "0x018479d3", 0, "First GIP-31 block")]
+        public void Fork_id_and_hash_as_expected_on_gnosis(long head, string forkHashHex, long next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "xdai.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
+        }
+
+        [TestCase(0, "0x50d39d7b", 0, "Chiado genesis")]
+        public void Fork_id_and_hash_as_expected_on_chiado(long head, string forkHashHex, long next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
         private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
