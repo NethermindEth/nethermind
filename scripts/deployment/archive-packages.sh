@@ -35,11 +35,11 @@ dotnet build -c release Nethermind.Runner.csproj
 
 cd $RELEASE_DIRECTORY
 
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $LIN_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $OSX_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $WIN_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $LIN_ARM64_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $OSX_ARM64_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev,JsonRpc.TraceStore}.dll $LIN_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev,JsonRpc.TraceStore}.dll $OSX_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev,JsonRpc.TraceStore}.dll $WIN_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev,JsonRpc.TraceStore}.dll $LIN_ARM64_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev,JsonRpc.TraceStore}.dll $OSX_ARM64_RELEASE/plugins
 
 cd $LIN_RELEASE && zip -r $LIN-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..

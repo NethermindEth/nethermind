@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((BlockInfo)null);
+            Rlp rlp = Rlp.Encode((BlockInfo)null!);
             BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
             Assert.Null(decoded);
         }

@@ -59,24 +59,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
-        public ModuleResolution Check(string methodName, JsonRpcContext context)
-        {
-            return _provider.Check(methodName, context);
-        }
+        public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
 
-        public (MethodInfo, bool) Resolve(string methodName)
-        {
-            return _provider.Resolve(methodName);
-        }
+        public (MethodInfo, bool) Resolve(string methodName) => _provider.Resolve(methodName);
 
-        public Task<IRpcModule> Rent(string methodName, bool readOnly)
-        {
-            return _provider.Rent(methodName, readOnly);
-        }
+        public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 
-        public void Return(string methodName, IRpcModule rpcModule)
-        {
-            _provider.Return(methodName, rpcModule);
-        }
+        public void Return(string methodName, IRpcModule rpcModule) => _provider.Return(methodName, rpcModule);
+
+        public IRpcModulePool? GetPool(string moduleType) => _provider.GetPool(moduleType);
     }
 }
