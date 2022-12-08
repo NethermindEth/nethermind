@@ -68,13 +68,14 @@ namespace Nethermind.Evm.CodeAnalysis
 
             byte rjump = (byte)Instruction.RJUMP;
             byte rjumpi = (byte)Instruction.RJUMPI;
+            byte rjumpv = (byte)Instruction.RJUMPV;
 
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if ((op < push1 || op > push32) && (op < rjump || op > rjumpi))
+                if ((op < push1 || op > push32) && (op != rjump && op != rjumpv && op != rjumpi))
                 {
                     continue;
                 }
@@ -86,7 +87,21 @@ namespace Nethermind.Evm.CodeAnalysis
                     continue;
                 }
 
-                int numbits = isPushInstr ? op - push1 + 1 : 2;
+                int numbits;
+                switch ((Instruction)op)
+                {
+                    case Instruction.RJUMP:
+                    case Instruction.RJUMPI:
+                        numbits = 2;
+                        break;
+                    case Instruction.RJUMPV:
+                        byte count = code[pc];
+                        numbits = count * 2 + 1;
+                        break;
+                    default:
+                        numbits = op - push1 + 1;
+                        break;
+                }
 
                 if (numbits >= 8)
                 {

@@ -69,6 +69,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 {
                     index += 3;
                 }
+                else if (_releaseSpec.StaticRelativeJumpsEnabled && instruction == 0x5e)
+                {
+                    byte count = MachineCode[index + 1];
+                    index += 2 + count * 2;
+                }
                 else
                 {
                     index++;
