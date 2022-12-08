@@ -385,19 +385,23 @@ namespace Nethermind.Trie.Pruning
                     {
                         lock (_dirtyNodes)
                         {
-                            using var locker = ConcurrentDictionaryLock<Keccak, TrieNode>.Acquire(_dirtyNodes.AllNodes);
-                            _logger.Warn("Prune lock");
-                            while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                            using (_dirtyNodes.AllNodes.AcquireLock())
                             {
-                                PruneCache();
+                                if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
+                                while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                                 {
-                                    break;
+                                    PruneCache();
+
+                                    if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
+                                    {
+                                        break;
+                                    }
                                 }
                             }
-                            _logger.Warn("Prune unlock");
                         }
+                        
+                        if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
                     }
                     catch (Exception e)
                     {

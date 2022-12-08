@@ -1,17 +1,41 @@
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+// ReSharper disable InvalidXmlDocComment
 
 namespace Nethermind.Core.Collections;
 
+/// <summary>
+/// Helper class to be able to lock internals of <see cref="ConcurrentDictionary{TKey,TValue}"/>.
+/// </summary>
+/// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
+/// <typeparam name="TValue">The type of the values in the dictionary.</typeparam>
 public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
 {
+    /// <summary>
+    /// Delegate that is equivalent of <see cref="ConcurrentDictionary{TKey,TValue}.AcquireLocks"/>
+    /// </summary>
     private delegate void AcquireAllLocks(ConcurrentDictionary<TKey, TValue> dictionary, ref int locksAcquired);
+
+    /// <summary>
+    /// Delegate that is equivalent of <see cref="ConcurrentDictionary{TKey,TValue}.ReleaseLocks"/>
+    /// </summary>
     private delegate void ReleaseLocks(ConcurrentDictionary<TKey, TValue> dictionary, int fromInclusive, int toExclusive);
 
+    /// <summary>
+    /// Cached delegate of <see cref="ConcurrentDictionary{TKey,TValue}.AcquireLocks"/> to neglect reflection performance impact.
+    /// </summary>
     private static readonly AcquireAllLocks _acquireAllLocksMethod;
+
+    /// <summary>
+    /// Cached delegate of <see cref="ConcurrentDictionary{TKey,TValue}.ReleaseLocks"/> to neglect reflection performance impact.
+    /// </summary>
     private static readonly ReleaseLocks _releaseLocksMethod;
 
+    /// <summary>
+    /// Creates and caches delegates to private lock methods of <see cref="ConcurrentDictionary{TKey,TValue}"/>.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Thrown when private members of <see cref="ConcurrentDictionary{TKey,TValue}"/> changed and we cannot create delegates.</exception>
     static ConcurrentDictionaryLock()
     {
         TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate
@@ -36,27 +60,49 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
         _releaseLocksMethod = CreateDelegate<ConcurrentDictionary<TKey, TValue>, ReleaseLocks>();
     }
 
+    /// <summary>
+    /// Acquires the internal lock on all the keys of <see cref="dictionary"/>.
+    /// </summary>
+    /// <param name="dictionary">Dictionary to lock.</param>
+    /// <returns>Lock instance. To release the lock it needs to be <see cref="Lock.Dispose"/>d.</returns>
     public static Lock Acquire(ConcurrentDictionary<TKey, TValue> dictionary) => new(dictionary);
 
+    /// <summary>
+    /// Represents a lock on <see cref="ConcurrentDictionary{TKey,TValue}"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is a ref struct in order not to keep the locks longer than a method.
+    /// You have to <see cref="Dispose"/> it to release the lock!
+    /// </remarks>
     public readonly ref struct Lock
     {
-        private readonly ConcurrentDictionary<TKey, TValue>? _dictionary;
+        private readonly ConcurrentDictionary<TKey, TValue> _dictionary;
         private readonly int _locksAcquired = 0;
 
-        public Lock(ConcurrentDictionary<TKey, TValue> dictionary)
+        internal Lock(ConcurrentDictionary<TKey, TValue> dictionary)
         {
             _dictionary = dictionary;
             _acquireAllLocksMethod(dictionary, ref _locksAcquired);
         }
 
+        // Duck typing
         public void Dispose()
         {
-            if (_dictionary is not null)
-            {
-                _releaseLocksMethod(_dictionary, 0, _locksAcquired);
-            }
+            _releaseLocksMethod(_dictionary, 0, _locksAcquired);
         }
     }
+}
+
+public static class ConcurrentDictionaryExtensions
+{
+    /// <summary>
+    /// Acquires the internal lock on all the keys of <see cref="dictionary"/>.
+    /// </summary>
+    /// <param name="dictionary">Dictionary to lock.</param>
+    /// <returns>Lock instance. To release the lock it needs to be <see cref="ConcurrentDictionaryLock{TKey,TValue}.Lock.Dispose"/>d.</returns>
+    public static ConcurrentDictionaryLock<TKey, TValue>.Lock AcquireLock<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
+        where TKey : notnull =>
+        ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
 }
 
 

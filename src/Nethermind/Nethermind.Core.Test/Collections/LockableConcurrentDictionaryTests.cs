@@ -11,11 +11,11 @@ namespace Nethermind.Core.Test.Collections;
 public class LockableConcurrentDictionaryTests
 {
     [Test]
-    public void X()
+    public void Locks()
     {
         ConcurrentDictionary<int, int> dictionary = new(new Dictionary<int, int> { { 0, 0 }, { 1, 1 }, { 2, 2 } });
         Task<int> updateTask;
-        using (var locker = ConcurrentDictionaryLock<int, int>.Acquire(dictionary))
+        using (dictionary.AcquireLock())
         {
             updateTask = Task.Run(() => dictionary[3] = 3);
             Task.WaitAny(updateTask, Task.Delay(100));
