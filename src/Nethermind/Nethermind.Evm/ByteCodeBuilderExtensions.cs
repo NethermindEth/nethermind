@@ -53,6 +53,15 @@ namespace Nethermind.Evm
             }
             return @this;
         }
+
+        internal static Prepare DataTable(this Prepare @this, short[] table)
+        {
+            for(int i = 0; i< table.Length; i++)
+            {
+                @this.Data(BitConverter.GetBytes(table[i]).Reverse().ToArray());
+            }
+            return @this;
+        }
         #endregion
 
         public static Prepare COMMENT(this Prepare @this, string comment) => @this;
@@ -142,6 +151,11 @@ namespace Nethermind.Evm
         public static Prepare RJUMP(this Prepare @this, Int16 to)
             => @this.Op(Instruction.RJUMP)
                     .Data(BitConverter.GetBytes(to).Reverse().ToArray());
+        public static Prepare RJUMPV(this Prepare @this, Int16[] table, UInt256? to = null)
+            => @this.PushSingle(to)
+                    .Op(Instruction.RJUMPV)
+                    .Data((byte)table.Length)
+                    .DataTable(table);
         public static Prepare BLOCKHASH(this Prepare @this, UInt256? target = null)
             => @this.PushSingle(target)
                     .Op(Instruction.BLOCKHASH);

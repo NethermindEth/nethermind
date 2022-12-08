@@ -98,6 +98,36 @@ namespace Nethermind.Evm.Test
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
+                                .RJUMP(1)
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPI(1, new byte[] { 1 })
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
                                 .RJUMP(11)
                                 .INVALID()
                                 .MSTORE8(0, new byte[] { 1 })
@@ -195,6 +225,86 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done,
                     ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 2, 3 }, 1)
+                                .INVALID()
+                                .INVALID()
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 6}, 0)
+                                .INVALID()
+                                .ADD(2, 3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 0, 5 }, 4)
+                                .ADD(2, 3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Success, null),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { }, 0)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Failure, "truncated jumptable"),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 1 }, 0)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Failure, "jump to push immediate"),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 5 }, 0)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Failure, "jumpv destination outside of bounds"),
+                    ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
+                };
+
+                yield return new TestCase
+                {
+                    Code = Prepare.EvmCode
+                                .RJUMPV(new short[] { 1 }, 0)
+                                .Done,
+                    ResultIfEOF = (StatusCode.Failure, "jumpv cant be last instruction"),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
             }

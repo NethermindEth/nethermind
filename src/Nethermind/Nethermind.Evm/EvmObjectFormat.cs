@@ -299,7 +299,7 @@ namespace Nethermind.Evm
                                 header = null; return false;
                             }
 
-                            var count = code.Slice(i, 2).ReadEthInt16();
+                            byte count = code[i];
                             if(count < 1)
                             {
                                 if (LoggingEnabled)
@@ -308,7 +308,7 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
-                            if (i + 2 + count * 2 > sectionSize)
+                            if (i + count * 2 > sectionSize)
                             {
                                 if (LoggingEnabled)
                                 {
@@ -316,11 +316,11 @@ namespace Nethermind.Evm
                                 }
                                 header = null; return false;
                             }
-                            var immediateValueSize = 2 + count * 2;
-                            immediates.Add(new Range(i, i + count * 2 + 1));
-                            for(int j = i + 2; j < count; j+=2)
+                            var immediateValueSize = 1 + count * 2;
+                            immediates.Add(new Range(i, i + immediateValueSize - 1));
+                            for(int j = 0; j < count; j+=2)
                             {
-                                var offset = code.Slice(j, 2).ReadEthInt16();
+                                var offset = code.Slice(i + 1 + j, 2).ReadEthInt16();
                                 var rjumpdest = offset + immediateValueSize + i;
                                 rjumpdests.Add(rjumpdest);
                                 if (rjumpdest < 0 || rjumpdest >= sectionSize)

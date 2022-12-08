@@ -2975,17 +2975,16 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
-                                stack.PopUInt256(out var case_v);
-                                var case_v_int = (short)case_v;
-                                var count = codeSection.Slice(programCounter, 2).ReadEthInt16();
-                                var immediateValueSize = 2 + count * 2;
-                                if (case_v_int >= count)
+                                var case_v = stack.PopByte();
+                                var count = codeSection[programCounter];
+                                var immediateValueSize = 1 + count * 2;
+                                if (case_v >= count)
                                 {
                                     programCounter += immediateValueSize;
                                 }
                                 else
                                 {
-                                    int caseOffset = codeSection.Slice(programCounter + 2 + case_v_int * 2, 2).ReadEthInt16();
+                                    int caseOffset = codeSection.Slice(programCounter + 1 + case_v * 2, 2).ReadEthInt16();
                                     programCounter += immediateValueSize + caseOffset;
                                 }
                             }
