@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization
         {
             if (_treeSync is not null)
             {
-                if (_logger.IsInfo) _logger.Info($"State Sync (Phase 2 of 2) - already synced data: { e.StateRangesSyncedBytes / 1.MB() } MB");
+                if (_logger.IsInfo) _logger.Info($"State Sync (Phase 2 of 2) - already synced data: {e.StateRangesSyncedBytes / 1.MB()} MB");
                 _treeSync.SetSnapSyncData(e.StateRangesFinished, e.StateRangesSyncedBytes);
             }
         }

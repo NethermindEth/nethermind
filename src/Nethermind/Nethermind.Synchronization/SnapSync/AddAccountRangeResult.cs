@@ -12,7 +12,7 @@ namespace Nethermind.Synchronization.SnapSync
         public IList<PathWithAccount> AccountsWithStorage { get; private set; }
         public IList<Keccak> CodeHashes { get; private set; }
 
-        public AddAccountRangeResult(AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes, long syncedBytes = 0) : 
+        public AddAccountRangeResult(AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes, long syncedBytes = 0) :
             base(result, moreChildrenToRight, syncedBytes)
         {
             AccountsWithStorage = accountsWithStorage;

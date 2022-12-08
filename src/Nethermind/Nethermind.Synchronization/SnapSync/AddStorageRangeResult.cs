@@ -1,4 +1,4 @@
-﻿// Copyright 2022 Demerzel Solutions Limited
+// Copyright 2022 Demerzel Solutions Limited
 // Licensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
 
 namespace Nethermind.Synchronization.SnapSync
