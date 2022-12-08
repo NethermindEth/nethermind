@@ -26,9 +26,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _keyStore = Substitute.For<IKeyStore>();
         }
 
-        private IKeyStore _keyStore;
-        private IEcdsa _ecdsa;
-        private DevWallet _wallet;
+        private IKeyStore _keyStore = null!;
+        private IEcdsa _ecdsa = null!;
+        private DevWallet _wallet = null!;
 
         [Test]
         public void Personal_list_accounts()

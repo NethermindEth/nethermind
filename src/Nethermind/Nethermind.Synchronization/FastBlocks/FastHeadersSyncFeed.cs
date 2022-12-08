@@ -65,6 +65,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
+        protected virtual MeasuredProgress HeadersSyncQueueReport => _syncReport.HeadersInQueue;
 
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
@@ -164,8 +165,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _dependencies.Clear(); // there may be some dependencies from wrong branches
             _pending.Clear(); // there may be pending wrong branches
             _sent.Clear(); // we my still be waiting for some bad branches
-            _syncReport.HeadersInQueue.Update(0L);
-            _syncReport.HeadersInQueue.MarkEnd();
+            HeadersSyncQueueReport.Update(0L);
+            HeadersSyncQueueReport.MarkEnd();
         }
 
         private void HandleDependentBatches(CancellationToken cancellationToken)
@@ -524,7 +525,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {LowestInsertedBlockHeader?.Number} | HANDLED {batch}");
 
-            _syncReport.HeadersInQueue.Update(HeadersInQueue);
+            HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
         }
 

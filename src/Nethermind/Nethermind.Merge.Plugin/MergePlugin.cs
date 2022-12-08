@@ -26,6 +26,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -312,6 +313,7 @@ namespace Nethermind.Merge.Plugin
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
+                    new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,

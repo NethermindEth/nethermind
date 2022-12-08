@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -58,6 +59,9 @@ namespace Nethermind.Merge.Plugin.Test
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new GetPayloadV2Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
                 new NewPayloadV1Handler(

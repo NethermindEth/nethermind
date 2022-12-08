@@ -81,7 +81,5 @@ namespace Nethermind.JsonRpc.Test.Modules
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_listening");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
         }
-
-
     }
 }

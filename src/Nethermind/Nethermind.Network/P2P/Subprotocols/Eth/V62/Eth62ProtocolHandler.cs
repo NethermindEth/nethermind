@@ -120,14 +120,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             int packetType = message.PacketType;
             if (!_statusReceived && packetType != Eth62MessageCode.Status)
             {
-                throw new SubprotocolException(
-                    $"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
+                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
             int size = message.Content.ReadableBytes;
-            if (Logger.IsTrace)
-                Logger.Trace(
-                    $"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
 
             switch (packetType)
             {

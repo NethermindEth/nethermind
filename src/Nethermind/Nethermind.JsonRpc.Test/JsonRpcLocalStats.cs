@@ -13,14 +13,14 @@ namespace Nethermind.JsonRpc.Test
     [TestFixture]
     public class JsonRpcLocalStatsTests
     {
-        private TestLogger _testLogger;
+        private TestLogger _testLogger = null!;
 
         private JsonRpcConfig _config = new();
 
-        private ManualTimestamper _manualTimestamper;
+        private ManualTimestamper _manualTimestamper = null!;
 
         private DateTime _startTime = DateTime.MinValue;
-        private OneLoggerLogManager _logManager;
+        private OneLoggerLogManager _logManager = null!;
 
         [SetUp]
         public void Setup()

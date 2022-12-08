@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing
 
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
 
-            // Calculate and return additional gas required in case of insufficient funds.    
+            // Calculate and return additional gas required in case of insufficient funds.
             if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
             {
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
@@ -109,6 +109,7 @@ namespace Nethermind.Evm.Tracing
             public bool IsTracingStorage => false;
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
+            public bool IsTracingFees => false;
 
             public bool OutOfGas { get; set; }
 
@@ -256,6 +257,10 @@ namespace Nethermind.Evm.Tracing
             {
             }
 
+            public void ReportFees(UInt256 fees, UInt256 burntFees)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

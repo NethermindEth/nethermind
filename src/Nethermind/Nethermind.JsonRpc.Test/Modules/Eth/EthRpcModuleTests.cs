@@ -1130,16 +1130,13 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge blockchainBridge = null)
-        {
-
-            var res = new Context()
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null) =>
+            new()
             {
-                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(specProvider),
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).Build(specProvider),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
             };
-            return res;
-        }
+
         public void Dispose()
         {
             Test?.Dispose();

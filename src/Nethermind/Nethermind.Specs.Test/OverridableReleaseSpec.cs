@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -122,17 +122,17 @@ namespace Nethermind.Specs.Test
         private long? _overridenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
         {
-            get
-            {
-                return _overridenEip1559TransitionBlock ?? _spec.Eip1559TransitionBlock;
-            }
-            set
-            {
-                _overridenEip1559TransitionBlock = value;
-            }
+            get => _overridenEip1559TransitionBlock ?? _spec.Eip1559TransitionBlock;
+            set => _overridenEip1559TransitionBlock = value;
         }
 
-        public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
+        private Address? _overridenEip1559FeeCollector;
+        public Address? Eip1559FeeCollector
+        {
+            get => _overridenEip1559FeeCollector ?? _spec.Eip1559FeeCollector;
+            set => _overridenEip1559FeeCollector = value;
+        }
+
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
