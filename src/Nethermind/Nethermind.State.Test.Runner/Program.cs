@@ -63,7 +63,7 @@ namespace Nethermind.State.Test.Runner
                 input = Console.ReadLine();
             }
 
-	    while ( !string.IsNullOrWhiteSpace(input) )
+            while (!string.IsNullOrWhiteSpace(input))
             {
                 RunSingleTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack));
                 if (!options.Stdin)
