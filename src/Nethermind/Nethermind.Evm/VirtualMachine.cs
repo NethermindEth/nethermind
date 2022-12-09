@@ -647,11 +647,7 @@ namespace Nethermind.Evm
             {
                 if (traceOpcodes)
                 {
-                    if (_txTracer.IsTracingMemory)
-                    {
-                        _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
-                    }
-
+                    _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
                     _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
             }

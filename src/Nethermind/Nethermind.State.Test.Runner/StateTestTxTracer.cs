@@ -91,6 +91,10 @@ namespace Nethermind.State.Test.Runner
         public void SetOperationMemorySize(ulong newSize)
         {
             _traceEntry.UpdateMemorySize(newSize);
+	    if (!IsTracingMemory)
+	    {
+		return;
+	    }
             int diff = (int)_traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
             if (diff > 0)
             {
