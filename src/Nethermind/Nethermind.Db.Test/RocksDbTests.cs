@@ -13,6 +13,6 @@ public static class RocksDbTests
     public static void Should_have_required_version()
     {
         string version = DbOnTheRocks.GetRocksDbVersion();
-        Assert.AreEqual("6.29.3", $"{version}", "Unexpected RocksDB version");
+        Assert.AreEqual("7.7.3", $"{version}", "Unexpected RocksDB version");
     }
 }
