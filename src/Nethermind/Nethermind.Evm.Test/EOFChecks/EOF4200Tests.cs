@@ -230,7 +230,7 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-                
+
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
