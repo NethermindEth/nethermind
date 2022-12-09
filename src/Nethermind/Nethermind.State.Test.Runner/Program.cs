@@ -13,7 +13,7 @@ namespace Nethermind.State.Test.Runner
     {
         public class Options
         {
-            [Option('i', "input", Required = true, HelpText = "Set the state test input file or directory.")]
+            [Option('i', "input", Required = false, HelpText = "Set the state test input file or directory. Either 'input' or 'stdin' is required")]
             public string Input { get; set; }
 
             [Option('t', "trace", Required = false, HelpText = "Set to always trace (by default traces are only generated for failing tests).")]
@@ -30,6 +30,9 @@ namespace Nethermind.State.Test.Runner
 
             [Option('s', "stack", Required = false, HelpText = "Exclude stack trace")]
             public bool ExcludeStack { get; set; }
+
+            [Option('x', "stdin", Required = false, HelpText = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read.")]
+            public bool Stdin { get; set; }
         }
 
         public static void Main(params string[] args)
@@ -54,9 +57,20 @@ namespace Nethermind.State.Test.Runner
                 whenTrace = WhenTrace.Always;
             }
 
-            if (!string.IsNullOrWhiteSpace(options.Input))
+            String input = options.Input;
+            if (options.Stdin)
             {
-                RunSingleTest(options.Input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack));
+                input = Console.ReadLine();
+            }
+
+	    while ( !string.IsNullOrWhiteSpace(input) )
+            {
+                RunSingleTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack));
+                if (!options.Stdin)
+                {
+                    break;
+                }
+                input = Console.ReadLine();
             }
 
             if (options.Wait)
