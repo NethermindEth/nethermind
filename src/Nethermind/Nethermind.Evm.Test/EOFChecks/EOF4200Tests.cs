@@ -109,7 +109,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -124,7 +123,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -138,7 +136,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -149,7 +146,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -162,7 +158,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -175,7 +170,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -190,7 +184,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -205,7 +198,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -216,7 +208,6 @@ namespace Nethermind.Evm.Test
                     ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Failure, "Invalid opcode"),
                 };
-
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
@@ -231,7 +222,7 @@ namespace Nethermind.Evm.Test
                 yield return new TestCase
                 {
                     Code = Prepare.EvmCode
-                                .RJUMPV(new short[] { 1, 2, 3 }, 1)
+                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
                                 .INVALID()
                                 .INVALID()
                                 .PushData(2)

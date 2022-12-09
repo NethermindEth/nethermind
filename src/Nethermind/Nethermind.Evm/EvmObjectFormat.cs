@@ -318,9 +318,9 @@ namespace Nethermind.Evm
                             }
                             var immediateValueSize = 1 + count * 2;
                             immediates.Add(new Range(i, i + immediateValueSize - 1));
-                            for (int j = 0; j < count; j += 2)
+                            for (int j = 0; j < count; j++)
                             {
-                                var offset = code.Slice(i + 1 + j, 2).ReadEthInt16();
+                                var offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
                                 var rjumpdest = offset + immediateValueSize + i;
                                 rjumpdests.Add(rjumpdest);
                                 if (rjumpdest < 0 || rjumpdest >= sectionSize)
@@ -339,7 +339,7 @@ namespace Nethermind.Evm
                     if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                     {
                         int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
-                        immediates.Add(new Range(i, i + len));
+                        immediates.Add(new Range(i, i + len - 1));
                         i += len;
                     }
                 }
