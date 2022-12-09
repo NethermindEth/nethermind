@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
-            Block? block = await _payloadPreparationService.GetPayload(payloadStr);
+            Block? block = (await _payloadPreparationService.GetPayload(payloadStr))?.CurrentBestBlock;
 
             if (block is null)
             {

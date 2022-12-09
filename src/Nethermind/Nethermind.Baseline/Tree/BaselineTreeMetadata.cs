@@ -158,7 +158,7 @@ namespace Nethermind.Baseline.Tree
             {
                 RlpStream? rlpStream = new RlpStream(rlpEncoded);
                 rlpStream.SkipLength();
-                result = (rlpStream.DecodeKeccak(), rlpStream.DecodeLong());
+                result = (rlpStream.DecodeKeccak()!, rlpStream.DecodeLong());
             }
 
             if (_logger.IsWarn) _logger.Warn($"Loaded count of {DbPrefix.ToHexString()} at block {CurrentBlockIndex}");

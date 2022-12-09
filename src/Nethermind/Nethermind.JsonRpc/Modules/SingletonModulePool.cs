@@ -37,6 +37,6 @@ namespace Nethermind.JsonRpc.Modules
         {
         }
 
-        public IRpcModuleFactory<T> Factory { get; set; }
+        public IRpcModuleFactory<T> Factory { get; }
     }
 }

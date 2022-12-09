@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -13,7 +12,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -284,7 +282,13 @@ namespace Nethermind.Consensus.Processing
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                        _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+
+                        bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+                        if (!readOnlyChain)
+                        {
+                            _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+                        }
+
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
@@ -368,8 +372,8 @@ namespace Nethermind.Consensus.Processing
                 _blockTree.UpdateMainChain(processingBranch.Blocks, true);
             }
 
-            bool notReadOnlyChain = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            if (notReadOnlyChain)
+            bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            if (!readonlyChain)
             {
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
@@ -382,9 +386,8 @@ namespace Nethermind.Consensus.Processing
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
-            if (!notReadOnlyChain)
+            if (!readonlyChain)
             {
-
                 _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
             }
 

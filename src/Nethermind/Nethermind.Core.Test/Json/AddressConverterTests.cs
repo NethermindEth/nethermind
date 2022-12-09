@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_value()
         {
-            TestConverter(null, (address, address1) => address == address1, new AddressConverter());
+            TestConverter(null!, (address, address1) => address == address1, new AddressConverter());
         }
 
         [Test]

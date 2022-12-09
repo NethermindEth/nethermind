@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Test
             {
             }
 
-            public Keccak Parameter { get; set; }
+            public Keccak Parameter { get; set; } = null!;
 
             public override async Task<string> GetJsonData() =>
                 await SendRequest(CreateRequest("eth_getTransactionReceipt", Parameter.ToString()));

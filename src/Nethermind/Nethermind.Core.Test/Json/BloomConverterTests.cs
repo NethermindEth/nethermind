@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_values()
         {
-            TestConverter(null, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
+            TestConverter(null!, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
         }
 
         [Test]
