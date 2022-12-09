@@ -399,42 +399,42 @@ namespace Nethermind.Evm
                             header = null; return false;
                         }
 
-                            byte count = code[i];
-                            if (count < 1)
+                        byte count = code[i];
+                        if (count < 1)
+                        {
+                            if (LoggingEnabled)
                             {
-                                if (LoggingEnabled)
-                                {
-                                    _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
-                                }
-                                header = null; return false;
+                                _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
                             }
-                            if (i + count * 2 > codeSectionSize)
-                            {
-                                if (LoggingEnabled)
-                                {
-                                    _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
-                                }
-                                header = null; return false;
-                            }
-                            var immediateValueSize = 1 + count * 2;
-                            immediates.Add(new Range(i, i + immediateValueSize - 1));
-                            for (int j = 0; j < count; j++)
-                            {
-                                var offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
-                                var rjumpdest = offset + immediateValueSize + i;
-                                rjumpdests.Add(rjumpdest);
-                                if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
-                                {
-                                    if (LoggingEnabled)
-                                    {
-                                        _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
-                                    }
-                                    header = null; return false;
-                                }
-                            }
-                            i += immediateValueSize;
+                            header = null; return false;
                         }
+                        if (i + count * 2 > codeSectionSize)
+                        {
+                            if (LoggingEnabled)
+                            {
+                                _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                            }
+                            header = null; return false;
+                        }
+                        var immediateValueSize = 1 + count * 2;
+                        immediates.Add(new Range(i, i + immediateValueSize - 1));
+                        for (int j = 0; j < count; j++)
+                        {
+                            var offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
+                            var rjumpdest = offset + immediateValueSize + i;
+                            rjumpdests.Add(rjumpdest);
+                            if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
+                            {
+                                if (LoggingEnabled)
+                                {
+                                    _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                                }
+                                header = null; return false;
+                            }
+                        }
+                        i += immediateValueSize;
                     }
+                }
 
                 if (spec.IsEip4750Enabled)
                 {
