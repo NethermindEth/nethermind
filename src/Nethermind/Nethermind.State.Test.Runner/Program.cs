@@ -57,7 +57,7 @@ namespace Nethermind.State.Test.Runner
                 whenTrace = WhenTrace.Always;
             }
 
-            String input = options.Input;
+            string input = options.Input;
             if (options.Stdin)
             {
                 input = Console.ReadLine();
@@ -70,6 +70,7 @@ namespace Nethermind.State.Test.Runner
                 {
                     break;
                 }
+
                 input = Console.ReadLine();
             }
 
