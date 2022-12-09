@@ -82,7 +82,6 @@ namespace Nethermind.State.Test.Runner
 
             WriteOut(results);
 
-            Console.ReadLine();
             return results;
         }
     }
