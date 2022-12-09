@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -82,8 +83,10 @@ namespace Nethermind.Evm
         PC = 0x58,
         MSIZE = 0x59,
         GAS = 0x5a,
+        NOP = 0x5b,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
@@ -171,6 +174,7 @@ namespace Nethermind.Evm
         CALL = 0xf1,
         RETF = 0xb1, // FunctionSection
         CALLF = 0xb0, // FunctionSection
+        JUMPF = 0xb2,
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
@@ -192,6 +196,8 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
+                Instruction.CALLF or Instruction.JUMPF or Instruction.RETF => spec.IsEip4750Enabled,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,
@@ -199,21 +205,21 @@ namespace Nethermind.Evm
                 Instruction.DELEGATECALL => spec.DelegateCallEnabled,
                 Instruction.PUSH0 => spec.IncludePush0Instruction,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI when spec.StaticRelativeJumpsEnabled => true,
-                Instruction.CALLF or Instruction.RETF when spec.FunctionSections => true,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.BASEFEE => spec.BaseFeeEnabled,
                 Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
                 Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
                 Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
                 Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
                 Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
+                Instruction.JUMP or Instruction.JUMPI => !spec.IsEip4750Enabled,
                 _ => true
             };
         }
 
         public static (int InputCount, int immediates, int OutputCount) StackRequirements(this Instruction instruction, IReleaseSpec spec) => instruction switch
         {
-            Instruction.STOP or Instruction.JUMPDEST or Instruction.INVALID or Instruction.CALLF or Instruction.RETF => (0, instruction is Instruction.CALLF ? 2 : 0, 0),
+            Instruction.STOP or Instruction.JUMPDEST or Instruction.INVALID or Instruction.CALLF or Instruction.JUMPF => (0, instruction is Instruction.CALLF ? 2 : 0, 0),
             Instruction.ADD or Instruction.MUL or Instruction.SUB or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD or
             Instruction.EXP or Instruction.SIGNEXTEND or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT or Instruction.EQ or
             Instruction.AND or Instruction.OR or Instruction.XOR or Instruction.BYTE or Instruction.SHL or Instruction.SHR or Instruction.SAR or Instruction.SHA3 => (2, 0, 1),
@@ -227,15 +233,17 @@ namespace Nethermind.Evm
             Instruction.BASEFEE or Instruction.PC or Instruction.MSIZE or Instruction.GAS => (0, 0, 1),
             Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.JUMPI or Instruction.RETURN or Instruction.REVERT or Instruction.TSTORE => (2, 0, 0),
             Instruction.CODECOPY or Instruction.RETURNDATACOPY => (3, 0, 0),
-            Instruction.JUMP or Instruction.SELFDESTRUCT or Instruction.POP or Instruction.JUMPSUB => (1, 0, 0),
+            Instruction.JUMP or Instruction.SELFDESTRUCT or Instruction.POP => (1, 0, 0),
             Instruction.CALL or Instruction.CALLCODE => (7, 0, 1),
             Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 0, 1),
             Instruction.EXTCODECOPY => (4, 0, 0),
             Instruction.CREATE2 => (4, 0, 1),
-
+            Instruction.RJUMPV when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled
+                ? (1, 4, 0) /* 4 is minimum but it needs to be calculated*/
+                : (1, 0, 0),
             Instruction.RJUMP when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled ? (0, 2, 0) : (0, 0, 0),
             Instruction.RJUMPI when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled ? (1, 2, 0) : (0, 0, 0),
-
+            Instruction.RETF => (0, 0, 0),
             >= Instruction.LOG0 and <= Instruction.LOG4 => (2 + instruction - Instruction.LOG0, 0, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, instruction - Instruction.PUSH0, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, 0, instruction - Instruction.DUP1 + 2),
@@ -251,20 +259,23 @@ namespace Nethermind.Evm
                 Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
                 Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
+                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "RETURNSUB",
+                Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
 
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
-            Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF or Instruction.RETF => true,
+            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
+            Instruction.RETF or Instruction.CALLF or Instruction.JUMPF => true,
             _ => false
         };
 
         public static bool IsTerminatingInstruction(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.RETF => spec?.IsEip4750Enabled ?? true,
+            Instruction.RETF or Instruction.JUMPF => spec?.IsEip4750Enabled ?? true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };

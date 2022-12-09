@@ -20,7 +20,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.ComponentModel.DataAnnotations;
-using MathGmp.Native;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -643,6 +642,26 @@ namespace Nethermind.Evm
                 if (_txTracer.IsTracingStack)
                 {
                     _txTracer.SetOperationStack(stackValue.GetStackTrace());
+                }
+            }
+
+            void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
+            {
+                List<UInt256> arguments = new();
+                for (int i = 0; i < argsCount; i++)
+                {
+                    stack.PopUInt256(out var item);
+                    arguments.Add(item);
+                }
+
+                while (stack.Head > height)
+                {
+                    stack.PopUInt256(out _);
+                }
+
+                for (int i = argsCount - 1; i >= 0; i--)
+                {
+                    stack.PushUInt256(arguments[i]);
                 }
             }
 
@@ -2921,7 +2940,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidSubroutineEntry;
                             }
                         }
-                    case Instruction.RETURNSUB | Instruction.RJUMPI:
+                    case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
                             if (spec.StaticRelativeJumpsEnabled && CodeContainer.IsEof.Value)
                             {
@@ -2966,34 +2985,58 @@ namespace Nethermind.Evm
                             }
                             break;
                         }
-                    case Instruction.JUMPSUB:
+                    case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (!spec.SubroutinesEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && CodeContainer.IsEof.Value)
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                var case_v = stack.PopByte();
+                                var count = codeSection[programCounter];
+                                var immediateValueSize = 1 + count * 2;
+                                if (case_v >= count)
+                                {
+                                    programCounter += immediateValueSize;
+                                }
+                                else
+                                {
+                                    int caseOffset = codeSection.Slice(programCounter + 1 + case_v * 2, 2).ReadEthInt16();
+                                    programCounter += immediateValueSize + caseOffset;
+                                }
                             }
-
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                            else
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.StackOverflow);
+                                    return CallResult.StackOverflowException;
+                                }
+
+                                vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                                {
+                                    Offset = programCounter
+                                };
+
+                                stack.PopUInt256(out UInt256 jumpDest);
+                                Jump(jumpDest, true);
+                                programCounter++;
                             }
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StackOverflow);
-                                return CallResult.StackOverflowException;
-                            }
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
-                            {
-                                Offset = programCounter
-                            };
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
-                            programCounter++;
                             break;
                         }
                     case Instruction.CALLF:
@@ -3004,7 +3047,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidInstructionException;
                             }
 
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) // still undecided in EIP
+                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable))
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
@@ -3038,7 +3081,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidInstructionException;
                             }
 
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) // still undecided in EIP
+                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) // still undecided in EIP
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
@@ -3055,9 +3098,55 @@ namespace Nethermind.Evm
                             }
                             else
                             {
+                                if (stack.Head > stackFrame.Height + outputCount)
+                                {
+                                    // unreachable in EOF compatible with EIP-5450
+                                    RemoveInBetween(ref stack, stack.Head, outputCount);
+                                }
+                                else
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
+                                    return CallResult.AccessViolationException;
+
+                                }
+                            }
+                            break;
+                        }
+                    case Instruction.JUMPF:
+                        {
+                            if (!spec.IsEip4750Enabled || !CodeContainer.IsEof.Value)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
+                            var inputCount = typeSection[index * 2];
+
+                            var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                            if (stack.Head < stackFrame.Height + inputCount)
+                            {
                                 EndInstructionTraceError(EvmExceptionType.InvalidStackState);
                                 return CallResult.AccessViolationException;
                             }
+                            else
+                            {
+                                if (stack.Head > stackFrame.Height + inputCount)
+                                {
+                                    // unreachable in EOF compatible with EIP-5450
+                                    RemoveInBetween(ref stack, stack.Head, inputCount);
+                                }
+
+                                CodeContainer.SectionId = index;
+                                programCounter = CodeContainer.Header[CodeContainer.SectionId].Start;
+                            }
+
                             break;
                         }
                     default:

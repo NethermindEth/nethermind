@@ -40,6 +40,7 @@ using System.Text.Json;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 using TestCase2 = Nethermind.Evm.Test.EOF4750Tests.TestCase2;
 using FunctionCase = Nethermind.Evm.Test.EOF4750Tests.FunctionCase;
+using NSubstitute.ReturnsExtensions;
 
 namespace Nethermind.Evm.Test
 {
@@ -73,6 +74,75 @@ namespace Nethermind.Evm.Test
                         .PushData(23)
                         .PushData(3)
                         .CALLF(1)
+                        .ADD()
+                        .POP()
+                        .STOP()
+                        .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .PushData(23)
+                                .JUMPF(2)
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        },
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .ADD()
+                                .PushData(69)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        }
+                    },
+                    Result = (StatusCode.Success, null),
+                    Description = "multiple functions sections with jumpf"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
+                        .ADD()
+                        .POP()
+                        .STOP()
+                        .Done,
+                    Functions = new FunctionCase[]
+                    {
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .MUL()
+                                .JUMPF(2)
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        },
+                        new FunctionCase{
+                            Body = Prepare.EvmCode
+                                .ADD()
+                                .PushData(69)
+                                .RETF()
+                            .Done,
+                            InputCount = 2,
+                            OutputCount = 2
+                        }
+                    },
+                    Result = (StatusCode.Failure, null),
+                    Description = "stack underflow with jumpf"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
                         .POP()
                         .STOP()
                         .Done,
@@ -90,6 +160,37 @@ namespace Nethermind.Evm.Test
                     },
                     Result = (StatusCode.Success, null),
                     Description = "two code sections with correct in/out type section"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                               .RJUMPV(new short[] { 6, 12 }, 3)
+                               .PushData(0)
+                               .PushData(1)
+                               .ADD().POP()
+                               .PushData(2)
+                               .PushData(3)
+                               .MUL().POP()
+                               .MSTORE8(0, new byte[] { 1 })
+                               .RETURN(0, 1)
+                               .Done,
+                    Result = (StatusCode.Success, null),
+                    Description = "valid jumpv destinations"
+                };
+
+                yield return new TestCase2
+                {
+                    Main = Prepare.EvmCode
+                               .RJUMPV(new short[] { 2, 5, 6 }, 0)
+                               .PushData(0)
+                               .PushData(1)
+                               .ADD().POP()
+                               .MSTORE8(0, new byte[] { 1 })
+                               .RETURN(0, 1)
+                               .Done,
+                    Result = (StatusCode.Failure, null),
+                    Description = "invalid jumpv destinations : stack underflow"
                 };
 
                 yield return new TestCase2
@@ -249,7 +350,6 @@ namespace Nethermind.Evm.Test
                     Result = (StatusCode.Failure, null),
                     Description = "jump results in stack underflow"
                 };
-
 
                 yield return new TestCase2
                 {
