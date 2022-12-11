@@ -270,7 +270,6 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
-            setApi.NonceManager = nonceManager;
 
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 

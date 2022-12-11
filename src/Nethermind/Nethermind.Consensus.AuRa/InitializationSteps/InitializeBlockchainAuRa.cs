@@ -125,6 +125,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager,
                 chainSpecAuRa.TwoThirdsMajorityTransition);
 
+            NonceManager nonceManager = new(_api.StateProvider);
+
             IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     _api.StateProvider,
                     _api.TransactionProcessor,
@@ -133,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
                     _api.FinalizationManager,
-                    new TxPoolSender(_api.TxPool, new TxSealer(_api.EngineSigner, _api.Timestamper), _api.NonceManager, _api.EthereumEcdsa),
+                    new TxPoolSender(_api.TxPool, new TxSealer(_api.EngineSigner, _api.Timestamper), nonceManager, _api.EthereumEcdsa),
                     _api.TxPool,
                     NethermindApi.Config<IBlocksConfig>(),
                     _api.LogManager,
