@@ -44,6 +44,8 @@ public class ChainLevelHelper : IChainLevelHelper
         {
             // For some reason, this block number is missing when it should not.
             // anyway, lets just restart the whole sync.
+            if (_beaconPivot.ShouldForceStartNewSync) return;
+
             if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
             _beaconPivot.ShouldForceStartNewSync = true;
         }

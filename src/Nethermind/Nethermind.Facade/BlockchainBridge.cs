@@ -266,6 +266,7 @@ namespace Nethermind.Facade
                 ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
                 : blockHeader.BaseFeePerGas;
             callHeader.MixHash = blockHeader.MixHash;
+            callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }

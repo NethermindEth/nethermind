@@ -29,7 +29,7 @@ namespace Nethermind.State.Test.Runner
         public string Memory { get; set; }
 
         [JsonProperty(PropertyName = "memSize")]
-        public ulong MemSize { get; set; }
+        public int MemSize { get; set; }
 
         [JsonProperty(PropertyName = "stack")]
         public List<string> Stack { get; set; }
@@ -48,7 +48,7 @@ namespace Nethermind.State.Test.Runner
 
         //        public Dictionary<string, string> Storage { get; set; }
 
-        internal void UpdateMemorySize(ulong size)
+        internal void UpdateMemorySize(int size)
         {
             MemSize = size;
         }
