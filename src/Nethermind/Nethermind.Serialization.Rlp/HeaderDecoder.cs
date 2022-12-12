@@ -76,7 +76,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            if (decoderContext.ReadNumberOfItemsRemaining() > 0 &&
+            if (decoderContext.ReadNumberOfItemsRemaining(null, 1) > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
@@ -150,7 +150,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            if (rlpStream.ReadNumberOfItemsRemaining() > 0 &&
+            if (rlpStream.ReadNumberOfItemsRemaining(null, 1) > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
