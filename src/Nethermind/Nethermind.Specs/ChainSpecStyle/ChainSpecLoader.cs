@@ -19,7 +19,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
-    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 
+    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
     /// </summary>
     public class ChainSpecLoader : IChainSpecLoader
     {
@@ -87,7 +87,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
-            ValidateParams(chainSpecJson.Params);
+            ValidateParams(chainSpecJson);
 
             chainSpec.Parameters = new ChainParameters
             {
@@ -162,18 +162,20 @@ namespace Nethermind.Specs.ChainSpecStyle
             Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
         }
 
-        private static void ValidateParams(ChainSpecParamsJson parameters)
+        private static void ValidateParams(ChainSpecJson chainSpecJson)
         {
-            if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
-                && parameters.Eip1283DisableTransition.HasValue)
+            ChainSpecParamsJson parameters = chainSpecJson.Params;
+            if (!chainSpecJson.Name.Equals("bellecour", StringComparison.InvariantCultureIgnoreCase) && parameters.NetworkId != 0x86)
             {
-                throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
-            }
+                if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition && parameters.Eip1283DisableTransition.HasValue)
+                {
+                    throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
+                }
 
-            if (parameters.Eip1706Transition.HasValue
-                && parameters.Eip2200Transition.HasValue)
-            {
-                throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
+                if (parameters.Eip1706Transition.HasValue && parameters.Eip2200Transition.HasValue)
+                {
+                    throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
+                }
             }
         }
 

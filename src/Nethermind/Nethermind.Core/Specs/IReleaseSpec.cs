@@ -182,6 +182,12 @@ namespace Nethermind.Core.Specs
         bool IsEip2200Enabled { get; }
 
         /// <summary>
+        /// Istanbul call stipend SSTORE
+        /// </summary>
+        /// <remarks>To support bellecour chain part of EIP-2200</remarks>
+        bool IsEip1706Enabled { get; }
+
+        /// <summary>
         /// Berlin subroutines -> https://github.com/ethereum/EIPs/issues/2315
         /// </summary>
         bool IsEip2315Enabled { get; }
@@ -230,7 +236,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -279,7 +285,7 @@ namespace Nethermind.Core.Specs
 
         public long Eip1559TransitionBlock { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -335,7 +341,7 @@ namespace Nethermind.Core.Specs
 
         public bool UseNetGasMetering => UseConstantinopleNetGasMetering | UseIstanbulNetGasMetering;
 
-        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering;
+        public bool UseNetGasMeteringWithAStipendFix => UseIstanbulNetGasMetering || IsEip1706Enabled;
 
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
 
