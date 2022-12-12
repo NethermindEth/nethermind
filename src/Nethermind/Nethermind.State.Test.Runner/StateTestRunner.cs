@@ -66,7 +66,7 @@ namespace Nethermind.State.Test.Runner
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new();
-                    txTracer.IsTracingMemory = _traceMemory;
+                    txTracer.IsTracingDetailedMemory = _traceMemory;
                     txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
 
