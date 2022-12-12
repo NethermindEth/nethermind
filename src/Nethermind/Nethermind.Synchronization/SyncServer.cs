@@ -272,6 +272,10 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
+            static bool HashSendTheBlock(PeerInfo peer, ISyncPeer? nodeWhoSentTheBlock) => nodeWhoSentTheBlock == peer.SyncPeer;
+            static bool BlockIsNotTooOld(PeerInfo peer, Block block) => peer.SyncPeer.HeadNumber - MaxPeerBlockHeightDifference < block.Number;
+            static bool BlockIsBetter(PeerInfo peer, Block block) => peer.SyncPeer.TotalDifficulty < block.TotalDifficulty;
+
             Task.Run(() =>
                 {
                     double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
@@ -282,8 +286,8 @@ namespace Nethermind.Synchronization
                     int counter = 0;
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        if (nodeWhoSentTheBlock != peerInfo.SyncPeer
-                            && peerInfo.SyncPeer.HeadNumber - MaxPeerBlockHeightDifference < block.Number)
+                        if (!HashSendTheBlock(peerInfo, nodeWhoSentTheBlock)
+                            && (BlockIsNotTooOld(peerInfo, block) || BlockIsBetter(peerInfo, block)))
                         {
                             if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                             {
