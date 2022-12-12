@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -33,6 +34,8 @@ namespace Nethermind.Synchronization
     /// </summary>
     public class SyncServer : ISyncServer
     {
+        private const long MaxPeerBlockHeightDifference = 20;
+
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
@@ -279,7 +282,8 @@ namespace Nethermind.Synchronization
                     int counter = 0;
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        if (nodeWhoSentTheBlock != peerInfo.SyncPeer)
+                        if (nodeWhoSentTheBlock != peerInfo.SyncPeer
+                            && peerInfo.SyncPeer.HeadNumber - MaxPeerBlockHeightDifference < block.Number)
                         {
                             if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                             {
