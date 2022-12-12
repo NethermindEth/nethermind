@@ -312,7 +312,7 @@ public partial class EngineModuleTests
             Id = successResponse.Id,
             Result = new PayloadStatusV1
             {
-                LatestValidHash = null,
+                LatestValidHash = startingHead,
                 Status = PayloadStatus.Invalid,
                 ValidationError = string.Format(input.ErrorMessage, $"in block {blockHash} ")
             }

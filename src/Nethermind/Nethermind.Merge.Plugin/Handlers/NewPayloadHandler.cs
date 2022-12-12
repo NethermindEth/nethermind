@@ -105,9 +105,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.InvalidBlockHash;
         }
 
-        Keccak blockHash = block.Hash!;
-        _invalidChainTracker.SetChildParent(blockHash, request.ParentHash);
-        if (_invalidChainTracker.IsOnKnownInvalidChain(blockHash, out Keccak? lastValidHash))
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+        if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Keccak? lastValidHash))
         {
             if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain.");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
@@ -117,7 +116,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid: {error}");
 
-            return NewPayloadV1Result.Invalid(lastValidHash, error);
+            return NewPayloadV1Result.Invalid(lastValidHash ?? block.ParentHash, error);
         }
 
         if (block.Header.Number <= _syncConfig.PivotNumberParsed)
@@ -128,7 +127,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-        BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
@@ -140,7 +139,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             }
 
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-            _blockCacheService.BlockCache.TryAdd(blockHash, block);
+            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
             return NewPayloadV1Result.Syncing;
         }
 
@@ -204,7 +203,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (result == ValidationResult.Invalid)
         {
             if (_logger.IsInfo) _logger.Info($"Invalid block found. Validation message: {message}. Result of {requestStr}.");
-            _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
             return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
         }
 
@@ -215,7 +214,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
-        return NewPayloadV1Result.Valid(request.BlockHash);
+        return NewPayloadV1Result.Valid(block.Hash);
     }
 
     /// <summary>
