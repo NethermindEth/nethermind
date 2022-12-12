@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Data
 {
     /// <summary>
     /// Result of engine_forkChoiceUpdate call.
@@ -18,13 +18,28 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing });
 
         public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Keccak? latestValidHash) =>
-            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadId = payloadId, PayloadStatus = new PayloadStatusV1() { Status = Data.V1.PayloadStatus.Valid, LatestValidHash = latestValidHash } });
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
+                new ForkchoiceUpdatedV1Result
+                {
+                    PayloadId = payloadId,
+                    PayloadStatus = new PayloadStatusV1
+                    {
+                        Status = Data.PayloadStatus.Valid,
+                        LatestValidHash = latestValidHash
+                    }
+                });
 
         public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError = null) =>
-            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
-            {
-                PayloadStatus = new PayloadStatusV1 { Status = Data.V1.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError }
-            });
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
+                new ForkchoiceUpdatedV1Result
+                {
+                    PayloadStatus = new PayloadStatusV1
+                    {
+                        Status = Data.PayloadStatus.Invalid,
+                        LatestValidHash = latestValidHash,
+                        ValidationError = validationError
+                    }
+                });
 
         public static ResultWrapper<ForkchoiceUpdatedV1Result> Error(string message, int errorCode) => ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(message, errorCode);
 

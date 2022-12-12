@@ -5,7 +5,7 @@ using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -35,12 +35,14 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null,
+            IWithdrawalProcessor? withdrawalProcessor = null)
         {
             _txEnv = txEnv;
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
                 blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+            withdrawalProcessor ??= new ValidationWithdrawalProcessor(StateProvider, logManager);
 
             BlockProcessor = new BlockProcessor(
                 specProvider,
@@ -51,6 +53,7 @@ namespace Nethermind.Consensus.Processing
                 _txEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                withdrawalProcessor,
                 logManager);
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);

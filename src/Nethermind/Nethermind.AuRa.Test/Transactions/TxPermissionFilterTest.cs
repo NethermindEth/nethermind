@@ -14,6 +14,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -299,6 +300,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
+                    new ValidationWithdrawalProcessor(State, LogManager),
                     PermissionBasedTxFilter);
             }
 

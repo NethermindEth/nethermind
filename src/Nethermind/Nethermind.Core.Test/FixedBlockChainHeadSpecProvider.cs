@@ -6,7 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Test
 {
-    public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
+    public class FixedForkActivationChainHeadSpecProvider : IChainHeadSpecProvider
     {
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
@@ -17,11 +17,13 @@ namespace Nethermind.Core.Test
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
         private readonly ISpecProvider _specProvider;
         private readonly long _fixedBlock;
+        private readonly ulong? _timestamp;
 
-        public FixedBlockChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000)
+        public FixedForkActivationChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000, ulong? timestamp = null)
         {
             _specProvider = specProvider;
             _fixedBlock = fixedBlock;
+            _timestamp = timestamp;
         }
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
@@ -33,8 +35,8 @@ namespace Nethermind.Core.Test
         public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
 
-        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
 
-        public IReleaseSpec GetCurrentHeadSpec() => GetSpec(_fixedBlock);
+        public IReleaseSpec GetCurrentHeadSpec() => GetSpec((_fixedBlock, _timestamp));
     }
 }

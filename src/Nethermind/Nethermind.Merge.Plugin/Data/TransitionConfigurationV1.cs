@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Merge.Plugin.Data.V1;
+namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
 /// Result of call.

@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -69,6 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);

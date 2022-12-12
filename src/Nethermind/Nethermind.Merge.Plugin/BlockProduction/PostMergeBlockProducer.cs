@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
 
-            Block block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+            Block block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
             // processing is only done here to apply block rewards in AuRa
             if (TrySetState(parent.StateRoot))

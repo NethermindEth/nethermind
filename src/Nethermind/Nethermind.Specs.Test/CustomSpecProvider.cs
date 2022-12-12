@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -17,7 +18,8 @@ namespace Nethermind.Specs.Test
 
         public ulong NetworkId { get; }
         public ulong ChainId => NetworkId;
-        public ForkActivation[] TransitionBlocks { get; }
+
+        public ForkActivation[] TransitionActivations { get; }
 
         public CustomSpecProvider(params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
@@ -33,7 +35,7 @@ namespace Nethermind.Specs.Test
             }
 
             _transitions = transitions.OrderBy(r => r.forkActivation).ToArray();
-            TransitionBlocks = _transitions.Select(t => t.forkActivation).ToArray();
+            TransitionActivations = _transitions.Select(t => t.forkActivation).ToArray();
 
             if (transitions[0].forkActivation.BlockNumber != 0L)
             {
@@ -44,7 +46,7 @@ namespace Nethermind.Specs.Test
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -58,23 +60,15 @@ namespace Nethermind.Specs.Test
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation)
-        {
-            IReleaseSpec spec = _transitions[0].Release;
-            for (int i = 1; i < _transitions.Length; i++)
-            {
-                if (forkActivation >= _transitions[i].forkActivation)
-                {
-                    spec = _transitions[i].Release;
-                }
-                else
-                {
-                    break;
-                }
-            }
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            _transitions.TryGetSearchedItem(forkActivation,
+                CompareTransitionOnBlock,
+                out (ForkActivation, IReleaseSpec Release) transition)
+                ? transition.Release
+                : GenesisSpec;
 
-            return spec;
-        }
+        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation activation, IReleaseSpec Release) transition) =>
+            forkActivation.CompareTo(transition.activation);
 
         public long? DaoBlockNumber
         {

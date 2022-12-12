@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Facade
 {
@@ -90,7 +91,7 @@ namespace Nethermind.Facade
                     TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
                     int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                     Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                     return (txReceipt, effectiveGasPrice, logIndexStart);
                 }
@@ -251,9 +252,6 @@ namespace Nethermind.Facade
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
-                {
-                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(blockHeader.Number + 1)),
-                }
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -262,12 +260,13 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData)
-                {
-                    BaseFeePerGas = blockHeader.BaseFeePerGas,
-                };
+                    blockHeader.ExtraData);
 
+            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
+                : blockHeader.BaseFeePerGas;
             callHeader.MixHash = blockHeader.MixHash;
+            callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }

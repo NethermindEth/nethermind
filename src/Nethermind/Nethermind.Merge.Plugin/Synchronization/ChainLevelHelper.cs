@@ -44,6 +44,8 @@ public class ChainLevelHelper : IChainLevelHelper
         {
             // For some reason, this block number is missing when it should not.
             // anyway, lets just restart the whole sync.
+            if (_beaconPivot.ShouldForceStartNewSync) return;
+
             if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
             _beaconPivot.ShouldForceStartNewSync = true;
         }
@@ -157,7 +159,7 @@ public class ChainLevelHelper : IChainLevelHelper
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
                 if (block is null) return false;
-                BlockBody blockBody = new(block.Transactions, block.Uncles);
+                BlockBody blockBody = new(block.Transactions, block.Uncles, block?.Withdrawals);
                 context.SetBody(i + offset, blockBody);
             }
 

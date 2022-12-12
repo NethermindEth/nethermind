@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
@@ -14,20 +15,26 @@ namespace Nethermind.TxPool.Filters
     internal class AlreadyKnownTxFilter : IIncomingTxFilter
     {
         private readonly HashCache _hashCache;
+        private readonly ILogger _logger;
 
-        public AlreadyKnownTxFilter(HashCache hashCache)
+        public AlreadyKnownTxFilter(
+            HashCache hashCache,
+            ILogger logger)
         {
             _hashCache = hashCache;
+            _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             if (_hashCache.Get(tx.Hash!))
             {
+                if (_logger.IsInfo) _logger.Info($"Found tx in _hashCache. TxHash: {tx?.Hash}, Tx: {tx}");
                 Metrics.PendingTransactionsKnown++;
                 return AcceptTxResult.AlreadyKnown;
             }
 
+            if (_logger.IsInfo) _logger.Info($"SetForCurrentBlock Tx in _hashCache. TxHash: {tx.Hash}, Tx: {tx} StackTrace {new System.Diagnostics.StackTrace()}");
             _hashCache.SetForCurrentBlock(tx.Hash!);
 
             return AcceptTxResult.Accepted;

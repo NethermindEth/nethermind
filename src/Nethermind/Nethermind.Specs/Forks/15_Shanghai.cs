@@ -13,11 +13,11 @@ namespace Nethermind.Specs.Forks
         protected Shanghai()
         {
             Name = "Shanghai";
-            IsEip1153Enabled = true;
             IsEip3675Enabled = true;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
             IsEip3860Enabled = true;
+            IsEip4895Enabled = true;
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());

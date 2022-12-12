@@ -15,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -303,6 +304,7 @@ namespace Nethermind.Synchronization.Test
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -327,6 +329,7 @@ namespace Nethermind.Synchronization.Test
                 devStorage,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

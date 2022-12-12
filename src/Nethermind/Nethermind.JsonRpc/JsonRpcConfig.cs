@@ -39,7 +39,13 @@ namespace Nethermind.JsonRpc
         public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
         public bool UnsecureDevNoRpcAuthentication { get; set; }
         public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
-        public string[]? MethodsLoggingFiltering { get; set; } = { "engine_newPayloadV1", "engine_forkchoiceUpdatedV1" };
+        public string[]? MethodsLoggingFiltering { get; set; } =
+        {
+            "engine_newPayloadV1",
+            "engine_newPayloadV2",
+            "engine_forkchoiceUpdatedV1",
+            "engine_forkchoiceUpdatedV2"
+        };
         public string EngineHost { get; set; } = "127.0.0.1";
         public int? EnginePort { get; set; } = null;
         public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();

@@ -10,12 +10,12 @@ namespace Nethermind.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -54,17 +54,17 @@ namespace Nethermind.Specs
         public ulong NetworkId => Core.NetworkId.Rinkeby;
         public ulong ChainId => NetworkId;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            HomesteadBlockNumber,
-            TangerineWhistleBlockNumber,
-            SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber,
-            ConstantinopleBlockNumber,
-            ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber
+            (ForkActivation)HomesteadBlockNumber,
+            (ForkActivation)TangerineWhistleBlockNumber,
+            (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber,
+            (ForkActivation)ConstantinopleBlockNumber,
+            (ForkActivation)ConstantinopleFixBlockNumber,
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber
         };
 
         private RinkebySpecProvider() { }

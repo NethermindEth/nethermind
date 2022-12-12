@@ -46,10 +46,9 @@ namespace Nethermind.Mining.Test
         public void Test1559(long minimum, long maxFeePerGas, long maxPriorityFeePerGas, bool expectedResult)
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec()
-            {
-                IsEip1559Enabled = true
-            });
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
             MinGasPriceTxFilter _filter = new((UInt256)minimum, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(0)
                 .WithMaxFeePerGas((UInt256)maxFeePerGas)

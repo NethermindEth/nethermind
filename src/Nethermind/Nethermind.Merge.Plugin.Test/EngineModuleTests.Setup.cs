@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -26,8 +27,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Handlers.V1;
-using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -38,11 +37,17 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
+        protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
             new(mergeConfig, mockedPayloadService);
 
-        protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
-            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
+        protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
+            => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
+
+        protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
+            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(releaseSpec ?? London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
+
+        protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider)
+            => await CreateBaseBlockChain(null, null).Build(specProvider);
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
         {
@@ -64,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new GetPayloadV2Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
-                new NewPayloadV1Handler(
+                new NewPayloadHandler(
                     chain.BlockValidator,
                     chain.BlockTree,
                     new InitConfig(),
@@ -80,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.LogManager,
                     newPayloadTimeout,
                     newPayloadCacheSize),
-                new ForkchoiceUpdatedV1Handler(
+                new ForkchoiceUpdatedHandler(
                     chain.BlockTree,
                     chain.BlockFinalizationManager,
                     chain.PoSSwitcher,
@@ -91,6 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BeaconSync,
                     chain.BeaconPivot,
                     peerRefresher,
+                    chain.SpecProvider,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
@@ -106,13 +112,11 @@ namespace Nethermind.Merge.Plugin.Test
 
             public IPayloadPreparationService? PayloadPreparationService { get; set; }
 
-            public ISealValidator SealValidator { get; set; }
+            public ISealValidator? SealValidator { get; set; }
 
-            public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
+            public IBeaconPivot? BeaconPivot { get; set; }
 
-            public IBeaconPivot BeaconPivot { get; set; }
-
-            public BeaconSync BeaconSync { get; set; }
+            public BeaconSync? BeaconSync { get; set; }
 
             private int _blockProcessingThrottle = 0;
 
@@ -137,11 +141,11 @@ namespace Nethermind.Merge.Plugin.Test
 
             public sealed override ILogManager LogManager { get; } = LimboLogs.Instance;
 
-            public IEthSyncingInfo EthSyncingInfo { get; protected set; }
+            public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
                 IBlockProducer preMergeBlockProducer =
                     base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
                 BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
@@ -196,6 +200,7 @@ namespace Nethermind.Merge.Plugin.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    new ValidationWithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

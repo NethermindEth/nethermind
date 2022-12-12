@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
             StatusMessageSerializer serializer = new();
             StatusMessage message = new();
-            message.ForkId = new ForkId(Bytes.FromHexString(forkHash), (long)next.Value);
+            message.ForkId = new ForkId(Bytes.FromHexString(forkHash), next.Value);
             serializer.Serialize(message).ToHexString().Should().EndWith(expected);
         }
 

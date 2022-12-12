@@ -26,6 +26,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -51,6 +52,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -83,6 +85,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 witnessCollector,
+                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -113,6 +116,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

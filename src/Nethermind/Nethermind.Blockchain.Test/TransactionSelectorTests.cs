@@ -185,6 +185,8 @@ namespace Nethermind.Blockchain.Test
             {
                 IsEip1559Enabled = testCase.Eip1559Enabled
             };
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);

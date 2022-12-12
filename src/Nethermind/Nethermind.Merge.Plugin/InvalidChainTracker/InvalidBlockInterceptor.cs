@@ -97,4 +97,27 @@ public class InvalidBlockInterceptor : IBlockValidator
     {
         return !HeaderValidator.ValidateHash(header);
     }
+
+    public bool ValidateWithdrawals(Block block, out string? error)
+    {
+        var result = _baseValidator.ValidateWithdrawals(block, out error);
+
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+
+            if (ShouldNotTrackInvalidation(block.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
+
+                return false;
+            }
+
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        }
+
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+
+        return result;
+    }
 }

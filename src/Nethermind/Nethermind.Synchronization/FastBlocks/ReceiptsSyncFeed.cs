@@ -170,7 +170,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
+                    // BlockInfo has no timestamp
+                    IReleaseSpec releaseSpec = _specProvider.GetSpec((ForkActivation)blockInfo.BlockNumber);
                     preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
                         : receipts;

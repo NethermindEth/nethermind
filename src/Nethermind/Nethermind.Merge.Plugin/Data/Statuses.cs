@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only 
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Data
 {
     public static class PayloadStatus
     {

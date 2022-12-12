@@ -8,7 +8,7 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
-    public interface IReleaseSpec
+    public interface IReleaseSpec : IEip1559Spec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
@@ -215,11 +215,6 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
-        /// Gas target and base fee, and fee burning.
-        /// </summary>
-        bool IsEip1559Enabled { get; }
-
-        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
@@ -230,7 +225,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -266,6 +261,13 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
+        /// validator withdrawals are enabled.
+        /// </summary>
+        bool IsEip4895Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -277,9 +279,9 @@ namespace Nethermind.Core.Specs
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateReceipts => true;
 
-        public long Eip1559TransitionBlock { get; }
+        public ulong WithdrawalTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -344,10 +346,8 @@ namespace Nethermind.Core.Specs
         // EVM Related
         public bool IncludePush0Instruction => IsEip3855Enabled;
 
-        public Address? Eip1559FeeCollector => null;
-
-        public UInt256? Eip1559BaseFeeMinValue => null;
-
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool WithdrawalsEnabled => IsEip4895Enabled;
     }
 }

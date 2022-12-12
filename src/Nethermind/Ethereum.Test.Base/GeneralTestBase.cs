@@ -56,8 +56,8 @@ namespace Ethereum.Test.Base
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider = new CustomSpecProvider(1,
-                (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                (1, test.Fork));
+                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                ((ForkActivation)1, test.Fork));
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
@@ -92,7 +92,7 @@ namespace Ethereum.Test.Base
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
-            var spec = specProvider.GetSpec(test.CurrentNumber);
+            var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);

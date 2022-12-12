@@ -18,7 +18,7 @@ while (true)
         TxValidator txValidator = new TxValidator(NetworkId.Mainnet);
         if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
         {
-            EthereumEcdsa ecdsa = new(ChainId.Mainnet, SimpleConsoleLogManager.Instance);
+            EthereumEcdsa ecdsa = new(NetworkId.Mainnet, SimpleConsoleLogManager.Instance);
             Address? sender = ecdsa.RecoverAddress(tx);
             if (sender == null)
             {

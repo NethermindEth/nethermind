@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -147,6 +148,7 @@ namespace Nethermind.Consensus.Producers
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
                 logManager);
     }
 }

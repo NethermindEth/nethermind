@@ -17,6 +17,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -87,15 +88,15 @@ namespace Ethereum.Test.Base
             if (test.NetworkAfterTransition != null)
             {
                 specProvider = new CustomSpecProvider(1,
-                    (0, Frontier.Instance),
-                    (1, test.Network),
-                    (test.TransitionBlockNumber, test.NetworkAfterTransition));
+                    ((ForkActivation)0, Frontier.Instance),
+                    ((ForkActivation)1, test.Network),
+                    ((ForkActivation)test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
                 specProvider = new CustomSpecProvider(1,
-                    (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                    (1, test.Network));
+                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Network));
             }
 
             if (specProvider.GenesisSpec != Frontier.Instance)
@@ -148,6 +149,7 @@ namespace Ethereum.Test.Base
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new ValidationWithdrawalProcessor(stateProvider, _logManager),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

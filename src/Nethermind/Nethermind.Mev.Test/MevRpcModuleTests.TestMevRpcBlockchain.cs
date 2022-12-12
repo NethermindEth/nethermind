@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -205,6 +206,7 @@ namespace Nethermind.Mev.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    new ValidationWithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 _tracerFactory = new TracerFactory(

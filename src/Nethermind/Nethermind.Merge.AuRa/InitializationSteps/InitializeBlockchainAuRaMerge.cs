@@ -8,6 +8,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {
@@ -33,6 +34,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,
+                new ValidationWithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

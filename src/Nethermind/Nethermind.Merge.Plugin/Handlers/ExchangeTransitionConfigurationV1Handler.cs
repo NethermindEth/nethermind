@@ -7,9 +7,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1;
+namespace Nethermind.Merge.Plugin.Handlers;
 
 public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfigurationV1, TransitionConfigurationV1>
 {

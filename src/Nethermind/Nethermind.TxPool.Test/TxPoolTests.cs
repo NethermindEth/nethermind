@@ -168,7 +168,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec(1));
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec((ForkActivation)1));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.SenderIsContract);
         }
@@ -181,7 +181,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -221,6 +221,7 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
             return specProvider;
         }
 

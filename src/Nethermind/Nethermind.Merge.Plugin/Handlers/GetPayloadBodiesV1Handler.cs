@@ -8,9 +8,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1
+namespace Nethermind.Merge.Plugin.Handlers
 {
     public class GetPayloadBodiesV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]>
     {

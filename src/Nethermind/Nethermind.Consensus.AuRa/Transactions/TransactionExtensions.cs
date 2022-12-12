@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only 
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -10,7 +11,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         public static bool IsZeroGasPrice(this Transaction tx, BlockHeader parentHeader, ISpecProvider specProvider)
         {
-            bool isEip1559Enabled = specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
+            bool isEip1559Enabled = specProvider.GetSpecFor1559(parentHeader.Number + 1).IsEip1559Enabled;
             bool checkByFeeCap = isEip1559Enabled && tx.IsEip1559;
             if (checkByFeeCap && !tx.MaxFeePerGas.IsZero) // only 0 gas price transactions are system transactions and can be whitelisted
             {

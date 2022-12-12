@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 
-namespace Nethermind.Merge.Plugin.Data.V1;
+namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
 /// Wraps <see cref="PayloadStatusV1"/> in <see cref="ResultWrapper{T}"/> for JSON RPC.

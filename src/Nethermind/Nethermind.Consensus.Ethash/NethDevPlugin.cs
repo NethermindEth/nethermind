@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -79,6 +80,7 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(getFromApi!.StateProvider!, getFromApi.LogManager)),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

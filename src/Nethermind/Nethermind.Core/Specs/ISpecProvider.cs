@@ -54,7 +54,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
-        ForkActivation[] TransitionBlocks { get; }
+        ForkActivation[] TransitionActivations { get; }
 
         /// <summary>
         /// Resolves a spec for the given block number.

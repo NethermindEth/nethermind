@@ -7,9 +7,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data.V2;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Merge.Plugin.Handlers.V2
+namespace Nethermind.Merge.Plugin.Handlers
 {
     public class GetPayloadV2Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
     {

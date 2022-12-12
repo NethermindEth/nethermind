@@ -346,7 +346,6 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
         ulong timestamp = _timestamper.UnixTime.Seconds;
-        IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
         BlockHeader header = new(
             parentHeader.Hash,
@@ -387,7 +386,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         }
 
         // Set the correct difficulty
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header));
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
         header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
         if (_logger.IsDebug)
@@ -425,7 +424,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
+        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>(), Enumerable.Empty<Withdrawal>());
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
         return block;

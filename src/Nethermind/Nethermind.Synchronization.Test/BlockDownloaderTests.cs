@@ -45,6 +45,7 @@ using NSubstitute.ExceptionExtensions;
 using NSubstitute.Exceptions;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -467,6 +468,13 @@ namespace Nethermind.Synchronization.Test
             public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
             {
                 Thread.Sleep(1000);
+                return true;
+            }
+
+            public bool ValidateWithdrawals(Block block, out string? error)
+            {
+                Thread.Sleep(1000);
+                error = string.Empty;
                 return true;
             }
         }
@@ -1270,7 +1278,7 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec(_headers[blockHashes[i]].Number), receipts[i]).RootHash;
+                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 
                 ReceiptsMessage message = new(receipts);
