@@ -1824,21 +1824,25 @@ namespace Nethermind.Evm
                                 return CallResult.StaticCallViolationException;
                             }
 
-                            // fail fast before the first storage read if gas is not enough even for reset
-                            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
                             if (spec.UseNetGasMeteringWithAStipendFix)
                             {
-                                if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                                if (spec.UseIstanbulNetGasMetering)
+                                {
+                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                                }
+
                                 if (gasAvailable <= GasCostOf.CallStipend)
                                 {
                                     EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                     return CallResult.OutOfGasException;
                                 }
+                            }
+
+                            // fail fast before the first storage read if gas is not enough even for reset
+                            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
                             }
 
                             stack.PopUInt256(out UInt256 storageIndex);
