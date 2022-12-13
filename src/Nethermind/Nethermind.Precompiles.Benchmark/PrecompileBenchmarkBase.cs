@@ -68,7 +68,7 @@ namespace Nethermind.Precompiles.Benchmark
                         EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
                         var jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
                         var parameters = jsonInputs.Select(i =>
-                            new Param(precompile, precompile.GetType().Name + "." + i.Name, i.Input, i.Expected));
+                            new Param(precompile, i.Name, i.Input, i.Expected));
                         inputs.AddRange(parameters);
                     }
 

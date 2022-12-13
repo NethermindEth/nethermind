@@ -37,6 +37,8 @@ namespace Nethermind.Benchmark.Runner
         {
             BenchmarkRunner.Run(typeof(Precompiles.Benchmark.PointEvaluationBenchmark),
                 new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
+            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.EcRecoverBenchmark),
+                new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
             // List<Assembly> additionalJobAssemblies = new()
             // {
             //     typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
