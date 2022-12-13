@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -67,7 +67,8 @@ namespace Nethermind.Precompiles.Benchmark
                     {
                         EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
                         var jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
-                        var parameters = jsonInputs.Select(i => new Param(precompile, i.Name, i.Input, i.Expected));
+                        var parameters = jsonInputs.Select(i =>
+                            new Param(precompile, precompile.GetType().Name + "." + i.Name, i.Input, i.Expected));
                         inputs.AddRange(parameters);
                     }
 
