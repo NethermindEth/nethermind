@@ -346,6 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
             UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
+            Address constructorSender = chainSpecJson.Genesis.ConstructorSender;
             if (chainSpecJson.Params.Eip1559Transition is not null)
                 baseFee = chainSpecJson.Params.Eip1559Transition == 0
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
@@ -360,23 +361,21 @@ namespace Nethermind.Specs.ChainSpecStyle
                 0,
                 (long)gasLimit,
                 timestamp,
-                extraData);
+                extraData) { Author = beneficiary, Hash = Keccak.Zero, // need to run the block to know the actual hash
+                Bloom = Bloom.Empty, MixHash = mixHash,
+                Nonce = (ulong)nonce,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                StateRoot = Keccak.EmptyTreeHash,
+                TxRoot = Keccak.EmptyTreeHash,
+                BaseFeePerGas = baseFee,
+                AuRaStep = step,
+                AuRaSignature = auRaSignature,
+            };
 
-            genesisHeader.Author = beneficiary;
-            genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-            genesisHeader.Bloom = Bloom.Empty;
-            genesisHeader.MixHash = mixHash;
-            genesisHeader.Nonce = (ulong)nonce;
-            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            genesisHeader.StateRoot = Keccak.EmptyTreeHash;
-            genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-            genesisHeader.BaseFeePerGas = baseFee;
-
-            genesisHeader.AuRaStep = step;
-            genesisHeader.AuRaSignature = auRaSignature;
-
-
-            chainSpec.Genesis = new Block(genesisHeader);
+            chainSpec.Genesis = new GenesisBlock(genesisHeader)
+            {
+                ConstructorSender = constructorSender
+            };
         }
 
         private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

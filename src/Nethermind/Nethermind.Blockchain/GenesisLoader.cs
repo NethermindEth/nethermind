@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain
 
         public Block Load()
         {
-            Block genesis = _chainSpec.Genesis;
+            GenesisBlock genesis = _chainSpec.Genesis;
             Preallocate(genesis);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain
             return genesis;
         }
 
-        private void Preallocate(Block genesis)
+        private void Preallocate(GenesisBlock genesis)
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
                 {
                     Transaction constructorTransaction = new SystemTransaction()
                     {
-                        SenderAddress = address,
+                        SenderAddress = genesis.ConstructorSender ?? address,
                         Data = allocation.Constructor,
                         GasLimit = genesis.GasLimit
                     };
