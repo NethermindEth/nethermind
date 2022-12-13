@@ -653,7 +653,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
             TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
-            TestTransitions((ForkActivation)40000L, r => {  r.IsEip3675Enabled = true; });
+            TestTransitions((ForkActivation)40000L, r => { r.IsEip3675Enabled = true; });
 
             TestTransitions((41000L, 1000000012), r =>
             {
