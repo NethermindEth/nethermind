@@ -87,8 +87,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
-            ValidateParams(chainSpecJson);
-
             chainSpec.Parameters = new ChainParameters
             {
                 AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero,
@@ -160,23 +158,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
             Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
             Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
-        }
-
-        private static void ValidateParams(ChainSpecJson chainSpecJson)
-        {
-            ChainSpecParamsJson parameters = chainSpecJson.Params;
-            if (!chainSpecJson.Name.Equals("bellecour", StringComparison.InvariantCultureIgnoreCase) && parameters.NetworkId != 0x86)
-            {
-                if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition && parameters.Eip1283DisableTransition.HasValue)
-                {
-                    throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
-                }
-
-                if (parameters.Eip1706Transition.HasValue && parameters.Eip2200Transition.HasValue)
-                {
-                    throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
-                }
-            }
         }
 
         private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
