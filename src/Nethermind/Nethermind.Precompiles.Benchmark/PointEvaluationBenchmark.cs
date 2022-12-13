@@ -8,6 +8,6 @@ namespace Nethermind.Precompiles.Benchmark;
 
 public class PointEvaluationBenchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[] { PointEvaluationPrecompile.Instance, EcRecoverPrecompile.Instance };
+    protected override IEnumerable<IPrecompile> Precompiles => new[] { PointEvaluationPrecompile.Instance };
     protected override string InputsDirectory => "point_evaluation";
 }
