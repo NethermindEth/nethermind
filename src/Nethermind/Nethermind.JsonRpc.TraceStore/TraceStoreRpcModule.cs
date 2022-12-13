@@ -90,6 +90,11 @@ public class TraceStoreRpcModule : ITraceRpcModule
         return _traceModule.trace_replayBlockTransactions(blockParameter, traceTypes);
     }
 
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlock(byte[] blockRlp, string[] traceTypes)
+    {
+        return _traceModule.trace_replayBlock(blockRlp, traceTypes);
+    }
+
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
         IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
