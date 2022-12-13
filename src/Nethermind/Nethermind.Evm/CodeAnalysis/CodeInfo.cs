@@ -22,6 +22,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
+
+        public bool? IsEof => isEof;
         public EofHeader Header => _header;
 
         #region EofSection Extractors
