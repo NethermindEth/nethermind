@@ -122,6 +122,8 @@ namespace Nethermind.Synchronization.Reporting
 
         public MeasuredProgress BeaconHeaders { get; } = new();
 
+        public MeasuredProgress BeaconHeadersInQueue { get; } = new();
+
         public long FullSyncBlocksKnown { get; set; }
 
         private static string Pad(decimal value, int length)
@@ -306,7 +308,7 @@ namespace Nethermind.Synchronization.Reporting
             long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
             int paddingLength = numHeadersToDownload.ToString().Length;
             _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
+                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(BeaconHeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
             BeaconHeaders.SetMeasuringPoint();
         }
 

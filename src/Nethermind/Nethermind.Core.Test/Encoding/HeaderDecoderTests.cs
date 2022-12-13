@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Core.Test.Encoding
             HeaderDecoder decoder = new();
             Rlp rlp = decoder.Encode(header);
             Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-            BlockHeader decoded = decoder.Decode(ref decoderContext);
+            BlockHeader decoded = decoder.Decode(ref decoderContext)!;
             decoded.Hash = decoded.CalculateHash();
 
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
@@ -51,7 +50,7 @@ namespace Nethermind.Core.Test.Encoding
             rlp = new Rlp(Bytes.FromHexString(bytesWithAAA));
 
             Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-            BlockHeader decoded = decoder.Decode(ref decoderContext);
+            BlockHeader decoded = decoder.Decode(ref decoderContext)!;
             decoded.Hash = decoded.CalculateHash();
 
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
@@ -69,7 +68,7 @@ namespace Nethermind.Core.Test.Encoding
             HeaderDecoder decoder = new();
             Rlp rlp = decoder.Encode(header);
             Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-            BlockHeader decoded = decoder.Decode(ref decoderContext);
+            BlockHeader decoded = decoder.Decode(ref decoderContext)!;
             decoded.Hash = decoded.CalculateHash();
 
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
@@ -85,7 +84,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((BlockHeader)null);
+            Rlp rlp = Rlp.Encode((BlockHeader)null!);
             BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
             Assert.Null(decoded);
         }

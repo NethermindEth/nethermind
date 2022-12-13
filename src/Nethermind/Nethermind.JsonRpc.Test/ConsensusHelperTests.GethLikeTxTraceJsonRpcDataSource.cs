@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -16,8 +16,8 @@ namespace Nethermind.JsonRpc.Test
             IConsensusDataSourceWithParameter<Keccak>,
             IConsensusDataSourceWithParameter<GethTraceOptions>
         {
-            private Keccak _transactionHash;
-            private GethTraceOptions _options;
+            private Keccak _transactionHash = null!;
+            private GethTraceOptions _options = null!;
 
             public GethLikeTxTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {

@@ -28,5 +28,7 @@ namespace Nethermind.JsonRpc.Modules
         Task<IRpcModule> Rent(string methodName, bool canBeShared);
 
         void Return(string methodName, IRpcModule rpcModule);
+
+        IRpcModulePool? GetPool(string moduleType);
     }
 }
