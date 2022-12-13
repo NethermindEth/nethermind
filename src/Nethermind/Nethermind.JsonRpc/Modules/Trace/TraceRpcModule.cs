@@ -169,7 +169,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return trace_replayBlock(block, traceTypes);
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlock(byte[] blockRlp, string[] traceTypes)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockRLP(byte[] blockRlp, string[] traceTypes)
         {
             Block block = Rlp.Decode<Block>(blockRlp);
             block.Header.TotalDifficulty ??= UInt256.One;
