@@ -361,8 +361,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 0,
                 (long)gasLimit,
                 timestamp,
-                extraData) { Author = beneficiary, Hash = Keccak.Zero, // need to run the block to know the actual hash
-                Bloom = Bloom.Empty, MixHash = mixHash,
+                extraData)
+            {
+                Author = beneficiary,
+                Hash = Keccak.Zero, // need to run the block to know the actual hash
+                Bloom = Bloom.Empty,
+                MixHash = mixHash,
                 Nonce = (ulong)nonce,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 StateRoot = Keccak.EmptyTreeHash,
