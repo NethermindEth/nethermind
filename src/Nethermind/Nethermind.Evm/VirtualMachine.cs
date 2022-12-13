@@ -2357,7 +2357,6 @@ namespace Nethermind.Evm
                             }
 
                             long gasCost = GasCostOf.Create +
-                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                                 (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
 
                             if (!UpdateGas(gasCost, ref gasAvailable))
@@ -2367,6 +2366,25 @@ namespace Nethermind.Evm
                             }
 
                             UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
+
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled)
+                            {
+                                if (initCodeLength > spec.MaxInitCodeSize)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+                                else
+                                {
+                                    if (!UpdateGas(GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength), ref gasAvailable))
+                                    {
+                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                        return CallResult.OutOfGasException;
+                                    }
+                                }
+                            }
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                             if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -2378,13 +2396,21 @@ namespace Nethermind.Evm
                             }
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-
-                            if (spec.IsEip3540Enabled && _byteCodeValidator.HasEOFMagic(initCode) &&
-                                !_byteCodeValidator.ValidateEofStructure(initCode, spec, out _))
+                            // if container is EOF init code must be EOF
+                            if (spec.IsEip3540Enabled)
                             {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
+                                EofHeader initcodeHeader = null;
+                                bool hasEofPrefix = _byteCodeValidator.HasEOFMagic(initCode);
+                                var isInitcodeEof = hasEofPrefix && _byteCodeValidator.ValidateBytecode(initCode, spec, out initcodeHeader);
+                                bool isValid = CodeContainer.IsEof.Value
+                                    ? isInitcodeEof && CodeContainer.Header?.Version == initcodeHeader?.Version
+                                    : !hasEofPrefix;
+                                if (!isValid)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
                             }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
@@ -2399,16 +2425,6 @@ namespace Nethermind.Evm
                             UInt256 maxNonce = ulong.MaxValue;
                             if (accountNonce >= maxNonce)
                             {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
-                            {
-                                //currently this needs to update nonce - may be a change in spec
-                                _state.IncrementNonce(env.ExecutingAccount);
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
                                 break;
@@ -2481,7 +2497,6 @@ namespace Nethermind.Evm
                                 vmState,
                                 false,
                                 accountExists);
-
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                             return new CallResult(callState);
                         }
@@ -2491,7 +2506,25 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 length);
 
                             UpdateMemoryCost(in memoryPos, length);
-                            ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
+                            ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
+
+                            // EIP-3540
+                            // Code container in the context of Create2? is Initcode
+                            if (spec.IsEip3540Enabled && vmState.ExecutionType.IsAnyCreate())
+                            {
+                                EofHeader codeHeader = null;
+                                bool hasEofPrefix = _byteCodeValidator.HasEOFMagic(returnData);
+                                var isCodeEof = hasEofPrefix && _byteCodeValidator.ValidateBytecode(returnData, spec, out codeHeader);
+                                bool isValid = CodeContainer.IsEof.Value
+                                    ? isCodeEof && CodeContainer.Header?.Version == codeHeader?.Version
+                                    : !hasEofPrefix;
+                                if (!isValid)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+                            }
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                             EndInstructionTrace();

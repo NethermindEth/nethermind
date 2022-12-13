@@ -27,6 +27,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
+        private readonly ByteCodeValidator _byteCodeValidator = ByteCodeValidator.Instance;
 
         [Flags]
         private enum ExecutionOptions
@@ -379,7 +380,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (!ByteCodeValidator.Instance.ValidateBytecode(substate.Output.Span, spec))
+                        if (!_byteCodeValidator.ValidateBytecode(substate.Output.Span, spec))
                         {
                             throw new InvalidCodeException();
                         }
@@ -430,9 +431,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         _stateProvider.CreateAccount(gasBeneficiary, fees);
                     }
 
-                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    UInt256 burntFees = !transaction.IsFree() ? (ulong)spentGas * block.BaseFeePerGas : 0;
+
+                    if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
                     {
-                        UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
                         if (!burntFees.IsZero)
                         {
                             if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
@@ -444,6 +446,11 @@ namespace Nethermind.Evm.TransactionProcessing
                                 _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
                             }
                         }
+                    }
+
+                    if (txTracer.IsTracingFees)
+                    {
+                        txTracer.ReportFees(fees, burntFees);
                     }
                 }
             }
