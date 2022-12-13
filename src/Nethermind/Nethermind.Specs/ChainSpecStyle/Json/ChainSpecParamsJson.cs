@@ -131,11 +131,11 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public long? TerminalPoWBlockNumber { get; set; }
+        public long? Eip3675Transition { get; set; }
 
         public ulong? Eip1153TransitionTimestamp { get; set; }
 
         public ulong? Eip3651TransitionTimestamp { get; set; }
-        public ulong? Eip3675TransitionTimestamp { get; set; }
         public ulong? Eip3855TransitionTimestamp { get; set; }
         public ulong? Eip3860TransitionTimestamp { get; set; }
     }

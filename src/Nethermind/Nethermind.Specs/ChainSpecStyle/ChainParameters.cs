@@ -106,6 +106,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? TerminalPowBlockNumber { get; set; }
 
         public UInt256? TerminalTotalDifficulty { get; set; }
+        public long? Eip3675Transition { get; set; }
 
         /// <summary>
         /// this feild will indicate the timestamp at which this EIP1153 will be enabled.
@@ -116,7 +117,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
         /// </summary>
         public ulong? Eip3651TransitionTimestamp { get; set; }
-        public ulong? Eip3675TransitionTimestamp { get; set; }
         public ulong? Eip3855TransitionTimestamp { get; set; }
         public ulong? Eip3860TransitionTimestamp { get; set; }
     }

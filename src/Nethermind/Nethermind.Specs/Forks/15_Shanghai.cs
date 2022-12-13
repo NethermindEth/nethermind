@@ -6,14 +6,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Shanghai : GrayGlacier
+    public class Shanghai : Merge
     {
         private static IReleaseSpec _instance;
 
         protected Shanghai()
         {
             Name = "Shanghai";
-            IsEip3675Enabled = true;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
             IsEip3860Enabled = true;
