@@ -655,16 +655,13 @@ namespace Nethermind.Evm.Test
                             bool corruptContainer = (k & 1) == 1;
                             bool corruptInnitcode = (k & 2) == 2;
                             bool corruptDeploycode = (k & 4) == 4;
-                            bool isInvalid = classicDep
-                                ? corruptInnitcode || (
-                                    !hasEofInnitcode && !hasEofDeployCode && corruptDeploycode
-                                )
-                                : corruptContainer || (!hasEofContainer &&
-                                    (
-                                        !hasEofInnitcode && (
-                                            corruptInnitcode || !hasEofDeployCode && corruptDeploycode
-                                        )
-                                    )
+                            bool isValid = classicDep
+                                ? !corruptInnitcode && (
+                                    hasEofInnitcode || !corruptDeploycode)
+                                : !corruptContainer && (
+                                    hasEofContainer || (
+                                        !corruptInnitcode && (
+                                        hasEofInnitcode || !corruptDeploycode))
                                 );
                             yield return new TestCase
                             {
@@ -673,7 +670,7 @@ namespace Nethermind.Evm.Test
                                     hasEofContainer, hasEofInnitcode, hasEofDeployCode,
                                     corruptContainer, corruptInnitcode, corruptDeploycode,
                                     context: j),
-                                ResultIfEOF = (isInvalid ? StatusCode.Failure : StatusCode.Success, null),
+                                ResultIfEOF = (!isValid ? StatusCode.Failure : StatusCode.Success, null),
                                 Description = $"EOF1 execution : \nDeploy {(hasEofContainer ? String.Empty : "NON-")}EOF CONTAINER with {(hasEofInnitcode ? String.Empty : "NON-")}EOF INNITCODE with {(hasEofDeployCode ? String.Empty : "NON-")}EOF CODE,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE and {(corruptDeploycode ? String.Empty : "Not")} Corrupted CODE"
                             };
                         }

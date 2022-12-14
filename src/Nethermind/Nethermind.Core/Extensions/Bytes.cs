@@ -369,11 +369,11 @@ namespace Nethermind.Core.Extensions
         {
             return ReadEthInt32((ReadOnlySpan<byte>)bytes);
         }
-        public static int ReadEthInt16(this Span<byte> bytes)
+        public static short ReadEthInt16(this Span<byte> bytes)
         {
             return ReadEthInt16((ReadOnlySpan<byte>)bytes);
         }
-        public static int ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 2)
             {
