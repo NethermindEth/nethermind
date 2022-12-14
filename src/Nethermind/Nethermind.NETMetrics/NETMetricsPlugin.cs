@@ -21,7 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.NETMetrics;
 
-public class NETMetricsPlugin: INethermindPlugin
+public class NETMetricsPlugin : INethermindPlugin
 
 {
     public ValueTask DisposeAsync()
@@ -47,10 +47,10 @@ public class NETMetricsPlugin: INethermindPlugin
             "gc_committed", "exception_count", "time_in_gc", "gen_0_size", "gen_1_size", "gen_2_size", "loh_size",
             "poh_size", "assembly_count", "il_bytes_jitted", "methods_jitted_count", "time_in_jit"
         };
-        enabledEvents["IncreaseMemoryPressure"] =  new[] {"BytesAllocated", "ClrInstanceID"};
-        enabledEvents["GCTriggered"] = new[] {"Reason", "ClrInstanceID"};
-        enabledEvents["GCMarkWithType"] = new[] {"HeapNum", "ClrInstanceID", "Type", "Bytes"};
-        enabledEvents["PinObjectAtGCTime"] = new[] {"HandleID", "ObjectID", "ObjectSize", "TypeName", "ClrInstanceID"};
+        enabledEvents["IncreaseMemoryPressure"] = new[] { "BytesAllocated", "ClrInstanceID" };
+        enabledEvents["GCTriggered"] = new[] { "Reason", "ClrInstanceID" };
+        enabledEvents["GCMarkWithType"] = new[] { "HeapNum", "ClrInstanceID", "Type", "Bytes" };
+        enabledEvents["PinObjectAtGCTime"] = new[] { "HandleID", "ObjectID", "ObjectSize", "TypeName", "ClrInstanceID" };
         enabledEvents["GCGlobalHeapHistory_V4"] = new[]
         {
             "FinalYoungestDesired", "NumHeaps", "CondemnedGeneration", "Gen0ReductionCount", "Reason",

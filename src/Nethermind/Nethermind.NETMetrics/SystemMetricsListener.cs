@@ -26,10 +26,10 @@ namespace Nethermind.NETMetrics;
 
 public class SystemMetricsListener : EventListener
 {
-    private Dictionary<string, string[]>EnabledEvents;
+    private Dictionary<string, string[]> EnabledEvents;
 
-    private const int GC_KEYWORD =                 0x0000001;
-    private const int TYPE_KEYWORD =               0x0080000;
+    private const int GC_KEYWORD = 0x0000001;
+    private const int TYPE_KEYWORD = 0x0080000;
     private const int GCHEAPANDTYPENAMES_KEYWORD = 0x1000000;
 
     public SystemMetricsListener(Dictionary<string, string[]> enabledEvents)
@@ -46,9 +46,9 @@ public class SystemMetricsListener : EventListener
         if (source.Name.Equals("System.Runtime"))
         {
             EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
-                {
-                    ["EventCounterIntervalSec"] = "1"
-                }
+            {
+                ["EventCounterIntervalSec"] = "1"
+            }
             );
         }
 
@@ -57,7 +57,7 @@ public class SystemMetricsListener : EventListener
             EnableEvents(
                 source,
                 EventLevel.Verbose,
-                (EventKeywords) (GC_KEYWORD | GCHEAPANDTYPENAMES_KEYWORD | TYPE_KEYWORD),
+                (EventKeywords)(GC_KEYWORD | GCHEAPANDTYPENAMES_KEYWORD | TYPE_KEYWORD),
                 new Dictionary<string, string?>()
                 {
                     ["EventCounterIntervalSec"] = TimeInterval.ToString()
@@ -75,7 +75,7 @@ public class SystemMetricsListener : EventListener
             return;
         }
 
-        for (int i = 0; i < eventData.Payload.Count; ++ i)
+        for (int i = 0; i < eventData.Payload.Count; ++i)
         {
             string? eventName;
             string? payloadName = null;
