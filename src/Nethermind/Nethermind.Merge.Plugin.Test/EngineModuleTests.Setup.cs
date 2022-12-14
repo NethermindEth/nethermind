@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -66,7 +67,13 @@ namespace Nethermind.Merge.Plugin.Test
                 new GetPayloadV1Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
+                new GetBlobsBundleV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
                 new GetPayloadV2Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new GetPayloadV3Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
                 new NewPayloadHandler(

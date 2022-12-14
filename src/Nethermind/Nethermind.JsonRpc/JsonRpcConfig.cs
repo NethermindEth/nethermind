@@ -43,6 +43,7 @@ namespace Nethermind.JsonRpc
         {
             "engine_newPayloadV1",
             "engine_newPayloadV2",
+            "engine_newPayloadV3",
             "engine_forkchoiceUpdatedV1",
             "engine_forkchoiceUpdatedV2"
         };

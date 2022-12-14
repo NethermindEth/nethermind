@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -33,6 +34,12 @@ namespace Nethermind.Merge.Plugin
         public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId);
 
         [JsonRpcMethod(
+            Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
+            IsSharable = true,
+            IsImplemented = true)]
+        public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
+
+        [JsonRpcMethod(
             Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
@@ -43,6 +50,11 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload);
+        [JsonRpcMethod(
+            Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload);
 
         [JsonRpcMethod(
             Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
@@ -67,5 +79,11 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(TransitionConfigurationV1 beaconTransitionConfiguration);
+
+        [JsonRpcMethod(
+            Description = "Returns blob data of an execution payload with respect to the transaction set contained by the mempool.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<BlobsBundleV1?>> engine_getBlobsBundleV1(byte[] payloadId);
     }
 }

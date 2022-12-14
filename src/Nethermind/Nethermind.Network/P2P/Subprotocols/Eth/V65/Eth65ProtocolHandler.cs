@@ -51,6 +51,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             switch (message.PacketType)
             {
                 case Eth65MessageCode.PooledTransactions:
+
+                    var r = message.Content.ReaderIndex;
+                    var data2 = message.Content.ReadAllHex();
+                    message.Content.SetReaderIndex(r);
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
                     Metrics.Eth65PooledTransactionsReceived++;

@@ -60,6 +60,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             int size = message.Content.ReadableBytes;
 
+            var r = message.Content.ReaderIndex;
+            var data2 = message.Content.ReadAllHex();
+            message.Content.SetReaderIndex(r);
             switch (message.PacketType)
             {
                 case Eth66MessageCode.GetBlockHeaders:
