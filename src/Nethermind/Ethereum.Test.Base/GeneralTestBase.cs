@@ -108,7 +108,7 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
-            stateProvider.Commit(specProvider.GetSpec(1));
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
 
             stateProvider.RecalculateStateRoot();
 
