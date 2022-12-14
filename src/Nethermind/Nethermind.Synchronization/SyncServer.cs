@@ -274,7 +274,7 @@ namespace Nethermind.Synchronization
 
             static bool HasSentBlock(PeerInfo peer, ISyncPeer? nodeWhoSentTheBlock) => nodeWhoSentTheBlock == peer.SyncPeer;
             static bool BlockIsNotTooOld(PeerInfo peer, Block block) => peer.SyncPeer.HeadNumber - MaxPeerBlockHeightDifference < block.Number;
-            static bool BlockHashHigherDifficulty(PeerInfo peer, Block block) => peer.SyncPeer.TotalDifficulty <= block.TotalDifficulty;
+            static bool BlockHasHigherDifficulty(PeerInfo peer, Block block) => peer.SyncPeer.TotalDifficulty <= block.TotalDifficulty;
 
             Task.Run(() =>
                 {
