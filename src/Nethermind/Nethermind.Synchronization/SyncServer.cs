@@ -287,7 +287,7 @@ namespace Nethermind.Synchronization
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
                         if (!HasSentBlock(peerInfo, nodeWhoSentTheBlock)
-                            && (BlockIsNotTooOld(peerInfo, block) || BlockHashHigherDifficulty(peerInfo, block)))
+                            && (BlockIsNotTooOld(peerInfo, block) || BlockHasHigherDifficulty(peerInfo, block)))
                         {
                             if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                             {
