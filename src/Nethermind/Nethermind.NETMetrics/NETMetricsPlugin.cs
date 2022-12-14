@@ -44,13 +44,14 @@ public class NETMetricsPlugin : INethermindPlugin
         Dictionary<string, HashSet<string>> enabledEvents = new();
 
         // For event counters, refer https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters
+        // Note: For event counters, the payload name will have `-` replaced with `_` in prometheus.
         enabledEvents["EventCounters"] = new HashSet<string>()
         {
-            "cpu_usage", "working_set", "gc_heap_size", "gen_0_gc_count", "gen_1_gc_count", "gen_2_gc_count",
-            "threadpool_thread_count", "monitor_lock_contention_count", "threadpool_queue_length",
-            "threadpool_completed_items_count", "alloc_rate", "active_timer_count", "gc_fragmentation",
-            "gc_committed", "exception_count", "time_in_gc", "gen_0_size", "gen_1_size", "gen_2_size", "loh_size",
-            "poh_size", "assembly_count", "il_bytes_jitted", "methods_jitted_count", "time_in_jit"
+            "cpu-usage", "working-set", "gc-heap-size", "gen-0-gc-count", "gen-1-gc-count", "gen-2-gc-count",
+            "threadpool-thread-count", "monitor-lock-contention-count", "threadpool-queue-length",
+            "threadpool-completed-items-count", "alloc-rate", "active-timer-count", "gc-fragmentation",
+            "gc-committed", "exception-count", "time-in-gc", "gen-0-size", "gen-1-size", "gen-2-size", "loh-size",
+            "poh-size", "assembly-count", "il-bytes-jitted", "methods-jitted-count", "time-in-jit"
         };
 
         // For everything else, refer https://learn.microsoft.com/en-us/dotnet/fundamentals/diagnostics/runtime-garbage-collection-events

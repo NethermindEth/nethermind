@@ -66,36 +66,45 @@ public class SystemMetricsListener : EventListener
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (!EnabledEvents.TryGetValue(eventData.EventName, out HashSet<string> allowedPayload))
+        if (!EnabledEvents.TryGetValue(eventData.EventName!, out HashSet<string> allowedPayload))
         {
             return;
         }
 
+        string eventName = eventData.EventName!;
+        bool isEventCounters = eventName.Equals("EventCounters");
+
         for (int i = 0; i < eventData.Payload!.Count; ++i)
         {
-            string? eventName;
             string? payloadName = null;
             string? payloadValueStr = null;
             double payloadValue = 0;
 
-            eventName = eventData.EventName;
-            if (eventName.Equals("EventCounters"))
+            if (isEventCounters)
             {
                 if (eventData.Payload[i] is IDictionary<string, object> eventPayload)
                 {
                     (payloadName, payloadValue) = ParseSystemMetrics(eventPayload);
+
+                    if (payloadName is null || !allowedPayload.Contains(payloadName))
+                    {
+                        continue;
+                    }
+
+                    payloadName = payloadName.Replace("-", "_");
                 }
             }
             else
             {
                 payloadName = eventData.PayloadNames![i];
                 payloadValueStr = eventData.Payload![i]!.ToString();
+
+                if (!allowedPayload.Contains(payloadName))
+                {
+                    continue;
+                }
             }
 
-            if (payloadName is null || !allowedPayload.Contains(payloadName))
-            {
-                continue;
-            }
             if (payloadValueStr != null) payloadValue = double.Parse(payloadValueStr);
 
             Metrics.RuntimeMetrics[eventName + "_" + payloadName] = payloadValue;
@@ -107,19 +116,19 @@ public class SystemMetricsListener : EventListener
     {
         string payloadName = "";
 
-        if (eventPayload.TryGetValue("Name", out object displayValue))
+        if (eventPayload.TryGetValue("Name", out object? displayValue))
         {
-            payloadName = displayValue.ToString().Replace("-", "_");
+            payloadName = displayValue.ToString()!;
         }
 
-        if (eventPayload.TryGetValue("Mean", out object value))
+        if (eventPayload.TryGetValue("Mean", out object? value))
         {
-            return (payloadName, double.Parse(value.ToString()));
+            return (payloadName, double.Parse(value.ToString()!));
         }
 
         if (eventPayload.TryGetValue("Increment", out value))
         {
-            return (payloadName, double.Parse(value.ToString()));
+            return (payloadName, double.Parse(value.ToString()!));
         }
 
         return (null, 0);
