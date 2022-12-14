@@ -18,6 +18,7 @@
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 
 namespace Nethermind.NETMetrics;
 
@@ -38,6 +39,8 @@ public class NETMetricsPlugin : INethermindPlugin
     public string Author => "Nethermind";
     public Task Init(INethermindApi nethermindApi)
     {
+        if (!nethermindApi.Config<IMetricsConfig>().EnableDotNetMetrics) return Task.CompletedTask;
+
         Dictionary<string, HashSet<string>> enabledEvents = new();
 
         // Refer for event counters, refer https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters
