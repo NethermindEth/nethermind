@@ -69,6 +69,12 @@ public partial class EngineModuleTests
             new GetPayloadV2Handler(
                 chain.PayloadPreparationService!,
                 chain.LogManager),
+            new GetPayloadV3Handler(
+                chain.PayloadPreparationService!,
+                chain.LogManager),
+            new GetBlobsBundleV1Handler(
+                chain.PayloadPreparationService!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
