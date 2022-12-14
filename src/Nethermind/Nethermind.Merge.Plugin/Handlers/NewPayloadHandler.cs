@@ -26,8 +26,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
-/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
-/// Shanghai</see> specification.
+/// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
+/// Shanghai</a> specification.
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {

@@ -23,6 +23,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public EngineRpcModule(
         IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
+        IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV3,
+        IAsyncHandler<byte[], BlobsBundleV1?> getBlobsBundleV1Handler,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -36,6 +38,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
         _getPayloadHandlerV1 = getPayloadHandlerV1;
         _getPayloadHandlerV2 = getPayloadHandlerV2;
+        _getPayloadHandlerV3 = getPayloadHandlerV3;
+        _getBlobsBundleV1Handler = getBlobsBundleV1Handler;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;

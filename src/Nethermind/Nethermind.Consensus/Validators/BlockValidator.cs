@@ -197,7 +197,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.IsEip4844Enabled ^ block.ExcessDataGas is not null)
         {
-            error = $"ExcessDataGas cannot be null in block {block.Hash} when EIP-4844 activated.";
+            error = "ExcessDataGas field is incorrect.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }

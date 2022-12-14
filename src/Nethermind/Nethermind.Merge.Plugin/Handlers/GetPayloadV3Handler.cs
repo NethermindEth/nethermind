@@ -12,14 +12,14 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
-    /// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_getpayloadv2">engine_getpayloadv2</see>.
+    /// https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#engine_getpayloadv3
     /// </summary>
-    public class GetPayloadV2Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
+    public class GetPayloadV3Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
     {
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
 
-        public GetPayloadV2Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
+        public GetPayloadV3Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
         {
             _payloadPreparationService = payloadPreparationService;
             _logger = logManager.GetClassLogger();
@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<GetPayloadV2Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
             }
 
-            if (_logger.IsInfo) _logger.Info($"GetPayloadV2 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
+            if (_logger.IsInfo) _logger.Info($"GetPayloadV3 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
 
             Metrics.GetPayloadRequests++;
             Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;

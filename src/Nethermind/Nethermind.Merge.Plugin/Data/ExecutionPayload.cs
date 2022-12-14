@@ -83,7 +83,7 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonConverter(typeof(NullableUInt256Converter))]
+    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
     public UInt256? ExcessDataGas { get; set; }
 
     /// <summary>

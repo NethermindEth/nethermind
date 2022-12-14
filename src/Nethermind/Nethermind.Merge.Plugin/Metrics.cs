@@ -29,5 +29,10 @@ namespace Nethermind.Merge.Plugin
         [Description("Number of Transactions included in the Last GetPayload Request")]
         public static int NumberOfTransactionsInGetPayload { get; set; }
 
+        [Description("Number of GetBlobsBundle Requests")]
+        public static long GetBlobsBundleRequests { get; set; }
+
+        [Description("Number of Transactions included in the Last GetBlobsBundle Request")]
+        public static int NumberOfTransactionsInGetBlobsBundle { get; set; }
     }
 }

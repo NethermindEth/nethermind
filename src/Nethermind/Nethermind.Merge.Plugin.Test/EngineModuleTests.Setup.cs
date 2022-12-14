@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
@@ -34,21 +35,34 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
+    [SetUp]
+    public Task Setup()
+    {
+        return KzgPolynomialCommitments.InitializeAsync();
+    }
+
+    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
+    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
-        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider, ILogManager? logManager = null)
+    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
+        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
+            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+
+    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider,
+        ILogManager? logManager = null)
         => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
@@ -70,6 +84,12 @@ public partial class EngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.LogManager),
             new GetPayloadV2Handler(
+                chain.PayloadPreparationService!,
+                chain.LogManager),
+            new GetPayloadV3Handler(
+                chain.PayloadPreparationService!,
+                chain.LogManager),
+            new GetBlobsBundleV1Handler(
                 chain.PayloadPreparationService!,
                 chain.LogManager),
             new NewPayloadHandler(
@@ -136,7 +156,7 @@ public partial class EngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
         {
-            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
+            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithBaseFeePerGas(1);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
             LogManager = logManager ?? LogManager;
