@@ -4,29 +4,31 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using System.Threading;
-using Nethermind.Blockchain.Find;
-using Nethermind.Trie.Pruning;
-using System.Threading.Tasks;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade.Test
 {
@@ -132,6 +134,23 @@ namespace Nethermind.Facade.Test
                 Arg.Is<BlockHeader>(bh =>
                     bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
+        }
+
+        [Test]
+        public void Call_uses_valid_post_merge_and_random_value()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithDifficulty(0)
+                .WithMixHash(TestItem.KeccakA)
+                .TestObject;
+
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(header => header.IsPostMerge && header.Random == TestItem.KeccakA),
+                Arg.Any<ITxTracer>());
         }
 
         [Test]

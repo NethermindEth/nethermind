@@ -25,6 +25,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
+    private readonly int _parallelization;
     private readonly ILogger _logger;
 
     private static readonly IDictionary<ParityTraceTypes, Action<ParityLikeTxTrace>> _filters = new Dictionary<ParityTraceTypes, Action<ParityLikeTxTrace>>
@@ -34,19 +35,20 @@ public class TraceStoreRpcModule : ITraceRpcModule
         { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
     };
 
-    public TraceStoreRpcModule(
-        ITraceRpcModule traceModule,
+    public TraceStoreRpcModule(ITraceRpcModule traceModule,
         IDbWithSpan traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,
-        ILogManager logManager)
+        ILogManager logManager,
+        int parallelization = 0)
     {
         _traceStore = traceStore;
         _traceModule = traceModule;
         _blockFinder = blockFinder;
         _receiptFinder = receiptFinder;
         _traceSerializer = traceSerializer;
+        _parallelization = parallelization;
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
@@ -97,8 +99,14 @@ public class TraceStoreRpcModule : ITraceRpcModule
         SearchResult<Block>? error = null;
         bool missingTraces = false;
 
-        IEnumerable<ParityTxTraceFromStore> txTraces = blocksSearch.AsParallel()
-            .AsOrdered()
+        IEnumerable<SearchResult<Block>> blocks = _parallelization switch
+        {
+            0 => blocksSearch.AsParallel().AsOrdered(),
+            1 => blocksSearch,
+            var n => blocksSearch.AsParallel().WithDegreeOfParallelism(n).AsOrdered()
+        };
+
+        IEnumerable<ParityTxTraceFromStore> txTraces = blocks
             .SelectMany(blockSearch =>
             {
                 if (blockSearch.IsError)

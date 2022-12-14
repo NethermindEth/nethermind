@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc;
@@ -111,18 +110,11 @@ public class JsonRpcService : IJsonRpcService
         (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
     {
         ParameterInfo[] expectedParameters = method.Info.GetParameters();
-        JToken?[] providedParameters = request.Params?.ToArray() ?? Array.Empty<JToken>();
+        string?[] providedParameters = request.Params ?? Array.Empty<string>();
 
         LogRequest(methodName, providedParameters, expectedParameters);
 
-        int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count((token) =>
-        {
-            if (token.Type == JTokenType.Null) return true;
-
-            if (token.Type == JTokenType.String && string.IsNullOrEmpty(token.Value<string>())) return true;
-
-            return false;
-        }));
+        int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
         int explicitNullableParamsCount = 0;
 
         if (missingParamsCount != 0)
@@ -167,7 +159,7 @@ public class JsonRpcService : IJsonRpcService
             parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
             if (parameters is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters.Select(token => token.ToString()))}]");
+                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
             }
         }
@@ -242,7 +234,7 @@ public class JsonRpcService : IJsonRpcService
         return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
     }
 
-    private void LogRequest(string methodName, JToken?[] providedParameters, ParameterInfo[] expectedParameters)
+    private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
     {
         if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
         {
@@ -259,7 +251,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 string? parameter = expectedParameters.ElementAtOrDefault(i)?.Name == "passphrase"
                     ? "{passphrase}"
-                    : providedParameters[i].ToString();
+                    : providedParameters[i];
 
                 if (paramsLength > _maxLoggedRequestParametersCharacters)
                 {
@@ -285,14 +277,14 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JToken?[] providedParameters, int missingParamsCount)
+    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, string?[] providedParameters, int missingParamsCount)
     {
         try
         {
             List<object> executionParameters = new List<object>();
             for (int i = 0; i < providedParameters.Length; i++)
             {
-                JToken providedParameter = providedParameters[i];
+                string providedParameter = providedParameters[i];
                 ParameterInfo expectedParameter = expectedParameters[i];
                 Type paramType = expectedParameter.ParameterType;
                 if (paramType.IsByRef)
@@ -300,7 +292,7 @@ public class JsonRpcService : IJsonRpcService
                     paramType = paramType.GetElementType();
                 }
 
-                if (providedParameter == null || providedParameter.Type == JTokenType.Null)
+                if (string.IsNullOrWhiteSpace(providedParameter))
                 {
                     if (providedParameter is null && IsNullableParameter(expectedParameter))
                     {
@@ -317,27 +309,25 @@ public class JsonRpcService : IJsonRpcService
                 if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
                 {
                     IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                    // TODO: make IJsonRpcParam accept JToken
-                    jsonRpcParam!.ReadJson(_serializer, providedParameter.ToString());
+                    jsonRpcParam!.ReadJson(_serializer, providedParameter);
                     executionParam = jsonRpcParam;
                 }
                 else if (paramType == typeof(string))
                 {
-                    executionParam = providedParameter.ToString();
+                    executionParam = providedParameter;
                 }
                 else if (paramType == typeof(string[]))
                 {
-                    executionParam = _serializer.Deserialize<string[]>(new JTokenReader(providedParameter));
+                    executionParam = _serializer.Deserialize<string[]>(new JsonTextReader(new StringReader(providedParameter)));
                 }
                 else
                 {
-                    if (providedParameter.Type is JTokenType.Array or JTokenType.Object)
+                    if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                     {
-                        executionParam = _serializer.Deserialize(new JTokenReader(providedParameter), paramType);
+                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
                     }
                     else
                     {
-                        // I don't know why this is the case
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
                     }
                 }
