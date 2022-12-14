@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
@@ -31,18 +33,17 @@ namespace Nethermind.HealthChecks
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly INethermindApi _api;
-        private readonly IAvailableSpaceGetter _availableSpaceGetter;
+        private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
 
-        public NodeHealthService(
-            ISyncServer syncServer,
+        public NodeHealthService(ISyncServer syncServer,
             IBlockchainProcessor blockchainProcessor,
             IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
             INethermindApi api,
-            IAvailableSpaceGetter availableSpaceGetter,
+            IDriveInfo[] drives,
             bool isMining)
         {
             _syncServer = syncServer;
@@ -54,7 +55,7 @@ namespace Nethermind.HealthChecks
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
             _api = api;
-            _availableSpaceGetter = availableSpaceGetter;
+            _drives = drives;
         }
 
         public CheckHealthResult CheckHealth()
@@ -114,15 +115,15 @@ namespace Nethermind.HealthChecks
                 }
             }
 
-            if (_availableSpaceGetter != null && _healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
             {
-                foreach ((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
+                foreach (IDriveInfo drive in _drives)
                 {
-                    if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                    double freeSpacePercentage = drive.GetFreeSpacePercentage();
+                    if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                     {
-                        double freeSpaceGB = (double)freeSpace / 1.GiB();
-                        AddLowDiskSpaceMessage(messages, freeSpaceGB, freeSpacePcnt);
-                        healthy &= false;
+                        AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                        healthy = false;
                     }
                 }
             }
@@ -237,9 +238,9 @@ namespace Nethermind.HealthChecks
             messages.Add(("Fully synced", $"The node is now fully synced with a network"));
         }
 
-        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, double freeSpaceGB, double freeSpacePcnt)
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
         {
-            messages.Add(("Low free disk space", $"The node is running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left"));
+            messages.Add(("Low free disk space", $"The node is running out of free disk in {drive.RootDirectory.FullName} space - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
         }
     }
 }

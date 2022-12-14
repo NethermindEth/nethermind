@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +26,6 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
-        private IAvailableSpaceGetter _availableSpaceGetter;
 
         private ClHealthLogger _clHealthLogger;
         private FreeDiskSpaceChecker _freeDiskSpaceChecker;
@@ -109,24 +110,25 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            IDriveInfo[] drives = Array.Empty<IDriveInfo>();
+
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {
                 try
                 {
-                    _availableSpaceGetter = new AvailableSpaceGetter(_initConfig.BaseDbPath);
-                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _availableSpaceGetter, _api.TimerFactory);
+                    drives = _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath);
+                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
                     _freeDiskSpaceChecker.StartAsync(default);
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError)
-                        _logger.Error("Failed to initialize available disk space check module", ex);
+                    if (_logger.IsError) _logger.Error("Failed to initialize available disk space check module", ex);
                 }
             }
 
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, _availableSpaceGetter, _initConfig.IsMining);
+                _api.EthSyncingInfo!, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
             {
@@ -189,9 +191,7 @@ namespace Nethermind.HealthChecks
             {
                 if (!_nodeHealthService.CheckClAlive())
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            "No incoming messages from Consensus Client. Please make sure that it's working properly");
+                    if (_logger.IsWarn) _logger.Warn("No incoming messages from Consensus Client. Please make sure that it's working properly");
                 }
             }
         }

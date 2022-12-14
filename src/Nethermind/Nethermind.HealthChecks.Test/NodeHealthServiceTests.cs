@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -40,13 +41,14 @@ namespace Nethermind.HealthChecks.Test
             ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             INethermindApi api = Substitute.For<INethermindApi>();
-            IAvailableSpaceGetter availableSpaceGetter = Substitute.For<IAvailableSpaceGetter>();
             api.SpecProvider = Substitute.For<ISpecProvider>();
-
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            availableSpaceGetter.GetAvailableSpace().Returns(_ => new (long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
+
+            IDriveInfo drive = Substitute.For<IDriveInfo>();
+            drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
+            drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
@@ -62,7 +64,7 @@ namespace Nethermind.HealthChecks.Test
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, api, availableSpaceGetter, test.IsMining);
+                    healthHintService, ethSyncingInfo, api, new[] { drive }, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
@@ -78,7 +80,6 @@ namespace Nethermind.HealthChecks.Test
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             INethermindApi api = Substitute.For<INethermindApi>();
-            IAvailableSpaceGetter availableSpaceGetter = Substitute.For<IAvailableSpaceGetter>();
 
             ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
             api.Timestamper.Returns(timestamper);
@@ -89,7 +90,9 @@ namespace Nethermind.HealthChecks.Test
             api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
             api.JsonRpcLocalStats!.GetMethodStats("engine_exchangeTransitionConfigurationV1").Returns(methodStats);
             syncServer.GetPeerCount().Returns(test.PeerCount);
-            availableSpaceGetter.GetAvailableSpace().Returns(_ => new (long, double)[] { (_freeSpaceBytes, test.AvailableDiskSpacePcnt) });
+            IDriveInfo drive = Substitute.For<IDriveInfo>();
+            drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
+            drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
 
             api.SpecProvider = Substitute.For<ISpecProvider>();
             api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);
@@ -109,7 +112,7 @@ namespace Nethermind.HealthChecks.Test
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), new TestLogManager());
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, api, availableSpaceGetter, false);
+                    healthHintService, ethSyncingInfo, api, new[] { drive }, false);
             nodeHealthService.CheckHealth();
 
             timestamper.Add(TimeSpan.FromSeconds(test.TimeSpanSeconds));
@@ -137,7 +140,7 @@ namespace Nethermind.HealthChecks.Test
             public int ForkchoiceUpdatedCalls { get; set; }
 
             public int TimeSpanSeconds { get; set; }
-            public double AvailableDiskSpacePcnt { get; set; } = 11;
+            public double AvailableDiskSpacePercent { get; set; } = 11;
 
             public override string ToString() =>
                 $"Lp: {Lp} ExpectedHealthy: {ExpectedHealthy}, ExpectedDescription: {ExpectedMessage}, ExpectedLongDescription: {ExpectedLongMessage}";
@@ -155,7 +158,7 @@ namespace Nethermind.HealthChecks.Test
             public bool IsProducingBlocks { get; set; }
 
             public bool IsProcessingBlocks { get; set; }
-            public double AvailableDiskSpacePcnt { get; set; } = 11;
+            public double AvailableDiskSpacePercent { get; set; } = 11;
 
             public bool ExpectedHealthy { get; set; }
 
@@ -266,7 +269,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProducingBlocks = true,
                     IsProcessingBlocks = true,
                     PeerCount = 1,
-                    AvailableDiskSpacePcnt = 4.73,
+                    AvailableDiskSpacePercent = 4.73,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 1. Low free disk space.",
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space - only {1.5:F2} GB ({4.73:F2}%) left."
@@ -342,7 +345,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedMessage = "Fully synced. Peers: 10. Low free disk space.",
                     TimeSpanSeconds = 15,
                     ForkchoiceUpdatedCalls = 1,
-                    AvailableDiskSpacePcnt = 4.73,
+                    AvailableDiskSpacePercent = 4.73,
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10. The node is running out of free disk space - only {1.50:F2} GB ({4.73:F2}%) left."
                 };
             }

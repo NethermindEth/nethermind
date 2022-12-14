@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -29,34 +31,32 @@ namespace Nethermind.HealthChecks
     {
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly ILogger _logger;
-        private readonly IAvailableSpaceGetter _availableSpaceGetter;
+        private readonly IDriveInfo[] _drives;
         private readonly ITimer _timer;
-        private static readonly int CheckPeriodMinutes = 1;
+        private const int CheckPeriodMinutes = 1;
 
-        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IAvailableSpaceGetter availableSpaceGetter, ITimerFactory timerFactory)
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory)
         {
             _healthChecksConfig = healthChecksConfig;
             _logger = logger;
-            _availableSpaceGetter = availableSpaceGetter;
+            _drives = drives;
             _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
             _timer.Elapsed += CheckDiskSpace;
         }
 
         private void CheckDiskSpace(object sender, EventArgs e)
         {
-            foreach ((long freeSpace, double freeSpacePcnt) in _availableSpaceGetter.GetAvailableSpace())
+            foreach (IDriveInfo drive in _drives)
             {
-                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
+                double freeSpacePercent = drive.GetFreeSpacePercentage();
+                if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
                 {
-                    if (_logger.IsError)
-                        _logger.Error($"Free disk space is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
+                    if (_logger.IsError) _logger.Error($"Free disk space in '{drive.RootDirectory.FullName}' is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
                     Environment.Exit(ExitCodes.LowDiskSpace);
                 }
-                if (freeSpacePcnt < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
-                    double freeSpaceGB = (double)freeSpace / 1.GiB();
-                    if (_logger.IsWarn)
-                        _logger.Warn($"Running out of free disk space - only {freeSpaceGB:F2} GB ({freeSpacePcnt:F2}%) left!");
+                    if (_logger.IsWarn) _logger.Warn($"Running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left!");
                 }
             }
         }
