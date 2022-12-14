@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Shanghai : Merge
+    public class Shanghai : GrayGlacier
     {
         private static IReleaseSpec _instance;
 

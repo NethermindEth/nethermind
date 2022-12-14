@@ -229,8 +229,6 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip3607Enabled { get; }
 
-        bool IsMergeEnabled { get; }
-
         /// <summary>
         /// Warm COINBASE
         /// </summary>
