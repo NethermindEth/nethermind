@@ -15,12 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics.Tracing;
-using System.Reflection;
-
 
 namespace Nethermind.NETMetrics;
 
@@ -43,10 +38,14 @@ public class SystemMetricsListener : EventListener
     {
         if (source.Name.Equals("System.Runtime"))
         {
-            EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
-            {
-                ["EventCounterIntervalSec"] = "1"
-            }
+            EnableEvents(
+                source,
+                EventLevel.Verbose,
+                EventKeywords.All,
+                new Dictionary<string, string?>()
+                {
+                    ["EventCounterIntervalSec"] = TimeInterval.ToString()
+                }
             );
         }
 
@@ -60,7 +59,6 @@ public class SystemMetricsListener : EventListener
                 {
                     ["EventCounterIntervalSec"] = TimeInterval.ToString()
                 }
-
             );
         }
 

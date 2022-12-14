@@ -43,7 +43,7 @@ public class NETMetricsPlugin : INethermindPlugin
 
         Dictionary<string, HashSet<string>> enabledEvents = new();
 
-        // Refer for event counters, refer https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters
+        // For event counters, refer https://learn.microsoft.com/en-us/dotnet/core/diagnostics/available-counters
         enabledEvents["EventCounters"] = new HashSet<string>()
         {
             "cpu_usage", "working_set", "gc_heap_size", "gen_0_gc_count", "gen_1_gc_count", "gen_2_gc_count",
@@ -52,7 +52,6 @@ public class NETMetricsPlugin : INethermindPlugin
             "gc_committed", "exception_count", "time_in_gc", "gen_0_size", "gen_1_size", "gen_2_size", "loh_size",
             "poh_size", "assembly_count", "il_bytes_jitted", "methods_jitted_count", "time_in_jit"
         };
-
 
         // For everything else, refer https://learn.microsoft.com/en-us/dotnet/fundamentals/diagnostics/runtime-garbage-collection-events
         enabledEvents["IncreaseMemoryPressure"] = new HashSet<string>() { "BytesAllocated", "ClrInstanceID" };
