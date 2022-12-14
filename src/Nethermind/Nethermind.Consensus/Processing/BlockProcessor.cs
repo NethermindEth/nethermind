@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -239,8 +240,16 @@ namespace Nethermind.Consensus.Processing
             _stateProvider.RecalculateStateRoot();
 
             block.Header.StateRoot = _stateProvider.StateRoot;
-            block.Header.Hash = block.Header.CalculateHash();
 
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+
+            if (releaseSpec.IsEip4844Enabled)
+            {
+                block.Header.ExcessDataGas = Evm.IntrinsicGasCalculator.CalculateExcessDataGas(block.Header.ParentExcessDataGas,
+                    block.GetTransactions().Sum(x => x.BlobVersionedHashes?.Length ?? 0), releaseSpec);
+            }
+
+            block.Header.Hash = block.Header.CalculateHash();
             return receipts;
         }
 
@@ -280,6 +289,7 @@ namespace Nethermind.Consensus.Processing
                 BaseFeePerGas = bh.BaseFeePerGas,
                 WithdrawalsRoot = bh.WithdrawalsRoot,
                 IsPostMerge = bh.IsPostMerge,
+                ParentExcessDataGas = bh.ParentExcessDataGas,
             };
 
             return suggestedBlock.CreateCopy(headerForProcessing);

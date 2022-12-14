@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -44,7 +46,7 @@ namespace Nethermind.Consensus.Producers
         private IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
@@ -286,7 +288,8 @@ namespace Nethermind.Consensus.Producers
                 _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
-                MixHash = payloadAttributes?.PrevRandao
+                MixHash = payloadAttributes?.PrevRandao,
+                ParentExcessDataGas = parent.ExcessDataGas.GetValueOrDefault(),
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
@@ -304,10 +307,10 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
 
-            if (_specProvider.GetSpec(header).IsEip4844Enabled)
+            IReleaseSpec releaseSpec =  _specProvider.GetSpec(header.Number, header.Timestamp);
+            if (releaseSpec.IsEip4844Enabled)
             {
-                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
-                header.ExcessDataGas = 0;
+                header.ParentExcessDataGas = parent.ExcessDataGas ?? 0;
             }
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);

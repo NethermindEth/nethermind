@@ -567,11 +567,14 @@ namespace Nethermind.Consensus.Processing
                         $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
                 if (toBeProcessed.IsGenesis)
                 {
+                    toBeProcessed.Header.ParentExcessDataGas = 0;
                     break;
                 }
 
                 branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                toBeProcessed.Header.ParentExcessDataGas = branchingPoint?.ExcessDataGas.GetValueOrDefault() ?? 0;
+
                 if (branchingPoint is null)
                 {
                     // genesis block
@@ -658,7 +661,7 @@ namespace Nethermind.Consensus.Processing
             Keccak stateRoot = branchingPoint?.StateRoot;
             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
             blocksToBeAddedToMain.Reverse();
-            return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
+            return new ProcessingBranch(stateRoot, blocksToBeAddedToMain, branchingPoint);
         }
 
         [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
@@ -715,16 +718,18 @@ namespace Nethermind.Consensus.Processing
         [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
         private readonly struct ProcessingBranch
         {
-            public ProcessingBranch(Keccak root, List<Block> blocks)
+            public ProcessingBranch(Keccak root, List<Block> blocks, BlockHeader parentHeader)
             {
                 Root = root;
                 Blocks = blocks;
                 BlocksToProcess = new List<Block>();
+                ParentHeader = parentHeader;
             }
 
             public Keccak Root { get; }
             public List<Block> Blocks { get; }
             public List<Block> BlocksToProcess { get; }
+            public BlockHeader ParentHeader { get; }
         }
 
         public class Options

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
@@ -41,7 +40,6 @@ namespace Nethermind.Evm.Test
             yield return (new byte[] { 1, 1, 0 }, 140, 36);
             yield return (new byte[] { 0, 0, 1, 1 }, 144, 40);
         }
-
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
@@ -113,6 +111,80 @@ namespace Nethermind.Evm.Test
             Test(Istanbul.Instance, true);
             Test(MuirGlacier.Instance, true);
             Test(Berlin.Instance, true);
+            Test(GrayGlacier.Instance, true);
+            Test(Shanghai.Instance, true);
+            Test(Cancun.Instance, true);
+        }
+
+        public static IEnumerable<(UInt256 parentExcessDataGas, int newBlobsCount, UInt256 expectedCost)> ExcessDataGasTestCaseSource()
+        {
+            yield return (0, 0, 0);
+            yield return (0, 1, 0);
+            yield return (0, 2, 0);
+            yield return (0, 3, (1 << 17));
+            yield return (100000, 3, (1 << 17) + 100000);
+            yield return ((1 << 18), 1, (1 << 17));
+            yield return ((1 << 18), 0, 0);
+            yield return ((1 << 18), 2, (1 << 18));
+        }
+
+        [TestCaseSource(nameof(ExcessDataGasTestCaseSource))]
+        public void Blobs_excess_data_gas_is_calculated_correctly((UInt256 parentExcessDataGas, int newBlobsCount, UInt256 expectedCost) testCase)
+        {
+            void Test(IReleaseSpec spec, bool areBlobsEnabled)
+            {
+                IntrinsicGasCalculator.CalculateExcessDataGas(testCase.parentExcessDataGas, testCase.newBlobsCount, spec).Should()
+                    .Be(areBlobsEnabled ? testCase.expectedCost : 0);
+            }
+
+            Test(Homestead.Instance, false);
+            Test(Frontier.Instance, false);
+            Test(SpuriousDragon.Instance, false);
+            Test(TangerineWhistle.Instance, false);
+            Test(Byzantium.Instance, false);
+            Test(Constantinople.Instance, false);
+            Test(ConstantinopleFix.Instance, false);
+            Test(Istanbul.Instance, false);
+            Test(MuirGlacier.Instance, false);
+            Test(Berlin.Instance, false);
+            Test(GrayGlacier.Instance, false);
+            Test(Shanghai.Instance, false);
+            Test(Cancun.Instance, true);
+        }
+
+        public static IEnumerable<(Transaction tx, UInt256 parentExcessDataGas, UInt256 expectedCost)> BlobDataGostTestCaseSource()
+        {
+            yield return (Build.A.Transaction.TestObject, 0, 0);
+            yield return (Build.A.Transaction.TestObject, 1000, 0);
+            yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(0).TestObject, 1000, 0);
+            yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).TestObject, 0, 131072);
+            yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).TestObject, 10000000, 11665408);
+            yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 0, 131072000);
+            yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 10000000, 11665408000);
+        }
+
+        [TestCaseSource(nameof(BlobDataGostTestCaseSource))]
+        public void Blobs_intrinsic_cost_is_calculated_properly((Transaction tx, UInt256 parentExcessDataGas, UInt256 expectedCost) testCase)
+        {
+            void Test(IReleaseSpec spec, bool areBlobsEnabled)
+            {
+                IntrinsicGasCalculator.CalculateBlobsGasCost(testCase.tx, testCase.parentExcessDataGas, spec).Should()
+                    .Be(areBlobsEnabled ? testCase.expectedCost : 0);
+            }
+
+            Test(Homestead.Instance, false);
+            Test(Frontier.Instance, false);
+            Test(SpuriousDragon.Instance, false);
+            Test(TangerineWhistle.Instance, false);
+            Test(Byzantium.Instance, false);
+            Test(Constantinople.Instance, false);
+            Test(ConstantinopleFix.Instance, false);
+            Test(Istanbul.Instance, false);
+            Test(MuirGlacier.Instance, false);
+            Test(Berlin.Instance, false);
+            Test(GrayGlacier.Instance, false);
+            Test(Shanghai.Instance, false);
+            Test(Cancun.Instance, true);
         }
     }
 }

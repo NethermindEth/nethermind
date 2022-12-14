@@ -432,6 +432,13 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             );
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
+
+        if (spec.IsEip4844Enabled)
+        {
+            header.ExcessDataGas = Evm.IntrinsicGasCalculator.CalculateExcessDataGas(parentBlock.ExcessDataGas,
+                block.Transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0), spec);
+            header.ParentExcessDataGas = parentHeader.ExcessDataGas ?? 0;
+        }
         return block;
     }
 

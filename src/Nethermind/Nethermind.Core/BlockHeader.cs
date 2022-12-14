@@ -67,6 +67,9 @@ public class BlockHeader
     public Keccak? WithdrawalsRoot { get; set; }
     public UInt256? ExcessDataGas { get; set; }
 
+    // TODO: Used as a check, remove in the future
+    public UInt256 ParentExcessDataGas { get; set; } = UInt256.MaxValue;
+
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
         || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
         || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
