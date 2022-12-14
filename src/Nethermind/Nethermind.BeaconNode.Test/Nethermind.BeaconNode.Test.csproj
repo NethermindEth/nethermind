@@ -29,7 +29,7 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" Version="4.4.0" />
     <PackageReference Include="Shouldly" Version="4.1.0" />
-    <PackageReference Include="System.IO.Abstractions.TestingHelpers" Version="18.0.1" />
+    <PackageReference Include="System.IO.Abstractions.TestingHelpers" Version="19.1.1" />
   </ItemGroup>
 
   <ItemGroup>
