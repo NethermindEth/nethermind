@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -43,7 +45,7 @@ namespace Nethermind.Consensus.Producers
         private IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
@@ -282,7 +284,9 @@ namespace Nethermind.Consensus.Producers
                 parent.Number + 1,
                 payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                _blocksConfig.GetExtraDataBytes())
+                _blocksConfig.GetExtraDataBytes(),
+                null,
+                parent.ExcessDataGas.GetValueOrDefault())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao
@@ -302,6 +306,14 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
+
+            if (_specProvider.GetSpec(header.Number, header.Timestamp).IsEip4844Enabled)
+            {
+                header.ExcessDataGas = IntrinsicGasCalculator.CalcExcessDataGas(parent.ExcessDataGas,
+                    transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0));
+                header.ParentExcessDataGas = parent.ParentExcessDataGas;
+            }
+
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
     }

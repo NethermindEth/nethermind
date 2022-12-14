@@ -10,6 +10,7 @@ using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 

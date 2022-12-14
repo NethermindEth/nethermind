@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
@@ -12,7 +13,7 @@ namespace Nethermind.Evm
 {
     public static class IntrinsicGasCalculator
     {
-        public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+        public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec/*, UInt256 parentExcessDataGas*/)
         {
             long result = GasCostOf.Transaction;
             result += DataCost(transaction, releaseSpec);
@@ -90,6 +91,56 @@ namespace Nethermind.Evm
             }
 
             return accessListCost;
+        }
+
+        static UInt256 DataGasPriceUpdateFraction = 2225652;
+        static UInt256 MinDataGasPrice = 1L;
+
+        // FakeExponential
+        public static UInt256 BlobsGas(Transaction transaction, UInt256 parentExcessDataGas, IReleaseSpec releaseSpec)
+        {
+            if (!releaseSpec.IsEip4844Enabled || transaction.Type != TxType.Blob || transaction.BlobVersionedHashes?.Any() != true)
+            {
+                return 0;
+            }
+            if(parentExcessDataGas == UInt256.MaxValue)
+            {
+                throw new InvalidOperationException();
+            }
+
+            return (ulong)transaction.BlobVersionedHashes!.Length * CostPerBlob(parentExcessDataGas);
+        }
+
+        public static UInt256 CostPerBlob(UInt256 parentExcessDataGas)
+        {
+            UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denom)
+            {
+                UInt256 output = UInt256.Zero;
+
+                UInt256 numAccum = factor * denom;
+
+                for (UInt256 i = 1; numAccum > 0; i++)
+                {
+                    output += numAccum;
+                    numAccum *= num;
+                    numAccum /= i * denom;
+                }
+                return output / denom;
+            }
+
+            var r = FakeExponential(MinDataGasPrice, parentExcessDataGas, DataGasPriceUpdateFraction);
+            return r * 1<<17;
+        }
+
+        static UInt256 DataGasPerBlob = 1 << 19;
+        static UInt256 TargetDataGasPerBlock = 1 << 18;
+
+        public static UInt256 CalcExcessDataGas(UInt256? parentExcessDataGas, int newBlobs)
+        {
+            UInt256 excessDataGas = parentExcessDataGas.GetValueOrDefault();
+            UInt256 consumedGas = DataGasPerBlob * (UInt256)newBlobs;
+            excessDataGas += consumedGas;
+            return excessDataGas < TargetDataGasPerBlock ? UInt256.Zero : (excessDataGas - TargetDataGasPerBlock);
         }
     }
 }

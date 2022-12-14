@@ -178,6 +178,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
                 return;
             }
+            if (UInt256.MaxValue == block.ParentExcessDataGas)
+            {
+                throw new InvalidOperationException();
+            }
 
             if (!noValidation && transaction.Nonce >= ulong.MaxValue - 1)
             {
@@ -199,7 +203,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
-            if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
+            _logger.Warn($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
             if (notSystemTransaction)
             {
@@ -251,12 +255,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            UInt256 blobsGasCost = IntrinsicGasCalculator.BlobsGas(transaction, block.ParentExcessDataGas, spec);
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + blobsGasCost);
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value + blobsGasCost > senderBalance ||
                                       senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction,
@@ -412,7 +417,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Restore(snapshot);
             }
 
-            if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
+            _logger.Warn("Gas spent: " + spentGas + " - should be " + (131072012522778- spentGas)  + "more gp" + effectiveGasPrice + " pgp" + premiumPerGas);
 
             Address gasBeneficiary = block.GasBeneficiary;
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(gasBeneficiary) != true;

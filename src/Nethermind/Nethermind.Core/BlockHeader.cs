@@ -25,7 +25,8 @@ namespace Nethermind.Core
             long gasLimit,
             ulong timestamp,
             byte[] extraData,
-            UInt256? excessDataGas)
+            UInt256? excessDataGas,
+            UInt256 parentExcessDataGas)
         {
             ParentHash = parentHash;
             UnclesHash = unclesHash;
@@ -36,6 +37,7 @@ namespace Nethermind.Core
             Timestamp = timestamp;
             ExtraData = extraData;
             ExcessDataGas = excessDataGas;
+            ParentExcessDataGas = parentExcessDataGas;
         }
 
         public BlockHeader(
@@ -46,7 +48,7 @@ namespace Nethermind.Core
             long number,
             long gasLimit,
             ulong timestamp,
-            byte[] extraData) : this(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, null)
+            byte[] extraData) : this(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, null, 0)
         {
         }
 
@@ -77,7 +79,9 @@ namespace Nethermind.Core
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
         public Keccak? WithdrawalsRoot { get; set; }
-        public UInt256? ExcessDataGas { get; set; }
+        private UInt256? excessDataGas;
+        public UInt256? ExcessDataGas { get => excessDataGas; set => excessDataGas = value; }
+        public UInt256 ParentExcessDataGas { get; set; }
 
         public bool HasBody => TxRoot != Keccak.EmptyTreeHash
                                || UnclesHash != Keccak.OfAnEmptySequenceRlp;

@@ -261,7 +261,8 @@ namespace Nethermind.Facade
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
                     blockHeader.ExtraData,
-                    blockHeader.ExcessDataGas);
+                    blockHeader.ExcessDataGas,
+                    blockHeader.ParentExcessDataGas);
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
                 ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))

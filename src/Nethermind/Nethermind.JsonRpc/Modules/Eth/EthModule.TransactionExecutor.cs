@@ -46,6 +46,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
                         ErrorCodes.ResourceUnavailable);
                 }
+                if (header.Number != 0)
+                {
+                    SearchResult<BlockHeader> parent = _blockFinder.SearchForHeader( new BlockParameter(header.Hash));
+                    if (searchResult.IsError)
+                    {
+                        throw new Exception();
+                    }
+                    header.ParentExcessDataGas = parent.Object.ParentExcessDataGas;
+                }else
+                {
+                    header.ParentExcessDataGas = 0;
+                }
 
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
