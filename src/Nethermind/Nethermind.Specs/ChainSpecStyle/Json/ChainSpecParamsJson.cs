@@ -131,7 +131,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public long? TerminalPoWBlockNumber { get; set; }
-        public long? Eip3675Transition { get; set; }
 
         public ulong? Eip1153TransitionTimestamp { get; set; }
 

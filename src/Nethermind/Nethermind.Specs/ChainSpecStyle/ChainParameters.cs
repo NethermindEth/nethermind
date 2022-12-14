@@ -106,7 +106,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? TerminalPowBlockNumber { get; set; }
 
         public UInt256? TerminalTotalDifficulty { get; set; }
-        public long? Eip3675Transition { get; set; }
 
         /// <summary>
         /// this feild will indicate the timestamp at which this EIP1153 will be enabled.

@@ -13,7 +13,7 @@ namespace Nethermind.Specs.Forks
         protected Merge()
         {
             Name = "Merge";
-            IsEip3675Enabled = true;
+            IsMergeEnabled = true;
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Merge());

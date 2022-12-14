@@ -38,7 +38,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation)).Clone();
             shandongSpec.Name = "shandong";
             shandongSpec.IsEip3651Enabled = true;
-            shandongSpec.IsEip3675Enabled = true;
+            shandongSpec.IsMergeEnabled = true;
             shandongSpec.IsEip3855Enabled = true;
             shandongSpec.IsEip3860Enabled = true;
             shandongSpec.Eip1559TransitionBlock = 0;
@@ -582,7 +582,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,
-                    Eip3675Transition = 40000L,
+                    MergeForkIdTransition = 40000L,
                     Eip3651TransitionTimestamp = 1000000012,
                     Eip3855TransitionTimestamp = 1000000012,
                     Eip3860TransitionTimestamp = 1000000012,
@@ -653,7 +653,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
             TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
-            TestTransitions((ForkActivation)40000L, r => { r.IsEip3675Enabled = true; });
+            TestTransitions((ForkActivation)40000L, r => { r.IsMergeEnabled = true; });
 
             TestTransitions((41000L, 1000000012), r =>
             {

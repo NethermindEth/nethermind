@@ -133,7 +133,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
                 Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
                 Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
-                Eip3675Transition = chainSpecJson.Params.Eip3675Transition,
                 Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
                 Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
