@@ -46,14 +46,16 @@ namespace Nethermind.HealthChecks
 
         private void CheckDiskSpace(object sender, EventArgs e)
         {
-            foreach (IDriveInfo drive in _drives)
+            for (int index = 0; index < _drives.Length; index++)
             {
+                IDriveInfo drive = _drives[index];
                 double freeSpacePercent = drive.GetFreeSpacePercentage();
                 if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
                 {
                     if (_logger.IsError) _logger.Error($"Free disk space in '{drive.RootDirectory.FullName}' is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
                     Environment.Exit(ExitCodes.LowDiskSpace);
                 }
+
                 if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left!");

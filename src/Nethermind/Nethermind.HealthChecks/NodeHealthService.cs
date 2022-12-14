@@ -115,16 +115,14 @@ namespace Nethermind.HealthChecks
                 }
             }
 
-            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0)
+            for (int index = 0; index < _drives.Length; index++)
             {
-                foreach (IDriveInfo drive in _drives)
+                IDriveInfo drive = _drives[index];
+                double freeSpacePercentage = drive.GetFreeSpacePercentage();
+                if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
-                    double freeSpacePercentage = drive.GetFreeSpacePercentage();
-                    if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
-                    {
-                        AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
-                        healthy = false;
-                    }
+                    AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                    healthy = false;
                 }
             }
 
