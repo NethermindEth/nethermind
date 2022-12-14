@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
@@ -19,19 +22,21 @@ namespace Nethermind.Merge.AuRa
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
-        private IAuRaMergeConfig? _auraMergeConfig;
 
-        public override bool MergeEnabled => _auraMergeConfig!.Enabled;
+        public override string Name => "AuRaMerge";
+        public override string Description => $"AuRa Merge plugin for ETH1-ETH2";
+
+        public override bool MergeEnabled => ShouldBeEnabled(_api);
 
         public override async Task Init(INethermindApi nethermindApi)
         {
-            _auraMergeConfig = nethermindApi.Config<IAuRaMergeConfig>();
-            if (_auraMergeConfig.Enabled)
+            _api = nethermindApi;
+            _mergeConfig = nethermindApi.Config<IMergeConfig>();
+            if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)nethermindApi;
                 _auraApi.PoSSwitcher = _poSSwitcher;
-                _mergeConfig.Enabled = false; // set MergePlugin as disabled
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
@@ -62,6 +67,12 @@ namespace Nethermind.Merge.AuRa
                 .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
         }
 
-        public bool ShouldRunSteps(INethermindApi api) => api.Config<IAuRaMergeConfig>().Enabled;
+        private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
+
+        public bool ShouldRunSteps(INethermindApi api)
+        {
+            _mergeConfig = api.Config<IMergeConfig>();
+            return ShouldBeEnabled(api);
+        }
     }
 }

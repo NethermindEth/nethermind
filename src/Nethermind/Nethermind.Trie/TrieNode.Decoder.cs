@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -54,12 +41,12 @@ namespace Nethermind.Trie
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key != null,
+                Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(tree, 0);
-                Debug.Assert(nodeRef != null,
+                Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
                 nodeRef.ResolveKey(tree, false);
@@ -170,7 +157,7 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream != null && item._data![i] is null)
+                    if (rlpStream is not null && item._data![i] is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);

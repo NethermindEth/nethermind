@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
+        <LangVersion>10.0</LangVersion>
         <Nullable>annotations</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>

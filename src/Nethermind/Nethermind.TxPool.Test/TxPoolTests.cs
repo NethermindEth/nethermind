@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -194,7 +181,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -233,7 +220,7 @@ namespace Nethermind.TxPool.Test
         private static ISpecProvider GetLondonSpecProvider()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             return specProvider;
         }
 
@@ -281,7 +268,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
 
             // LatestPendingNonce=0, when account does not exist
-            UInt256? latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            UInt256 latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
 
             _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
 
@@ -1008,18 +995,18 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
         {
-            var address = TestItem.AddressA;
+            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
             const int reservationsCount = 1000;
             _txPool = CreatePool();
             ConcurrentQueue<UInt256> nonces = new();
 
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(address));
+                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(TestItem.AddressA));
             });
 
             result.IsCompleted.Should().BeTrue();
-            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
+            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
             nonces.Enqueue(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
             nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
@@ -1224,8 +1211,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
-            Transaction tx = Build.A.Transaction.TestObject;
-            tx.Hash = TestItem.KeccakA;
+            Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
             _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
         }
 
@@ -1357,6 +1343,36 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
+        }
+
+        [Test]
+        public void TooExpensiveTxFilter_correctly_calculates_cumulative_cost()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            EnsureSenderBalance(TestItem.AddressF, 1);
+
+            Transaction zeroCostTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Cumulative cost should be 1
+            Transaction expensiveTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithValue(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

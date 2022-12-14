@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -56,9 +43,9 @@ namespace Nethermind.Consensus.Clique
 
         public Address GetBlockSealer(BlockHeader header)
         {
-            if (header.Author != null) return header.Author;
+            if (header.Author is not null) return header.Author;
             if (header.Number == UInt256.Zero) return Address.Zero;
-            if (_signatures.Get(header.Hash) != null) return _signatures.Get(header.Hash);
+            if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
 
@@ -117,7 +104,7 @@ namespace Nethermind.Consensus.Clique
                 while (true)
                 {
                     snapshot = GetSnapshot(number, hash);
-                    if (snapshot != null) break;
+                    if (snapshot is not null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
@@ -127,7 +114,7 @@ namespace Nethermind.Consensus.Clique
                         throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
                     }
 
-                    if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -141,7 +128,7 @@ namespace Nethermind.Consensus.Clique
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -218,13 +205,13 @@ namespace Nethermind.Consensus.Clique
             if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
             Snapshot? cachedSnapshot = _snapshotCache.Get(hash);
-            if (cachedSnapshot != null) return cachedSnapshot;
+            if (cachedSnapshot is not null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that
             if ((ulong)number % Clique.CheckpointInterval == 0)
             {
                 Snapshot? persistedSnapshot = LoadSnapshot(hash);
-                if (persistedSnapshot != null) return persistedSnapshot;
+                if (persistedSnapshot is not null) return persistedSnapshot;
             }
 
             return null;
@@ -246,7 +233,7 @@ namespace Nethermind.Consensus.Clique
         {
             Keccak key = GetSnapshotKey(hash);
             byte[]? bytes = _blocksDb.Get(key);
-            if (bytes == null) return null;
+            if (bytes is null) return null;
 
             return _decoder.Decode(bytes.AsRlpStream());
         }

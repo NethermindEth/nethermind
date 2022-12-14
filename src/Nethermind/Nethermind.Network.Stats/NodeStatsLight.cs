@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -50,6 +37,9 @@ namespace Nethermind.Stats
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
+
+        private (DateTimeOffset, NodeStatsEventType) _delayConnectDeadline = (DateTimeOffset.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+
         private static readonly Random Random = new();
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
@@ -93,6 +83,11 @@ namespace Nethermind.Stats
                 _lastFailedConnectionTime = DateTime.UtcNow;
             }
 
+            if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
+            {
+                UpdateDelayConnectDeadline(delay, nodeStatsEventType);
+            }
+
             Increment(nodeStatsEventType);
         }
 
@@ -113,7 +108,32 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
 
+            if (disconnectType == DisconnectType.Local)
+            {
+                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.LocalDisconnectDelay);
+                }
+            }
+            else if (disconnectType == DisconnectType.Remote)
+            {
+                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.RemoteDisconnectDelay);
+                }
+            }
+
             Increment(NodeStatsEventType.Disconnect);
+        }
+
+        private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
+        {
+            DateTimeOffset newDeadline = DateTimeOffset.Now + delay;
+            (DateTimeOffset currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
+            if (newDeadline > currentDeadline)
+            {
+                _delayConnectDeadline = (newDeadline, reason);
+            }
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
@@ -178,7 +198,7 @@ namespace Nethermind.Stats
 
         private void UpdateValue(ref decimal? currentValue, decimal newValue)
         {
-            currentValue = ((currentValue ?? newValue) * ( 1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+            currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         }
 
         public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
@@ -205,6 +225,12 @@ namespace Nethermind.Stats
             if (IsDelayedDueToFailedConnection())
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
+            }
+
+            (DateTimeOffset outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
+            if (outgoingDelayDeadline > DateTime.Now)
+            {
+                return (true, reason);
             }
 
             return (false, null);

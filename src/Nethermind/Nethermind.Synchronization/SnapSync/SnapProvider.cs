@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -267,19 +270,19 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void RetryRequest(SnapSyncBatch batch)
         {
-            if (batch.AccountRangeRequest != null)
+            if (batch.AccountRangeRequest is not null)
             {
                 _progressTracker.ReportAccountRequestFinished();
             }
-            else if (batch.StorageRangeRequest != null)
+            else if (batch.StorageRangeRequest is not null)
             {
                 _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
             }
-            else if (batch.CodesRequest != null)
+            else if (batch.CodesRequest is not null)
             {
                 _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
             }
-            else if (batch.AccountsToRefreshRequest != null)
+            else if (batch.AccountsToRefreshRequest is not null)
             {
                 _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
             }

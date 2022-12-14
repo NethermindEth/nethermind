@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -34,7 +37,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null)
         => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
-    protected override Keccak ExpectedBlockHash => new("0x0ec8f29f7438df15ac81d68da632ea8bca8914335ed48cee8d613317c781b447");
+    protected override Keccak ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
     [Test]
     public override async Task processing_block_should_serialize_valid_responses()
@@ -77,15 +80,15 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
-            MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
+            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
-            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
-                miningConfig,
+                blocksConfig,
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
@@ -100,7 +103,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 BlockPreprocessorStep,
                 TxPool,
                 transactionComparerProvider,
-                miningConfig,
+                blocksConfig,
                 LogManager);
 
 
@@ -132,7 +135,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new AuRaConfig(),
                 gasLimitCalculator,
                 SpecProvider,
-                LogManager
+                LogManager,
+                blocksConfig
             );
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);

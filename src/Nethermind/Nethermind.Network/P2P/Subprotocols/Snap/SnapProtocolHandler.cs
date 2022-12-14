@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -48,6 +34,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override byte ProtocolVersion => 1;
         public override string ProtocolCode => Protocol.Snap;
         public override int MessageIdSpaceSize => 8;
+
+        private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
 
         private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
@@ -161,25 +149,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            //throw new NotImplementedException();
+            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -239,9 +231,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             PathGroup[] groups = GetPathGroups(request);
 
+            return await GetTrieNodes(request.RootHash, groups, token);
+        }
+
+        public async Task<byte[][]> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        {
+            return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
+        }
+
+        private async Task<byte[][]> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
+        {
             GetTrieNodesMessage reqMsg = new()
             {
-                RootHash = request.RootHash,
+                RootHash = rootHash,
                 Paths = groups,
                 Bytes = _currentBytesLimit
             };

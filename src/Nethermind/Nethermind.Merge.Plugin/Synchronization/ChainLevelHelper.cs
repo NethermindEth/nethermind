@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -52,10 +38,23 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
+    private void OnMissingBeaconHeader(long blockNumber)
+    {
+        if (_beaconPivot.ProcessDestination?.Number > blockNumber)
+        {
+            // For some reason, this block number is missing when it should not.
+            // anyway, lets just restart the whole sync.
+            if (_beaconPivot.ShouldForceStartNewSync) return;
+
+            if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
+            _beaconPivot.ShouldForceStartNewSync = true;
+        }
+    }
+
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
         long? startingPoint = GetStartingPoint();
-        if (startingPoint == null)
+        if (startingPoint is null)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
@@ -72,8 +71,9 @@ public class ChainLevelHelper : IChainLevelHelper
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
-            if (level == null || beaconMainChainBlock == null)
+            if (level is null || beaconMainChainBlock is null)
             {
+                OnMissingBeaconHeader(startingPoint.Value);
                 if (_logger.IsTrace)
                     _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
@@ -82,8 +82,9 @@ public class ChainLevelHelper : IChainLevelHelper
             BlockHeader? newHeader =
                 _blockTree.FindHeader(beaconMainChainBlock.BlockHash, BlockTreeLookupOptions.None);
 
-            if (newHeader == null)
+            if (newHeader is null)
             {
+                OnMissingBeaconHeader(startingPoint.Value);
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {startingPoint} not found");
                 break;
             }
@@ -104,7 +105,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;
                 }
-                else if (headers.Count > 0 && headers[^1].TotalDifficulty != null)
+                else if (headers.Count > 0 && headers[^1].TotalDifficulty is not null)
                 {
                     // The beacon header may not have the total difficulty available since it is downloaded
                     // backwards and final total difficulty may not be known early on. But this is still needed
@@ -157,7 +158,7 @@ public class ChainLevelHelper : IChainLevelHelper
             for (int i = 0; i < hashesToRequest.Count; i++)
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
-                if (block == null) return false;
+                if (block is null) return false;
                 BlockBody blockBody = new(block.Transactions, block.Uncles);
                 context.SetBody(i + offset, blockBody);
             }
@@ -180,7 +181,11 @@ public class ChainLevelHelper : IChainLevelHelper
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
-        if (beaconMainChainBlock == null) return null;
+        if (beaconMainChainBlock is null)
+        {
+            OnMissingBeaconHeader(startingPoint);
+            return null;
+        }
 
         if (!beaconMainChainBlock.IsBeaconInfo)
         {
@@ -192,15 +197,16 @@ public class ChainLevelHelper : IChainLevelHelper
         do
         {
             BlockHeader? header = _blockTree.FindHeader(currentHash!, BlockTreeLookupOptions.None);
-            if (header == null)
+            if (header is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Header for number {startingPoint} was not found");
                 return null;
             }
 
             BlockInfo? parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
-            if (parentBlockInfo == null)
+            if (parentBlockInfo is null)
             {
+                OnMissingBeaconHeader(header.Number);
                 return null;
             }
 
@@ -227,7 +233,7 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
         BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;
-        if (beaconMainChainBlock == null)
+        if (beaconMainChainBlock is null)
         {
             if (_logger.IsTrace) _logger.Trace($"Beacon main chain block for number {startingPoint} was not found");
             return null;

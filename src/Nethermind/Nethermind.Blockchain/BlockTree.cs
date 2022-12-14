@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -229,11 +216,11 @@ namespace Nethermind.Blockchain
 
         private void AttemptToFixCorruptionByMovingHeadBackwards()
         {
-            if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader != null)
+            if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
             {
                 ChainLevelInfo chainLevelInfo = LoadLevel(BestSuggestedHeader.Number);
                 BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
-                if (canonicalBlock is not null)
+                if (canonicalBlock is not null && canonicalBlock.WasProcessed)
                 {
                     SetHeadBlock(canonicalBlock.BlockHash!);
                 }
@@ -416,7 +403,13 @@ namespace Nethermind.Blockchain
             long right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
-            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            left = Math.Max(
+                Math.Max(
+                    Head?.Number ?? 0,
+                    LowestInsertedBeaconHeader?.Number ?? 0),
+                BestSuggestedHeader?.Number ?? 0
+                ) - 1;
+
             right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
@@ -1349,7 +1342,7 @@ namespace Nethermind.Blockchain
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
         {
-            if (blockInfos == null || blockInfos.Length == 0)
+            if (blockInfos is null || blockInfos.Length == 0)
                 return;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
@@ -1502,12 +1495,12 @@ namespace Nethermind.Blockchain
             bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
                                                            && (header.TotalDifficulty <
                                                                _specProvider.TerminalTotalDifficulty
-                                                               || _specProvider.TerminalTotalDifficulty == null);
+                                                               || _specProvider.TerminalTotalDifficulty is null);
 
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
             // than current head and header.TD >= TTD.
-            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
+            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty is not null &&
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty;
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
@@ -1515,7 +1508,7 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
-            if (BestSuggestedHeader == null) return true;
+            if (BestSuggestedHeader is null) return true;
 
             bool reachedTtd = header.IsPostTTD(_specProvider);
             bool isPostMerge = header.IsPoS();
@@ -1811,7 +1804,7 @@ namespace Nethermind.Blockchain
                 while (stack.TryPop(out (BlockHeader child, ChainLevelInfo level, BlockInfo blockInfo) item))
                 {
                     item.child.TotalDifficulty = current.TotalDifficulty + item.child.Difficulty;
-                    if (item.level == null)
+                    if (item.level is null)
                     {
                         item.blockInfo = new(item.child.Hash, item.child.TotalDifficulty.Value);
                         item.level = new(false, item.blockInfo);
@@ -1843,7 +1836,7 @@ namespace Nethermind.Blockchain
                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
                                                   FindBlock(levelForBatch.BlockInfos[i].BlockHash,
                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
-                            if (header != null)
+                            if (header is not null)
                             {
                                 lastTotalDifficulty = BatchSetTotalDifficulty(header);
                             }

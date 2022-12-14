@@ -67,7 +67,8 @@
     "eip1559FeeCollectorTransition": 0,
     "registrar": "0x6000000000000000000000000000000000000000",
     "transactionPermissionContract": "0x4000000000000000000000000000000000000001",
-    "transactionPermissionContractTransition": "0x0"
+    "transactionPermissionContractTransition": "0x0",
+    "terminalTotalDifficulty": "231707791542740786049188744689299064356246512"
   },
   "genesis": {
     "seal": {

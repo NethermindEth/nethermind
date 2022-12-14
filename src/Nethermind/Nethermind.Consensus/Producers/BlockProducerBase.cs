@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -66,6 +53,7 @@ namespace Nethermind.Consensus.Producers
         private DateTime _lastProducedBlockDateTime;
         private const int BlockProductionTimeout = 1000;
         protected ILogger Logger { get; }
+        protected readonly IBlocksConfig _blocksConfig;
 
         protected BlockProducerBase(
             ITxSource? txSource,
@@ -78,7 +66,8 @@ namespace Nethermind.Consensus.Producers
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
             ILogManager? logManager,
-            IDifficultyCalculator? difficultyCalculator)
+            IDifficultyCalculator? difficultyCalculator,
+            IBlocksConfig? blocksConfig)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
@@ -91,6 +80,7 @@ namespace Nethermind.Consensus.Producers
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
@@ -122,7 +112,7 @@ namespace Nethermind.Consensus.Producers
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
             if (Logger.IsTrace) Logger.Trace($"Checking IsProducingBlocks: maxProducingInterval {maxProducingInterval}, _lastProducedBlock {_lastProducedBlockDateTime}, IsRunning() {IsRunning()}");
-            return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
+            return IsRunning() && (maxProducingInterval is null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
         private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
@@ -162,7 +152,7 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
-            if (parentHeader == null)
+            if (parentHeader is null)
             {
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
             }
@@ -202,7 +192,7 @@ namespace Nethermind.Consensus.Producers
                         {
                             if (t.IsCompletedSuccessfully)
                             {
-                                if (t.Result != null)
+                                if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -264,7 +254,7 @@ namespace Nethermind.Consensus.Producers
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
-            if (block == null)
+            if (block is null)
             {
                 if (Logger.IsError) Logger.Error("Failed to prepare block for mining.");
                 return false;
@@ -282,7 +272,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
-            UInt256 timestamp = payloadAttributes?.Timestamp ?? UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
+            ulong timestamp = payloadAttributes?.Timestamp ?? Math.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
@@ -292,7 +282,7 @@ namespace Nethermind.Consensus.Producers
                 parent.Number + 1,
                 payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                GetExtraData())
+                _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao
@@ -314,8 +304,5 @@ namespace Nethermind.Consensus.Producers
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
         }
-
-        // TODO: why is this here if the implementations are actually filling it differently?
-        private static byte[] GetExtraData() => Encoding.UTF8.GetBytes("Nethermind");
     }
 }

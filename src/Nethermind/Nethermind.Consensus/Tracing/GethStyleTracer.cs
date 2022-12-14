@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -53,7 +40,7 @@ namespace Nethermind.Consensus.Tracing
         public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            if (block == null) throw new InvalidOperationException("Only historical blocks");
+            if (block is null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -87,13 +74,13 @@ namespace Nethermind.Consensus.Tracing
         public GethLikeTxTrace? Trace(Keccak txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
         {
             Keccak? blockHash = _receiptStorage.FindBlockHash(txHash);
-            if (blockHash == null)
+            if (blockHash is null)
             {
                 return null;
             }
 
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
-            if (block == null)
+            if (block is null)
             {
                 return null;
             }
@@ -104,7 +91,7 @@ namespace Nethermind.Consensus.Tracing
         public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-            if (block == null) throw new InvalidOperationException("Only historical blocks");
+            if (block is null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
@@ -114,8 +101,8 @@ namespace Nethermind.Consensus.Tracing
         public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-            if (block == null) throw new InvalidOperationException("Only historical blocks");
-            if (tx.Hash == null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
+            if (block is null) throw new InvalidOperationException("Only historical blocks");
+            if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
             block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
             GethLikeBlockTracer blockTracer = new(tx.Hash, options);
@@ -136,7 +123,7 @@ namespace Nethermind.Consensus.Tracing
 
         private GethLikeTxTrace? Trace(Block block, Keccak? txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
-            if (txHash == null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
+            if (txHash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
             GethLikeBlockTracer listener = new(txHash, options);
             _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
@@ -145,7 +132,7 @@ namespace Nethermind.Consensus.Tracing
 
         private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Keccak? txHash = null)
         {
-            if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
+            if (block is null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
             if (!block.IsGenesis)
             {
@@ -158,7 +145,7 @@ namespace Nethermind.Consensus.Tracing
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = txHash is null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
             _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().ToArray();
         }
@@ -166,7 +153,7 @@ namespace Nethermind.Consensus.Tracing
         private static Block GetBlockToTrace(Rlp blockRlp)
         {
             Block block = Rlp.Decode<Block>(blockRlp);
-            if (block.TotalDifficulty == null)
+            if (block.TotalDifficulty is null)
             {
                 block.Header.TotalDifficulty = 1;
             }

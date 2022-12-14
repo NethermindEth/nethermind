@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -90,10 +76,10 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
+            if (_terminalBlockNumber is not null || _finalTotalDifficulty is not null)
                 _hasEverReachedTerminalDifficulty = true;
 
-            if (_terminalBlockNumber == null)
+            if (_terminalBlockNumber is null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
@@ -105,7 +91,7 @@ namespace Nethermind.Merge.Plugin
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty != null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty is not null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
@@ -168,7 +154,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
+        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Keccak.Zero;
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
@@ -177,12 +163,12 @@ namespace Nethermind.Merge.Plugin
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
             bool isTerminal = false, isPostMerge;
-            if (_specProvider.TerminalTotalDifficulty == null) // TTD = null, so everything is preMerge
+            if (_specProvider.TerminalTotalDifficulty is null) // TTD = null, so everything is preMerge
             {
                 isTerminal = false;
                 isPostMerge = false;
             }
-            else if (header.TotalDifficulty != null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
                 isTerminal = false;
@@ -193,7 +179,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
+            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD
@@ -237,16 +223,16 @@ namespace Nethermind.Merge.Plugin
         private void LoadTerminalBlock()
         {
             _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                   _specProvider.MergeBlockNumber - 1;
+                                   _specProvider.MergeBlockNumber?.BlockNumber - 1;
 
-            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
+            _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (_terminalBlockNumber != null)
+            if (_terminalBlockNumber is not null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 

@@ -17,7 +17,7 @@ env:
 jobs:
   neth-tests:
     name: Running Nethermind Tests 1
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
       with:
@@ -45,6 +45,9 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test src/Nethermind/Nethermind.AccountAbstraction.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests -c ${{ env.BUILD_CONFIG }}
 
   neth-tests2:
     name: Running Nethermind Tests 2
@@ -165,7 +168,7 @@ jobs:
 
   neth-tests5:
     name: Running Nethermind Tests 5
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
       with:
@@ -199,6 +202,37 @@ jobs:
     - name: Nethermind.State.Test
       run: |
         dotnet test src/Nethermind/Nethermind.State.Test -c ${{ env.BUILD_CONFIG }}
+
+  neth-tests6:
+    name: Running Nethermind Tests 6
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: '6.0.x'
+    - name: Installing Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Nethermind.Db.Test
+      run: |
+        dotnet test src/Nethermind/Nethermind.Db.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.Hive.Tests
+      run: |
+        dotnet test src/Nethermind/Nethermind.Hive.Tests -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.KeyStore.Test
+      run: |
+        dotnet test src/Nethermind/Nethermind.KeyStore.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.Monitoring.Test
+      run: |
+        dotnet test src/Nethermind/Nethermind.Monitoring.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.Overseer.Test
+      run: |
+        dotnet test src/Nethermind/Nethermind.Overseer.Test -c ${{ env.BUILD_CONFIG }}
 
   neth-tests-cortex:
     name: Running Cortex Tests
