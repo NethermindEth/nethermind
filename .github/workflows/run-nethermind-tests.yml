@@ -17,7 +17,7 @@ env:
 jobs:
   neth-tests:
     name: Running Nethermind Tests 1
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
       with:
@@ -45,6 +45,9 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test src/Nethermind/Nethermind.AccountAbstraction.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests -c ${{ env.BUILD_CONFIG }}
 
   neth-tests2:
     name: Running Nethermind Tests 2
@@ -165,7 +168,7 @@ jobs:
 
   neth-tests5:
     name: Running Nethermind Tests 5
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
       with:
@@ -202,7 +205,7 @@ jobs:
 
   neth-tests6:
     name: Running Nethermind Tests 6
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
       with:

@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-20.04]
     steps:
     - uses: actions/checkout@v2
       with: 
@@ -175,6 +175,9 @@ jobs:
     - name: Nethermind.Sockets.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
+    - name: Nethermind.JsonRpc.TraceStore.Tests
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests        
     - name: Upload Codecov Report
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
@@ -187,7 +190,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-20.04]
     steps:
     - uses: actions/checkout@v2
     - name: Setting up dotnet

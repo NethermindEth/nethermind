@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -25,6 +11,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data.V2;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -32,6 +19,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IAsyncHandler<byte[], ExecutionPayloadV1?> _getPayloadHandlerV1;
+        private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
         private readonly IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1> _newPayloadV1Handler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
@@ -43,6 +31,7 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             IAsyncHandler<byte[], ExecutionPayloadV1?> getPayloadHandlerV1,
+            IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
             IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1> newPayloadV1Handler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -51,6 +40,7 @@ namespace Nethermind.Merge.Plugin
             ILogManager logManager)
         {
             _getPayloadHandlerV1 = getPayloadHandlerV1;
+            _getPayloadHandlerV2 = getPayloadHandlerV2;
             _newPayloadV1Handler = newPayloadV1Handler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
@@ -67,6 +57,11 @@ namespace Nethermind.Merge.Plugin
         public async Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId)
         {
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
+        }
+
+        public async Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
+        {
+            return await (_getPayloadHandlerV2.HandleAsync(payloadId));
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
