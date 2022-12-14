@@ -12,4 +12,5 @@ public class TraceStoreConfig : ITraceStoreConfig
     public ParityTraceTypes TraceTypes { get; set; } = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
     public bool VerifySerialized { get; set; } = false;
     public int MaxDepth { get; set; } = 1024;
+    public int DeserializationParallelization { get; set; } = 0;
 }
