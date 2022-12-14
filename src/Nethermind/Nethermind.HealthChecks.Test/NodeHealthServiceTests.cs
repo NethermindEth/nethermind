@@ -49,6 +49,7 @@ namespace Nethermind.HealthChecks.Test
             IDriveInfo drive = Substitute.For<IDriveInfo>();
             drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
             drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
+            drive.RootDirectory.FullName.Returns("C:/");
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
@@ -93,6 +94,7 @@ namespace Nethermind.HealthChecks.Test
             IDriveInfo drive = Substitute.For<IDriveInfo>();
             drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
             drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
+            drive.RootDirectory.FullName.Returns("C:/");
 
             api.SpecProvider = Substitute.For<ISpecProvider>();
             api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);
@@ -272,7 +274,7 @@ namespace Nethermind.HealthChecks.Test
                     AvailableDiskSpacePercent = 4.73,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 1. Low free disk space.",
-                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space - only {1.5:F2} GB ({4.73:F2}%) left."
+                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space in 'C:/' - only {1.5:F2} GB ({4.73:F2}%) left."
                 };
             }
         }
@@ -346,7 +348,7 @@ namespace Nethermind.HealthChecks.Test
                     TimeSpanSeconds = 15,
                     ForkchoiceUpdatedCalls = 1,
                     AvailableDiskSpacePercent = 4.73,
-                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10. The node is running out of free disk space - only {1.50:F2} GB ({4.73:F2}%) left."
+                    ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10. The node is running out of free disk space in 'C:/' - only {1.50:F2} GB ({4.73:F2}%) left."
                 };
             }
         }
