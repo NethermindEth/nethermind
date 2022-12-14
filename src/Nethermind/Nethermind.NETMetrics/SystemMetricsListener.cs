@@ -26,13 +26,13 @@ namespace Nethermind.NETMetrics;
 
 public class SystemMetricsListener : EventListener
 {
-    private Dictionary<string, string[]> EnabledEvents;
+    private Dictionary<string, HashSet<string>> EnabledEvents = new();
 
     private const int GC_KEYWORD = 0x0000001;
     private const int TYPE_KEYWORD = 0x0080000;
     private const int GCHEAPANDTYPENAMES_KEYWORD = 0x1000000;
 
-    public SystemMetricsListener(Dictionary<string, string[]> enabledEvents)
+    public SystemMetricsListener(Dictionary<string, HashSet<string>> enabledEvents)
     {
         EnabledEvents = enabledEvents;
     }
@@ -41,8 +41,6 @@ public class SystemMetricsListener : EventListener
 
     protected override void OnEventSourceCreated(EventSource source)
     {
-        Console.WriteLine($"{source.Guid} | {source.Name}");
-
         if (source.Name.Equals("System.Runtime"))
         {
             EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
@@ -70,15 +68,16 @@ public class SystemMetricsListener : EventListener
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (!EnabledEvents.Keys.Contains(eventData.EventName))
+        if (!EnabledEvents.TryGetValue(eventData.EventName, out HashSet<string> allowedPayload))
         {
             return;
         }
 
-        for (int i = 0; i < eventData.Payload.Count; ++i)
+        for (int i = 0; i < eventData.Payload!.Count; ++i)
         {
             string? eventName;
             string? payloadName = null;
+            string? payloadValueStr = null;
             double payloadValue = 0;
 
             eventName = eventData.EventName;
@@ -91,14 +90,15 @@ public class SystemMetricsListener : EventListener
             }
             else
             {
-                payloadName = eventData.PayloadNames[i];
-                payloadValue = double.Parse(eventData.Payload[i].ToString());
+                payloadName = eventData.PayloadNames![i];
+                payloadValueStr = eventData.Payload![i]!.ToString();
             }
 
-            if (payloadName is null || !EnabledEvents[eventName].Contains(payloadName))
+            if (payloadName is null || !allowedPayload.Contains(payloadName))
             {
-                return;
+                continue;
             }
+            if (payloadValueStr != null) payloadValue = double.Parse(payloadValueStr);
 
             Metrics.RuntimeMetrics[eventName + "_" + payloadName] = payloadValue;
         }

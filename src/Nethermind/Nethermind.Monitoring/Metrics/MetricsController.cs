@@ -97,6 +97,12 @@ namespace Nethermind.Monitoring.Metrics
                 {
                     _dynamicLongPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
                 }
+
+                var f = type.GetFields().FirstOrDefault(p => p.FieldType.IsAssignableTo(typeof(IDictionary<string, long>)));
+                if (f != null)
+                {
+                    _dynamicLongPropCache[type] = (f.Name, (IDictionary<string, long>)f.GetValue(null));
+                }
             }
 
             if (!_dynamicDoublePropCache.ContainsKey(type))
@@ -105,6 +111,12 @@ namespace Nethermind.Monitoring.Metrics
                 if (p != null)
                 {
                     _dynamicDoublePropCache[type] = (p.Name, (IDictionary<string, double>)p.GetValue(null));
+                }
+
+                var f = type.GetFields().FirstOrDefault(p => p.FieldType.IsAssignableTo(typeof(IDictionary<string, double>)));
+                if (f != null)
+                {
+                    _dynamicDoublePropCache[type] = (f.Name, (IDictionary<string, double>)f.GetValue(null));
                 }
             }
         }
