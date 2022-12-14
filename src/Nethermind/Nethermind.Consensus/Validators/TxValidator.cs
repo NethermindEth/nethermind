@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -112,8 +114,34 @@ namespace Nethermind.Consensus.Validators
 
         private bool Validate4844Fields(Transaction transaction)
         {
-            // TODO: Add blobs validation
-            return transaction.Type == TxType.Blob ^ transaction.MaxFeePerDataGas is null;
+            const int maxBlobsPerTransaction = 2;
+
+            if (transaction.Type != TxType.Blob)
+            {
+                return true;
+            }
+
+            if (transaction.MaxFeePerDataGas is null ||
+                transaction.BlobVersionedHashes is null ||
+                transaction.BlobVersionedHashes?.Length > maxBlobsPerTransaction)
+            {
+                return false;
+            }
+
+            if (transaction.BlobKzgs is not null)
+            {
+                for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+                {
+                    if (!KzgPolynomialCommitments.CommitmentToHashV1(transaction.BlobKzgs[i])
+                            .SequenceEqual(transaction.BlobVersionedHashes![i]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return KzgPolynomialCommitments.IsAggregatedProofValid(transaction.Proof, transaction.Blobs,
+                transaction.BlobKzgs);
         }
     }
 }
