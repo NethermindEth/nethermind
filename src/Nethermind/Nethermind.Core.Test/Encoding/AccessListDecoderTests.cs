@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test.Encoding
 
         public static IEnumerable<(string, AccessList)> TestCaseSource()
         {
-            yield return ("null", null);
+            yield return ("null", null!);
 
             HashSet<UInt256> indexes = new();
             Dictionary<Address, IReadOnlySet<UInt256>> data = new();
@@ -86,7 +86,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
-            AccessList decoded = _decoder.Decode(rlpStream);
+            AccessList decoded = _decoder.Decode(rlpStream)!;
             if (testCase.AccessList is null)
             {
                 decoded.Should().BeNull();
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Test.Encoding
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
             Rlp.ValueDecoderContext ctx = rlpStream.Data.AsRlpValueContext();
-            AccessList decoded = _decoder.Decode(ref ctx);
+            AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
                 decoded.Should().BeNull();

@@ -17,8 +17,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Specs.Forks;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -124,8 +122,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block
@@ -140,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
                 List<TxReceipt> receipts = new();
                 foreach (var transaction in currentBlock.Transactions)
                 {
-                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
+                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,
@@ -151,7 +149,7 @@ namespace Nethermind.Core.Test.Builders
                     };
 
                     receipts.Add(receipt);
-                    currentBlock.Bloom.Add(receipt.Logs);
+                    currentBlock.Bloom!.Add(receipt.Logs);
                 }
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
@@ -232,7 +230,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static void ExtendTree(IBlockTree blockTree, long newChainLength)
         {
-            Block previous = blockTree.RetrieveHeadBlock();
+            Block previous = blockTree.RetrieveHeadBlock()!;
             long initialLength = previous.Number + 1;
             for (long i = initialLength; i < newChainLength; i++)
             {

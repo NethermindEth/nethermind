@@ -33,17 +33,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 StateChanges = txTrace.StateChanges;
                 TransactionHash = includeTransactionHash ? txTrace.TransactionHash : null;
             }
-
         }
 
-        public byte[] Output { get; set; }
+        public byte[]? Output { get; set; }
 
-        public Keccak TransactionHash { get; set; }
+        public Keccak? TransactionHash { get; set; }
 
-        public ParityVmTrace VmTrace { get; set; }
+        public ParityVmTrace? VmTrace { get; set; }
 
-        public ParityTraceAction Action { get; set; }
+        public ParityTraceAction? Action { get; set; }
 
-        public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
+        public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
     }
 }

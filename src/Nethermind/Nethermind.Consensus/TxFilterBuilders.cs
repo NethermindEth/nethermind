@@ -8,7 +8,7 @@ namespace Nethermind.Consensus
 {
     public static class TxFilterBuilders
     {
-        public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IMiningConfig miningConfig, ISpecProvider specProvider)
-            => new MinGasPriceTxFilter(miningConfig.MinGasPrice, specProvider);
+        public static IMinGasPriceTxFilter CreateStandardMinGasPriceTxFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
+            => new MinGasPriceTxFilter(blocksConfig.MinGasPrice, specProvider);
     }
 }

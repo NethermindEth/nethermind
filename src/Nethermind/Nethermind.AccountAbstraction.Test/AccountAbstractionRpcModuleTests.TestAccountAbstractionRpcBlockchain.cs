@@ -98,7 +98,7 @@ namespace Nethermind.AccountAbstraction.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
                 ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() { MinGasPrice = UInt256.One };
+                BlocksConfig blocksConfig = new() { MinGasPrice = UInt256.One };
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
@@ -112,7 +112,7 @@ namespace Nethermind.AccountAbstraction.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager)
                 {
                     TransactionsExecutorFactory =
@@ -129,7 +129,7 @@ namespace Nethermind.AccountAbstraction.Test
                     ITxSource? txSource = null)
                 {
                     var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
-                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager, GasLimitCalculator).Create(
                         blockProducerEnv, blockProductionTrigger);
                 }

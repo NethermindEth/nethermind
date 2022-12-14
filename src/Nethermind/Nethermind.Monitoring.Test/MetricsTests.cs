@@ -6,12 +6,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test
@@ -19,6 +19,36 @@ namespace Nethermind.Monitoring.Test
     [TestFixture]
     public class MetricsTests
     {
+        public static class TestMetrics
+        {
+            [System.ComponentModel.Description("A test description")]
+            public static long OneTwoThree { get; set; }
+
+            [System.ComponentModel.Description("Another test description.")]
+            [DataMember(Name = "one_two_three")]
+            public static long OneTwoThreeSpecial { get; set; }
+        }
+
+        [Test]
+        public void Test_gauge_names()
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true
+            };
+            MetricsController metricsController = new(metricsConfig);
+            metricsController.RegisterMetrics(typeof(TestMetrics));
+            var gauges = metricsController._gauges;
+            var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
+            var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+
+            Assert.Contains(keyDefault, gauges.Keys);
+            Assert.Contains(keySpecial, gauges.Keys);
+
+            Assert.AreEqual(gauges[keyDefault].Name, "nethermind_one_two_three");
+            Assert.AreEqual(gauges[keySpecial].Name, "one_two_three");
+        }
+
         [Test]
         public void Register_and_update_metrics_should_not_throw_exception()
         {

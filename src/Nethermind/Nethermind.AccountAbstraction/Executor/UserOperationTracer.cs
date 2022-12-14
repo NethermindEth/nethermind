@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -77,6 +77,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
@@ -329,6 +330,11 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             AccessedStorage.Add(address, new HashSet<UInt256> { index });
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
     }
 }

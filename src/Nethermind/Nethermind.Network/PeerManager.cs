@@ -78,6 +78,17 @@ namespace Nethermind.Network
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
+        /// <summary>
+        /// The simplest hack for now until it is cleaned further.
+        /// Peer manager / peer pool responsibilities still not clearly separated.
+        /// </summary>
+        private readonly ConcurrentDictionary<PublicKey, object> _nodesBeingAdded = new();
+
+        /// <summary>
+        /// New peer probably added via discovery app or some other form of discovery.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="nodeEventArgs"></param>
         private void PeerPoolOnPeerAdded(object sender, PeerEventArgs nodeEventArgs)
         {
             Peer peer = nodeEventArgs.Peer;
@@ -98,10 +109,15 @@ namespace Nethermind.Network
             if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
-                // fire and forget - all the surrounding logic will be executed
-                // exceptions can be lost here without issues
-                // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                SetupPeerConnection(peer);
+
+                // TODO: hack related to not clearly separated peer pool and peer manager
+                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
+                {
+                    // fire and forget - all the surrounding logic will be executed
+                    // exceptions can be lost here without issues
+                    // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
+                    SetupOutgoingPeerConnection(peer);
+                }
 #pragma warning restore 4014
             }
 
@@ -168,6 +184,8 @@ namespace Nethermind.Network
             await Task.CompletedTask;
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
+
+        #region Inactive peer loop handling. Peer may be discovered but inactive.
 
         private class CandidateSelection
         {
@@ -247,7 +265,7 @@ namespace Nethermind.Network
                         }
 
                         ActionBlock<Peer> workerBlock = new(
-                            SetupPeerConnection,
+                            SetupOutgoingPeerConnection,
                             new ExecutionDataflowBlockOptions
                             {
                                 MaxDegreeOfParallelism = _parallelism,
@@ -331,111 +349,7 @@ namespace Nethermind.Network
             }
         }
 
-        private bool CanConnectToPeer(Peer peer)
-        {
-            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
-                return false;
-            }
-
-            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
-            if (delayed)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
-                return false;
-            }
-
-            return true;
-        }
-
-
-        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
-        private async Task SetupPeerConnection(Peer peer)
-        {
-            // TODO: hack related to not clearly separated peer pool and peer manager
-            if (_nodesBeingAdded.ContainsKey(peer.Node.Id))
-            {
-                return;
-            }
-
-            // Can happen when In connection is received from the same peer and is initialized before we get here
-            // In this case we do not initialize OUT connection
-            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
-                return;
-            }
-
-            Interlocked.Increment(ref _tryCount);
-            Interlocked.Increment(ref _pending);
-            bool result = await InitializePeerConnection(peer);
-            // for some time we will have a peer in active that has no session assigned - analyze this?
-
-            Interlocked.Decrement(ref _pending);
-            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
-
-            if (!result)
-            {
-                _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
-                Interlocked.Increment(ref _failedInitialConnect);
-                if (peer.OutSession is not null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
-                }
-
-                peer.IsAwaitingConnection = false;
-                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
-
-                return;
-            }
-
-            Interlocked.Increment(ref _newActiveNodes);
-        }
-
-        private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
-        {
-
-            peer.IsAwaitingConnection = false;
-            bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
-            if (added)
-            {
-                Interlocked.Increment(ref Metrics.PeerCount);
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} already in active peers");
-            }
-
-            return added;
-        }
-
-        private void RemoveActivePeer(PublicKey nodeId, string reason)
-        {
-            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
-            if (removed)
-            {
-                Interlocked.Decrement(ref Metrics.PeerCount);
-            }
-            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
-        }
-
-        private void DeactivatePeerIfDisconnected(Peer peer, string reason)
-        {
-            if (_logger.IsTrace) _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
-            if (!IsConnected(peer) && !peer.IsAwaitingConnection)
-            {
-                // dropping references to sessions so they can be garbage collected
-                peer.InSession = null;
-                peer.OutSession = null;
-                RemoveActivePeer(peer.Node.Id, reason);
-            }
-        }
-
         private static readonly IReadOnlyList<ActivePeerSelectionCounter> _enumValues = FastEnum.GetValues<ActivePeerSelectionCounter>();
-
 
         private void SelectAndRankCandidates()
         {
@@ -535,18 +449,166 @@ namespace Nethermind.Network
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 
-        private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
+        private void StartPeerUpdateLoop()
         {
-            if (!incompatibleNodes.Any())
-            {
-                return "0";
-            }
+            if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
-            IGrouping<CompatibilityValidationType?, Peer>[] validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
-            return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
+            _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
+            _peerUpdateTimer.Elapsed += (sender, e) => { _peerUpdateRequested.Set(); };
+
+            _peerUpdateTimer.Start();
         }
 
-        private async Task<bool> InitializePeerConnection(Peer candidate)
+        private void StopTimers()
+        {
+            try
+            {
+                if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
+                _peerUpdateTimer?.Stop();
+                _peerUpdateTimer?.Dispose();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during peer timers stop", e);
+            }
+        }
+
+        private void CleanupCandidatePeers()
+        {
+            int peerCount = _peerPool.PeerCount;
+
+            if (peerCount <= _networkConfig.CandidatePeerCountCleanupThreshold)
+            {
+                return;
+            }
+
+            try
+            {
+                int failedValidationCandidatesCount = 0;
+                foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
+                {
+                    if (!peer.Node.IsStatic)
+                    {
+                        bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
+                        if (hasFailedValidation)
+                        {
+                            failedValidationCandidatesCount++;
+                            _candidates.Add(new PeerStats(peer, true, _stats.GetCurrentReputation(peer.Node)));
+                        }
+                        else
+                        {
+                            bool isActivePeer = _peerPool.ActivePeers.ContainsKey(key);
+                            if (!isActivePeer)
+                            {
+                                _candidates.Add(new PeerStats(peer, false, _stats.GetCurrentReputation(peer.Node)));
+                            }
+                        }
+                    }
+                }
+
+                _candidates.Sort(static (x, y) => PeerStatsComparer.Instance.Compare(x, y));
+
+                int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
+                if (countToRemove > 0)
+                {
+                    _logger.Info($"Removing {countToRemove} out of {_candidates.Count} peer candidates (candidates cleanup).");
+
+                    for (int i = 0; i < countToRemove; i++)
+                    {
+                        _peerPool.TryRemove(_candidates[i].Peer!.Node.Id, out _);
+                    }
+
+                    if (_logger.IsDebug)
+                    {
+                        int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
+                        _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {_candidates.Count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
+                    }
+                }
+            }
+            finally
+            {
+                _candidates.Clear();
+            }
+        }
+
+        private enum ActivePeerSelectionCounter
+        {
+            AllNonActiveCandidates,
+            FilteredByZeroPort,
+            FilteredByDisconnect,
+            FilteredByFailedConnection
+        }
+
+        private struct PeerStats
+        {
+            public Peer Peer { get; }
+            public bool FailedValidation { get; }
+            public long CurrentReputation { get; }
+
+            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
+            {
+                Peer = peer;
+                FailedValidation = failedValidation;
+                CurrentReputation = currentReputation;
+            }
+        }
+
+        private class PeerStatsComparer : IComparer<PeerStats>
+        {
+            public static readonly PeerStatsComparer Instance = new();
+
+            public int Compare(PeerStats x, PeerStats y)
+            {
+                int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
+                return failedValidationCompare != 0
+                    ? failedValidationCompare
+                    : x.CurrentReputation.CompareTo(y.CurrentReputation);
+            }
+        }
+
+        #endregion
+
+        #region Outgoing connection handling
+
+        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
+        private async Task SetupOutgoingPeerConnection(Peer peer)
+        {
+            // Can happen when In connection is received from the same peer and is initialized before we get here
+            // In this case we do not initialize OUT connection
+            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
+                return;
+            }
+
+            Interlocked.Increment(ref _tryCount);
+            Interlocked.Increment(ref _pending);
+            bool result = await InitializeOutgoingPeerConnection(peer);
+            // for some time we will have a peer in active that has no session assigned - analyze this?
+
+            Interlocked.Decrement(ref _pending);
+            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
+
+            if (!result)
+            {
+                _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
+                Interlocked.Increment(ref _failedInitialConnect);
+                if (peer.OutSession is not null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
+                }
+
+                peer.IsAwaitingConnection = false;
+                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
+
+                return;
+            }
+
+            Interlocked.Increment(ref _newActiveNodes);
+        }
+
+        private async Task<bool> InitializeOutgoingPeerConnection(Peer candidate)
         {
             try
             {
@@ -573,6 +635,10 @@ namespace Nethermind.Network
             }
         }
 
+        /// <summary>
+        /// For when getting event from rlpx. Connection here is probably initiated from `InitializeOutgoingPeerConnection`
+        /// </summary>
+        /// <param name="session"></param>
         private void ProcessOutgoingConnection(ISession session)
         {
             PublicKey id = session.RemoteNodeId;
@@ -589,26 +655,9 @@ namespace Nethermind.Network
             AddSession(session, peer);
         }
 
-        private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
-        {
-            if (_logger.IsTrace) _logger.Trace($"CHOOSING DIRECTION {remoteNode}");
-            byte[] localKey = _rlpxHost.LocalNodeId.Bytes;
-            byte[] remoteKey = remoteNode.Bytes;
-            for (int i = 0; i < remoteNode.Bytes.Length; i++)
-            {
-                if (localKey[i] > remoteKey[i])
-                {
-                    return ConnectionDirection.Out;
-                }
+        #endregion
 
-                if (localKey[i] < remoteKey[i])
-                {
-                    return ConnectionDirection.In;
-                }
-            }
-
-            return ConnectionDirection.In;
-        }
+        #region Incoming connection handling
 
         private void ProcessIncomingConnection(ISession session)
         {
@@ -661,11 +710,96 @@ namespace Nethermind.Network
             }
         }
 
-        /// <summary>
-        /// The simplest hack for now until it is cleaned further.
-        /// Peer manager / peer pool responsibilities still not clearly separated.
-        /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, object> _nodesBeingAdded = new();
+        #endregion
+
+        private bool CanConnectToPeer(Peer peer)
+        {
+            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
+                return false;
+            }
+
+            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
+            if (delayed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
+        {
+            peer.IsAwaitingConnection = false;
+            bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
+            if (added)
+            {
+                Interlocked.Increment(ref Metrics.PeerCount);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} already in active peers");
+            }
+
+            return added;
+        }
+
+        private void RemoveActivePeer(PublicKey nodeId, string reason)
+        {
+            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
+            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
+        }
+
+        private void DeactivatePeerIfDisconnected(Peer peer, string reason)
+        {
+            if (_logger.IsTrace) _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
+            if (!IsConnected(peer) && !peer.IsAwaitingConnection)
+            {
+                // dropping references to sessions so they can be garbage collected
+                peer.InSession = null;
+                peer.OutSession = null;
+                RemoveActivePeer(peer.Node.Id, reason);
+            }
+        }
+
+        private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
+        {
+            if (!incompatibleNodes.Any())
+            {
+                return "0";
+            }
+
+            IGrouping<CompatibilityValidationType?, Peer>[] validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
+            return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
+        }
+
+        private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
+        {
+            if (_logger.IsTrace) _logger.Trace($"CHOOSING DIRECTION {remoteNode}");
+            byte[] localKey = _rlpxHost.LocalNodeId.Bytes;
+            byte[] remoteKey = remoteNode.Bytes;
+            for (int i = 0; i < remoteNode.Bytes.Length; i++)
+            {
+                if (localKey[i] > remoteKey[i])
+                {
+                    return ConnectionDirection.Out;
+                }
+
+                if (localKey[i] < remoteKey[i])
+                {
+                    return ConnectionDirection.In;
+                }
+            }
+
+            return ConnectionDirection.In;
+        }
 
         private void AddSession(ISession session, Peer peer)
         {
@@ -806,6 +940,7 @@ namespace Nethermind.Network
             //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
             if (session.Direction == ConnectionDirection.In)
             {
+                // For incoming connection, this is the entry point.
                 ProcessIncomingConnection(session);
             }
             else
@@ -835,123 +970,6 @@ namespace Nethermind.Network
             RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
             AddActivePeer(session.RemoteNodeId, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
             if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
-        }
-
-        private void StartPeerUpdateLoop()
-        {
-            if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
-
-            _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
-            _peerUpdateTimer.Elapsed += (sender, e) => { _peerUpdateRequested.Set(); };
-
-            _peerUpdateTimer.Start();
-        }
-
-        private void StopTimers()
-        {
-            try
-            {
-                if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
-                _peerUpdateTimer?.Stop();
-                _peerUpdateTimer?.Dispose();
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during peer timers stop", e);
-            }
-        }
-
-        private void CleanupCandidatePeers()
-        {
-            int peerCount = _peerPool.PeerCount;
-
-            if (peerCount <= _networkConfig.CandidatePeerCountCleanupThreshold)
-            {
-                return;
-            }
-
-            try
-            {
-                int failedValidationCandidatesCount = 0;
-                foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
-                {
-                    if (!peer.Node.IsStatic)
-                    {
-                        bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
-                        if (hasFailedValidation)
-                        {
-                            failedValidationCandidatesCount++;
-                            _candidates.Add(new PeerStats(peer, true, _stats.GetCurrentReputation(peer.Node)));
-                        }
-                        else
-                        {
-                            bool isActivePeer = _peerPool.ActivePeers.ContainsKey(key);
-                            if (!isActivePeer)
-                            {
-                                _candidates.Add(new PeerStats(peer, false, _stats.GetCurrentReputation(peer.Node)));
-                            }
-                        }
-                    }
-                }
-
-                _candidates.Sort(static (x, y) => PeerStatsComparer.Instance.Compare(x, y));
-
-                int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
-                if (countToRemove > 0)
-                {
-                    _logger.Info($"Removing {countToRemove} out of {_candidates.Count} peer candidates (candidates cleanup).");
-
-                    for (int i = 0; i < countToRemove; i++)
-                    {
-                        _peerPool.TryRemove(_candidates[i].Peer!.Node.Id, out _);
-                    }
-
-                    if (_logger.IsDebug)
-                    {
-                        int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
-                        _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {_candidates.Count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
-                    }
-                }
-            }
-            finally
-            {
-                _candidates.Clear();
-            }
-        }
-
-        private enum ActivePeerSelectionCounter
-        {
-            AllNonActiveCandidates,
-            FilteredByZeroPort,
-            FilteredByDisconnect,
-            FilteredByFailedConnection
-        }
-
-        private struct PeerStats
-        {
-            public Peer Peer { get; }
-            public bool FailedValidation { get; }
-            public long CurrentReputation { get; }
-
-            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
-            {
-                Peer = peer;
-                FailedValidation = failedValidation;
-                CurrentReputation = currentReputation;
-            }
-        }
-
-        private class PeerStatsComparer : IComparer<PeerStats>
-        {
-            public static readonly PeerStatsComparer Instance = new();
-
-            public int Compare(PeerStats x, PeerStats y)
-            {
-                int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
-                return failedValidationCompare != 0
-                    ? failedValidationCompare
-                    : x.CurrentReputation.CompareTo(y.CurrentReputation);
-            }
         }
     }
 }

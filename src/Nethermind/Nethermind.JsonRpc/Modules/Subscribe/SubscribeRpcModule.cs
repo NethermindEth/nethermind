@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -29,6 +30,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             catch (ArgumentException e)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+            }
+            catch (JsonReaderException)
+            {
+                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
             }
         }
 
