@@ -126,6 +126,10 @@ namespace Nethermind.Core.Extensions
             return bytes;
         }
 
+        [ThreadStatic]
+        private static byte[]? t_byteBuffer64;
+        private static byte[] GetByteBuffer64() => t_byteBuffer64 ??= new byte[8];
+
         public static string ToHexString(this long value, bool skipLeadingZeros)
         {
             if (value == UInt256.Zero)
@@ -133,7 +137,7 @@ namespace Nethermind.Core.Extensions
                 return "0x";
             }
 
-            byte[] bytes = new byte[8];
+            byte[] bytes = GetByteBuffer64();
             BinaryPrimitives.WriteInt64BigEndian(bytes, value);
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
@@ -145,10 +149,14 @@ namespace Nethermind.Core.Extensions
                 return "0x";
             }
 
-            byte[] bytes = new byte[8];
+            byte[] bytes = GetByteBuffer64();
             BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
+
+        [ThreadStatic]
+        private static byte[]? t_byteBuffer256;
+        private static byte[] GetByteBuffer256() => t_byteBuffer256 ??= new byte[32];
 
         public static string ToHexString(this in UInt256 value, bool skipLeadingZeros)
         {
@@ -165,9 +173,30 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            byte[] bytes = new byte[32];
+            byte[] bytes = GetByteBuffer256();
             value.ToBigEndian(bytes);
             return bytes.ToHexString(true, skipLeadingZeros, false);
+        }
+
+        [Obsolete]
+        public static string ToHexStringOld(this in UInt256 value, bool skipLeadingZeros)
+        {
+            if (skipLeadingZeros)
+            {
+                if (value == UInt256.Zero)
+                {
+                    return "0x";
+                }
+
+                if (value == UInt256.One)
+                {
+                    return "0x1";
+                }
+            }
+
+            byte[] bytes = new byte[32];
+            value.ToBigEndian(bytes);
+            return bytes.ToHexStringOld(true, skipLeadingZeros, false);
         }
 
         public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)

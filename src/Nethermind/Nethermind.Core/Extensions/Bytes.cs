@@ -504,10 +504,11 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros = false, bool withEip55Checksum = false) =>
             ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
 
-        private struct StateSmall
+        private readonly struct StateSmall
         {
             public StateSmall(byte[] bytes, bool withZeroX)
             {
@@ -515,13 +516,13 @@ namespace Nethermind.Core.Extensions
                 WithZeroX = withZeroX;
             }
 
-            public byte[] Bytes;
-            public bool WithZeroX;
+            public readonly byte[] Bytes;
+            public readonly bool WithZeroX;
         }
 
-        private struct State
+        private struct StateOld
         {
-            public State(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
+            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
             {
                 Bytes = bytes;
                 LeadingZeros = leadingZeros;
@@ -535,8 +536,53 @@ namespace Nethermind.Core.Extensions
             public bool WithEip55Checksum;
         }
 
+        private readonly struct State
+        {
+            public State(byte[] bytes, int leadingZeros, bool withZeroX)
+            {
+                Bytes = bytes;
+                LeadingZeros = leadingZeros;
+                WithZeroX = withZeroX;
+            }
+
+            public readonly byte[] Bytes;
+            public readonly int LeadingZeros;
+            public readonly bool WithZeroX;
+        }
+
         [DebuggerStepThrough]
         public static string ByteArrayToHexViaLookup32Safe(byte[] bytes, bool withZeroX)
+        {
+            if (bytes.Length == 0)
+            {
+                return withZeroX ? "0x" : string.Empty;
+            }
+
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
+            StateSmall stateToPass = new(bytes, withZeroX);
+
+            return string.Create(length, stateToPass, (chars, state) =>
+            {
+                ref char charsRef = ref MemoryMarshal.GetReference(chars);
+
+                byte[] bytes = state.Bytes;
+                if (bytes.Length == 0)
+                {
+                    if (state.WithZeroX)
+                    {
+                        chars[1] = 'x';
+                        chars[0] = '0';
+                    }
+
+                    return;
+                }
+
+                OutputBytesToCharHex(ref bytes[0], state.Bytes.Length, ref charsRef, state.WithZeroX, leadingZeros: 0);
+            });
+        }
+
+        [Obsolete]
+        public static string ByteArrayToHexViaLookup32SafeOld(byte[] bytes, bool withZeroX)
         {
             if (bytes.Length == 0)
             {
@@ -603,7 +649,97 @@ namespace Nethermind.Core.Extensions
                 return withZeroX ? "0x0" : "0";
             }
 
-            State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
+            State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX);
+
+            return withEip55Checksum
+                ? ByteArrayToHexViaLookup32Checksum(length, stateToPass)
+                : string.Create(length, stateToPass, static (chars, state) =>
+            {
+                int skip = state.LeadingZeros / 2;
+                byte[] bytes = state.Bytes;
+                if (bytes.Length == 0)
+                {
+                    if (state.WithZeroX)
+                    {
+                        chars[1] = 'x';
+                        chars[0] = '0';
+                    }
+
+                    return;
+                }
+
+                ref byte input = ref Unsafe.Add(ref bytes[0], skip);
+                ref char charsRef = ref MemoryMarshal.GetReference(chars);
+                OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
+            });
+        }
+
+        internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
+        {
+            if (withZeroX)
+            {
+                charsRef = '0';
+                Unsafe.Add(ref charsRef, 1) = 'x';
+                charsRef = ref Unsafe.Add(ref charsRef, 2);
+            }
+
+            int skip = leadingZeros / 2;
+            ref uint lookup32 = ref Lookup32[0];
+            if ((leadingZeros & 1) != 0)
+            {
+                skip++;
+                // Odd number of hex chars, handle the first
+                // seperately so loop can work in pairs
+                uint val = Unsafe.Add(ref lookup32, input);
+                charsRef = (char)(val >> 16);
+
+                charsRef = ref Unsafe.Add(ref charsRef, 1);
+                input = ref Unsafe.Add(ref input, 1);
+            }
+
+            int toProcess = length - skip;
+            ref uint output = ref Unsafe.As<char, uint>(ref charsRef);
+
+            while (toProcess >= 8)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+                Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
+                Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
+                Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
+                Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
+                Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
+                Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
+                Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
+
+                output = ref Unsafe.Add(ref output, 8);
+                input = ref Unsafe.Add(ref input, 8);
+
+                toProcess -= 8;
+            }
+
+            while (toProcess > 0)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+
+                output = ref Unsafe.Add(ref output, 1);
+                input = ref Unsafe.Add(ref input, 1);
+
+                toProcess -= 1;
+            }
+        }
+
+        [Obsolete]
+        public static string ToHexStringOld(this byte[] bytes, bool withZeroX, bool skipLeadingZeros = false,
+            bool withEip55Checksum = false)
+        {
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
+            if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+
+            StateOld stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
             return string.Create(length, stateToPass, (chars, state) =>
             {
                 string? hashHex = null;
@@ -646,7 +782,48 @@ namespace Nethermind.Core.Extensions
             });
         }
 
-        private static uint[] Lookup32 = CreateLookup32("x2");
+        private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass)
+        {
+            return string.Create(length, stateToPass, static (chars, state) =>
+            {
+                // this path is rarely used - only in wallets
+                byte[] bytesArray = state.Bytes;
+                string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
+                Span<byte> bytes = bytesArray;
+
+                if (state.WithZeroX)
+                {
+                    chars[1] = 'x';
+                    chars[0] = '0';
+                    chars = chars[2..];
+                }
+
+                bool odd = state.LeadingZeros % 2 == 1;
+                int oddity = odd ? 1 : 0;
+
+                uint[] lookup32 = Lookup32;
+                for (int i = 0; i < chars.Length; i += 2)
+                {
+                    uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
+                    if (i != 0 || !odd)
+                    {
+                        char char1 = (char)val;
+                        chars[i - oddity] =
+                            char.IsLetter(char1) && hashHex![i] > '7'
+                                ? char.ToUpper(char1)
+                                : char1;
+                    }
+
+                    char char2 = (char)(val >> 16);
+                    chars[i + 1 - oddity] =
+                        char.IsLetter(char2) && hashHex![i + 1] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+                }
+            });
+        }
+
+        internal static uint[] Lookup32 = CreateLookup32("x2");
 
         private static uint[] CreateLookup32(string format)
         {
@@ -660,15 +837,15 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        private static int CountLeadingZeros(byte[] bytes)
+        internal static int CountLeadingZeros(ReadOnlySpan<byte> bytes)
         {
             int leadingZeros = 0;
             for (int i = 0; i < bytes.Length; i++)
             {
-                if ((bytes[i] & 240) == 0)
+                if ((bytes[i] & 0b1111_0000) == 0)
                 {
                     leadingZeros++;
-                    if ((bytes[i] & 15) == 0)
+                    if ((bytes[i] & 0b1111) == 0)
                     {
                         leadingZeros++;
                     }
@@ -686,7 +863,7 @@ namespace Nethermind.Core.Extensions
             return leadingZeros;
         }
 
-        [DebuggerStepThrough]
+        [Obsolete]
         public static byte[] FromHexStringOld(string? hexString)
         {
             if (hexString is null)
