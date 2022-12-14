@@ -2399,13 +2399,12 @@ namespace Nethermind.Evm
                             // if container is EOF init code must be EOF
                             if (spec.IsEip3540Enabled)
                             {
-                                EofHeader initcodeHeader = null;
-                                bool hasEofPrefix = _byteCodeValidator.HasEOFMagic(initCode);
-                                var isInitcodeEof = hasEofPrefix && _byteCodeValidator.ValidateBytecode(initCode, spec, out initcodeHeader);
-                                bool isValid = CodeContainer.IsEof.Value
-                                    ? isInitcodeEof && CodeContainer.Header?.Version == initcodeHeader?.Version
-                                    : !hasEofPrefix;
-                                if (!isValid)
+                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(initCode);
+                                bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(initCode, spec, out EofHeader? initcodeHeader);
+                                if (CodeContainer.IsEof.Value
+                                    && (!initCodeHasEofPrefix
+                                    || !initCodeIsValid
+                                    || CodeContainer.Header?.Version != initcodeHeader?.Version))
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();
@@ -2512,13 +2511,12 @@ namespace Nethermind.Evm
                             // Code container in the context of Create2? is Initcode
                             if (spec.IsEip3540Enabled && vmState.ExecutionType.IsAnyCreate())
                             {
-                                EofHeader codeHeader = null;
-                                bool hasEofPrefix = _byteCodeValidator.HasEOFMagic(returnData);
-                                var isCodeEof = hasEofPrefix && _byteCodeValidator.ValidateBytecode(returnData, spec, out codeHeader);
-                                bool isValid = CodeContainer.IsEof.Value
-                                    ? isCodeEof && CodeContainer.Header?.Version == codeHeader?.Version
-                                    : !hasEofPrefix;
-                                if (!isValid)
+                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(returnData);
+                                bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(returnData, spec, out EofHeader? initcodeHeader);
+                                if (CodeContainer.IsEof.Value
+                                    && (!initCodeHasEofPrefix
+                                    || !initCodeIsValid
+                                    || CodeContainer.Header?.Version != initcodeHeader?.Version))
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();
