@@ -562,17 +562,17 @@ namespace Nethermind.Core.Extensions
 
                 int toProcess = state.Bytes.Length;
 
-                var lookup32 = Lookup32;
+                ref var lookup32 = ref Lookup32[0];
                 while (toProcess > 8)
                 {
-                    output = lookup32[input];
-                    Unsafe.Add(ref output, 1) = lookup32[Unsafe.Add(ref input, 1)];
-                    Unsafe.Add(ref output, 2) = lookup32[Unsafe.Add(ref input, 2)];
-                    Unsafe.Add(ref output, 3) = lookup32[Unsafe.Add(ref input, 3)];
-                    Unsafe.Add(ref output, 4) = lookup32[Unsafe.Add(ref input, 4)];
-                    Unsafe.Add(ref output, 5) = lookup32[Unsafe.Add(ref input, 5)];
-                    Unsafe.Add(ref output, 6) = lookup32[Unsafe.Add(ref input, 6)];
-                    Unsafe.Add(ref output, 7) = lookup32[Unsafe.Add(ref input, 7)];
+                    output = Unsafe.Add(ref lookup32, input);
+                    Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
+                    Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
+                    Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
+                    Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
+                    Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
+                    Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
+                    Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
 
                     output = ref Unsafe.Add(ref output, 8);
                     input = ref Unsafe.Add(ref input, 8);
@@ -582,7 +582,7 @@ namespace Nethermind.Core.Extensions
 
                 while (toProcess > 0)
                 {
-                    output = lookup32[input];
+                    output = Unsafe.Add(ref lookup32, input);
 
                     output = ref Unsafe.Add(ref output, 1);
                     input = ref Unsafe.Add(ref input, 1);
