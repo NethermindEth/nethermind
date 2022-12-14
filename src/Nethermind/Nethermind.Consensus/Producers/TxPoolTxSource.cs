@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.Producers
 
             // TODO: removing transactions from TX pool here seems to be a bad practice since they will
             // not come back if the block is ignored?
+            int blobsCounter = 0;
             foreach (Transaction tx in transactions)
             {
                 i++;
@@ -73,6 +74,19 @@ namespace Nethermind.Consensus.Producers
                 bool success = _txFilterPipeline.Execute(tx, parent);
                 if (success)
                 {
+                    if (tx.Type == TxType.Blob)
+                    {
+                        if ((blobsCounter + tx.BlobVersionedHashes.Length) > 4)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
+                            continue;
+                        }
+                        else
+                        {
+                            blobsCounter += tx.BlobVersionedHashes.Length;
+                            if (_logger.IsTrace) _logger.Trace($"Including blob tx {tx.ToShortString()}, total blobs included: {blobsCounter}.");
+                        }
+                    }
                     if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
 
                     selectedTransactions++;
