@@ -238,8 +238,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-5
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "NETMetrics", "NETMetrics", "{6AAACF0D-6AB7-450D-A97C-BE313569F762}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.NETMetrics", "Nethermind.NETMetrics\Nethermind.NETMetrics.csproj", "{2D6073EB-9475-4D27-A299-59AD919B2619}"
 EndProject
 Global

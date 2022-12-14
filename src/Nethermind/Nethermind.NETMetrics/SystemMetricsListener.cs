@@ -26,13 +26,12 @@ public class SystemMetricsListener : EventListener
     private const int GC_KEYWORD = 0x0000001;
     private const int TYPE_KEYWORD = 0x0080000;
     private const int GCHEAPANDTYPENAMES_KEYWORD = 0x1000000;
+    private const int TimeInterval = 1;
 
     public SystemMetricsListener(Dictionary<string, HashSet<string>> enabledEvents)
     {
         EnabledEvents = enabledEvents;
     }
-
-    private const int TimeInterval = 1;
 
     protected override void OnEventSourceCreated(EventSource source)
     {
@@ -61,7 +60,6 @@ public class SystemMetricsListener : EventListener
                 }
             );
         }
-
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
