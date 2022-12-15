@@ -765,12 +765,12 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
 
-            IEngineRpcModule rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100));
+            IEngineRpcModule rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(200));
             Keccak startingHead = chain.BlockTree.HeadHash;
             Block blockTreeHead = chain.BlockTree.Head!;
             Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
 
-            chain.ThrottleBlockProcessor(200);
+            chain.ThrottleBlockProcessor(400);
             ResultWrapper<PayloadStatusV1> newPayloadV1 =
                 await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block));
             newPayloadV1.Data.Status.Should().Be("SYNCING");
