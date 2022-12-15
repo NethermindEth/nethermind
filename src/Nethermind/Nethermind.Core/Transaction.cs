@@ -57,6 +57,15 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
+        private int? _size = null;
+        /// <summary>
+        /// Encoded transaction length
+        /// </summary>
+        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        {
+            return _size ??= sizeCalculator.GetLength(this);
+        }
+
         public string ToShortString()
         {
             string gasPriceString =
@@ -102,7 +111,16 @@ namespace Nethermind.Core
     public class GeneratedTransaction : Transaction { }
 
     /// <summary>
-    /// System transaction that is to be executed by the node without including in the block. 
+    /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    /// <summary>
+    /// Used inside Transaction::GetSize to calculate encoded transaction size
+    /// </summary>
+    /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
+    public interface ITransactionSizeCalculator
+    {
+        int GetLength(Transaction tx);
+    }
 }
