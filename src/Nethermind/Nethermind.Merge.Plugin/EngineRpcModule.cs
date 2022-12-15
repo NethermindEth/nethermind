@@ -21,7 +21,8 @@ namespace Nethermind.Merge.Plugin
         private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
         private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
-        private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
+        private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> _executionGetPayloadBodiesByHashV1Handler;
+        private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
         private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
@@ -33,7 +34,8 @@ namespace Nethermind.Merge.Plugin
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
             IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
-            IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
+            IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> executionGetPayloadBodiesByHashV1Handler,
+            IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
             IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
             ILogManager logManager)
         {
@@ -42,7 +44,8 @@ namespace Nethermind.Merge.Plugin
             _newPayloadV1Handler = newPayloadV1Handler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
-            _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
+            _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
+            _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
             _transitionConfigurationHandler = transitionConfigurationHandler;
             _logger = logManager.GetClassLogger();
         }
@@ -88,9 +91,6 @@ namespace Nethermind.Merge.Plugin
 
         public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null) =>
             ForkchoiceUpdated(forkchoiceState, payloadAttributes, nameof(engine_forkchoiceUpdatedV2));
-
-        public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes) =>
-            _executionPayloadBodiesHandler.HandleAsync(blockHashes);
 
         public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
             TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -144,6 +144,16 @@ namespace Nethermind.Merge.Plugin
                 if (_logger.IsWarn) _logger.Warn($"{methodName} timed out");
                 return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
             }
+        }
+
+        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
+        {
+            return await _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
+        }
+
+        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
+        {
+            return await _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
         }
     }
 }
