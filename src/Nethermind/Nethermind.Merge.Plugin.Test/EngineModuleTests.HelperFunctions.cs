@@ -27,7 +27,7 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
 {
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
