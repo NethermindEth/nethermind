@@ -498,7 +498,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-
         // valid code
         [TestCase("0xEF000101000100FE", true)]
         [TestCase("0xEF00010100050060006000F3", true)]
@@ -546,7 +545,7 @@ namespace Nethermind.Evm.Test
                 byte[] salt = { 4, 5, 6 };
                 var standardCode = Prepare.EvmCode
                     .MUL(23, 3)
-                    .STOP() // for EIP-3670 End instruction condition
+                    .STOP()
                     .Done;
 
                 var standardData = new byte[] { 0xaa };
