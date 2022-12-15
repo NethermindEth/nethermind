@@ -13,7 +13,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
 
-public class LogHardwareInfo: IStep
+public class LogHardwareInfo : IStep
 {
     private readonly ILogger _logger;
 
