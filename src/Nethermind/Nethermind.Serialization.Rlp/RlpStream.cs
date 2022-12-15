@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -136,10 +137,25 @@ namespace Nethermind.Serialization.Rlp
             Data[Position++] = byteToWrite;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Write(byte[] bytesToWrite)
+        {
+            Write(bytesToWrite.AsSpan());
+        }
+
         public virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
+        }
+
+        public virtual void Write(IReadOnlyList<byte> bytesToWrite)
+        {
+            for (int i = 0; i < bytesToWrite.Count; ++i)
+            {
+                Data![Position + i] = bytesToWrite[i];
+            }
+            Position += bytesToWrite.Count;
         }
 
         protected virtual string Description =>
@@ -436,9 +452,15 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(byte[] input)
+        {
+            Encode(input.AsSpan());
+        }
+
         public void Encode(Span<byte> input)
         {
-            if (input.IsEmpty || input.Length == 0)
+            if (input.IsEmpty)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -458,6 +480,32 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Length);
+                Write(input);
+            }
+        }
+
+        public void Encode(IReadOnlyList<byte> input)
+        {
+            if (input.Count == 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else if (input.Count == 1 && input[0] < 128)
+            {
+                WriteByte(input[0]);
+            }
+            else if (input.Count < 56)
+            {
+                byte smallPrefix = (byte)(input.Count + 128);
+                WriteByte(smallPrefix);
+                Write(input);
+            }
+            else
+            {
+                int lengthOfLength = Rlp.LengthOfLength(input.Count);
+                byte prefix = (byte)(183 + lengthOfLength);
+                WriteByte(prefix);
+                WriteEncodedLength(input.Count);
                 Write(input);
             }
         }
@@ -758,7 +806,7 @@ namespace Nethermind.Serialization.Rlp
             // https://github.com/NethermindEth/nethermind/issues/113
             if (PeekByte() == 249)
             {
-                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes 
+                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes
                 bloomBytes = Read(256);
             }
             else
