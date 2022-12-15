@@ -9,11 +9,19 @@ using Nethermind.Merkleization;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction> { }
+    public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
+    {
+        public int GetLength(Transaction tx)
+        {
+            return GetLength(tx, RlpBehaviors.None);
+        }
+    }
     public interface ISigningHashEncoder<T, V>
     {
         Span<byte> Encode(T item, V parameters);
     }
+    public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
+    public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
     public struct TxSignatureHashParams
     {

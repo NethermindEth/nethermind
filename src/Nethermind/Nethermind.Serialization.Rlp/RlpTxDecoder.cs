@@ -14,8 +14,6 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
-    public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 
     public class RlpTxDecoder<T>
         where T : Transaction, new()

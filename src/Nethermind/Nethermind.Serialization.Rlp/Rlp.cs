@@ -1468,6 +1468,16 @@ namespace Nethermind.Serialization.Rlp
             return LengthOf(array.AsSpan());
         }
 
+        public static int LengthOf(IReadOnlyList<byte> array)
+        {
+            if (array.Count == 0)
+            {
+                return 1;
+            }
+
+            return LengthOfByteString(array.Count, array[0]);
+        }
+
         public static int LengthOf(Span<byte> array)
         {
             if (array.Length == 0)
@@ -1475,17 +1485,23 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            if (array.Length == 1 && array[0] < 128)
+            return LengthOfByteString(array.Length, array[0]);
+        }
+
+        // Assumes that length is greater then 0
+        private static int LengthOfByteString(int length, byte firstByte)
+        {
+            if (length == 1 && firstByte < 128)
             {
                 return 1;
             }
 
-            if (array.Length < 56)
+            if (length < 56)
             {
-                return array.Length + 1;
+                return length + 1;
             }
 
-            return LengthOfLength(array.Length) + 1 + array.Length;
+            return LengthOfLength(length) + 1 + length;
         }
 
         public static int LengthOf(string value)
