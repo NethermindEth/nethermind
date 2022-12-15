@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, null),
+                    ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "Last opcode is not a terminating opcode"
                 };
@@ -235,7 +235,7 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "End Instruction is not a terminal opcode"),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Try to jump into data section"
                 };
@@ -275,7 +275,7 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Missing End Instruction"),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Try to conditinally jump into data section"
                 };
@@ -506,14 +506,14 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
         [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
         [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
+        [TestCase("0xEF00010100010060", true)]
+        [TestCase("0xEF00010100010030", true)]
+        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", true)]
+        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", true)]
         // code with invalid magic
         [TestCase("0xEF0001010003006000FF", false, Description = "Ends with Selfdestruct")]
         [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
         [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
-        [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF00010100010030", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
         public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated)
         {
             var bytecode = Prepare.EvmCode

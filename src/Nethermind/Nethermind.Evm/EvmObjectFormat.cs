@@ -265,16 +265,6 @@ namespace Nethermind.Evm
                     }
                 }
 
-                bool endCorrectly = opcode is Instruction.STOP or Instruction.RETURN or Instruction.REVERT or Instruction.INVALID; // or Instruction.SELFDESTRUCT /* deperecated SelfDestruct but sellAll might take it's place*/
-
-                if (!endCorrectly)
-                {
-                    if (LoggingEnabled)
-                    {
-                        _logger.Trace($"EIP-3670 : Last opcode {opcode} in CodeSection should be either [{Instruction.STOP}, {Instruction.RETURN}, {Instruction.REVERT}, {Instruction.INVALID}");
-                    }
-                    header = null; return false;
-                }
                 return true;
             }
             return false;
