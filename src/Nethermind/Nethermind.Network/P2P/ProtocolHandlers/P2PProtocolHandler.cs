@@ -34,7 +34,9 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public override string ProtocolCode => Protocol.P2P;
 
-    public override int MessageIdSpaceSize => 0x10;
+    public static int P2PMessageIdSpaceSize = 0x10;
+
+    public override int MessageIdSpaceSize => P2PProtocolHandler.P2PMessageIdSpaceSize;
 
     protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 

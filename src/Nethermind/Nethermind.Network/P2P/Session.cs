@@ -4,12 +4,16 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
@@ -33,6 +37,18 @@ namespace Nethermind.Network.P2P
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
 
+        // Well, we don't really want many tasks as we already have many peer. But we also don't want a heavy task
+        // to block small tasks.
+        private static readonly int _processingTasksCount = 2;
+
+        // In case something very heavy happens intermittently that really slows down processing, queue message but
+        // don't block network. Alternatively we can set this to 0, and have the `_processingTasksCount` to be high.
+        // Its ok to have the queue capacity high, we just don't wanna have a bad peer to fill up the RAM.
+        private static readonly int _queueCapacity = 32;
+
+        private Channel<ZeroPacket> _incomingMessageQueue = Channel.CreateBounded<ZeroPacket>(_queueCapacity);
+        private CancellationTokenSource _cancellationTokenSource = new();
+
         public Session(
             int localPort,
             IChannel channel,
@@ -48,6 +64,11 @@ namespace Nethermind.Network.P2P
             RemoteNodeId = null;
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
+
+            for (int i = 0; i < _processingTasksCount; i++)
+            {
+                Task.Factory.StartNew(StartReceiveLoop, TaskCreationOptions.LongRunning);
+            }
         }
 
         public Session(
@@ -69,6 +90,11 @@ namespace Nethermind.Network.P2P
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
             Direction = ConnectionDirection.Out;
+
+            for (int i = 0; i < _processingTasksCount; i++)
+            {
+                Task.Factory.StartNew(StartReceiveLoop, TaskCreationOptions.LongRunning);
+            }
         }
 
         public bool IsClosing => State > SessionState.Initialized;
@@ -153,7 +179,54 @@ namespace Nethermind.Network.P2P
 
         public IPingSender PingSender { get; set; }
 
+        private async Task StartReceiveLoop()
+        {
+            await foreach (ZeroPacket packet in _incomingMessageQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+            {
+                try
+                {
+                    DoHandlePacket(packet);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                finally
+                {
+                    packet.SafeRelease();
+                }
+            }
+        }
+
+        private void DoHandlePacket(ZeroPacket packet) {
+            try
+            {
+                DoReceiveMessage(packet);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsDebug) _logger.Error($"Exception handling packet for session {this}.", exception);
+                InitiateDisconnect(DisconnectReason.Other, $"Exception handling packet {exception}");
+            }
+        }
+
         public void ReceiveMessage(ZeroPacket zeroPacket)
+        {
+            if (zeroPacket.PacketType <= P2PProtocolHandler.P2PMessageIdSpaceSize)
+            {
+                // Special case for P2p where it can change the pipeline, notably enabling snappy. This need to be blocking.
+                DoHandlePacket(zeroPacket);
+            }
+            else
+            {
+                zeroPacket.Content.Retain();
+                if (!_incomingMessageQueue.Writer.TryWrite(zeroPacket)) {
+                    InitiateDisconnect(DisconnectReason.Other, $"Unable to enqueue packet to packet queue. Queue may be full.");
+                }
+            }
+        }
+
+        private void DoReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
 
@@ -523,9 +596,21 @@ namespace Nethermind.Network.P2P
                 }
             }
 
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+            _incomingMessageQueue.Writer.Complete();
             foreach ((_, IProtocolHandler handler) in _protocols)
             {
                 handler.Dispose();
+            }
+            Task.Factory.StartNew(FlushQueue);
+        }
+
+        private async Task FlushQueue()
+        {
+            await foreach (ZeroPacket packet in _incomingMessageQueue.Reader.ReadAllAsync(CancellationToken.None))
+            {
+                packet.SafeRelease();
             }
         }
 

@@ -342,7 +342,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 100;
+        private int _travisDelay = 200;
 
         private int _travisDelayLong = 1000;
 
@@ -376,7 +376,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, currentCount + 25).After(1000, 10));
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
