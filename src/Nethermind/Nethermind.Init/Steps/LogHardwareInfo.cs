@@ -31,23 +31,7 @@ public class LogHardwareInfo : IStep
         MachineInformation info = MachineInformationGatherer.GatherInformation();
 
         CPU cpu = info.Cpu;
-        StringBuilder sb = new();
-        sb.AppendLine();
-        sb.AppendLine($" CPU: {cpu.Name} ({cpu.PhysicalCores}C{cpu.LogicalCores}T)");
-        sb.AppendLine($" Clocks: {cpu.NormalClockSpeed}Mhz - {cpu.MaxClockSpeed}Mhz");
-
-        string flags = string.Join(", ", new List<string>()
-        {
-            cpu.FeatureFlagsOne.ToString(),
-            cpu.FeatureFlagsTwo.ToString(),
-            cpu.ExtendedFeatureFlagsF7One.ToString(),
-            cpu.ExtendedFeatureFlagsF7Two.ToString(),
-            cpu.ExtendedFeatureFlagsF7Three.ToString(),
-        }.Where((str) => !string.IsNullOrWhiteSpace(str)));
-
-        sb.Append($" Flags: {flags}");
-
-        _logger.Info(sb.ToString());
+        _logger.Info($"CPU: {cpu.Name} ({cpu.PhysicalCores}C{cpu.LogicalCores}T), {cpu.NormalClockSpeed}Mhz - {cpu.MaxClockSpeed}Mhz");
 
         return Task.CompletedTask;
     }
