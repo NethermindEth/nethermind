@@ -33,15 +33,8 @@ public class LogHardwareInfo : IStep
         CPU cpu = info.Cpu;
         StringBuilder sb = new();
         sb.AppendLine();
-        sb.AppendLine($" CPU Info");
-        sb.AppendLine($" ================================================");
-        sb.AppendLine($" Name: {cpu.Name}");
-        sb.AppendLine($" Model: {cpu.Model}");
-        sb.AppendLine($" Family: {cpu.Family}");
-        sb.AppendLine($" Caption: {cpu.Caption}");
-        sb.AppendLine($" Vendor: {cpu.Vendor}");
-        sb.AppendLine($" Physical Cores: {cpu.PhysicalCores}");
-        sb.AppendLine($" Logical Cores: {cpu.LogicalCores}");
+        sb.AppendLine($" CPU: {cpu.Name} ({cpu.PhysicalCores}C{cpu.LogicalCores}T)");
+        sb.AppendLine($" Clocks: {cpu.NormalClockSpeed}Mhz - {cpu.MaxClockSpeed}Mhz");
 
         string flags = string.Join(", ", new List<string>()
         {
@@ -52,9 +45,7 @@ public class LogHardwareInfo : IStep
             cpu.ExtendedFeatureFlagsF7Three.ToString(),
         }.Where((str) => !string.IsNullOrWhiteSpace(str)));
 
-        sb.AppendLine($" Flags: {flags}");
-        sb.AppendLine($" Normal clock speed: {cpu.NormalClockSpeed}");
-        sb.Append($" Max clock speed: {cpu.MaxClockSpeed}");
+        sb.Append($" Flags: {flags}");
 
         _logger.Info(sb.ToString());
 
