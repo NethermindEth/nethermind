@@ -21,8 +21,7 @@ namespace Nethermind.Core.Caching
         /// Delete key from cache.
         /// </summary>
         /// <param name="key"></param>
-        /// <param name="val"></param>
-        /// <returns>True if key didn't exist in the cache, otherwise false.</returns>
+        /// <returns>True if key existed in the cache, otherwise false.</returns>
         bool Delete(TKey key);
         bool Contains(TKey key);
     }
