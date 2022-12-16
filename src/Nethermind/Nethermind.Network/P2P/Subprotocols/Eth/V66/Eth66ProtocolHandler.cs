@@ -5,7 +5,9 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -34,6 +36,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
 
+        private bool _isDisposed = false;
+
+        // Well, we don't really want many tasks as we already have many peer. But we also don't want a heavy task
+        // to block small tasks. For messages using `MessageDictionary`, this is effectively the number of deserialization
+        // thread.
+        private static readonly int _processingTasksCount = 2;
+
+        // In case something very heavy happens intermittently that really slows down processing, queue message but
+        // don't block network. Alternatively we can set this to 0, and have the `_processingTasksCount` to be high.
+        // Its ok to have the queue capacity high, we just don't wanna have a bad peer to fill up the RAM.
+        private static readonly int _queueCapacity = 32;
+
+        private Channel<ZeroPacket> _incomingMessageQueue = Channel.CreateBounded<ZeroPacket>(_queueCapacity);
+        private CancellationTokenSource _cancellationTokenSource = new();
+
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -56,7 +73,42 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public override byte ProtocolVersion => 66;
 
+        // Just for debugging
+        private uint _lastProcessingPacketType = 0xff;
+
+        public override void Init()
+        {
+            for (int i = 0; i < _processingTasksCount; i++)
+            {
+                Task.Factory.StartNew(StartReceiveLoop, TaskCreationOptions.LongRunning);
+            }
+            base.Init();
+        }
+
         public override void HandleMessage(ZeroPacket message)
+        {
+            switch (message.PacketType)
+            {
+                case Eth66MessageCode.GetBlockHeaders:
+                case Eth66MessageCode.BlockHeaders:
+                case Eth66MessageCode.GetBlockBodies:
+                case Eth66MessageCode.BlockBodies:
+                case Eth66MessageCode.GetPooledTransactions:
+                case Eth66MessageCode.PooledTransactions:
+                case Eth66MessageCode.GetReceipts:
+                case Eth66MessageCode.Receipts:
+                case Eth66MessageCode.GetNodeData:
+                case Eth66MessageCode.NodeData:
+                    // Eth66 messages only. When applying this globally, the node struggles to keep peers.
+                    QueueMessage(message);
+                    break;
+                default:
+                    DoHandleMessage(message);
+                    break;
+            }
+        }
+
+        private void DoHandleMessage(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -128,6 +180,42 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 default:
                     base.HandleMessage(message);
                     break;
+            }
+        }
+
+        private void QueueMessage(ZeroPacket zeroPacket)
+        {
+            zeroPacket.Retain();
+            if (!_incomingMessageQueue.Writer.TryWrite(zeroPacket))
+            {
+                zeroPacket.SafeRelease();
+                _incomingMessageQueue.Reader.TryPeek(out ZeroPacket latestPacket);
+
+                // TODO: In almost all case that I found, the queue is full of PooledTransaction message.
+                //   to some extend maybe its good that we are disconnecting spammy peer? But its likely
+                //   that we need to have another look at how its handled.
+                throw new IncomingQueueFullException($"Incoming message queue full. New packet: {zeroPacket.PacketType}, Last packet: {_lastProcessingPacketType}.");
+            }
+        }
+
+        private async Task StartReceiveLoop()
+        {
+            await foreach (ZeroPacket packet in _incomingMessageQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+            {
+                Stopwatch sw = Stopwatch.StartNew();
+                try
+                {
+                    _lastProcessingPacketType = packet.PacketType;
+                    DoHandleMessage(packet);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                finally
+                {
+                    packet.SafeRelease();
+                }
             }
         }
 
@@ -285,6 +373,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             messageQueue.Send(request);
 
             return await HandleResponse(request, speedType, describeRequestFunc, token);
+        }
+
+        public override void Dispose()
+        {
+            if (!_isDisposed)
+            {
+                _isDisposed = true;
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+                _incomingMessageQueue.Writer.Complete();
+                base.Dispose();
+                Task.Factory.StartNew(FlushQueue);
+            }
+        }
+
+        private async Task FlushQueue()
+        {
+            await foreach (ZeroPacket packet in _incomingMessageQueue.Reader.ReadAllAsync(CancellationToken.None))
+            {
+                packet.SafeRelease();
+            }
+        }
+
+        class IncomingQueueFullException: Exception
+        {
+            public IncomingQueueFullException(string message): base(message) {}
         }
     }
 }
