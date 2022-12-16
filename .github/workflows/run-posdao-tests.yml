@@ -1,14 +1,9 @@
-name: '[RUN] POSDAO Tests'
+name: '[RUN] POSDAO tests'
 
 on:
   push:
     tags:
     - '*'
-    inputs:
-      branch:
-        description: 'Branch to get tests from'
-        required: false
-        default: 'bc-test-merge'
   workflow_dispatch:
     inputs:
       branch:
@@ -18,57 +13,57 @@ on:
 
 jobs:
   run-posdao-tests:
-    name: Running Nethermind POSDAO Tests
+    name: Run Nethermind POSDAO tests
     runs-on: ubuntu-latest
     steps:
-    - name: Installing Linux packages
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '6.0.x'
-    - name: Cloning Nethermind repo
-      uses: actions/checkout@v2
+    - name: Check out Nethermind repository
+      uses: actions/checkout@v3
       with:
         submodules: recursive
         path: nethermind
-    - name: Cloning posdao-test-setup repo from Nethermind
-      uses: actions/checkout@v2
+    - name: Check out posdao-test-setup repository
+      uses: actions/checkout@v3
       with:
         repository: NethermindEth/posdao-test-setup
         ref: ${{ github.event.inputs.branch }}
         submodules: recursive
         path: posdao-test-setup
-    - name: Building Nethermind binary
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
+    - name: Build Nethermind
       run: |
         cd nethermind
         mkdir bin
         cd src/Nethermind
-        dotnet build Nethermind.sln -c Release
-        cp -r Nethermind.Runner/bin/Release/net6.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
-    - name: Setup the Node.js (v12)
+        dotnet build Nethermind.sln -c release
+        cp -r Nethermind.Runner/bin/Release/net7.0/* $GITHUB_WORKSPACE/nethermind/bin/
+    - name: Set up Node.js v12
       if: ${{ !contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '12'
-    - name: Setup the Node.js (v16)
+        node-version: 12
+    - name: Set up Node.js v16
       if: ${{ contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '16'
-    - name: Running POSDAO tests
+        node-version: 16
+    - name: Run tests
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
-    - name: Collect posdao logs if workflow was cancelled (otherwise it's collected in the test step)
+    - name: Collect logs if workflow canceled # otherwise it's collected in the test step
       if: cancelled()
       run: cd posdao-test-setup && bash scripts/collect-logs
     - name: Move logs to different dir
       if: always()
       run: mkdir posdao-logs && cp posdao-test-setup/posdao-logs/latest/* posdao-logs && ls posdao-logs
-    - name: Upload posdao logs
+    - name: Upload logs
       if: always()
       uses: actions/upload-artifact@v3
       with:

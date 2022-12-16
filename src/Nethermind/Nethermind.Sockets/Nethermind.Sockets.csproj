@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <LangVersion>10.0</LangVersion>
+        <TargetFramework>net7.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
         <Nullable>enable</Nullable>
@@ -17,7 +17,7 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
-      <PackageReference Include="System.Text.Encodings.Web" Version="6.0.0" />
+      <PackageReference Include="System.Text.Encodings.Web" Version="7.0.0" />
     </ItemGroup>
 
 </Project>
