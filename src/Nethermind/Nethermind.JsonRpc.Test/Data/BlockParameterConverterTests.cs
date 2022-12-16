@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonSerializer serializer = new();
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader)!;
 
             Assert.AreEqual(output, blockParameter.BlockNumber);
         }
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonSerializer serializer = new();
             BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader)!;
 
             Assert.AreEqual(output, blockParameter.Type);
         }

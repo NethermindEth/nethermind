@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <Nullable>enable</Nullable>
+
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="NUnit" Version="3.13.3" />
+      <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
+        <PackageReference Include="coverlet.collector" Version="3.1.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="xdai-17600039.json" />
+      <EmbeddedResource Include="xdai-17600039.json" />
+    </ItemGroup>
+
+</Project>

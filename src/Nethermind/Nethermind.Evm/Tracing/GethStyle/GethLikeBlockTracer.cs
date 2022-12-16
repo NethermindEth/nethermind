@@ -24,13 +24,5 @@ namespace Nethermind.Evm.Tracing.GethStyle
         protected override GethLikeTxTracer OnStart(Transaction? tx) => new(_options);
 
         protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer) => txTracer.BuildResult();
-
-        public override void StartNewBlockTrace(Block block)
-        {
-        }
-
-        public override void EndBlockTrace()
-        {
-        }
     }
 }

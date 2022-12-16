@@ -7,15 +7,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Collections
 {
     public class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
-        private T[] _array;
+        protected T[] _array;
         private int _count = 0;
         private int _capacity;
         private bool _disposed;
@@ -60,6 +58,13 @@ namespace Nethermind.Core.Collections
             _array[_count++] = item;
         }
 
+        public void AddRange(Span<T> items)
+        {
+            GuardResize(items.Length);
+            items.CopyTo(_array.AsSpan(_count, items.Length));
+            _count += items.Length;
+        }
+
         public void Clear()
         {
             _count = 0;
@@ -100,12 +105,17 @@ namespace Nethermind.Core.Collections
             _count++;
         }
 
-        private void GuardResize()
+        private void GuardResize(int itemsToAdd = 1)
         {
             GuardDispose();
-            if (_count == _capacity)
+            int newCount = _count + itemsToAdd;
+            if (newCount > _capacity)
             {
                 int newCapacity = _capacity * 2;
+                while (newCount > newCapacity)
+                {
+                    newCapacity *= 2;
+                }
                 T[] newArray = _arrayPool.Rent(newCapacity);
                 _array.CopyTo(newArray, 0);
                 T[] oldArray = Interlocked.Exchange(ref _array, newArray);
@@ -198,5 +208,7 @@ namespace Nethermind.Core.Collections
                 _disposed = true;
             }
         }
+
+        public Span<T> AsSpan() => _array.AsSpan(0, _count);
     }
 }

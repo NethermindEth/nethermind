@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -24,6 +24,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess { get; set; } = true;
+        public bool IsTracingFees => true;
 
         public byte[] ReturnValue { get; set; }
 
@@ -163,6 +164,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
         }
     }
