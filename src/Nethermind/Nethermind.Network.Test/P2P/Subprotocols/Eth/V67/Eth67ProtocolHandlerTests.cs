@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -123,7 +124,7 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
-        _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage>());
+        _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage>());
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

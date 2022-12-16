@@ -11,12 +11,12 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -114,7 +114,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage>());
+            _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage>());
         }
 
         [Test]
@@ -135,14 +135,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Should_throw_when_receiving_unrequested_block_headers()
+        public void Should_disconnect_when_receiving_unrequested_block_headers()
         {
             var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
-            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
-            act.Should().Throw<SubprotocolException>();
+            HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -153,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
+            _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
         }
 
         [Test]
@@ -174,14 +174,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Should_throw_when_receiving_unrequested_block_bodies()
+        public void Should_disconnect_when_receiving_unrequested_block_bodies()
         {
             var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
-            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
-            act.Should().Throw<SubprotocolException>();
+            HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -192,7 +192,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
+            _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
         }
 
         [Test]
@@ -214,7 +214,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
+            _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>());
         }
 
         [Test]
@@ -235,14 +235,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Should_throw_when_receiving_unrequested_node_data()
+        public void Should_disconnect_when_receiving_unrequested_node_data()
         {
             var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
-            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-            act.Should().Throw<SubprotocolException>();
+            HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -253,7 +253,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
-            _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
+            _session.EventuallyReceived().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage>());
         }
 
         [Test]
@@ -280,8 +280,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
-            System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
-            act.Should().Throw<SubprotocolException>();
+            HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
@@ -301,4 +301,5 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
     }
+
 }

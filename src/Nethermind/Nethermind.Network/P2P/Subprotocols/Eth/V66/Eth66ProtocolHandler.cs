@@ -18,6 +18,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
@@ -35,6 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
+        private readonly ILogger _logger;
 
         private bool _isDisposed = false;
 
@@ -67,6 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
+            _logger = logManager.GetClassLogger();
         }
 
         public override string Name => "eth66";
@@ -189,7 +192,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             if (!_incomingMessageQueue.Writer.TryWrite(zeroPacket))
             {
                 zeroPacket.SafeRelease();
-                _incomingMessageQueue.Reader.TryPeek(out ZeroPacket latestPacket);
 
                 // TODO: In almost all case that I found, the queue is full of PooledTransaction message.
                 //   to some extend maybe its good that we are disconnecting spammy peer? But its likely
@@ -200,21 +202,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private async Task StartReceiveLoop()
         {
-            await foreach (ZeroPacket packet in _incomingMessageQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+            await foreach (ZeroPacket message in _incomingMessageQueue.Reader.ReadAllAsync(_cancellationTokenSource.Token))
             {
-                Stopwatch sw = Stopwatch.StartNew();
                 try
                 {
-                    _lastProcessingPacketType = packet.PacketType;
-                    DoHandleMessage(packet);
+                    _lastProcessingPacketType = message.PacketType;
+                    DoHandleMessage(message);
                 }
                 catch (OperationCanceledException)
                 {
                     return;
                 }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug)
+                    {
+                        _logger.Error($"Error handling message {message}", exception);
+                    }
+                    Session.InitiateDisconnect(DisconnectReason.Other, $"Exception: {exception}");
+                }
                 finally
                 {
-                    packet.SafeRelease();
+                    message.SafeRelease();
                 }
             }
         }
