@@ -405,7 +405,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             }
         }
 
-        class IncomingQueueFullException: Exception
+        public class IncomingQueueFullException: Exception
         {
             public IncomingQueueFullException(string message): base(message) {}
         }

@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
@@ -282,6 +284,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
             _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
+        [Test]
+        public void When_queue_is_full__Then_throw_exception()
+        {
+            var msg63 = new GetNodeDataMessage(Array.Empty<Keccak>());
+            var numOfRequest = 40;
+            var requests = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage[numOfRequest];
+            for (int i = 0; i < numOfRequest; i++)
+            {
+                requests[i] = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1110 + i, msg63);
+            }
+
+            var concurrentRequest = 0;
+            var latch = new ManualResetEvent(false);
+
+            HandleIncomingStatusMessage();
+
+            _syncManager.When((syncServer) => syncServer.GetNodeData(Arg.Any<IReadOnlyList<Keccak>>())).Do(callInfo =>
+            {
+                concurrentRequest++;
+                latch.WaitOne();
+            });
+
+            Action action = () =>
+            {
+                for (int i = 0; i < numOfRequest; i++)
+                {
+                    HandleZeroMessage(requests[i], Eth66MessageCode.GetNodeData);
+                }
+            };
+
+            action.Should().Throw<Eth66ProtocolHandler.IncomingQueueFullException>();
+
+            Task.Delay(TimeSpan.FromMilliseconds(100)).Wait();
+            concurrentRequest.Should().Be(2);
+
+            latch.Set();
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
