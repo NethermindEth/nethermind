@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -24,7 +24,7 @@ RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /nethermind
@@ -38,8 +38,7 @@ ENV PATH="/opt/dotnetcore-tools:${PATH}"
 
 LABEL git_commit=$COMMIT_HASH
 
-EXPOSE 8545
-EXPOSE 30303
+EXPOSE 8545 8551 30303
 
 VOLUME /nethermind/nethermind_db
 VOLUME /nethermind/logs

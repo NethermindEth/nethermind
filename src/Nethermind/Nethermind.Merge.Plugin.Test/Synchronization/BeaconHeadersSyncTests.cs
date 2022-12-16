@@ -441,7 +441,7 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, true);
+        BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
         batch.Response = headers;
     }
 
