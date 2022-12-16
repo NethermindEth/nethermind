@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -717,33 +716,6 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        [Test]
-        public async Task Will_sleep_peer_if_weak_peer_is_reported()
-        {
-            await using Context ctx = new();
-            await SetupPeers(ctx, 2);
-
-            PeerInfo firstPeer = ctx.Pool.AllPeers.FirstOrDefault()!;
-            FixedPeerAllocator peerAllocator = new(firstPeer);
-            AllocationContexts allocationContexts = AllocationContexts.Snap;
-
-            // Simulate a separate concurrent allocation
-            await ctx.Pool.Allocate(peerAllocator, AllocationContexts.Headers);
-
-            SyncPeerAllocation allocation = await ctx.Pool.Allocate(peerAllocator, allocationContexts);
-            allocation.HasPeer.Should().BeTrue();
-            ctx.Pool.ReportWeakPeer(firstPeer, allocationContexts);
-            ctx.Pool.Free(allocation);
-
-            allocation = await ctx.Pool.Allocate(peerAllocator, allocationContexts);
-            allocation.HasPeer.Should().BeTrue();
-            ctx.Pool.ReportWeakPeer(firstPeer, allocationContexts);
-            ctx.Pool.Free(allocation);
-
-            allocation = await ctx.Pool.Allocate(peerAllocator, allocationContexts);
-            allocation.HasPeer.Should().BeFalse();
-        }
-
         private int _pendingRequests;
 
         private Random _workRandomDelay = new(42);
@@ -839,22 +811,6 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 await Task.Delay(waitInterval);
-            }
-        }
-
-        private class FixedPeerAllocator: IPeerAllocationStrategy
-        {
-            private PeerInfo _peer;
-            public FixedPeerAllocator(PeerInfo peer)
-            {
-                _peer = peer;
-            }
-
-            public bool CanBeReplaced => false;
-            public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-            {
-                if (peers.Contains(_peer)) return _peer;
-                return null;
             }
         }
     }
