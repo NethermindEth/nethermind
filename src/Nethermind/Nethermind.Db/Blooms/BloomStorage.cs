@@ -5,6 +5,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -140,11 +143,115 @@ namespace Nethermind.Db.Blooms
 
         public IEnumerable<Average> Averages => _storageLevels.Select(l => l.Average);
 
+        /// <summary>
+        /// Low allocation class to execute multiple stores in parallel
+        /// </summary>
+        private class ParallelStorage : IThreadPoolWorkItem
+        {
+            // Limit max number of parallel calls
+            private static readonly SemaphoreSlim _rateLimit = new(Environment.ProcessorCount);
+            private static ParallelStorage _state = new();
+
+            private ManualResetEventSlim _mres = new();
+
+            private int _count;
+            private int _remaining;
+            private long _blockNumber;
+            private Bloom _bloom;
+            private BloomStorageLevel[] _storageLevels;
+            private ExceptionDispatchInfo _exception;
+
+            public static void StoreInParallel(long blockNumber, Bloom bloom, BloomStorageLevel[] storageLevels)
+            {
+                // Throttle parallel storage to avoid flooding the ThreadPool
+                _rateLimit.Wait();
+                ParallelStorage state = Interlocked.Exchange(ref _state, null) ?? new();
+                try
+                {
+                    state.ExecuteInParallel(blockNumber, bloom, storageLevels);
+                }
+                finally
+                {
+                    _state = state;
+                    _rateLimit.Release();
+                }
+            }
+
+            public void Execute()
+            {
+                int index = Interlocked.Decrement(ref _count);
+                if (index < 0)
+                {
+                    // Can be called more times due to the calling thread also looping
+                    return;
+                }
+
+                try
+                {
+                    _storageLevels[index].Store(_blockNumber, _bloom);
+                }
+                catch (Exception ex)
+                {
+                    // Surface the exception
+                    _exception = ExceptionDispatchInfo.Capture(ex);
+                }
+                finally
+                {
+                    if (Interlocked.Decrement(ref _remaining) == 0)
+                    {
+                        // All tasks complete, unlock caller
+                        _mres.Set();
+                    }
+                }
+            }
+
+            private void ExecuteInParallel(long blockNumber, Bloom bloom, BloomStorageLevel[] storageLevels)
+            {
+                _blockNumber = blockNumber;
+                _bloom = bloom;
+                _storageLevels = storageLevels;
+                // Set the numbers to process
+                _remaining = _count = storageLevels.Length;
+
+                _mres.Reset();
+
+                for (int i = 1; i < storageLevels.Length; i++)
+                {
+                    // Queue n-1 to the ThreadPool
+                    ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                }
+
+                while (Volatile.Read(ref _count) > 0)
+                {
+                    // Run the storage also rather than waiting until everything runs on ThreadPool
+                    // rather than just blocking in a Wait
+                    Execute();
+                }
+
+                // All tasks have been picked up, wait for stragglers to complete
+                _mres.Wait();
+
+                // Clear references to allow them to be GC collected
+                _bloom = null;
+                _storageLevels = null;
+
+                ExceptionDispatchInfo ex = _exception;
+                _exception = null;
+
+                // Throw any exception captured
+                ex?.Throw();
+            }
+        }
+
         public void Store(long blockNumber, Bloom bloom)
         {
-            for (int i = 0; i < _storageLevels.Length; i++)
+            if (_storageLevels.Length == 1)
             {
-                _storageLevels[i].Store(blockNumber, bloom);
+                _storageLevels[0].Store(blockNumber, bloom);
+            }
+            else if (_storageLevels.Length > 1)
+            {
+                ParallelStorage.StoreInParallel(blockNumber, bloom, _storageLevels);
             }
 
             if (blockNumber < MinBlockNumber)
@@ -237,7 +344,7 @@ namespace Nethermind.Db.Blooms
 
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
-            private readonly ICache<long, Bloom> _cache;
+            private readonly LruCache<long, Bloom> _cache;
 
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
@@ -261,15 +368,31 @@ namespace Nethermind.Db.Blooms
                         if (existingBloom is null)
                         {
                             byte[] bytes = new byte[Bloom.ByteLength];
-                            int bytesRead = _fileStore.Read(bucket, bytes);
-                            bool bloomRead = bytesRead == Bloom.ByteLength;
-                            existingBloom = bloomRead ? new Bloom(bytes) : new Bloom();
+                            existingBloom = new Bloom(bytes);
+
+                            Span<byte> byteSpan = bytes.AsSpan();
+                            int bytesRead = _fileStore.Read(bucket, byteSpan);
+                            if (bytesRead != Bloom.ByteLength)
+                            {
+                                // No existing bloom so just copy new one's data
+                                bloom.Bytes.CopyTo(byteSpan);
+                            }
+                            else
+                            {
+                                // Pre-existing; so accumulate to the bloom
+                                existingBloom.Accumulate(bloom);
+                            }
+
+                            // Not in cache, add to cache
+                            _cache.Set(bucket, existingBloom);
+                        }
+                        else
+                        {
+                            // Pre-existing; so accumulate to the bloom
+                            existingBloom.Accumulate(bloom);
                         }
 
-                        existingBloom.Accumulate(bloom);
-
                         _fileStore.Write(bucket, existingBloom.Bytes);
-                        _cache.Set(bucket, existingBloom);
                     }
                 }
                 catch (InvalidOperationException e)
