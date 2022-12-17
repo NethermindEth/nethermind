@@ -124,12 +124,13 @@ namespace Nethermind.TxPool
 
         public void BroadcastPersistentTxs()
         {
-            if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > DateTimeOffset.Now)
+            DateTimeOffset now = DateTimeOffset.Now;
+            if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
                 if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");
                 return;
             }
-            _lastPersistedTxBroadcast = DateTimeOffset.Now;
+            _lastPersistedTxBroadcast = now;
 
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
