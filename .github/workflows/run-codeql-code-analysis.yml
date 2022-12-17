@@ -7,30 +7,30 @@ on:
 
 jobs:
   run-analysis:
-    name: Analysing Nethermind code
+    name: Analyse Nethermind code
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         language: ['csharp']
     steps:
-    - name: Checking out repository
-      uses: actions/checkout@v2
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
         fetch-depth: 2
-    - name: Updating submodules
-      run: git submodule update --init src/int256 src/Dirichlet src/tests src/Math.Gmp.Native
+    - name: Update submodules
+      run: git submodule update --init src/tests
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v1
       with:
         languages: ${{ matrix.language }}
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '6.0.x'
-    - name: Building Nethermind solution
+        dotnet-version: 7
+    - name: Build Nethermind
       run: |
         cd src/Nethermind
-        dotnet build Nethermind.sln -c Release
-    - name: Performing CodeQL Analysis
+        dotnet build Nethermind.sln -c release
+    - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v1

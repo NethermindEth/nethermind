@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Test
                 Instruction.PUSH24, Instruction.PUSH25, Instruction.PUSH26, Instruction.PUSH27, Instruction.PUSH28,
                 Instruction.PUSH29, Instruction.PUSH30, Instruction.PUSH31, Instruction.PUSH32,
 
-                Instruction.RJUMP, Instruction.RJUMPI,
+                Instruction.RJUMP, Instruction.RJUMPI, Instruction.RJUMPV,
             };
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
@@ -197,6 +197,7 @@ namespace Nethermind.Evm.Test
                     {
                         >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
                         Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(_ => (byte)0),
+                        Instruction.RJUMPV => new byte[] {2, 0, 0},
                         _ => Enumerable.Empty<byte>()
                     };
                     foreach (byte arg in immediateArgs)

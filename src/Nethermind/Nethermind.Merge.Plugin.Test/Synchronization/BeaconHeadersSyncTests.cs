@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -45,6 +49,7 @@ public class BeaconHeadersSyncTests
                     Block genesis = Build.A.Block.Genesis.TestObject;
                     _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                     _blockTree.SuggestBlock(genesis);
+                    _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this
                 }
 
                 return _blockTree;
@@ -137,7 +142,7 @@ public class BeaconHeadersSyncTests
                     _report = Substitute.For<ISyncReport>();
                     MeasuredProgress measuredProgress = new MeasuredProgress();
                     Report.BeaconHeaders.Returns(measuredProgress);
-                    Report.HeadersInQueue.Returns(measuredProgress);
+                    Report.BeaconHeadersInQueue.Returns(measuredProgress);
                 }
 
                 return _report;
@@ -150,6 +155,21 @@ public class BeaconHeadersSyncTests
 
         private IBlockCacheService? _blockCacheService;
         public IBlockCacheService BlockCacheService => _blockCacheService ??= new BlockCacheService();
+
+        private IBlockTree? _remoteBlockTree;
+        public IBlockTree RemoteBlockTree
+        {
+            get
+            {
+                return _remoteBlockTree ??= Build.A.BlockTree().TestObject;
+            }
+            set => _remoteBlockTree = value;
+        }
+
+        public void SetupRemoteBlockTreeOfLength(int chainLength)
+        {
+            RemoteBlockTree = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
+        }
     }
 
     [Test]
@@ -185,7 +205,7 @@ public class BeaconHeadersSyncTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         ISyncReport report = Substitute.For<ISyncReport>();
-        report.HeadersInQueue.Returns(new MeasuredProgress());
+        report.BeaconHeadersInQueue.Returns(new MeasuredProgress());
         MeasuredProgress measuredProgress = new();
         report.BeaconHeaders.Returns(measuredProgress);
         ISyncConfig syncConfig = new SyncConfig
@@ -307,6 +327,60 @@ public class BeaconHeadersSyncTests
         storedLastValidHash.Should().Be(lastValidHeader);
     }
 
+    [Test]
+    public async Task When_pivot_changed_during_header_sync_after_chain_merged__do_not_return_null_request()
+    {
+        ISyncConfig syncConfig = new SyncConfig
+        {
+            FastSync = true,
+            FastBlocks = true,
+            PivotNumber = "0",
+            PivotHash = Keccak.Zero.ToString(),
+            PivotTotalDifficulty = "0"
+        };
+
+        int chainLength = 111;
+        int pivotNumber = 100;
+
+        Context ctx = new()
+        {
+            SyncConfig = syncConfig,
+        };
+        ctx.SetupRemoteBlockTreeOfLength(chainLength);
+
+        ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber));
+
+        ctx.Feed.InitializeFeed();
+
+        // First batch, should be enough to merge chain
+        HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
+        request.Should().NotBeNull();
+        request.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
+            .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
+            .ToArray();
+
+        ctx.Feed.HandleResponse(request);
+
+        // Ensure pivot happens which reset lowest inserted beacon header further ahead.
+        ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber + 10));
+        ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+
+        // The sync feed must adapt to this
+        request = await ctx.Feed.PrepareRequest();
+        request.Should().NotBeNull();
+
+        // We respond it again
+        request.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
+            .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
+            .ToArray();
+        ctx.Feed.HandleResponse(request);
+
+        // It should complete successfully
+        ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
+        request = await ctx.Feed.PrepareRequest();
+        request.Should().BeNull();
+    }
+
     private async void BuildAndProcessHeaderSyncBatches(
         Context ctx,
         BlockTree blockTree,
@@ -367,7 +441,7 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, true);
+        BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
         batch.Response = headers;
     }
 

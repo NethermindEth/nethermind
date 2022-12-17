@@ -5,6 +5,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Dirichlet.Numerics;
+using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
 namespace Nethermind.Ssz.Benchmarks
 {

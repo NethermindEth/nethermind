@@ -14,4 +14,5 @@ public static class ExitCodes
     public const int NoDownloadOldReceiptsOrBlocks = 101;
     public const int TooLongExtraData = 102;
     public const int ConflictingConfigurations = 103;
+    public const int LowDiskSpace = 104;
 }

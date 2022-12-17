@@ -182,6 +182,13 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
+        public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
+        {
+            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            // Instruction.SELFDESTRUCT => true
+            _ => false
+        };
+
         public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
         {
             if (!FastEnum.IsDefined(instruction))

@@ -92,9 +92,9 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             [JsonConverter(typeof(IdConverter))]
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-            public object Id { get; set; }
+            public object Id { get; set; } = null!;
 
-            public string Something { get; set; }
+            public string Something { get; set; } = null!;
         }
 
         public class SomethingWithDecimalId
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Test.Data
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
             public decimal Id { get; set; }
 
-            public string Something { get; set; }
+            public string Something { get; set; } = null!;
         }
     }
 }

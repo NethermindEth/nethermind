@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Benchmark
                 ExecutingAccount = Address.Zero,
                 CodeSource = Address.Zero,
                 Caller = Address.Zero,
-                CodeInfo = new CodeInfo(Bytecode),
+                CodeInfo = new CodeInfo(Bytecode, GrayGlacier.Instance),
                 Value = 0,
                 TransferValue = 0,
                 TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
