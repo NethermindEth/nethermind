@@ -1,4 +1,4 @@
-name: '[RUN] Vault Integration Tests'
+name: '[RUN] Vault integration tests'
 
 on:
   push:
@@ -7,31 +7,30 @@ on:
       
 jobs:
   run-vault-tests:
-    name: Running Vault Integration Tests
+    name: Run Vault integration tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
+    - name: Check out repository
+      uses: actions/checkout@v3
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '6.0.x'
-    - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native
-    - name: Installing Linux packages
+        dotnet-version: 7
+    - name: Install Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Running Docker stack with Vault
+    - name: Run Docker stack with Vault
       run: |
         cd src/Nethermind/Nethermind.Vault.Test
         docker-compose up -d
-    - name: Sleeping for 20 seconds
+    - name: Sleep for 20 seconds
       uses: jakejarvis/wait-action@v0.1.0
       with:
         time: '20s'
-    - name: Checking running containers
+    - name: Check running containers
       run: docker ps -a
-    - name: Running Vault Tests
+    - name: Run Vault tests
       run: |
         curl -s -X POST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
         ACCESS_TOKEN=$(curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/authenticate -d '{"email": "hello@localhost", "password": "hello12345"}' -v | jq ".token.token" | tr -d '"') 

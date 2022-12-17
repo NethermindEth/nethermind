@@ -9,7 +9,13 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction> { }
+    public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
+    {
+        public int GetLength(Transaction tx)
+        {
+            return GetLength(tx, RlpBehaviors.None);
+        }
+    }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
     public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
 

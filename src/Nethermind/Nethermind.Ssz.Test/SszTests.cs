@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
+using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
 namespace Nethermind.Ssz.Test
 {

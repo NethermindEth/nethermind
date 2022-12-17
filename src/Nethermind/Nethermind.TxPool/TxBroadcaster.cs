@@ -60,6 +60,13 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+        /// <summary>
+        /// Used to throttle tx broadcast. Particularly during forward sync where the head changes a lot which triggers
+        /// a lot of broadcast. There are no transaction in pool but its quite spammy on the log.
+        /// </summary>
+        private DateTimeOffset _lastPersistedTxBroadcast = DateTimeOffset.UnixEpoch;
+        private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
+
         private readonly ILogger _logger;
 
         public TxBroadcaster(IComparer<Transaction> comparer,
@@ -117,6 +124,14 @@ namespace Nethermind.TxPool
 
         public void BroadcastPersistentTxs()
         {
+            DateTimeOffset now = DateTimeOffset.Now;
+            if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");
+                return;
+            }
+            _lastPersistedTxBroadcast = now;
+
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
                 IList<Transaction> persistentTxsToSend = GetPersistentTxsToSend();
