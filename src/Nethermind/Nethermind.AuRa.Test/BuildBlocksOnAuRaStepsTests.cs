@@ -45,7 +45,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        [Retry(16)]
+        [Retry(40)]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = new();
