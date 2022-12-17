@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.ComponentModel.DataAnnotations;
+using Nethermind.Evm.EOF;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -396,7 +397,7 @@ namespace Nethermind.Evm
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
 
-                cachedCodeInfo = new CodeInfo(code);
+                cachedCodeInfo = new CodeInfo(code, vmSpec);
                 _codeCache.Set(codeHash, cachedCodeInfo);
             }
             else
@@ -589,7 +590,7 @@ namespace Nethermind.Evm
         }
 
         [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -622,8 +623,13 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            CodeInfo CodeContainer = env.CodeInfo.SeparateEOFSections(spec, out Span<byte> fullCode, out Span<byte> codeSection, out Span<byte> dataSection);
-
+            Span<byte> codeSection = env.CodeInfo.MachineCode;
+            Span<byte> dataSection = Span<byte>.Empty;
+            if (env.CodeInfo.IsEof)
+            {
+                codeSection = env.CodeInfo.ExtractCodeSection();
+                dataSection = env.CodeInfo.ExtractDataSection();
+            }
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
                 state.ProgramCounter = pc;
@@ -1428,13 +1434,13 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            UInt256 codeLength = (UInt256)fullCode.Length;
+                            UInt256 codeLength = (UInt256)env.CodeInfo.MachineCode.Length;
                             stack.PushUInt256(in codeLength);
                             break;
                         }
                     case Instruction.CODECOPY:
                         {
-                            UInt256 code_length = (UInt256)fullCode.Length;
+                            UInt256 code_length = (UInt256)env.CodeInfo.MachineCode.Length;
                             stack.PopUInt256(out UInt256 dest);
                             stack.PopUInt256(out UInt256 src);
                             stack.PopUInt256(out UInt256 length);
@@ -1448,7 +1454,7 @@ namespace Nethermind.Evm
                             {
                                 UpdateMemoryCost(in dest, length);
 
-                                ZeroPaddedSpan codeSlice = fullCode.SliceWithZeroPadding(src, (int)length);
+                                ZeroPaddedSpan codeSlice = env.CodeInfo.MachineCode.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, codeSlice);
                                 if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
                             }
@@ -2397,14 +2403,13 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
-                            if (spec.IsEip3540Enabled)
+                            if (env.CodeInfo.IsEof)
                             {
                                 bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(initCode);
                                 bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(initCode, spec, out EofHeader? initcodeHeader);
-                                if (CodeContainer.IsEof.Value
-                                    && (!initCodeHasEofPrefix
+                                if (!initCodeHasEofPrefix
                                     || !initCodeIsValid
-                                    || CodeContainer.Header?.Version != initcodeHeader?.Version))
+                                    || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();
@@ -2479,7 +2484,7 @@ namespace Nethermind.Evm
                             callEnv.Caller = env.ExecutingAccount;
                             callEnv.ExecutingAccount = contractAddress;
                             callEnv.CodeSource = null;
-                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
+                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray(), spec);
                             callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                             callEnv.TransferValue = value;
                             callEnv.Value = value;
@@ -2509,14 +2514,13 @@ namespace Nethermind.Evm
 
                             // EIP-3540
                             // Code container in the context of Create2? is Initcode
-                            if (spec.IsEip3540Enabled && vmState.ExecutionType.IsAnyCreate())
+                            if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
                             {
                                 bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(returnData);
                                 bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(returnData, spec, out EofHeader? initcodeHeader);
-                                if (CodeContainer.IsEof.Value
-                                    && (!initCodeHasEofPrefix
+                                if (!initCodeHasEofPrefix
                                     || !initCodeIsValid
-                                    || CodeContainer.Header?.Version != initcodeHeader?.Version))
+                                    || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();

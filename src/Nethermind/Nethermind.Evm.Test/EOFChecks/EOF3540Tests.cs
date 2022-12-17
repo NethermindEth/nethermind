@@ -15,28 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Specs.Forks;
-using NSubstitute;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Blockchain;
 using System;
-using static Nethermind.Evm.CodeAnalysis.ByteCodeValidator;
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
-using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
+using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm.Test
 {
@@ -110,12 +100,20 @@ namespace Nethermind.Evm.Test
             var TargetReleaseSpec = new OverridableReleaseSpec(isShanghaiFork ? Shanghai.Instance : GrayGlacier.Instance);
 
 
-            var expectedHeader = codeSize == 0 && dataSize == 0
+            EofHeader? expectedHeader = codeSize == 0 && dataSize == 0
                 ? null
                 : new EofHeader
                 {
-                    CodeSize = codeSize,
-                    DataSize = dataSize,
+                    CodeSection = new SectionHeader
+                    {
+                        Size = (ushort)codeSize,
+                        Start = dataSize == 0 ? 7 : 10
+                    },
+                    DataSection = dataSize == 0 ? null : new SectionHeader
+                    {
+                        Size = (ushort)dataSize,
+                        Start = 10 + codeSize
+                    },
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);

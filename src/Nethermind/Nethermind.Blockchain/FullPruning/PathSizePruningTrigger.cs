@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.FullPruning
         /// </remarks>
         private long GetPathSize(string path)
         {
-            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles();
+            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.New(path).EnumerateFiles();
             long size = files.Sum(f => f.Length);
             return size;
         }

@@ -8,6 +8,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Org.BouncyCastle.Crypto.Agreement.Srp;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -19,7 +20,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public ByteCodeValidator(ILogManager loggerManager = null)
             => EofFormatChecker = new EvmObjectFormat(loggerManager);
 
-        public bool HasEOFMagic(ReadOnlySpan<byte> code) => EofFormatChecker.HasEOFFormat(code);
+        public bool HasEOFMagic(ReadOnlySpan<byte> code) => EofFormatChecker.HasEofFormat(code);
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec,
             [NotNullWhen(true)] out EofHeader? header)
         {
@@ -34,7 +35,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
                 => ValidateBytecode(code, _spec, out _);
 
-        public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader header)
+        public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader? header)
             => EofFormatChecker.ValidateInstructions(machineCode, out header, _spec);
     }
 }

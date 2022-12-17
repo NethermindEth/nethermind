@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 GetFile(200)
             };
             fileSystem.Directory.Exists(path).Returns(true);
-            fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles().Returns(files);
+            fileSystem.DirectoryInfo.New(path).EnumerateFiles().Returns(files);
 
             bool triggered = false;
 

@@ -5,6 +5,8 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NuGet.Frameworks;
 using NUnit.Framework;
 
@@ -25,7 +27,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(destination, false).Should().Be(isValid);
         }
@@ -40,7 +42,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
 
             codeInfo.ValidateJump(destination, true).Should().Be(isValid);
@@ -55,7 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
@@ -70,7 +72,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
@@ -86,7 +88,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(11, false).Should().BeTrue();
         }
@@ -101,7 +103,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(31, false).Should().BeTrue();
         }
@@ -114,7 +116,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(10, false).Should().BeTrue();
 
@@ -132,7 +134,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,
             };
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(10, false).Should().BeFalse();
 
@@ -147,7 +149,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(10, false).Should().BeTrue();
 
@@ -162,7 +164,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
-            CodeInfo codeInfo = new(code);
+            CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
             codeInfo.ValidateJump(10, false).Should().BeFalse();
 
@@ -185,7 +187,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             int iterations = 1;
             while (iterations <= 10)
             {
-                CodeInfo codeInfo = new(code);
+                CodeInfo codeInfo = new(code, GrayGlacier.Instance);
 
                 codeInfo.ValidateJump(10, false).Should().BeFalse();
                 codeInfo.ValidateJump(11, false).Should().BeFalse(); // 0x5b but not JUMPDEST but data

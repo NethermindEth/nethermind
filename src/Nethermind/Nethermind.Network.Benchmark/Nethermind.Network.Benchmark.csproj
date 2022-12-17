@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <RootNamespace>Nethermind.Network.Benchmarks</RootNamespace>
     </PropertyGroup>
@@ -12,7 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.2" />
     </ItemGroup>
 
     <ItemGroup>
