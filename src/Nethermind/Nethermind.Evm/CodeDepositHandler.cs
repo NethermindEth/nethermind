@@ -16,7 +16,8 @@ namespace Nethermind.Evm
 
             return GasCostOf.CodeDeposit * byteCodeLength;
         }
-
+        public static bool CodeIsValid(IReleaseSpec spec, byte[] output)
+            => !CodeIsInvalid(spec, output);
         public static bool CodeIsInvalid(IReleaseSpec spec, byte[] output)
         {
             return spec.IsEip3541Enabled && output.Length >= 1 && output[0] == InvalidStartingCodeByte;

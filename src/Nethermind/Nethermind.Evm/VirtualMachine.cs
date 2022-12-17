@@ -198,7 +198,7 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
-                                // Reject code starting with 0xEF if EIP-3541 is enabled Or not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
+                                // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
                                 else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
@@ -2117,8 +2117,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            int adjustedProgramCounter = programCounter - 1;
-                            stack.PushUInt32(adjustedProgramCounter);
+                            stack.PushUInt32(programCounter - 1);
                             break;
                         }
                     case Instruction.MSIZE:
