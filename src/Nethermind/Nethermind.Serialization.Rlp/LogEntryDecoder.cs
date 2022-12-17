@@ -131,7 +131,7 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public static void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemNull())
             {

@@ -33,5 +33,10 @@ namespace Nethermind.State.Snap
         /// Account hash after which to stop serving data
         /// </summary>
         public Keccak? LimitHash { get; set; }
+
+        public override string ToString()
+        {
+            return $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
+        }
     }
 }

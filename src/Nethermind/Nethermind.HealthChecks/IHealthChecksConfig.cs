@@ -39,5 +39,11 @@ namespace Nethermind.HealthChecks
 
         [ConfigItem(Description = "Max request interval in which we assume that CL works in a healthy way", DefaultValue = "300")]
         public int MaxIntervalClRequestTime { get; set; }
+
+        [ConfigItem(Description = "Percentage of available disk space below which a warning will be displayed. Zero to disable.", DefaultValue = "5")]
+        public float LowStorageSpaceWarningThreshold { get; set; }
+
+        [ConfigItem(Description = "Percentage of available disk space below which node will shutdown. Zero to disable.", DefaultValue = "1")]
+        public float LowStorageSpaceShutdownThreshold { get; set; }
     }
 }
