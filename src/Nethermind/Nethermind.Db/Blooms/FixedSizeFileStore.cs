@@ -3,7 +3,8 @@
 
 using System;
 using System.IO;
-using System.Threading;
+
+using Microsoft.Win32.SafeHandles;
 
 namespace Nethermind.Db.Blooms
 {
@@ -11,16 +12,13 @@ namespace Nethermind.Db.Blooms
     {
         private readonly string _path;
         private readonly int _elementSize;
-        private readonly Stream _fileWrite;
-        private readonly Stream _fileRead;
-        private int _needsFlush;
+        private readonly SafeFileHandle _file;
 
         public FixedSizeFileStore(string path, int elementSize)
         {
             _path = path;
             _elementSize = elementSize;
-            _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
-            _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            _file = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
         }
 
         public void Write(long index, ReadOnlySpan<byte> element)
@@ -32,12 +30,7 @@ namespace Nethermind.Db.Blooms
 
             try
             {
-                lock (_fileWrite)
-                {
-                    SeekIndex(_fileWrite, index);
-                    _fileWrite.Write(element);
-                    Interlocked.Exchange(ref _needsFlush, 1);
-                }
+                RandomAccess.Write(_file, element, GetPosition(index));
             }
             catch (ArgumentOutOfRangeException e)
             {
@@ -58,47 +51,19 @@ namespace Nethermind.Db.Blooms
 
         public int Read(long index, Span<byte> element)
         {
-            EnsureFlushed();
-
-            lock (_fileRead)
-            {
-                SeekIndex(_fileRead, index);
-                return _fileRead.Read(element);
-            }
+            return RandomAccess.Read(_file, element, GetPosition(index));
         }
 
         public IFileReader CreateFileReader()
         {
-            EnsureFlushed();
             return new FileReader(_path, _elementSize);
-        }
-
-        private void EnsureFlushed()
-        {
-            if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
-            {
-                lock (_fileWrite)
-                {
-                    _fileWrite.Flush();
-                }
-            }
-        }
-
-        private void SeekIndex(Stream file, long index)
-        {
-            long seekPosition = GetPosition(index);
-            if (file.Position != seekPosition)
-            {
-                file.Position = seekPosition;
-            }
         }
 
         private long GetPosition(long index) => index * _elementSize;
 
         public void Dispose()
         {
-            _fileWrite.Dispose();
-            _fileRead.Dispose();
+            _file.Dispose();
         }
     }
 }
