@@ -25,8 +25,8 @@ namespace Nethermind.JsonRpc.Test
     public class JsonRpcProcessorTests
     {
         private readonly bool _returnErrors;
-        private IFileSystem _fileSystem;
-        private JsonRpcContext _context;
+        private IFileSystem _fileSystem = null!;
+        private JsonRpcContext _context = null!;
 
         private JsonRpcErrorResponse _errorResponse = new();
 
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
             service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? (JsonRpcResponse)new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-            service.GetErrorResponse(0, null).ReturnsForAnyArgs(_errorResponse);
+            service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
             _fileSystem = Substitute.For<IFileSystem>();
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
-        private JsonRpcProcessor _jsonRpcProcessor;
+        private JsonRpcProcessor _jsonRpcProcessor = null!;
 
         [Test]
         public async Task Can_process_guid_ids()

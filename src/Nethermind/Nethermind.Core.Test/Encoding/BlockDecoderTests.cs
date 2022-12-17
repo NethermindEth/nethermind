@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] bytes = Bytes.FromHexString(regression5644);
             Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
-            Block decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
+            Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
             Rlp encoded = decoder.Encode(decoded);
             Assert.AreEqual(encoded.Bytes.ToHexString(), encoded.Bytes.ToHexString());
         }
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
             {
                 Rlp encoded = decoder.Encode(block);
                 Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
-                Block decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
+                Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
                 Rlp encoded2 = decoder.Encode(decoded);
                 Assert.AreEqual(encoded.Bytes.ToHexString(), encoded2.Bytes.ToHexString());
             }

@@ -12,7 +12,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_handling()
         {
-            TestConverter(null, (key, publicKey) => key == publicKey, new PublicKeyConverter());
+            TestConverter(null!, (key, publicKey) => key == publicKey, new PublicKeyConverter());
         }
 
         [Test]

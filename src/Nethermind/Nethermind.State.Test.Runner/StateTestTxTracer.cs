@@ -22,7 +22,8 @@ namespace Nethermind.State.Test.Runner
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage => true;
-        public bool IsTracingMemory { get; set; } = true;
+        public bool IsTracingMemory => true;
+        public bool IsTracingDetailedMemory { get; set; } = true;
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingRefunds { get; } = false;
         public bool IsTracingCode => false;
@@ -31,6 +32,7 @@ namespace Nethermind.State.Test.Runner
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -89,13 +91,15 @@ namespace Nethermind.State.Test.Runner
 
         public void SetOperationMemorySize(ulong newSize)
         {
-            _traceEntry.UpdateMemorySize(newSize);
-            int diff = (int)_traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
-            if (diff > 0)
+            _traceEntry.UpdateMemorySize((int)newSize);
+            if (IsTracingDetailedMemory)
             {
-                _traceEntry.Memory += new string('0', diff);
+                int diff = _traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
+                if (diff > 0)
+                {
+                    _traceEntry.Memory += new string('0', diff);
+                }
             }
-
         }
 
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
@@ -225,12 +229,20 @@ namespace Nethermind.State.Test.Runner
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
-            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.Select(mt => mt.Replace("0x", string.Empty))));
+            if (IsTracingDetailedMemory)
+            {
+                _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.Select(mt => mt.Replace("0x", string.Empty))));
+            }
         }
 
         public StateTestTxTrace BuildResult()
         {
             return _trace;
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
     }
 }

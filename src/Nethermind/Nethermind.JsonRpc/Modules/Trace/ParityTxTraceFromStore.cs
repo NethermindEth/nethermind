@@ -11,45 +11,50 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public static ParityTxTraceFromStore[] FromTxTrace(ParityLikeTxTrace txTrace)
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace)
         {
-            List<ParityTxTraceFromStore> results = new();
-            AddActionsRecursively(results, txTrace, txTrace.Action);
-            return results.ToArray();
+            return ReturnActionsRecursively(txTrace, txTrace.Action);
         }
 
         public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
         {
-            List<ParityTxTraceFromStore> results = new();
             foreach (ParityLikeTxTrace tx in txTrace)
             {
-                AddActionsRecursively(results, tx, tx.Action);
+                foreach (ParityTxTraceFromStore trace in ReturnActionsRecursively(tx, tx.Action))
+                {
+                    yield return trace;
+                }
             }
-
-            return results;
-
         }
 
-        private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
+        private static IEnumerable<ParityTxTraceFromStore> ReturnActionsRecursively(ParityLikeTxTrace txTrace, ParityTraceAction? txTraceAction)
         {
-            ParityTxTraceFromStore result = new()
+            if (txTraceAction is not null)
             {
-                Action = txTraceAction,
-                Result = txTraceAction.Result,
-                Subtraces = txTraceAction.Subtraces.Count,
-                Type = txTraceAction.Type,
-                BlockHash = txTrace.BlockHash,
-                BlockNumber = txTrace.BlockNumber,
-                TransactionHash = txTrace.TransactionHash,
-                TransactionPosition = txTrace.TransactionPosition,
-                TraceAddress = txTraceAction.TraceAddress,
-                Error = txTraceAction.Error
-            };
-            results.Add(result);
+                ParityTxTraceFromStore result = new()
+                {
+                    Action = txTraceAction,
+                    Result = txTraceAction.Result,
+                    Subtraces = txTraceAction.Subtraces.Count,
+                    Type = txTraceAction.Type,
+                    BlockHash = txTrace.BlockHash,
+                    BlockNumber = txTrace.BlockNumber,
+                    TransactionHash = txTrace.TransactionHash,
+                    TransactionPosition = txTrace.TransactionPosition,
+                    TraceAddress = txTraceAction.TraceAddress,
+                    Error = txTraceAction.Error
+                };
+                yield return result;
 
-            foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
-            {
-                AddActionsRecursively(results, txTrace, subtrace);
+                for (int index = 0; index < txTraceAction.Subtraces.Count; index++)
+                {
+                    ParityTraceAction subtrace = txTraceAction.Subtraces[index];
+                    foreach (ParityTxTraceFromStore convertedSubtrace in ReturnActionsRecursively(txTrace, subtrace))
+                    {
+                        yield return convertedSubtrace;
+                    }
+
+                }
             }
         }
 
@@ -64,7 +69,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)]
         public long BlockNumber { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }

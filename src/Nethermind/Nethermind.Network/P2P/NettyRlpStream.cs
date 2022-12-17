@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 
@@ -28,6 +29,20 @@ namespace Nethermind.Network.P2P
             bytesToWrite.CopyTo(target);
             int newWriterIndex = _buffer.WriterIndex + bytesToWrite.Length;
 
+            _buffer.SetWriterIndex(newWriterIndex);
+        }
+
+        public override void Write(IReadOnlyList<byte> bytesToWrite)
+        {
+            _buffer.EnsureWritable(bytesToWrite.Count, true);
+            Span<byte> target =
+                _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.WriterIndex, bytesToWrite.Count);
+            for (int i = 0; i < bytesToWrite.Count; ++i)
+            {
+                target[i] = bytesToWrite[i];
+            }
+
+            int newWriterIndex = _buffer.WriterIndex + bytesToWrite.Count;
             _buffer.SetWriterIndex(newWriterIndex);
         }
 

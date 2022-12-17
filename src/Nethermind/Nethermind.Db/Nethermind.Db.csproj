@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <LangVersion>10.0</LangVersion>
+    <TargetFramework>net7.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <Nullable>annotations</Nullable>
@@ -13,6 +13,6 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
+    <PackageReference Include="System.IO.Abstractions" Version="19.1.1" />
   </ItemGroup>
 </Project>

@@ -6,6 +6,7 @@ using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -25,7 +26,7 @@ namespace Nethermind.Benchmarks.Evm
         [GlobalSetup]
         public void Setup()
         {
-            _codeInfo = new CodeInfo(_scenarios[ScenarioIndex]);
+            _codeInfo = new CodeInfo(_scenarios[ScenarioIndex], GrayGlacier.Instance);
         }
 
         [Benchmark]

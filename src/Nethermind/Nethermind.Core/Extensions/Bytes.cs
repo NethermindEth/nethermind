@@ -369,11 +369,11 @@ namespace Nethermind.Core.Extensions
         {
             return ReadEthInt32((ReadOnlySpan<byte>)bytes);
         }
-        public static int ReadEthInt16(this Span<byte> bytes)
+        public static short ReadEthInt16(this Span<byte> bytes)
         {
             return ReadEthInt16((ReadOnlySpan<byte>)bytes);
         }
-        public static int ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 2)
             {
@@ -544,20 +544,8 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static string ToHexString(this byte[] bytes, bool withZeroX)
-        {
-            return ToHexString(bytes, withZeroX, false, false);
-        }
-
-        public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros)
-        {
-            return ToHexString(bytes, withZeroX, noLeadingZeros, false);
-        }
-
-        public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
-        }
+        public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros = false, bool withEip55Checksum = false) =>
+            ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
 
         private struct StateSmall
         {
