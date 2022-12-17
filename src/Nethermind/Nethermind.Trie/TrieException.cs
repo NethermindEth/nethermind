@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Trie
 {
-    public class TrieException : Exception
+    public class TrieException : Exception, IInternalNethermindException
     {
         public TrieException()
         {
