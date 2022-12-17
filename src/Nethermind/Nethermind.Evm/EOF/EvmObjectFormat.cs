@@ -212,6 +212,11 @@ public class EvmObjectFormat
                     int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
                     i += len;
                 }
+
+                if(i > sectionSize)
+                {
+                    return false;
+                }
             }
 
             return true;
