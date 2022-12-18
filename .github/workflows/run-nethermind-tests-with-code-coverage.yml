@@ -36,7 +36,7 @@ jobs:
       if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Set environment variable to exclude specific test projects
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-20.04'
       run: echo 'EXCLUDE_TEST_PROJECTS=/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"' >> "$GITHUB_ENV"
     - name: Nethermind.Abi.Test
       run: |
