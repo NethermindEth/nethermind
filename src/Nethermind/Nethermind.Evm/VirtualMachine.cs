@@ -3125,7 +3125,7 @@ namespace Nethermind.Evm
 
                             var index = env.CodeInfo.SectionId;
                             var outputCount = typeSection[index * 2 + 1];
-                            if(--vmState.ReturnStackHead == 0 )
+                            if (--vmState.ReturnStackHead == 0)
                             {
                                 break;
                             }

@@ -36,7 +36,7 @@ namespace Nethermind.Evm.CodeAnalysis
             if (Header is not null)
             {
                 sectionStart = Header.Value.CodeSections[sectionId].Start;
-                sectionSize =  Header.Value.CodeSections[sectionId].Size;
+                sectionSize = Header.Value.CodeSections[sectionId].Size;
             }
             var codeSection = MachineCode.Slice(sectionStart, sectionSize);
 

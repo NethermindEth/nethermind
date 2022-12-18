@@ -102,7 +102,7 @@ public class EvmObjectFormat
                         var codeSectionHeaders = new SectionHeader[codeSections.Count];
                         int accumulatedOffset = 0;
 
-                        for(int j = 0; j < codeSections.Count; j++)
+                        for (int j = 0; j < codeSections.Count; j++)
                         {
                             codeSectionHeaders[j] = new SectionHeader
                             {
@@ -497,13 +497,13 @@ public class EvmObjectFormat
                 i += len;
             }
 
-            if(i > codeSectionSize)
+            if (i > codeSectionSize)
             {
                 header = null; return false;
             }
         }
 
-        if(spec.IsEip4750Enabled && !opcode.Value.IsTerminating(spec))
+        if (spec.IsEip4750Enabled && !opcode.Value.IsTerminating(spec))
         {
             if (LoggingEnabled)
             {
