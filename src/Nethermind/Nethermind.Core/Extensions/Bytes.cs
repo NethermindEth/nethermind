@@ -11,6 +11,9 @@ using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -684,13 +687,12 @@ namespace Nethermind.Core.Extensions
             }
 
             int skip = leadingZeros / 2;
-            ref uint lookup32 = ref Lookup32[0];
             if ((leadingZeros & 1) != 0)
             {
                 skip++;
                 // Odd number of hex chars, handle the first
                 // seperately so loop can work in pairs
-                uint val = Unsafe.Add(ref lookup32, input);
+                uint val = Unsafe.Add(ref Lookup32[0], input);
                 charsRef = (char)(val >> 16);
 
                 charsRef = ref Unsafe.Add(ref charsRef, 1);
@@ -698,33 +700,120 @@ namespace Nethermind.Core.Extensions
             }
 
             int toProcess = length - skip;
-            ref uint output = ref Unsafe.As<char, uint>(ref charsRef);
-
-            while (toProcess >= 8)
+            if ((AdvSimd.Arm64.IsSupported || Ssse3.IsSupported) && toProcess >= 4)
             {
-                output = Unsafe.Add(ref lookup32, input);
-                Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
-                Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
-                Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
-                Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
-                Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
-                Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
-                Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
+                // From HexConvertor.EncodeToUtf16_Vector128 in dotnet/runtime however that isn't exposed
+                // in an accessible api that will give the lowercase output directly
+                Vector128<byte> shuffleMask = Vector128.Create(
+                    0xFF, 0xFF, 0, 0xFF, 0xFF, 0xFF, 1, 0xFF,
+                    0xFF, 0xFF, 2, 0xFF, 0xFF, 0xFF, 3, 0xFF);
 
-                output = ref Unsafe.Add(ref output, 8);
-                input = ref Unsafe.Add(ref input, 8);
+                Vector128<byte> asciiTable = Vector128.Create((byte)'0', (byte)'1', (byte)'2', (byte)'3',
+                                     (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+                                     (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+                                     (byte)'c', (byte)'d', (byte)'e', (byte)'f');
 
-                toProcess -= 8;
+                nuint pos = 0;
+                Debug.Assert(toProcess >= 4);
+
+                // it's used to ensure we can process the trailing elements in the same SIMD loop (with possible overlap)
+                // but we won't double compute for any evenly divisible by 4 length since we
+                // compare pos > lengthSubVector128 rather than pos >= lengthSubVector128
+                nuint lengthSubVector128 = (nuint)toProcess - (nuint)Vector128<int>.Count;
+                ref byte destRef = ref Unsafe.As<char, byte>(ref charsRef);
+                do
+                {
+                    // Read 32bits from "bytes" span at "pos" offset
+                    uint block = Unsafe.ReadUnaligned<uint>(
+                        ref Unsafe.Add(ref input, pos));
+
+                    // TODO: Remove once cross-platform Shuffle is landed
+                    // https://github.com/dotnet/runtime/issues/63331
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    static Vector128<byte> Shuffle(Vector128<byte> value, Vector128<byte> mask)
+                    {
+                        if (Ssse3.IsSupported)
+                        {
+                            return Ssse3.Shuffle(value, mask);
+                        }
+                        else if (!AdvSimd.Arm64.IsSupported)
+                        {
+                            ThrowNotSupportedException();
+                        }
+                        return AdvSimd.Arm64.VectorTableLookup(value, mask);
+                    }
+
+                    // Calculate nibbles
+                    Vector128<byte> lowNibbles = Shuffle(
+                        Vector128.CreateScalarUnsafe(block).AsByte(), shuffleMask);
+
+                    // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
+                    // first two bytes in lowNibbles are guaranteed to be zeros
+                    Vector128<byte> shifted = Sse2.IsSupported ?
+                        Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) :
+                        AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
+
+                    Vector128<byte> highNibbles = Vector128.ShiftRightLogical(shifted.AsInt32(), 4).AsByte();
+
+                    // Lookup the hex values at the positions of the indices
+                    Vector128<byte> indices = (lowNibbles | highNibbles) & Vector128.Create((byte)0xF);
+                    Vector128<byte> hex = Shuffle(asciiTable, indices);
+
+                    // The high bytes (0x00) of the chars have also been converted
+                    // to ascii hex '0', so clear them out.
+                    hex &= Vector128.Create((ushort)0xFF).AsByte();
+                    hex.StoreUnsafe(ref destRef, pos * 4); // we encode 4 bytes as a single char (0x0-0xF)
+                    pos += (nuint)Vector128<int>.Count;
+
+                    if (pos == (nuint)toProcess)
+                    {
+                        return;
+                    }
+
+                    // Overlap with the current chunk for trailing elements
+                    if (pos > lengthSubVector128)
+                    {
+                        pos = lengthSubVector128;
+                    }
+
+                } while (true);
+            }
+            else
+            {
+                ref uint lookup32 = ref Lookup32[0];
+                ref uint output = ref Unsafe.As<char, uint>(ref charsRef);
+                while (toProcess >= 8)
+                {
+                    output = Unsafe.Add(ref lookup32, input);
+                    Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
+                    Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
+                    Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
+                    Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
+                    Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
+                    Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
+                    Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
+
+                    output = ref Unsafe.Add(ref output, 8);
+                    input = ref Unsafe.Add(ref input, 8);
+
+                    toProcess -= 8;
+                }
+
+                while (toProcess > 0)
+                {
+                    output = Unsafe.Add(ref lookup32, input);
+
+                    output = ref Unsafe.Add(ref output, 1);
+                    input = ref Unsafe.Add(ref input, 1);
+
+                    toProcess -= 1;
+                }
             }
 
-            while (toProcess > 0)
+            [DoesNotReturn]
+            static void ThrowNotSupportedException()
             {
-                output = Unsafe.Add(ref lookup32, input);
-
-                output = ref Unsafe.Add(ref output, 1);
-                input = ref Unsafe.Add(ref input, 1);
-
-                toProcess -= 1;
+                throw new NotSupportedException();
             }
         }
 
