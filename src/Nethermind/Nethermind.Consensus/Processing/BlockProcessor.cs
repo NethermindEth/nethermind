@@ -223,10 +223,10 @@ namespace Nethermind.Consensus.Processing
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
             TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
-            _receiptsTracer.EndBlockTrace();
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
+            _receiptsTracer.EndBlockTrace();
 
             _stateProvider.Commit(spec);
             _stateProvider.RecalculateStateRoot();

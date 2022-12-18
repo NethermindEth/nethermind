@@ -18,14 +18,11 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly List<string> _modules = new();
-        private readonly List<string> _enabledModules = new();
+        private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly HashSet<string> _enabledModules = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly Dictionary<string, ResolvedMethodInfo> _methods = new(StringComparer.InvariantCulture);
 
-        private readonly Dictionary<string, ResolvedMethodInfo> _methods
-            = new(StringComparer.InvariantCulture);
-
-        private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
-            = new();
+        private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool)> _pools = new();
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -53,14 +50,13 @@ namespace Nethermind.JsonRpc.Modules
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
-                if (_logger.IsWarn) _logger.Warn(
-                    $"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
                 return;
             }
 
             string moduleType = attribute.ModuleType;
 
-            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m));
+            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
             _modules.Add(moduleType);
 
             IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
@@ -116,6 +112,8 @@ namespace Nethermind.JsonRpc.Modules
 
             _pools[result.ModuleType].ReturnModule(rpcModule);
         }
+
+        public IRpcModulePool? GetPool(string moduleType) => _pools.TryGetValue(moduleType, out var poolInfo) ? poolInfo.ModulePool : null;
 
         private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {

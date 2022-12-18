@@ -22,5 +22,6 @@ namespace Nethermind.Synchronization.Reporting
         public MeasuredProgress FastBlocksBodies { get; } = new();
         public MeasuredProgress FastBlocksReceipts { get; } = new();
         public MeasuredProgress BeaconHeaders { get; } = new();
+        public MeasuredProgress BeaconHeadersInQueue { get; }
     }
 }

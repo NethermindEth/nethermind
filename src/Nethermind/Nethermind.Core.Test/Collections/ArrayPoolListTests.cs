@@ -175,5 +175,18 @@ namespace Nethermind.Core.Test.Collections
             Action action = () => list[item] = 1;
             action.Should().Throw<ArgumentOutOfRangeException>();
         }
+
+        [TestCase(1, 16)]
+        [TestCase(14, 16)]
+        [TestCase(15, 32)]
+        [TestCase(20, 32)]
+        [TestCase(100, 128)]
+        public void AddRange_should_expand(int items, int expectedCapacity)
+        {
+            ArrayPoolList<int> list = new(16) { 0, 1 };
+            list.AddRange(Enumerable.Range(2, items));
+            list.Should().BeEquivalentTo(Enumerable.Range(0, items + 2));
+            list.Capacity.Should().Be(expectedCapacity);
+        }
     }
 }

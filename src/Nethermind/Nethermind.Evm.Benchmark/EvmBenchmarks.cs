@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -58,7 +59,7 @@ namespace Nethermind.Evm.Benchmark
                 ExecutingAccount = Address.Zero,
                 CodeSource = Address.Zero,
                 Caller = Address.Zero,
-                CodeInfo = new CodeInfo(ByteCode),
+                CodeInfo = new CodeInfo(ByteCode, GrayGlacier.Instance),
                 Value = 0,
                 TransferValue = 0,
                 TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)

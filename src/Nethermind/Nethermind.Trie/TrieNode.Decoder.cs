@@ -61,7 +61,7 @@ namespace Nethermind.Trie
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
                     // so |
                     // so |
-                    // so E - - - - - - - - - - - - - - - 
+                    // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
                     rlpStream.Write(nodeRef.FullRlp);

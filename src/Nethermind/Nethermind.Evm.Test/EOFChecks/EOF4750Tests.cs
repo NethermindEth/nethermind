@@ -342,7 +342,7 @@ namespace Nethermind.Evm.Test
                             OutputCount = 1
                         }
                     },
-                    Result = (StatusCode.Failure, "Code ending in non terminating opcode"),
+                    Result = (StatusCode.Failure, "Section 0 ends in non-terminating opcode"),
                 };
 
                 yield return new TestCase2
@@ -364,7 +364,7 @@ namespace Nethermind.Evm.Test
                             OutputCount = 1
                         }
                     },
-                    Result = (StatusCode.Failure, "Code ending in non terminating opcode"),
+                    Result = (StatusCode.Failure, "Section 1 ends in non-terminating opcode"),
                 };
 
                 yield return new TestCase2
@@ -381,6 +381,7 @@ namespace Nethermind.Evm.Test
                             Body = Prepare.EvmCode
                                 .MUL()
                                 .ADD(54)
+                                .RETF()
                                 .Done,
                             InputCount = 2,
                             OutputCount = 0

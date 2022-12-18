@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
@@ -231,6 +232,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public void SetOperationMemory(List<string> memoryTrace)
         {
             _traceEntry.Memory = memoryTrace;
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
 
         public GethLikeTxTrace BuildResult()

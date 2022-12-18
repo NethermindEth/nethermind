@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF0001010004005C000200", false, Description = "rjump invalid destination, offset :   2")]
         [TestCase("0xEF0001010004005C000100", false, Description = "rjump invalid destination, offset :   1")]
         [TestCase("0xEF0001010004005CFFFF00", false, Description = "rjump invalid destination, offset :  -1")]
-        [TestCase("0xEF00010100060060005CFFFC00", false, Description = "rjump invalid destination, offset :  4")]
+        [TestCase("0xEF00010100060060005CFFFC00", false, Description = "rjump invalid destination, offset :  -4")]
         [TestCase("0xEF00010100060060005DFFF900", false, Description = "rjumpi invalid destination, offset :  -7")]
         [TestCase("0xEF00010100060060005DFFF100", false, Description = "rjumpi invalid destination, offset :  -15")]
         [TestCase("0xEF00010100060060005D000200", false, Description = "rjumpi invalid destination, offset :   2")]
