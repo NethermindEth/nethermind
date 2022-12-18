@@ -190,7 +190,7 @@ namespace Nethermind.Evm.Test
             {
                 logger.Info($"============ Testing opcode {i}==================");
                 Instruction instruction = (Instruction)i;
-                if(instruction is Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV)
+                if (instruction is Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV)
                 {
                     continue;
                 }

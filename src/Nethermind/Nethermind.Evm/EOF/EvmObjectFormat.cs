@@ -293,7 +293,7 @@ public class EvmObjectFormat
                     i += len;
                 }
 
-                if(i > sectionSize)
+                if (i > sectionSize)
                 {
                     return false;
                 }
