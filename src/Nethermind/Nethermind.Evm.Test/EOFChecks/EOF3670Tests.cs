@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Test
                             .PushData(0x0)
                             .Op(Instruction.SSTORE)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, null),
+                    ResultIfEOF = (StatusCode.Success, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "Last opcode is not a terminating opcode"
                 };
@@ -240,7 +240,7 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "End Instruction is not a terminal opcode"),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution with data section: Try to jump into data section"
                 };
@@ -280,7 +280,7 @@ namespace Nethermind.Evm.Test
                             .Op(Instruction.MSTORE8)
                             .Return(1, 0)
                             .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Missing End Instruction"),
+                    ResultIfEOF = (StatusCode.Failure, null),
                     ResultIfNotEOF = (StatusCode.Success, null),
                     Description = "EOF1 execution : Try to conditinally jump into data section"
                 };
@@ -503,7 +503,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-
         // valid code
         [TestCase("0xEF000101000100FE", true)]
         [TestCase("0xEF00010100050060006000F3", true)]
@@ -511,14 +510,14 @@ namespace Nethermind.Evm.Test
         [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
         [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
         [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
+        [TestCase("0xEF00010100010030", true)]
+        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", true)]
         // code with invalid magic
+        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Ends with Truncated Push Instruction")]
+        [TestCase("0xEF00010100010060", false, Description = "Ends with Truncated Push Instruction")]
         [TestCase("0xEF0001010003006000FF", false, Description = "Ends with Selfdestruct")]
         [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
         [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
-        [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF00010100010030", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
         public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated)
         {
             var bytecode = Prepare.EvmCode
@@ -556,7 +555,7 @@ namespace Nethermind.Evm.Test
                 byte[] salt = { 4, 5, 6 };
                 var standardCode = Prepare.EvmCode
                     .MUL(23, 3)
-                    .STOP() // for EIP-3670 End instruction condition
+                    .STOP()
                     .Done;
 
                 var standardData = new byte[] { 0xaa };
@@ -652,6 +651,7 @@ namespace Nethermind.Evm.Test
                     }
                     return result;
                 }
+
                 for (int i = 0; i < 8; i++) // 00 01 10 11
                 {
                     bool hasEofContainer = (i & 1) == 1;
@@ -666,7 +666,15 @@ namespace Nethermind.Evm.Test
                         {
                             bool corruptContainer = (k & 1) == 1;
                             bool corruptInnitcode = (k & 2) == 2;
-                            bool corruptDeploycode = (k & 2) == 4;
+                            bool corruptDeploycode = (k & 4) == 4;
+                            bool isValid = classicDep
+                                ? !corruptInnitcode && (
+                                    hasEofInnitcode || !corruptDeploycode)
+                                : !corruptContainer && (
+                                    hasEofContainer || (
+                                        !corruptInnitcode && (
+                                        hasEofInnitcode || !corruptDeploycode))
+                                );
                             yield return new TestCase
                             {
                                 Index = idx++,
@@ -674,8 +682,8 @@ namespace Nethermind.Evm.Test
                                     hasEofContainer, hasEofInnitcode, hasEofDeployCode,
                                     corruptContainer, corruptInnitcode, corruptDeploycode,
                                     context: j),
-                                ResultIfEOF = ((classicDep ? corruptInnitcode : corruptContainer) || (!hasEofInnitcode && corruptInnitcode) || corruptDeploycode ? StatusCode.Failure : StatusCode.Success, null),
-                                Description = $"EOF1 execution : \nDeploy {(hasEofInnitcode ? String.Empty : "NON-")}EOF Bytecode with {(hasEofDeployCode ? String.Empty : "NON-")}EOF innercode with {(hasEofContainer ? String.Empty : "NON-")}EOF container,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE and {(corruptDeploycode ? String.Empty : "Not")} Corrupted CODE"
+                                ResultIfEOF = (!isValid ? StatusCode.Failure : StatusCode.Success, null),
+                                Description = $"EOF1 execution : \nDeploy {(hasEofContainer ? String.Empty : "NON-")}EOF CONTAINER with {(hasEofInnitcode ? String.Empty : "NON-")}EOF INNITCODE with {(hasEofDeployCode ? String.Empty : "NON-")}EOF CODE,\nwith Instruction {(useCreate1 ? "CREATE" : useCreate2 ? "CREATE2" : "Initcode")}, \nwith {(corruptContainer ? String.Empty : "Not")} Corrupted CONTAINER and {(corruptInnitcode ? String.Empty : "Not")} Corrupted INITCODE and {(corruptDeploycode ? String.Empty : "Not")} Corrupted CODE"
                             };
                         }
                     }

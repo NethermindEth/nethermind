@@ -187,7 +187,15 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
+        public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec) => instruction switch
+        {
+            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            Instruction.JUMPF or Instruction.RETF when spec.IsEip4750Enabled => true,
+            // Instruction.SELFDESTRUCT => true
+            _ => false
+        };
+
+        public static bool IsValid(this Instruction instruction, IReleaseSpec spec, bool IsEofContext)
         {
             if (!FastEnum.IsDefined(instruction))
             {
@@ -196,16 +204,17 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.CALLF or Instruction.JUMPF or Instruction.RETF => spec.IsEip4750Enabled,
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT when spec.IsEip3670Enabled => !IsEofContext,
+                Instruction.JUMPI or Instruction.JUMP when spec.IsEip4750Enabled == true => !IsEofContext,
+                Instruction.CALLF or Instruction.JUMPF or Instruction.RETF when spec.IsEip4750Enabled => IsEofContext,
+                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => IsEofContext,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,
                 Instruction.CREATE2 => spec.Create2OpcodeEnabled,
                 Instruction.DELEGATECALL => spec.DelegateCallEnabled,
                 Instruction.PUSH0 => spec.IncludePush0Instruction,
-                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.BASEFEE => spec.BaseFeeEnabled,
                 Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
                 Instruction.CHAINID => spec.ChainIdOpcodeEnabled,

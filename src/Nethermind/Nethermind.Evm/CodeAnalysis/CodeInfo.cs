@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Reflection.PortableExecutable;
-using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -16,54 +14,49 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
-        private EofHeader _header;
+        private EofHeader? _header;
+        private bool isEof = false;
         private static Random _rand = new();
 
         public byte[] MachineCode { get; set; }
         public int SectionId { get; set; } = 0;
 
-        public bool? IsEof = null;
-        public EofHeader Header => _header;
+        public bool IsEof => isEof;
+        public EofHeader? Header => _header;
 
         #region EofSection Extractors
-        public CodeInfo SeparateEOFSections(IReleaseSpec spec, out Span<byte> Container, out Span<byte> TypeSection, out Span<byte> CodeSection, out Span<byte> DataSection)
+
+        public Span<byte> ExtractCodeSection()
         {
-            Container = MachineCode.AsSpan();
-
-            if (spec.IsEip3540Enabled)
-            {
-                IsEof ??= ByteCodeValidator.Instance.ValidateBytecode(Container, spec, out _header);
-
-                if (IsEof.Value && (Header is not null))
-                {
-                    var offsets = new[] { Header.TypeSectionOffsets, Header.CodeSectionOffsets, Header.DataSectionOffsets };
-                    if (spec.IsEip4750Enabled)
-                    {
-                        TypeSection = MachineCode.Slice(offsets[0].Start, offsets[0].Size);
-                    }
-                    else
-                    {
-                        TypeSection = Span<byte>.Empty;
-                    }
-                    CodeSection = MachineCode.Slice(offsets[1].Start, offsets[1].Size);
-                    DataSection = MachineCode.Slice(offsets[2].Start, offsets[2].Size);
-                    return this;
-                }
-            }
-
-            TypeSection = Span<byte>.Empty;
-            CodeSection = MachineCode.AsSpan();
-            DataSection = Span<byte>.Empty;
-            return this;
+            return MachineCode.Slice(Header.Value.CodeSections.Start, Header.Value.CodeSections.Size);
         }
+
+        public Span<byte> ExtractTypeSection()
+        {
+            return Header.Value.TypeSection.HasValue
+                ? (Span<byte>)MachineCode.Slice(Header.Value.TypeSection.Value.Start, Header.Value.TypeSection.Value.Size)
+                : Span<byte>.Empty;
+        }
+
+        public Span<byte> ExtractDataSection()
+        {
+            return Header.Value.DataSection.HasValue
+                ? (Span<byte>)MachineCode.Slice(Header.Value.DataSection.Value.Start, Header.Value.DataSection.Value.Size)
+                : Span<byte>.Empty;
+        }
+
         #endregion
 
         public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _analyzer;
 
-        public CodeInfo(byte[] code)
+        public CodeInfo(byte[] code, IReleaseSpec spec)
         {
             MachineCode = code;
+            if (spec.IsEip3540Enabled)
+            {
+                isEof = ByteCodeValidator.Instance.ValidateEofStructure(MachineCode, spec, out _header);
+            }
         }
 
         public bool IsPrecompile => Precompile is not null;
@@ -90,9 +83,10 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private void CreateAnalyzer(IReleaseSpec spec)
         {
-            var (codeSectionStart, codeSectionSize) = IsEof.HasValue && IsEof.Value ? Header.CodeSectionOffsets : (0, MachineCode.Length);
-            var codeToBeAnalyzed = MachineCode.Slice(codeSectionStart, codeSectionSize);
-
+            var (codeStart, codeSize) = isEof
+                ? (Header.Value.CodeSections.Start, Header.Value.CodeSections.Size)
+                : (0, MachineCode.Length);
+            var codeToBeAnalyzed = MachineCode.Slice(codeStart, codeSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

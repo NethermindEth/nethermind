@@ -25,7 +25,6 @@ using NSubstitute;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Blockchain;
 using System;
-using static Nethermind.Evm.CodeAnalysis.ByteCodeValidator;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Evm.Tracing;
@@ -74,7 +73,8 @@ namespace Nethermind.Evm.Test
 
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(testcase.ResultIfEOF.Status == StatusCode.Failure, tracer.ReportedActionErrors.Any(x => x != EvmExceptionType.InvalidCode), $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
+            var result = tracer.ReportedActionErrors.Any(x => x == EvmExceptionType.InvalidCode || x == EvmExceptionType.BadInstruction) ? StatusCode.Failure : StatusCode.Success;
+            Assert.AreEqual(testcase.ResultIfEOF.Status, result, $"{testcase.Description}\nFailed with error {tracer.Error} \ncode : {testcase.Code.ToHexString(true)}");
         }
 
         public class TestCase

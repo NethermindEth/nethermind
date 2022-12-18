@@ -6,6 +6,7 @@ using System.Collections;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -27,7 +28,7 @@ namespace Nethermind.Evm.CodeAnalysis
             MachineCode = code;
             Header = header;
             _releaseSpec = spec;
-            _analysisResults = new JumpAnalysisResult[Header?.CodeSize?.Length ?? 1];
+            _analysisResults = new JumpAnalysisResult[Header?.CodeSections.ChildSections.Length ?? 1];
         }
 
         public bool ValidateJump(int destination, bool isSubroutine, int codeSectionId = 0)
@@ -50,10 +51,16 @@ namespace Nethermind.Evm.CodeAnalysis
             return true;
         }
 
-        private void CalculateJumpDestinations(int codeSectionId = 0)
+        private void CalculateJumpDestinations(int sectionId = 0)
         {
-            (var sectionStart, var SectionSize) = Header is null ? (0, MachineCode.Length) : Header[codeSectionId];
-            var codeSection = MachineCode.Slice(sectionStart, SectionSize);
+            (var sectionStart, var sectionSize) = (0, MachineCode.Length);
+            if (Header is not null)
+            {
+                sectionStart = Header.Value.CodeSections[sectionId].Start;
+                sectionSize = Header.Value.CodeSections[sectionId].Size;
+            }
+            var codeSection = MachineCode.Slice(sectionStart, sectionSize);
+
             var analysisResults = new JumpAnalysisResult
             {
                 _validJumpDestinations = new BitArray(codeSection.Length),
@@ -100,7 +107,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     index++;
                 }
             }
-            _analysisResults[codeSectionId] = analysisResults;
+            _analysisResults[sectionId] = analysisResults;
         }
     }
 }

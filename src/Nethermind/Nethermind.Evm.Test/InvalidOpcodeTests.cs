@@ -124,6 +124,7 @@ namespace Nethermind.Evm.Test
                                             Instruction.PUSH0,
                                             Instruction.RJUMP,
                                             Instruction.RJUMPI,
+                                            Instruction.RJUMPV,
                                             Instruction.CALLF,
                                             Instruction.RETF
                                         }
@@ -141,7 +142,7 @@ namespace Nethermind.Evm.Test
                 Instruction.PUSH24, Instruction.PUSH25, Instruction.PUSH26, Instruction.PUSH27, Instruction.PUSH28,
                 Instruction.PUSH29, Instruction.PUSH30, Instruction.PUSH31, Instruction.PUSH32,
 
-                Instruction.RJUMP, Instruction.RJUMPI,
+                Instruction.RJUMP, Instruction.RJUMPI, Instruction.RJUMPV,
                 Instruction.CALLF
             };
 
@@ -192,19 +193,17 @@ namespace Nethermind.Evm.Test
             {
                 logger.Info($"============ Testing opcode {i}==================");
                 Instruction instruction = (Instruction)i;
-                Prepare prepCode = Prepare.EvmCode
-                    .Op(instruction);
-                if (instruction is Instruction.CALLF or Instruction.RETF or Instruction.RJUMP or Instruction.RJUMPI)
+                if(instruction is Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV or Instruction.CALLF or Instruction.RETF)
                 {
                     continue;
                 }
-
+                Prepare prepCode = Prepare.EvmCode
+                    .Op(instruction);
                 if (InstructionsWithImmediates.Contains(instruction))
                 {
                     var immediateArgs = instruction switch
                     {
                         >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
-                        Instruction.RJUMP or Instruction.RJUMPI => Enumerable.Range(0, 2).Select(_ => (byte)0),
                         _ => Enumerable.Empty<byte>()
                     };
                     foreach (byte arg in immediateArgs)

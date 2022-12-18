@@ -15,16 +15,45 @@ namespace Nethermind.Evm.Tracing
     /// </remarks>
     public interface IBlockTracer
     {
+        /// <summary>
+        /// Is reward state change traced
+        /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="ReportReward"/>
+        /// </remarks>
         bool IsTracingRewards { get; }
 
+        /// <summary>
+        /// Reports rewards for bock.
+        /// </summary>
+        /// <param name="author">Author/coinbase for reward.</param>
+        /// <param name="rewardType">Type of reward.</param>
+        /// <param name="rewardValue">Value of reward.</param>
+        /// <remarks>Depends on <see cref="IsTracingRewards"/></remarks>
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
 
+        /// <summary>
+        /// Starts a trace for new block.
+        /// </summary>
+        /// <param name="block">Block to be traced.</param>
         void StartNewBlockTrace(Block block);
 
+        /// <summary>
+        /// Starts new transaction trace in a block.
+        /// </summary>
+        /// <param name="tx">Transaction this trace is started for. Null if it's reward trace.</param>
+        /// <returns>Returns tracer for transaction.</returns>
         ITxTracer StartNewTxTrace(Transaction? tx);
 
+        /// <summary>
+        /// Ends last transaction trace <see cref="StartNewTxTrace"/>.
+        /// </summary>
         void EndTxTrace();
 
+        /// <summary>
+        /// Ends block trace <see cref="StartNewBlockTrace"/>.
+        /// </summary>
         void EndBlockTrace();
     }
 }
