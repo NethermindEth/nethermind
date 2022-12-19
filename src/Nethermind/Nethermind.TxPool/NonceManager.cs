@@ -22,7 +22,8 @@ public class NonceManager : INonceManager
     public UInt256 ReserveNonce(Address address)
     {
         AddressNonceManager addressNonceManager =
-            _addressNonceManagers.GetOrAdd(address, v => new AddressNonceManager(_accounts.GetAccount(v).Nonce));
+            _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
+        addressNonceManager.UpdateCurrentNonce(_accounts.GetAccount(address).Nonce);
         return addressNonceManager.ReserveNonce();
     }
 
@@ -45,7 +46,7 @@ public class NonceManager : INonceManager
     public void TxWithNonceReceived(Address address, UInt256 nonce)
     {
         AddressNonceManager addressNonceManager =
-            _addressNonceManagers.GetOrAdd(address, v => new AddressNonceManager(_accounts.GetAccount(v).Nonce));
+            _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
         addressNonceManager.TxWithNonceReceived(nonce);
     }
 
@@ -56,9 +57,11 @@ public class NonceManager : INonceManager
         private UInt256 _currentNonce;
         private readonly Mutex _mutex = new();
 
-        public AddressNonceManager(UInt256 startNonce)
+        public void UpdateCurrentNonce(UInt256 newNonce)
         {
-            _currentNonce = startNonce;
+            _mutex.WaitOne();
+            _currentNonce = UInt256.Max(_currentNonce, newNonce);
+            _mutex.ReleaseMutex();
         }
 
         public UInt256 ReserveNonce()
