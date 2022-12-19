@@ -179,8 +179,7 @@ public class EvmObjectFormat
     {
         if (!spec.IsEip3540Enabled)
         {
-            header = null;
-            return false;
+            header = null; return false;
         }
 
         if (ExtractHeader(container, spec, out header))
@@ -215,12 +214,12 @@ public class EvmObjectFormat
 
                 if (i > sectionSize)
                 {
-                    return false;
+                    header = null; return false;
                 }
             }
 
             return true;
         }
-        return false;
+        header = null; return false;
     }
 }
