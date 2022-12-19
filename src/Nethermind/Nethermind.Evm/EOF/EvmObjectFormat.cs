@@ -301,8 +301,7 @@ public class EvmObjectFormat
         // check if code is EOF compliant
         if (!spec.IsEip3540Enabled)
         {
-            header = null;
-            return false;
+            header = null; return false;
         }
 
         if (ExtractHeader(code, spec, out header))

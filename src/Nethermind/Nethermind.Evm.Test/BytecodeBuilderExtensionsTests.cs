@@ -213,9 +213,13 @@ namespace Nethermind.Evm.Test
                 UInt256 arguments = UInt256.Zero;
                 var initBytecode = Prepare.EvmCode;
                 MethodInfo method = GetFluentOpcodeFunction(opcode);
-                initBytecode = (Prepare)method.Invoke(null, new object[] {
-                    initBytecode , arguments
-                });
+                initBytecode = opcode switch
+                {
+                    Instruction.JUMPSUB => Prepare.EvmCode.JUMPSUB(),
+                    _ => (Prepare)method.Invoke(null, new object[] {
+                        initBytecode , arguments
+                    })
+                };
 
                 yield return new TestCase()
                 {
