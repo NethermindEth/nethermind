@@ -43,33 +43,42 @@ namespace Nethermind.Evm.CodeAnalysis
             _validJumpDestinations = new BitArray(MachineCode.Length);
             _validJumpSubDestinations = new BitArray(MachineCode.Length);
 
+            byte push1 = (byte)Instruction.PUSH1;
+            byte push32 = (byte)Instruction.PUSH32;
+
+            byte rjump = (byte)Instruction.RJUMP;
+            byte rjumpi = (byte)Instruction.RJUMPI;
+            byte rjumpv = (byte)Instruction.RJUMPV;
+
+            byte jumpdest = (byte)Instruction.JUMPDEST;
+
             int index = 0;
             while (index < MachineCode.Length)
             {
                 byte instruction = MachineCode[index];
 
                 // JUMPDEST
-                if (instruction == 0x5b)
+                if (instruction == jumpdest)
                 {
                     _validJumpDestinations.Set(index, true);
                 }
                 // BEGINSUB
-                else if (_releaseSpec.SubroutinesEnabled && instruction == 0x5c)
+                else if (_releaseSpec.SubroutinesEnabled && instruction == rjump)
                 {
                     _validJumpSubDestinations.Set(index, true);
                 }
 
                 // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
-                if (instruction >= 0x60 && instruction <= 0x7f)
+                if (instruction >= push1 && instruction <= push32)
                 {
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
                 }
-                else if (_releaseSpec.StaticRelativeJumpsEnabled && (instruction == 0x5c || instruction == 0x5d))
+                else if (_releaseSpec.StaticRelativeJumpsEnabled && (instruction == rjump || instruction == rjumpi))
                 {
                     index += 3;
                 }
-                else if (_releaseSpec.StaticRelativeJumpsEnabled && instruction == 0x5e)
+                else if (_releaseSpec.StaticRelativeJumpsEnabled && instruction == rjumpv)
                 {
                     byte count = MachineCode[index + 1];
                     index += 2 + count * 2;
