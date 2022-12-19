@@ -179,12 +179,11 @@ public class EvmObjectFormat
     {
         if (!spec.IsEip3540Enabled)
         {
-            header = null;
-            return false;
+            header = null; return false;
         }
 
         if (ExtractHeader(container, spec, out header))
             return true;
-        return false;
+        header = null; return false;
     }
 }
