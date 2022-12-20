@@ -21,7 +21,7 @@ public class EvmObjectFormat
         [NotNullWhen(true)] out byte? version)
     {
         version = null;
-        if(code.Length > EofMagic.Length && code.StartsWith(EofMagic))
+        if (code.Length > EofMagic.Length && code.StartsWith(EofMagic))
         {
             version = code[EofMagic.Length];
             return true;
@@ -175,7 +175,7 @@ public class EvmObjectFormat
 
     public bool ValidateBody(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
     {
-        if(spec.IsEip3540Enabled && header is not null)
+        if (spec.IsEip3540Enabled && header is not null)
         {
             if (header.Value.Version == 1)
             {
