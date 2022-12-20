@@ -81,12 +81,10 @@ namespace Nethermind.Evm.Test
                 .FromCode(code)
                 .Done;
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
-            {
-            };
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
 
-            bool checkResult = ByteCodeValidator.Instance.ValidateEofStructure(bytecode, TargetReleaseSpec, out _);
+            bool checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }
