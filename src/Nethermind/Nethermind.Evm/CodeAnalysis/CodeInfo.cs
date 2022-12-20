@@ -47,9 +47,7 @@ namespace Nethermind.Evm.CodeAnalysis
             MachineCode = code;
             if (spec.IsEip3540Enabled)
             {
-                var byteCodeValidator = ByteCodeValidator.Instance;
-                isEof = byteCodeValidator.ValidateHeader(MachineCode, spec, out _header)
-                        && byteCodeValidator.ValidateEofStructure(MachineCode, spec, _header);
+                isEof = ByteCodeValidator.Instance.ValidateEofBytecode(MachineCode, spec, out _header);
             }
         }
 
