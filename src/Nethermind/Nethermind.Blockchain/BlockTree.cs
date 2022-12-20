@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
             if (ChainId != NetworkId)
             {
-                ThisNodeInfo.AddInfo("Network ID   :", $"{ChainId}");
+                ThisNodeInfo.AddInfo("Network ID   :", $"{NetworkId}");
             }
         }
 
