@@ -2404,8 +2404,8 @@ namespace Nethermind.Evm
                             // if container is EOF init code must be EOF
                             if (env.CodeInfo.IsEof)
                             {
-                                bool initCodeHasEofPrefix = _byteCodeValidator.ValidateHeader(initCode, spec, out EofHeader? initcodeHeader);
-                                bool initCodeIsValid = _byteCodeValidator.ValidateEofStructure(initCode, spec, initcodeHeader);
+                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(initCode, out byte? codeVersion);
+                                bool initCodeIsValid = _byteCodeValidator.ValidateEofBytecode(initCode, spec, out EofHeader? initcodeHeader) && codeVersion == initcodeHeader.Value.Version;
                                 if (!initCodeHasEofPrefix
                                     || !initCodeIsValid
                                     || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
@@ -2515,8 +2515,8 @@ namespace Nethermind.Evm
                             // Code container in the context of Create2? is Initcode
                             if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
                             {
-                                bool returnCodeHasEofPrefix = _byteCodeValidator.ValidateHeader(returnData, spec, out EofHeader? returnCodeHeader);
-                                bool returnCodeIsValid = _byteCodeValidator.ValidateEofStructure(returnData, spec, returnCodeHeader);
+                                bool returnCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(returnData, out byte? codeVersion);
+                                bool returnCodeIsValid = _byteCodeValidator.ValidateEofBytecode(returnData, spec, out EofHeader? returnCodeHeader) && codeVersion == returnCodeHeader.Value.Version;
                                 if (!returnCodeHasEofPrefix
                                     || !returnCodeIsValid
                                     || env.CodeInfo.Header?.Version != returnCodeHeader?.Version)

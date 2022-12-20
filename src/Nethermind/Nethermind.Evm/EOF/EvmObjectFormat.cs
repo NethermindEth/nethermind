@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -16,10 +17,21 @@ public class EvmObjectFormat
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
     private static byte[] EofMagic = { 0xEF, 0x00 };
 
-    public bool HasEofFormat(ReadOnlySpan<byte> code) => code.Length > EofMagic.Length && code.StartsWith(EofMagic);
-    public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader? header)
+    public bool HasEofFormat(ReadOnlySpan<byte> code,
+        [NotNullWhen(true)] out byte? version)
     {
-        if (!HasEofFormat(code))
+        version = null;
+        if(code.Length > EofMagic.Length && code.StartsWith(EofMagic))
+        {
+            version = code[EofMagic.Length];
+            return true;
+        }
+        return false;
+    }
+    public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec,
+        [NotNullWhen(true)] out EofHeader? header)
+    {
+        if (!HasEofFormat(code, out byte? version))
         {
             if (LoggingEnabled)
                 _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EofMagic.ToHexString(true)} ");
@@ -28,21 +40,20 @@ public class EvmObjectFormat
 
         int codeLen = code.Length;
 
-        int i = EofMagic.Length;
-        byte eofVersion = code[i++];
+        int i = EofMagic.Length + 1;
 
         header = new EofHeader
         {
-            Version = eofVersion
+            Version = version.Value
         };
 
-        switch (eofVersion)
+        switch (version.Value)
         {
             case 1:
                 return HandleEof1(spec, code, ref header, codeLen, ref i);
             default:
                 if (LoggingEnabled)
-                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {eofVersion}");
+                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {version}");
                 header = null; return false;
         }
     }
@@ -166,18 +177,21 @@ public class EvmObjectFormat
     {
         if(spec.IsEip3540Enabled && header is not null)
         {
-            int startOffset = header.Value.HeaderSize;
-            var contractBody = container[startOffset..];
-
-            var calculatedCodeLen = header.Value.CodeSection.Size + (header.Value.DataSection?.Size ?? 0);
-
-            if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+            if (header.Value.Version == 1)
             {
-                if (LoggingEnabled)
-                    _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
-                return false;
+                int startOffset = header.Value.HeaderSize;
+                var contractBody = container[startOffset..];
+
+                var calculatedCodeLen = header.Value.CodeSection.Size + (header.Value.DataSection?.Size ?? 0);
+
+                if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+                {
+                    if (LoggingEnabled)
+                        _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
+                    return false;
+                }
+                return true;
             }
-            return true;
         }
         return false;
     }
