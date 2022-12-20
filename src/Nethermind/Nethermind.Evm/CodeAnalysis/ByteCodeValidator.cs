@@ -20,14 +20,14 @@ namespace Nethermind.Evm.CodeAnalysis
         public ByteCodeValidator(ILogManager logManager = null)
             => EofFormatChecker = new EvmObjectFormat(logManager);
 
-        public bool HasEOFMagic(ReadOnlySpan<byte> code) => EofFormatChecker.HasEofFormat(code);
+        public bool HasEofPrefix(ReadOnlySpan<byte> code,
+            [NotNullWhen(true)] out byte? version) => EofFormatChecker.HasEofFormat(code, out version);
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec,
             [NotNullWhen(true)] out EofHeader? header)
         {
             if (_spec.IsEip3540Enabled)
             {
-                if(ValidateHeader(code, _spec, out header)
-                    && ValidateEofStructure(code, _spec, header))
+                if (EofFormatChecker.ValidateEofCode(_spec, code, out header))
                 {
                     return true;
                 }
@@ -37,12 +37,12 @@ namespace Nethermind.Evm.CodeAnalysis
             return CodeDepositHandler.CodeIsValid(_spec, code.ToArray());
         }
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
-                => ValidateBytecode(code, _spec, out _);
+            => ValidateBytecode(code, _spec, out _);
 
-        public bool ValidateHeader(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader? header)
-            => EofFormatChecker.ExtractHeader(machineCode, _spec, out header);
-        public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, EofHeader? header)
-            => EofFormatChecker.ValidateBody(machineCode, _spec, header)
-            && EofFormatChecker.ValidateInstructions(machineCode, _spec, header);
+        public bool ValidateEofBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec,
+            [NotNullWhen(true)] out EofHeader? header)
+            => EofFormatChecker.ValidateEofCode(_spec, code, out header);
+        public bool ValidateEofBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
+            => ValidateEofBytecode(code, _spec, out _);
     }
 }
