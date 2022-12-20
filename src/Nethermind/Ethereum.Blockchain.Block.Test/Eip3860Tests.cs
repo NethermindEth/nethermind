@@ -10,7 +10,7 @@ namespace Ethereum.Blockchain.Block.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class WithdrawalsTests : BlockchainTestBase
+public class Eip3860Tests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test)
@@ -20,7 +20,7 @@ public class WithdrawalsTests : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcWithdrawals");
+        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3860");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
