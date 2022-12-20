@@ -2426,8 +2426,8 @@ namespace Nethermind.Evm
                             // if container is EOF init code must be EOF
                             if (env.CodeInfo.IsEof)
                             {
-                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(initCode);
-                                bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(initCode, spec, out EofHeader? initcodeHeader);
+                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(initCode, out byte? codeVersion);
+                                bool initCodeIsValid = _byteCodeValidator.ValidateEofBytecode(initCode, spec, out EofHeader? initcodeHeader) && codeVersion == initcodeHeader.Value.Version;
                                 if (!initCodeHasEofPrefix
                                     || !initCodeIsValid
                                     || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
@@ -2537,11 +2537,11 @@ namespace Nethermind.Evm
                             // Code container in the context of Create2? is Initcode
                             if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
                             {
-                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEOFMagic(returnData);
-                                bool initCodeIsValid = _byteCodeValidator.ValidateBytecode(returnData, spec, out EofHeader? initcodeHeader);
-                                if (!initCodeHasEofPrefix
-                                    || !initCodeIsValid
-                                    || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
+                                bool returnCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(returnData, out byte? codeVersion);
+                                bool returnCodeIsValid = _byteCodeValidator.ValidateEofBytecode(returnData, spec, out EofHeader? returnCodeHeader) && codeVersion == returnCodeHeader.Value.Version;
+                                if (!returnCodeHasEofPrefix
+                                    || !returnCodeIsValid
+                                    || env.CodeInfo.Header?.Version != returnCodeHeader?.Version)
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();

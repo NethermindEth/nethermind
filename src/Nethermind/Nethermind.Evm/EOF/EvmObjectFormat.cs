@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
@@ -18,10 +19,21 @@ public class EvmObjectFormat
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
     private static readonly byte[] EofMagic = { 0xEF, 0x00 };
 
-    public bool HasEofFormat(ReadOnlySpan<byte> code) => code.Length > EofMagic.Length && code.StartsWith(EofMagic);
-    public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec, out EofHeader? header)
+    public bool HasEofFormat(ReadOnlySpan<byte> code,
+        [NotNullWhen(true)] out byte? version)
     {
-        if (!HasEofFormat(code))
+        version = null;
+        if (code.Length > EofMagic.Length && code.StartsWith(EofMagic))
+        {
+            version = code[EofMagic.Length];
+            return true;
+        }
+        return false;
+    }
+    public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec,
+        [NotNullWhen(true)] out EofHeader? header)
+    {
+        if (!HasEofFormat(code, out byte? version))
         {
             if (LoggingEnabled)
             {
@@ -32,36 +44,31 @@ public class EvmObjectFormat
 
         int codeLen = code.Length;
 
-        int i = EofMagic.Length;
-        byte EOFVersion = code[i++];
+        int i = EofMagic.Length + 1;
 
         header = new EofHeader
         {
-            Version = EOFVersion
+            Version = version.Value
         };
 
-        switch (EOFVersion)
+        switch (version.Value)
         {
             case 1:
                 return HandleEof1(spec, code, ref header, codeLen, ref i);
             default:
                 if (LoggingEnabled)
-                {
-                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {EOFVersion}");
-                }
+                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {version}");
                 header = null; return false;
         }
     }
 
     private bool HandleEof1(IReleaseSpec spec, ReadOnlySpan<byte> code, ref EofHeader? header, int codeLen, ref int i)
     {
-        bool continueParsing = true;
-
         List<ushort> codeSections = new();
         ushort? typeSections = null;
         ushort? dataSections = null;
 
-        while (i < codeLen && continueParsing)
+        while (i < codeLen)
         {
             var sectionKind = (SectionDividor)code[i];
             i++;
@@ -134,8 +141,7 @@ public class EvmObjectFormat
                                     Start = HeaderSize + (typeSections ?? 0) + accumulatedOffset
                                 }
                         };
-                        continueParsing = false;
-                        break;
+                        return true;
                     }
                 case SectionDividor.TypeSection:
                     {
@@ -272,58 +278,61 @@ public class EvmObjectFormat
                     }
             }
         }
-        var contractBody = code[i..];
+        return false;
+    }
 
-        var calculatedCodeLen = (header.Value.TypeSection?.Size ?? 0) + (header.Value.CodeSections.Size) + (header.Value.DataSection?.Size ?? 0);
-        if (spec.IsEip4750Enabled && header.Value.TypeSection is not null && contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0)
+    public bool ValidateBody(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
+    {
+        if (spec.IsEip3540Enabled && header is not null)
         {
-            if (LoggingEnabled)
+            if (header.Value.Version == 1)
             {
-                _logger.Trace($"EIP-4750: Invalid Type Section expected {(0, 0)} but found {(contractBody[0], contractBody[1])}");
+                int startOffset = header.Value.HeaderSize;
+                var contractBody = container[startOffset..];
+
+                var calculatedCodeLen = (header.Value.TypeSection?.Size ?? 0) + (header.Value.CodeSections.Size) + (header.Value.DataSection?.Size ?? 0);
+                if (spec.IsEip4750Enabled && header.Value.TypeSection is not null && contractBody.Length > 1 && contractBody[0] != 0 && contractBody[1] != 0)
+                {
+                    if (LoggingEnabled)
+                    {
+                        _logger.Trace($"EIP-4750: Invalid Type Section expected {(0, 0)} but found {(contractBody[0], contractBody[1])}");
+                    }
+                    return false;
+                }
+
+                if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+                {
+                    if (LoggingEnabled)
+                    {
+                        _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
+                    }
+                    return false;
+                }
+                return true;
             }
-            header = null; return false;
         }
+        return false;
+    }
 
-        if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+    public bool ValidateInstructions(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
+    {
+        if (spec.IsEip3670Enabled && header is not null)
         {
-            if (LoggingEnabled)
+            if (header.Value.Version == 1)
             {
-                _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
+                bool valid = true;
+                for (int i = 0; i < header.Value.CodeSections.Count; i++)
+                {
+                    valid &= ValidateSectionInstructions(ref container, i, header, spec);
+                }
+                return valid;
             }
-            header = null; return false;
         }
         return true;
     }
 
-    public bool ValidateEofCode(ReadOnlySpan<byte> code, IReleaseSpec spec) => ExtractHeader(code, spec, out _);
-    public bool ValidateInstructions(ReadOnlySpan<byte> code, out EofHeader? header, IReleaseSpec spec)
-    {
-        // check if code is EOF compliant
-        if (!spec.IsEip3540Enabled)
-        {
-            header = null; return false;
-        }
-
-        if (ExtractHeader(code, spec, out header))
-        {
-            bool valid = true;
-            for (int i = 0; i < header.Value.CodeSections.Count; i++)
-            {
-                valid &= ValidateSectionInstructions(ref code, i, header, spec);
-            }
-            return valid;
-        }
-        header = null; return false;
-    }
-
     public bool ValidateSectionInstructions(ref ReadOnlySpan<byte> container, int sectionId, EofHeader? header, IReleaseSpec spec)
     {
-        // check if code is EOF compliant
-        if (!spec.IsEip3540Enabled)
-        {
-            return false;
-        }
-
         if (!spec.IsEip3670Enabled)
         {
             return true;
@@ -531,4 +540,8 @@ public class EvmObjectFormat
         }
         return true;
     }
+    public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code, out EofHeader? header)
+        => ExtractHeader(code, spec, out header)
+        && ValidateBody(code, spec, header)
+        && ValidateInstructions(code, spec, header);
 }
