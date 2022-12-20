@@ -200,32 +200,35 @@ public class EvmObjectFormat
     {
         if (spec.IsEip3670Enabled && header is not null)
         {
-            var (startOffset, sectionSize) = (header.Value.CodeSection.Start, header.Value.CodeSection.Size);
-            ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
-            Instruction? opcode = null;
-            for (int i = 0; i < sectionSize;)
+            if (header.Value.Version == 1)
             {
-                opcode = (Instruction)code[i];
-                i++;
-                // validate opcode
-                if (!opcode.Value.IsValid(spec))
+                var (startOffset, sectionSize) = (header.Value.CodeSection.Start, header.Value.CodeSection.Size);
+                ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
+                Instruction? opcode = null;
+                for (int i = 0; i < sectionSize;)
                 {
-                    if (LoggingEnabled)
+                    opcode = (Instruction)code[i];
+                    i++;
+                    // validate opcode
+                    if (!opcode.Value.IsValid(spec))
                     {
-                        _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
+                        if (LoggingEnabled)
+                        {
+                            _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
+                        }
+                        return false;
                     }
-                    return false;
-                }
 
-                if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
-                {
-                    int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
-                    i += len;
-                }
+                    if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                    {
+                        int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
+                        i += len;
+                    }
 
-                if (i > sectionSize)
-                {
-                    return false;
+                    if (i > sectionSize)
+                    {
+                        return false;
+                    }
                 }
             }
         }
