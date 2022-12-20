@@ -49,10 +49,9 @@ public class EvmObjectFormat
 
     private bool HandleEof1(IReleaseSpec spec, ReadOnlySpan<byte> code, ref EofHeader? header, int codeLen, ref int i)
     {
-        bool continueParsing = true;
         ushort? codeSectionSize = null;
         ushort? dataSectionSize = null;
-        while (i < codeLen && continueParsing)
+        while (i < codeLen)
         {
             var sectionKind = (SectionDividor)code[i];
             i++;
@@ -86,8 +85,7 @@ public class EvmObjectFormat
                                 Start = dataSectionStart.Value
                             }
                         };
-                        continueParsing = false;
-                        break;
+                        return true;
                     }
                 case SectionDividor.CodeSection:
                     {
@@ -161,30 +159,28 @@ public class EvmObjectFormat
                     }
             }
         }
-        var contractBody = code[i..];
-
-        var calculatedCodeLen = header.Value.CodeSection.Size + (header.Value.DataSection?.Size ?? 0);
-
-        if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
-        {
-            if (LoggingEnabled)
-                _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
-            header = null; return false;
-        }
-        return true;
-    }
-
-    public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code) => ExtractHeader(code, spec, out _);
-    public bool ValidateInstructions(ReadOnlySpan<byte> container, out EofHeader? header, IReleaseSpec spec)
-    {
-        if (!spec.IsEip3540Enabled)
-        {
-            header = null;
-            return false;
-        }
-
-        if (ExtractHeader(container, spec, out header))
-            return true;
         return false;
     }
+
+    public bool ValidateInstructions(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
+    {
+        if(spec.IsEip3540Enabled && header is not null)
+        {
+            int startOffset = header.Value.HeaderSize;
+            var contractBody = container[startOffset..];
+
+            var calculatedCodeLen = header.Value.CodeSection.Size + (header.Value.DataSection?.Size ?? 0);
+
+            if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
+            {
+                if (LoggingEnabled)
+                    _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+    public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code, out EofHeader? header) =>
+        ExtractHeader(code, spec, out header) && ValidateInstructions(code, spec, header);
 }
