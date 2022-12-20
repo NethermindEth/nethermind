@@ -201,7 +201,7 @@ public class EvmObjectFormat
     {
         if (spec.IsEip3670Enabled && header is not null)
         {
-            if (header.Value.Version == 0)
+            if (header.Value.Version == 1)
             {
                 var (startOffset, sectionSize) = (header.Value.CodeSection.Start, header.Value.CodeSection.Size);
                 ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
