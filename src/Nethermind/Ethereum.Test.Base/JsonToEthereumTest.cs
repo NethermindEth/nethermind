@@ -153,12 +153,14 @@ namespace Ethereum.Test.Base
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new();
-            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUInt256();
-            state.Code = Bytes.FromHexString(accountStateJson.Code);
-            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
-            state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Bytes.FromHexString(p.Key).ToUInt256(),
-                p => Bytes.FromHexString(p.Value));
+            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
+            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
+            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
+            state.Storage = accountStateJson.Storage is not null
+                ? accountStateJson.Storage.ToDictionary(
+                    p => Bytes.FromHexString(p.Key).ToUInt256(),
+                    p => Bytes.FromHexString(p.Value))
+                : new();
             return state;
         }
 
