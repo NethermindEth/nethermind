@@ -162,7 +162,7 @@ public class EvmObjectFormat
         return false;
     }
 
-    public bool ValidateInstructions(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
+    public bool ValidateBody(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
     {
         if(spec.IsEip3540Enabled && header is not null)
         {
@@ -182,5 +182,5 @@ public class EvmObjectFormat
         return false;
     }
     public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code, out EofHeader? header) =>
-        ExtractHeader(code, spec, out header) && ValidateInstructions(code, spec, header);
+        ExtractHeader(code, spec, out header) && ValidateBody(code, spec, header);
 }

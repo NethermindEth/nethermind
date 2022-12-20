@@ -26,8 +26,8 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             if (_spec.IsEip3540Enabled)
             {
-                if( EofFormatChecker.ExtractHeader(code, _spec, out header)
-                    && EofFormatChecker.ValidateInstructions(code, _spec, in header))
+                if(ValidateHeader(code, _spec, out header)
+                    && ValidateEofStructure(code, _spec, header))
                 {
                     return true;
                 }
@@ -42,6 +42,6 @@ namespace Nethermind.Evm.CodeAnalysis
         public bool ValidateHeader(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, out EofHeader? header)
             => EofFormatChecker.ExtractHeader(machineCode, _spec, out header);
         public bool ValidateEofStructure(ReadOnlySpan<byte> machineCode, IReleaseSpec _spec, EofHeader? header)
-            => EofFormatChecker.ValidateInstructions(machineCode, _spec, header);
+            => EofFormatChecker.ValidateBody(machineCode, _spec, header);
     }
 }
