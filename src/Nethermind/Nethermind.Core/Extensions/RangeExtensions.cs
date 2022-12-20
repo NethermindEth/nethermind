@@ -30,8 +30,6 @@ namespace Nethermind.Core.Extensions
             var (offset, length) = @this.GetOffsetAndLength(len);
             return value >= offset && value < length + offset;
         }
-        public static bool Intersects(this Range @this, Range other)
-            => @this.Start.Value <= other.End.Value && other.Start.Value <= @this.End.Value;
 
     }
 }
