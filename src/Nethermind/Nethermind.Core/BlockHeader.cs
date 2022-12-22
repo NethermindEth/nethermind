@@ -65,7 +65,8 @@ namespace Nethermind.Core
         public Keccak? WithdrawalsRoot { get; set; }
 
         public bool HasBody => TxRoot != Keccak.EmptyTreeHash
-                               || UnclesHash != Keccak.OfAnEmptySequenceRlp;
+                               || UnclesHash != Keccak.OfAnEmptySequenceRlp
+                               || (WithdrawalsRoot != null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
         public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
 
