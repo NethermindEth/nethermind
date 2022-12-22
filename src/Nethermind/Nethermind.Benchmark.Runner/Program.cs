@@ -10,6 +10,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
+using BenchmarkDotNet.Filters;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -36,10 +37,14 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.PointEvaluationBenchmark),
-                new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
-            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.EcRecoverBenchmark),
-                new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
+            DashboardConfig config = new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60));
+            if (args.Length > 0)
+            {
+                IFilter[] filters = args.Select(a => new SimpleFilter(c => c.Parameters.Items.Any(p=>p.Value.ToString().Contains(a)))).OfType<IFilter>().ToArray();
+                config.AddFilter(new DisjunctionFilter(filters));
+            }
+            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.PointEvaluationBenchmark), config);
+            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.EcRecoverBenchmark), config);
             // List<Assembly> additionalJobAssemblies = new()
             // {
             //     typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
