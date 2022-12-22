@@ -47,15 +47,20 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
+            AllocationChangeEventArgs replacedArgs = null;
             lock (_allocationLock)
             {
                 if (selected is not null && selected.TryAllocate(Contexts))
                 {
                     Current = selected;
-                    AllocationChangeEventArgs args = new(current, selected);
+                    replacedArgs = new(current, selected);
                     current?.Free(Contexts);
-                    Replaced?.Invoke(this, args);
                 }
+            }
+
+            if (replacedArgs is not null)
+            {
+                Replaced?.Invoke(this, replacedArgs);
             }
         }
 
