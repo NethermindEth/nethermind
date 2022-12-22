@@ -8,7 +8,7 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
-    public interface IReleaseSpec : IEip1559Spec
+    public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
@@ -118,11 +118,6 @@ namespace Nethermind.Core.Specs
         /// in chainspec as DifficultyBombDelays
         /// </summary>
         bool IsEip649Enabled { get; }
-
-        /// <summary>
-        /// Byzantium Embedding transaction return data in receipts
-        /// </summary>
-        bool IsEip658Enabled { get; }
 
         /// <summary>
         /// Constantinople SHL, SHR, SAR instructions
@@ -272,12 +267,6 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
-
-        /// <summary>
-        /// Should validate ReceiptsRoot.
-        /// </summary>
-        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateReceipts => true;
 
         public ulong WithdrawalTimestamp { get; }
 

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
-    public class ReleaseSpec : IReleaseSpec, ICloneable
+    public class ReleaseSpec : IReleaseSpec
     {
         public string Name { get; set; } = "Custom";
         public long MaximumExtraDataSize { get; set; }
@@ -55,9 +55,10 @@ namespace Nethermind.Specs
         public bool IsEip2930Enabled { get; set; }
         public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
 
-        public object Clone()
+        // used only in testing
+        public ReleaseSpec Clone()
         {
-            return MemberwiseClone();
+            return (ReleaseSpec)MemberwiseClone();
         }
 
         public bool IsEip1559Enabled { get; set; }

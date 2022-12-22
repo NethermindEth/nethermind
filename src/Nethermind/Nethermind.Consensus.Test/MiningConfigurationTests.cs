@@ -1,3 +1,4 @@
+using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Init.Steps;
 using NUnit.Framework;
