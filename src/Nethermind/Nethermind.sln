@@ -232,13 +232,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merge.AuRa", "Ne
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TraceStore", "TraceStore", "{06AF5D92-0E47-4A98-AF49-492F814618E3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.TraceStore", "Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj", "{D4C5A63E-8E47-43D3-B726-B1D95591100C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore", "Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj", "{D4C5A63E-8E47-43D3-B726-B1D95591100C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.TraceStore.Tests", "Nethermind.JsonRpc.TraceStore.Tests\Nethermind.JsonRpc.TraceStore.Tests.csproj", "{B4A10FCA-4982-4D89-8D8C-6154882938E4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore.Tests", "Nethermind.JsonRpc.TraceStore.Tests\Nethermind.JsonRpc.TraceStore.Tests.csproj", "{B4A10FCA-4982-4D89-8D8C-6154882938E4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-59C0-4E78-92F7-EB8077AA597D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

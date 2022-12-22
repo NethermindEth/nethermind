@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Snappy;
@@ -110,7 +111,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
 
-            if (_session?.Node?.IsStatic != true)
+            if (exception is IInternalNethermindException)
+            {
+                // Do nothing as we don't want to drop peer for internal issue.
+            }
+            else if (_session?.Node?.IsStatic != true)
             {
                 context.DisconnectAsync().ContinueWith(x =>
                 {

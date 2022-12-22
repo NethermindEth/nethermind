@@ -10,6 +10,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
+using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
 namespace Nethermind.Merkleization
 {

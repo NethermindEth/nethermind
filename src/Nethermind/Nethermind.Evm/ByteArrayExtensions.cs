@@ -48,7 +48,7 @@ namespace Nethermind.Evm
             return new ZeroPaddedMemory(memory.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }
 
-        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
             if (startIndex >= span.Length || startIndex > int.MaxValue)
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Evm
             return SliceWithZeroPadding(span, (int)startIndex, length, padDirection);
         }
 
-        public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
             if (startIndex >= bytes.Length || startIndex > int.MaxValue)
             {
