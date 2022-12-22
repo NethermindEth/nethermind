@@ -64,8 +64,8 @@ public class BlockHeader
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
 
-    public bool HasBody => TxRoot != Keccak.EmptyTreeHash
-        || UnclesHash != Keccak.OfAnEmptySequenceRlp
+    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+        || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
         || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
     public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;

@@ -123,29 +123,30 @@ public class BlockHeaderTests
     }
 
     [Test]
-    public void Should_handle_empty_body_as_expected()
+    public void Should_have_empty_body_as_expected()
     {
-        var header = new BlockHeader
-        {
-            TxRoot = Keccak.EmptyTreeHash,
-            UnclesHash = Keccak.OfAnEmptySequenceRlp,
-            WithdrawalsRoot = null
-        };
-
+        var header = new BlockHeader();
         header.HasBody.Should().BeFalse();
 
+        header.TxRoot = Keccak.EmptyTreeHash;
+        header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
         header.WithdrawalsRoot = Keccak.EmptyTreeHash;
         header.HasBody.Should().BeFalse();
 
-        header.WithdrawalsRoot = Keccak.Zero;
-        header.HasBody.Should().BeTrue();
-
         header.TxRoot = Keccak.Zero;
-        header.WithdrawalsRoot = null;
         header.HasBody.Should().BeTrue();
 
         header.TxRoot = null;
         header.UnclesHash = Keccak.Zero;
+        header.HasBody.Should().BeTrue();
+
+        header.UnclesHash = null;
+        header.WithdrawalsRoot = Keccak.Zero;
+        header.HasBody.Should().BeTrue();
+
+        header.TxRoot =
+            header.UnclesHash =
+            header.WithdrawalsRoot = Keccak.Zero;
         header.HasBody.Should().BeTrue();
     }
 
