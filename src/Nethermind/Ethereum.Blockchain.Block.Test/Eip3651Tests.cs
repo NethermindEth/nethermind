@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test;
@@ -20,7 +22,7 @@ public class Eip3651Tests : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3651");
+        var loader = new TestsSourceLoader(new LoadLocalTestsStrategy(), "eip3651");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }

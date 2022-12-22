@@ -20,7 +20,7 @@ public class Eip3860Tests : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP3860");
+        var loader = new TestsSourceLoader(new LoadLocalTestsStrategy(), "eip3860");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }

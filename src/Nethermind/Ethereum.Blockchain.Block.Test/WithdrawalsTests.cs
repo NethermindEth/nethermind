@@ -20,7 +20,7 @@ public class WithdrawalsTests : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcWithdrawals");
+        var loader = new TestsSourceLoader(new LoadLocalTestsStrategy(), "withdrawals");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
