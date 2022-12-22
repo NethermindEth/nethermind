@@ -319,7 +319,6 @@ namespace Nethermind.TxPool
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
-            if (_logger.IsInfo) _logger.Info($"SetLongTerm Tx in _hashCache. TxHash: {tx.Hash}, Tx: {tx}");
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             Metrics.TransactionCount = _transactions.Count;
