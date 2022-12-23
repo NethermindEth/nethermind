@@ -12,9 +12,12 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain
 {
@@ -87,7 +90,8 @@ namespace Nethermind.Blockchain
                     {
                         SenderAddress = genesis.ConstructorSender ?? address,
                         Data = allocation.Constructor,
-                        GasLimit = genesis.GasLimit
+                        GasLimit = genesis.GasLimit,
+                        Recipient = address
                     };
 
                     CallOutputTracer outputTracer = new();

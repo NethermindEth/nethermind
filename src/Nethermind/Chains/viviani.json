@@ -57,7 +57,8 @@
       }
     },
     "difficulty": "0x20000",
-    "gasLimit": "0x989680"
+    "gasLimit": "0x989680",
+    "constructorSender": "0x0000000000000000000000000000000000000000"
   },
   "nodes": [
     "enode://1cc96f323b4627ca2928fc517392384b1a6d714a3d59aa6ff43b487a98bf6ff69379b82a9d8c66bb52f93046eb6c7c90a6572669df6d63cec6e8bba5c6ddef39@3.9.113.2:30303",

@@ -113,7 +113,10 @@ namespace Nethermind.Core
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction { }
+    public class SystemTransaction : Transaction
+    {
+        public Address? Recipient { get; set; }
+    }
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size
