@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            AllocationChangeEventArgs replacedArgs = null;
+            AllocationChangeEventArgs? replacedArgs = null;
             lock (_allocationLock)
             {
                 if (selected is not null && selected.TryAllocate(Contexts))
