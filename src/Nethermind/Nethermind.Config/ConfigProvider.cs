@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -86,9 +73,11 @@ namespace Nethermind.Config
             {
                 Type directImplementation = @interface.GetDirectInterfaceImplementation();
 
-                if (directImplementation != null)
+                if (directImplementation is not null)
                 {
-                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
+                    Categories.Add(@interface.Name.Substring(1),
+                        Activator.CreateInstance(directImplementation));
+
                     _implementations[@interface] = directImplementation;
 
                     object config = Activator.CreateInstance(_implementations[@interface]);
@@ -127,7 +116,11 @@ namespace Nethermind.Config
                 Initialize();
             }
 
-            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name, p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values
+                .SelectMany(i => i.GetType()
+                    .GetProperties()
+                    .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 

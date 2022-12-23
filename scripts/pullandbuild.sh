@@ -1,4 +1,7 @@
-#! /bin/bash
+#!/bin/bash
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 cd ~/src/nethermind
 git stash
 git pull

@@ -27,7 +27,7 @@ jobs:
       - name: Logging to Docker Hub
         if: success()
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Building & Pushing image to docker registry
         run: |
           docker buildx build --platform=linux/amd64 -t nethermindeth/nethtest -f Dockerfile.stateRunner . --push

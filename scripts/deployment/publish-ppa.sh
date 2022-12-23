@@ -1,4 +1,7 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 #exit when any command fails
 RELEASES="bionic focal impish jammy"
 
@@ -6,14 +9,14 @@ set -e
 echo $VERSION > ver
 FIXED_VERSION=$(awk -F. '{ print $1"."$2$3$4"0"}' ver)
 
-cd $RELEASE_DIRECTORY/nethermind/
+cd $GITHUB_WORKSPACE/nethermind
 for release in ${RELEASES}; do
 
   echo "nethermind ($FIXED_VERSION) $release; urgency=high
 
   * Nethermind client ($FIXED_VERSION release)
 
- -- Nethermind <devops@nethermind.io>  $( date -R )" > $RELEASE_DIRECTORY/nethermind/build/debian/changelog
+ -- Nethermind <devops@nethermind.io>  $( date -R )" > $GITHUB_WORKSPACE/nethermind/build/debian/changelog
   cd build/
   debuild -S -uc -us
   cd ..

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
 using Force.Crc32;
@@ -28,7 +15,7 @@ namespace Nethermind.Network
         public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
             uint crc = 0;
-            long[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
             byte[] blockNumberBytes = new byte[8];
             crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
@@ -38,7 +25,7 @@ namespace Nethermind.Network
                     break;
                 }
 
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i]);
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i].BlockNumber);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
             }
 
@@ -58,7 +45,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                long transition = specProvider.TransitionBlocks[i];
+                long transition = specProvider.TransitionBlocks[i].BlockNumber;
                 if (transition > headNumber)
                 {
                     next = transition;

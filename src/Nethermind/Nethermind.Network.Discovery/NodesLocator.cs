@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
 using Nethermind.Core;
@@ -54,14 +41,14 @@ public class NodesLocator : INodesLocator
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
     {
-        if (_masterNode == null)
+        if (_masterNode is null)
         {
             throw new InvalidOperationException("Master node has not been initialized");
         }
 
         ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
 
-        if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
+        if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId is not null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
 
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
@@ -74,7 +61,7 @@ public class NodesLocator : INodesLocator
             while (true)
             {
                 //if searched node is not specified master node is used
-                IEnumerable<Node> closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
+                IEnumerable<Node> closestNodes = searchedNodeId is not null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
 
                 candidatesCount = 0;
                 foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
@@ -162,7 +149,7 @@ public class NodesLocator : INodesLocator
         IEnumerable<Node?> nodesToSend,
         ISet<Keccak> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n != null))
+        foreach (Node? node in nodesToSend.Where(n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);

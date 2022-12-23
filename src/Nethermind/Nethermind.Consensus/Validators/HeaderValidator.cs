@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -77,7 +64,7 @@ namespace Nethermind.Consensus.Validators
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
-            if (parent == null)
+            if (parent is null)
             {
                 if (header.Number == 0)
                 {
@@ -96,7 +83,7 @@ namespace Nethermind.Consensus.Validators
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
@@ -179,7 +166,7 @@ namespace Nethermind.Consensus.Validators
         {
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
-                                       || _daoBlockNumber == null
+                                       || _daoBlockNumber is null
                                        || header.Number < _daoBlockNumber
                                        || header.Number >= _daoBlockNumber + 10
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));

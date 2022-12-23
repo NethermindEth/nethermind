@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
@@ -110,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
             int maxRequestCostsLength = 0;
             int innerCostListLength = 0;
-            if (message.MaximumRequestCosts != null)
+            if (message.MaximumRequestCosts is not null)
             {
                 // todo - what's the best way to do this? Calculating the length twice is definitely less than ideal.
                 // Maybe build RLP for them here, and append bytes below?
@@ -217,7 +204,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
                 rlpStream.Encode(message.MaximumRechargeRate.Value);
             }
 
-            if (message.MaximumRequestCosts != null)
+            if (message.MaximumRequestCosts is not null)
             {
                 rlpStream.StartSequence(maxRequestCostsLength);
                 rlpStream.Encode(StatusMessage.KeyNames.MaximumRequestCosts);
