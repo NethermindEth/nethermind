@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
         protected readonly ITxPool _txPool;
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
-        protected readonly IMiningConfig _miningConfig;
+        protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }

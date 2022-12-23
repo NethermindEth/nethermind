@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         protected readonly ISpecProvider _specProvider;
         protected readonly ISealEngine _sealEngine;
         protected readonly ITimestamper _timestamper;
-        protected readonly IMiningConfig _miningConfig;
+        protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
         protected readonly IGasLimitCalculator? _gasLimitCalculator;
 

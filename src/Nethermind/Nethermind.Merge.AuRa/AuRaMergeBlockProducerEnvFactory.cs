@@ -44,7 +44,7 @@ namespace Nethermind.Merge.AuRa
             IBlockPreprocessorStep blockPreprocessorStep,
             ITxPool txPool,
             ITransactionComparerProvider transactionComparerProvider,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager) : base(
                 dbProvider,
                 blockTree,
@@ -56,7 +56,7 @@ namespace Nethermind.Merge.AuRa
                 blockPreprocessorStep,
                 txPool,
                 transactionComparerProvider,
-                miningConfig,
+                blocksConfig,
                 logManager)
         {
             _auraApi = auraApi;
@@ -71,7 +71,7 @@ namespace Nethermind.Merge.AuRa
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IMiningConfig miningConfig)
+            IBlocksConfig blocksConfig)
         {
             return new AuRaMergeBlockProcessor(
                 specProvider,
@@ -88,7 +88,7 @@ namespace Nethermind.Merge.AuRa
         protected override TxPoolTxSource CreateTxPoolTxSource(
             ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {

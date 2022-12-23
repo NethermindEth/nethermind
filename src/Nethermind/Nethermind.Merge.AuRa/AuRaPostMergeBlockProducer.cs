@@ -24,7 +24,7 @@ namespace Nethermind.Merge.AuRa
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IMiningConfig miningConfig)
+            IBlocksConfig blocksConfig)
             : base(
                 txSource,
                 processor,
@@ -36,7 +36,7 @@ namespace Nethermind.Merge.AuRa
                 timestamper,
                 specProvider,
                 logManager,
-                miningConfig)
+                blocksConfig)
         {
         }
 

@@ -64,7 +64,7 @@ namespace Nethermind.Merge.AuRa
                 _api.BlockPreprocessor!,
                 _api.TxPool!,
                 _api.TransactionComparerProvider!,
-                _api.Config<IMiningConfig>(),
+                _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
             return base.InitBlockProducer(consensusPlugin);
@@ -75,7 +75,7 @@ namespace Nethermind.Merge.AuRa
                 _api.SpecProvider!,
                 _api.SealEngine,
                 _manualTimestamper!,
-                _miningConfig,
+                _blocksConfig,
                 _api.LogManager);
 
         private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);

@@ -14,14 +14,14 @@ namespace Nethermind.Merge.AuRa
             ISpecProvider specProvider,
             ISealEngine sealEngine,
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager,
             IGasLimitCalculator? gasLimitCalculator = null)
             : base(
                 specProvider,
                 sealEngine,
                 timestamper,
-                miningConfig,
+                blocksConfig,
                 logManager,
                 gasLimitCalculator)
         {
@@ -33,7 +33,7 @@ namespace Nethermind.Merge.AuRa
             ITxSource? txSource = null)
         {
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
-                new(_specProvider, _miningConfig);
+                new(_specProvider, _blocksConfig);
 
             return new AuRaPostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
@@ -46,7 +46,7 @@ namespace Nethermind.Merge.AuRa
                 _timestamper,
                 _specProvider,
                 _logManager,
-                _miningConfig);
+                _blocksConfig);
         }
     }
 }
