@@ -112,8 +112,6 @@ namespace Nethermind.Merge.Plugin
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
-
-                FixTransitionBlock();
             }
 
             return Task.CompletedTask;
