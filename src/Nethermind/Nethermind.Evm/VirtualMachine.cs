@@ -23,6 +23,7 @@ using System.ComponentModel.DataAnnotations;
 using Nethermind.Evm.EOF;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 
 namespace Nethermind.Evm
 {
@@ -58,7 +59,7 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+        internal static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
         private IStateProvider _state;

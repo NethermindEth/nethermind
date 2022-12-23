@@ -73,6 +73,8 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
+            VirtualMachine._codeCache.Clear();
+
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
