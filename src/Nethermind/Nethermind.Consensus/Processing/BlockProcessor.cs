@@ -284,23 +284,26 @@ namespace Nethermind.Consensus.Processing
             for (int i = 0; i < rewards.Length; i++)
             {
                 BlockReward reward = rewards[i];
-
-                ITxTracer txTracer = NullTxTracer.Instance;
-                if (tracer.IsTracingRewards)
+                if (reward.Value != UInt256.Zero)
                 {
-                    // we need this tracer to be able to track any potential miner account creation
-                    txTracer = tracer.StartNewTxTrace(null);
-                }
 
-                ApplyMinerReward(block, reward, spec);
-
-                if (tracer.IsTracingRewards)
-                {
-                    tracer.EndTxTrace();
-                    tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
-                    if (txTracer.IsTracingState)
+                    ITxTracer txTracer = NullTxTracer.Instance;
+                    if (tracer.IsTracingRewards)
                     {
-                        _stateProvider.Commit(spec, txTracer);
+                        // we need this tracer to be able to track any potential miner account creation
+                        txTracer = tracer.StartNewTxTrace(null);
+                    }
+
+                    ApplyMinerReward(block, reward, spec);
+
+                    if (tracer.IsTracingRewards)
+                    {
+                        tracer.EndTxTrace();
+                        tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
+                        if (txTracer.IsTracingState)
+                        {
+                            _stateProvider.Commit(spec, txTracer);
+                        }
                     }
                 }
             }
