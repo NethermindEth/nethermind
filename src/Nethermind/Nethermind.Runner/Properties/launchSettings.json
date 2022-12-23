@@ -276,7 +276,7 @@
     },
     "Withdrawals (Devnet)": {
       "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c withdrawals_devnet -dd D:\\",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

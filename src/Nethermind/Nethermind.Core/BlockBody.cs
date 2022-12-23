@@ -30,7 +30,7 @@ namespace Nethermind.Core
 
         public Withdrawal[]? Withdrawals { get; internal set; }
 
-        public static BlockBody Empty { get; } = new();
+        public static BlockBody Empty(BlockHeader header) => header.WithdrawalsRoot == null ? new BlockBody() : new BlockBody(null, null, Array.Empty<Withdrawal>());
 
         public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
     }

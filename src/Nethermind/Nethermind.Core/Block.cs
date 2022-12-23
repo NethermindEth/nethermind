@@ -30,7 +30,7 @@ namespace Nethermind.Core
             Body = new BlockBody(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
         }
 
-        public Block(BlockHeader blockHeader) : this(blockHeader, BlockBody.Empty) { }
+        public Block(BlockHeader blockHeader) : this(blockHeader, BlockBody.Empty(blockHeader)) { }
 
         public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
