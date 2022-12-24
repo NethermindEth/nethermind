@@ -45,7 +45,7 @@ public class EvmObjectFormat
             : false; // will handle version == 0;
     }
 
-    public bool TryExtractEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)]out EofHeader? header)
+    public bool TryExtractEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
     {
         header = null;
         if (container.Length < 7 || !_eofVersionHandlers.ContainsKey(container[2]))
@@ -77,7 +77,7 @@ public class EvmObjectFormat
         private readonly ILogger? _logger;
         private bool _loggerEnabled => _logger?.IsTrace ?? false;
 
-        public Eof1 (ILogManager? logManager = null)
+        public Eof1(ILogManager? logManager = null)
         {
             _logger = logManager?.GetClassLogger<Eof1>();
         }
@@ -87,7 +87,7 @@ public class EvmObjectFormat
             return TryParseEofHeader(container, out EofHeader? header) && ValidateBody(container, in header);
         }
 
-        public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)]out EofHeader? header)
+        public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
         {
             header = null;
             if (!container.StartsWith(EOF_MAGIC))
@@ -111,7 +111,7 @@ public class EvmObjectFormat
                 return false;
             }
 
-            ushort numberOfCodeSections =  container[7..9].ReadEthUInt16();
+            ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
             int headerSize = CalculateHeaderSize(numberOfCodeSections);
             int pos = 3;
 
