@@ -104,12 +104,15 @@ namespace Nethermind.Evm.Test
                 ? null
                 : new EofHeader
                 {
-                    CodeSection = new SectionHeader
+                    CodeSections = new SectionHeader[]
                     {
-                        Size = (ushort)codeSize,
-                        Start = dataSize == 0 ? 7 : 10
+                        new SectionHeader
+                        {
+                            Size = (ushort)codeSize,
+                            Start = dataSize == 0 ? 7 : 10
+                        }
                     },
-                    DataSection = dataSize == 0 ? null : new SectionHeader
+                    DataSection = new SectionHeader
                     {
                         Size = (ushort)dataSize,
                         Start = 10 + codeSize
@@ -117,7 +120,8 @@ namespace Nethermind.Evm.Test
                     Version = 1
                 };
             var expectedJson = JsonSerializer.Serialize(expectedHeader);
-            var checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out var header);
+            var checkResult = new ByteCodeValidator()
+                .ValidateBytecode(bytecode, TargetReleaseSpec, out EofHeader? header);
             var actualJson = JsonSerializer.Serialize(header);
 
             if (isShanghaiFork)

@@ -301,7 +301,7 @@ namespace Nethermind.Evm
             return _bytes[Head * 32 + 31];
         }
 
-        public void PushLeftPaddedBytes(Span<byte> value, int paddingLength)
+        public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 

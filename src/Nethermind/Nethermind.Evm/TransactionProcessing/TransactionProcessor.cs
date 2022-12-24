@@ -27,7 +27,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ByteCodeValidator _byteCodeValidator = ByteCodeValidator.Instance;
+        private readonly ByteCodeValidator _byteCodeValidator;
 
         [Flags]
         private enum ExecutionOptions
@@ -79,6 +79,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _storageProvider = worldState.StorageProvider;
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            _byteCodeValidator = new ByteCodeValidator(logManager);
         }
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -331,7 +332,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 env.InputData = data ?? Array.Empty<byte>();
                 env.CodeInfo = machineCode is null
                     ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
-                    : new CodeInfo(machineCode, spec);
+                    : new CodeInfo(machineCode);
 
                 ExecutionType executionType =
                     transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
@@ -512,7 +513,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (_stateProvider.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = _virtualMachine.GetCachedCodeInfo(_worldState, contractAddress, spec);
+                ICodeInfo codeInfo = _virtualMachine.GetCachedCodeInfo(_worldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = _stateProvider.GetNonce(contractAddress) != 0;
 

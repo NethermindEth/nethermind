@@ -1,200 +1,204 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
 
+public interface IEofVersionHandler
+{
+    bool ValidateCode(ReadOnlySpan<byte> code);
+    bool TryParseEofHeader(ReadOnlySpan<byte> code, out EofHeader? header);
+}
+
 public class EvmObjectFormat
 {
-    private readonly ILogger _logger;
-    private bool LoggingEnabled => _logger is not null;
-    public EvmObjectFormat(ILogManager logManager = null)
-        => _logger = logManager?.GetClassLogger<EvmObjectFormat>();
-
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    private static byte[] EofMagic = { 0xEF, 0x00 };
+    private static byte[] EOF_MAGIC = { 0xEF, 0x00 };
 
-    public bool HasEofFormat(ReadOnlySpan<byte> code,
-        [NotNullWhen(true)] out byte? version)
+    private readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
+
+    private readonly ILogger _logger;
+    private bool LoggingEnabled => _logger?.IsTrace ?? false;
+    public EvmObjectFormat(ILogManager logManager = null)
     {
-        version = null;
-        if (code.Length > EofMagic.Length && code.StartsWith(EofMagic))
+        _logger = logManager?.GetClassLogger<EvmObjectFormat>();
+        _eofVersionHandlers.Add(0x01, new Eof1(logManager));
+    }
+
+    /// <summary>
+    /// returns whether the code passed is supposed to be treated as Eof regardless of its validity.
+    /// </summary>
+    /// <param name="container">Machine code to be checked</param>
+    /// <returns></returns>
+    public bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(EOF_MAGIC);
+
+    public bool IsValidEof(ReadOnlySpan<byte> container)
+    {
+        if (container.Length < 7)
+            return false;
+        return _eofVersionHandlers.ContainsKey(container[2])
+            ? _eofVersionHandlers[container[2]].ValidateCode(container) // will handle rest of validations
+            : false; // will handle version == 0;
+    }
+
+    public bool TryExtractEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)]out EofHeader? header)
+    {
+        header = null;
+        if (container.Length < 7 || !_eofVersionHandlers.ContainsKey(container[2]))
+            return false; // log
+        if (!_eofVersionHandlers[container[2]].TryParseEofHeader(container, out header))
+            return false; // log
+        return true;
+    }
+
+    public class Eof1 : IEofVersionHandler
+    {
+        private const byte VERSION = 0x01;
+        private const byte KIND_TYPE = 0x01;
+        private const byte KIND_CODE = 0x02;
+        private const byte KIND_DATA = 0x03;
+        private const byte TERMINATOR = 0x00;
+        private const byte VERSION_SIZE = 1;
+        private const byte SECTION_SIZE = 3;
+        private const byte TERMINATOR_SIZE = 3;
+        public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
+        public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
+            + SECTION_SIZE // type
+            + GetArraySectionSize(numberOfSections) // code
+            + SECTION_SIZE // data
+            + TERMINATOR_SIZE;
+        public static int GetArraySectionSize(int numberOfSections) => 3 + numberOfSections * 2;
+
+
+        private readonly ILogger? _logger;
+        private bool _loggerEnabled => _logger?.IsTrace ?? false;
+
+        public Eof1 (ILogManager? logManager = null)
         {
-            version = code[EofMagic.Length];
+            _logger = logManager?.GetClassLogger<Eof1>();
+        }
+
+        public bool ValidateCode(ReadOnlySpan<byte> container)
+        {
+            return TryParseEofHeader(container, out EofHeader? header) && ValidateBody(container, in header);
+        }
+
+        public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)]out EofHeader? header)
+        {
+            header = null;
+            if (!container.StartsWith(EOF_MAGIC))
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
+                return false;
+            }
+            if (container[2] != VERSION)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
+                return false;
+            }
+            if (container.Length < MINIMUM_HEADER_SIZE
+                + 1 + 1 + 2 // minimum type section body size
+                + 1) // minimum code section body size
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
+                return false;
+            }
+
+            ushort numberOfCodeSections =  container[7..9].ReadEthUInt16();
+            int headerSize = CalculateHeaderSize(numberOfCodeSections);
+            int pos = 3;
+
+            if (container[pos] != KIND_TYPE)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                return false;
+            }
+            pos++;
+            SectionHeader typeSection = new()
+            {
+                Start = headerSize,
+                Size = container[pos..(pos + 2)].ReadEthUInt16()
+            };
+            pos += 2;
+
+            if (container[pos] != KIND_CODE)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                return false;
+            }
+            pos += 3; // kind_code(1) + num_code_sections(2)
+            List<SectionHeader> codeSections = new();
+            int lastEndOffset = typeSection.EndOffset;
+            for (ushort i = 0; i < numberOfCodeSections; i++)
+            {
+                SectionHeader codeSection = new()
+                {
+                    Start = lastEndOffset,
+                    Size = container[pos..(pos + 2)].ReadEthUInt16()
+                };
+                codeSections.Add(codeSection);
+                lastEndOffset = codeSection.EndOffset;
+                pos += 2;
+            }
+
+
+            if (container[pos] != KIND_DATA)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                return false;
+            }
+            pos++;
+            SectionHeader dataSection = new()
+            {
+                Start = lastEndOffset,
+                Size = container[(pos)..(pos + 2)].ReadEthUInt16()
+            };
+            pos += 2;
+
+
+            if (container[pos] != TERMINATOR)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                return false;
+            }
+
+            header = new EofHeader
+            {
+                Version = VERSION,
+                TypeSection = typeSection,
+                CodeSections = codeSections.ToArray(),
+                DataSection = dataSection
+            };
             return true;
         }
-        return false;
-    }
-    public bool ExtractHeader(ReadOnlySpan<byte> code, IReleaseSpec spec,
-        [NotNullWhen(true)] out EofHeader? header)
-    {
-        if (!HasEofFormat(code, out byte? version))
+
+        bool ValidateBody(ReadOnlySpan<byte> container, in EofHeader? header)
         {
-            if (LoggingEnabled)
-                _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EofMagic.ToHexString(true)} ");
-            header = null; return false;
-        }
+            int startOffset = CalculateHeaderSize(header.Value.CodeSections.Length);
+            int calculatedCodeLength = header.Value.TypeSection.Size
+                + header.Value.CodeSections.Sum(c => c.Size)
+                + header.Value.DataSection.Size;
 
-        int codeLen = code.Length;
+            ReadOnlySpan<byte> contractBody = container[startOffset..];
 
-        int i = EofMagic.Length + 1;
-
-        header = new EofHeader
-        {
-            Version = version.Value
-        };
-
-        switch (version.Value)
-        {
-            case 1:
-                return HandleEof1(spec, code, ref header, codeLen, ref i);
-            default:
-                if (LoggingEnabled)
-                    _logger.Trace($"EIP-3540 : Code has wrong EOFn version expected {1} but found {version}");
-                header = null; return false;
-        }
-    }
-
-    private bool HandleEof1(IReleaseSpec spec, ReadOnlySpan<byte> code, ref EofHeader? header, int codeLen, ref int i)
-    {
-        ushort? codeSectionSize = null;
-        ushort? dataSectionSize = null;
-        while (i < codeLen)
-        {
-            var sectionKind = (SectionDividor)code[i];
-            i++;
-
-            switch (sectionKind)
+            if (contractBody.Length != calculatedCodeLength)
             {
-                case SectionDividor.Terminator:
-                    {
-                        if (codeSectionSize is null)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : No Codesection found");
-                            header = null; return false;
-                        }
-                        int? codeSectionStart = dataSectionSize is null
-                            ? 7
-                            : 10;
-                        int? dataSectionStart = codeSectionStart + codeSectionSize;
-                        header = header.Value with
-                        {
-                            CodeSection = new SectionHeader
-                            {
-                                Size = codeSectionSize.Value,
-                                Start = codeSectionStart.Value
-                            },
-                            DataSection = dataSectionSize is null
-                            ? null
-                            : new SectionHeader
-                            {
-                                Size = dataSectionSize.Value,
-                                Start = dataSectionStart.Value
-                            }
-                        };
-                        return true;
-                    }
-                case SectionDividor.CodeSection:
-                    {
-                        if (codeSectionSize is not null)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : only 1 code section is allowed");
-                            header = null; return false;
-                        }
-
-                        if (i + 2 > codeLen)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : container code incomplete, failed parsing code section");
-                            header = null; return false;
-                        }
-
-                        codeSectionSize = code.Slice(i, 2).ReadEthUInt16();
-                        if (codeSectionSize == 0) // code section must be non-empty (i.e : size > 0)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : CodeSection size must be strictly bigger than 0 but found 0");
-                            header = null; return false;
-                        }
-
-                        i += 2;
-                        break;
-                    }
-                case SectionDividor.DataSection:
-                    {
-                        // data-section must come after code-section and there can be only one data-section
-                        if (codeSectionSize is null)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : DataSection size must follow a CodeSection, CodeSection length was {0}");
-                            header = null; return false;
-                        }
-
-                        if (dataSectionSize is not null)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : container must have at max 1 DataSection but found more");
-                            header = null; return false;
-                        }
-
-                        if (i + 2 > codeLen)
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : container code incomplete, failed parsing data section");
-                            header = null; return false;
-                        }
-
-                        dataSectionSize = code.Slice(i, 2).ReadEthUInt16();
-
-                        if (dataSectionSize == 0) // if declared data section must be non-empty
-                        {
-                            if (LoggingEnabled)
-                                _logger.Trace($"EIP-3540 : DataSection size must be strictly bigger than 0 but found 0");
-                            header = null; return false;
-                        }
-
-                        i += 2;
-                        break;
-                    }
-                default: // if section kind is anything beside a section-limiter or a terminator byte we return false
-                    {
-                        if (LoggingEnabled)
-                            _logger.Trace($"EIP-3540 : Encountered incorrect Section-Kind {sectionKind}, correct values are [{SectionDividor.CodeSection}, {SectionDividor.DataSection}, {SectionDividor.Terminator}]");
-
-                        header = null; return false;
-                    }
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
+                return false;
             }
+            return true;
         }
-        return false;
     }
-
-    public bool ValidateBody(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
-    {
-        if (spec.IsEip3540Enabled && header is not null)
-        {
-            if (header.Value.Version == 1)
-            {
-                int startOffset = header.Value.HeaderSize;
-                var contractBody = container[startOffset..];
-
-                var calculatedCodeLen = header.Value.CodeSection.Size + (header.Value.DataSection?.Size ?? 0);
-
-                if (contractBody.Length == 0 || calculatedCodeLen != contractBody.Length)
-                {
-                    if (LoggingEnabled)
-                        _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
-                    return false;
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-    public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code, out EofHeader? header) =>
-        ExtractHeader(code, spec, out header) && ValidateBody(code, spec, header);
 }
