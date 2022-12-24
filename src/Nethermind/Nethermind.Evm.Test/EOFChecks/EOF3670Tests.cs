@@ -522,7 +522,7 @@ namespace Nethermind.Evm.Test
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
 
-            bool checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out _);
+            bool checkResult = new ByteCodeValidator().ValidateBytecode(bytecode, TargetReleaseSpec, out _);
 
             checkResult.Should().Be(isCorrectlyFormated);
         }

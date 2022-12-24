@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 
@@ -10,7 +11,7 @@ namespace Nethermind.Evm.EOF;
 
 public interface IEofVersionHandler
 {
-    bool ValidateCode(ReadOnlySpan<byte> code);
+    bool ValidateCode(ReadOnlySpan<byte> container, IReleaseSpec spec);
     bool TryParseEofHeader(ReadOnlySpan<byte> code, out EofHeader? header);
 }
 
@@ -36,12 +37,12 @@ public class EvmObjectFormat
     /// <returns></returns>
     public bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(EOF_MAGIC);
 
-    public bool IsValidEof(ReadOnlySpan<byte> container)
+    public bool IsValidEof(ReadOnlySpan<byte> container, IReleaseSpec spec)
     {
         if (container.Length < 7)
             return false;
         return _eofVersionHandlers.ContainsKey(container[2])
-            ? _eofVersionHandlers[container[2]].ValidateCode(container) // will handle rest of validations
+            ? _eofVersionHandlers[container[2]].ValidateCode(container, spec) // will handle rest of validations
             : false; // will handle version == 0;
     }
 
@@ -75,16 +76,19 @@ public class EvmObjectFormat
 
 
         private readonly ILogger? _logger;
-        private bool _loggerEnabled => _logger?.IsTrace ?? false;
+        private bool _loggingEnabled => _logger?.IsTrace ?? false;
 
         public Eof1(ILogManager? logManager = null)
         {
             _logger = logManager?.GetClassLogger<Eof1>();
         }
 
-        public bool ValidateCode(ReadOnlySpan<byte> container)
+
+        public bool ValidateCode(ReadOnlySpan<byte> container, IReleaseSpec spec)
         {
-            return TryParseEofHeader(container, out EofHeader? header) && ValidateBody(container, in header);
+            return TryParseEofHeader(container, out EofHeader? header)
+                && ValidateBody(container, in header)
+                && (!spec.IsEip3670Enabled || ValidateInstructions(spec, container, in header));
         }
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
@@ -92,13 +96,13 @@ public class EvmObjectFormat
             header = null;
             if (!container.StartsWith(EOF_MAGIC))
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
                 return false;
             }
             if (container[2] != VERSION)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
             }
@@ -106,7 +110,7 @@ public class EvmObjectFormat
                 + 1 + 1 + 2 // minimum type section body size
                 + 1) // minimum code section body size
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
@@ -117,7 +121,7 @@ public class EvmObjectFormat
 
             if (container[pos] != KIND_TYPE)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
@@ -131,7 +135,7 @@ public class EvmObjectFormat
 
             if (container[pos] != KIND_CODE)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
@@ -153,7 +157,7 @@ public class EvmObjectFormat
 
             if (container[pos] != KIND_DATA)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
@@ -168,7 +172,7 @@ public class EvmObjectFormat
 
             if (container[pos] != TERMINATOR)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
@@ -194,54 +198,43 @@ public class EvmObjectFormat
 
             if (contractBody.Length != calculatedCodeLength)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 return false;
             }
             return true;
         }
-    }
-
-    public bool ValidateInstructions(ReadOnlySpan<byte> container, IReleaseSpec spec, in EofHeader? header)
-    {
-        if (spec.IsEip3670Enabled && header is not null)
+        bool ValidateInstructions(IReleaseSpec spec, ReadOnlySpan<byte> container, in EofHeader? header)
         {
-            if (header.Value.Version == 1)
+            var (startOffset, sectionSize) = (header.Value.CodeSections[0].Start, header.Value.CodeSections[0].Size);
+            ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
+            for (int i = 0; i < sectionSize;)
             {
-                var (startOffset, sectionSize) = (header.Value.CodeSection.Start, header.Value.CodeSection.Size);
-                ReadOnlySpan<byte> code = container.Slice(startOffset, sectionSize);
-                Instruction? opcode = null;
-                for (int i = 0; i < sectionSize;)
+                Instruction? opcode = (Instruction)code[i];
+                i++;
+                // validate opcode
+                if (!opcode.Value.IsValid(spec))
                 {
-                    opcode = (Instruction)code[i];
-                    i++;
-                    // validate opcode
-                    if (!opcode.Value.IsValid(spec))
+                    if (_loggingEnabled)
                     {
-                        if (LoggingEnabled)
-                        {
-                            _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
-                        }
-                        return false;
+                        _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                     }
+                    return false;
+                }
 
-                    if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
-                    {
-                        int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
-                        i += len;
-                    }
+                // Check truncated imediates
+                if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                {
+                    int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
+                    i += len;
+                }
 
-                    if (i > sectionSize)
-                    {
-                        return false;
-                    }
+                if (i > sectionSize)
+                {
+                    return false;
                 }
             }
+            return true;
         }
-        return true;
     }
-    public bool ValidateEofCode(IReleaseSpec spec, ReadOnlySpan<byte> code, out EofHeader? header)
-        => ExtractHeader(code, spec, out header)
-        && ValidateBody(code, spec, header)
-        && ValidateInstructions(code, spec, header);
 }
