@@ -9,46 +9,53 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+
+    public interface ICodeInfo
+    {
+        byte[] MachineCode { get; }
+        IPrecompile? Precompile { get; }
+        bool IsPrecompile => Precompile is not null;
+        bool IsEof => false;
+        byte Version => 0;
+        ReadOnlySpan<byte> TypeSection => Span<byte>.Empty;
+        ReadOnlySpan<byte> CodeSection => MachineCode;
+        ReadOnlySpan<byte> DataSection => Span<byte>.Empty;
+        bool ValidateJump(int destination, bool isSubroutine);
+    }
+
+    public class EofCodeInfo : CodeInfo
+    {
+        private EofHeader _header;
+        public bool IsEof => true;
+        public byte Version => _header.Version;
+
+        public ReadOnlySpan<byte> TypeSection => MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
+        public override ReadOnlySpan<byte> CodeSection => MachineCode.Slice(_header.CodeSections[0].Start, _header.CodeSections[0].Size);
+        public ReadOnlySpan<byte> DataSection => MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
+
+        public EofCodeInfo(byte[] code, in EofHeader header) : base(code)
+        {
+            _header = header;
+        }
+    }
+
+    public class CodeInfo : ICodeInfo
     {
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
-        private EofHeader? _header;
-        private bool isEof = false;
         private static Random _rand = new();
 
-        public byte[] MachineCode { get; set; }
 
-        public bool IsEof => isEof;
-        public EofHeader? Header => _header;
-
-        #region EofSection Extractors
-
-        public Span<byte> ExtractCodeSection()
-        {
-            return MachineCode.Slice(Header.Value.CodeSection.Start, Header.Value.CodeSection.Size);
-        }
-
-        public Span<byte> ExtractDataSection()
-        {
-            return Header.Value.DataSection.HasValue
-                ? (Span<byte>)MachineCode.Slice(Header.Value.DataSection.Value.Start, Header.Value.DataSection.Value.Size)
-                : Span<byte>.Empty;
-        }
-
-        #endregion
-
-        public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _analyzer;
 
-        public CodeInfo(byte[] code, IReleaseSpec spec)
+        public byte[] MachineCode { get; set; }
+        public IPrecompile? Precompile { get; set; }
+        public virtual ReadOnlySpan<byte> CodeSection => MachineCode;
+
+        public CodeInfo(byte[] code)
         {
             MachineCode = code;
-            if (spec.IsEip3540Enabled)
-            {
-                isEof = ByteCodeValidator.Instance.ValidateEofBytecode(MachineCode, spec, out _header);
-            }
         }
 
         public bool IsPrecompile => Precompile is not null;
@@ -63,7 +70,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             if (_analyzer is null)
             {
-                CreateAnalyzer();
+                CreateAnalyzer(CodeSection.ToArray());
             }
 
             return _analyzer.ValidateJump(destination, isSubroutine);
@@ -73,12 +80,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Do sampling to choose an algo when the code is big enough.
         /// When the code size is small we can use the default analyzer.
         /// </summary>
-        private void CreateAnalyzer()
+        protected void CreateAnalyzer(byte[] codeToBeAnalyzed)
         {
-            var (codeStart, codeSize) = isEof
-                ? (Header.Value.CodeSection.Start, Header.Value.CodeSection.Size)
-                : (0, MachineCode.Length);
-            var codeToBeAnalyzed = MachineCode.Slice(codeStart, codeSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;

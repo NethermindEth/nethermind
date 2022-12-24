@@ -14,35 +14,27 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     internal class ByteCodeValidator
     {
-        public static ByteCodeValidator Instance => new ByteCodeValidator();
 
-        private EvmObjectFormat? EofFormatChecker = new EvmObjectFormat();
+        private readonly EvmObjectFormat? EofFormatChecker;
         public ByteCodeValidator(ILogManager logManager = null)
             => EofFormatChecker = new EvmObjectFormat(logManager);
 
-        public bool HasEofPrefix(ReadOnlySpan<byte> code,
-            [NotNullWhen(true)] out byte? version) => EofFormatChecker.HasEofFormat(code, out version);
-        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec,
+        public bool HasEofPrefix(ReadOnlySpan<byte> code) => EofFormatChecker.IsEof(code);
+        public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec spec,
             [NotNullWhen(true)] out EofHeader? header)
         {
-            if (_spec.IsEip3540Enabled)
-            {
-                if (EofFormatChecker.ValidateEofCode(_spec, code, out header))
-                {
-                    return true;
-                }
-            }
-
             header = null;
-            return CodeDepositHandler.CodeIsValid(_spec, code.ToArray());
+            return !spec.IsEip3540Enabled || !EofFormatChecker.IsEof(code)
+                ? CodeDepositHandler.CodeIsValid(spec, code.ToArray())
+                : EofFormatChecker.TryExtractEofHeader(code, out header);
         }
+
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
             => ValidateBytecode(code, _spec, out _);
 
-        public bool ValidateEofBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec,
+        public bool ValidateEofBytecode(ReadOnlySpan<byte> code,
             [NotNullWhen(true)] out EofHeader? header)
-            => EofFormatChecker.ValidateEofCode(_spec, code, out header);
-        public bool ValidateEofBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
-            => ValidateEofBytecode(code, _spec, out _);
+            => EofFormatChecker.TryExtractEofHeader(code, out header);
+
     }
 }

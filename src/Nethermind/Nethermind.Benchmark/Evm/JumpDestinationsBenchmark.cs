@@ -26,7 +26,7 @@ namespace Nethermind.Benchmarks.Evm
         [GlobalSetup]
         public void Setup()
         {
-            _codeInfo = new CodeInfo(_scenarios[ScenarioIndex], GrayGlacier.Instance);
+            _codeInfo = new CodeInfo(_scenarios[ScenarioIndex]);
         }
 
         [Benchmark]

@@ -1,23 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only 
 
-using System;
 using System.Collections;
-using System.Threading;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class JumpdestAnalyzer : ICodeInfoAnalyzer
     {
-        private byte[] MachineCode { get; set; }
+        private byte[] Code { get; set; }
 
         private BitArray? _validJumpDestinations;
         private BitArray? _validJumpSubDestinations;
 
         public JumpdestAnalyzer(byte[] code)
         {
-            MachineCode = code;
+            Code = code;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
@@ -38,13 +35,13 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private void CalculateJumpDestinations()
         {
-            _validJumpDestinations = new BitArray(MachineCode.Length);
-            _validJumpSubDestinations = new BitArray(MachineCode.Length);
+            _validJumpDestinations = new BitArray(Code.Length);
+            _validJumpSubDestinations = new BitArray(Code.Length);
 
             int index = 0;
-            while (index < MachineCode.Length)
+            while (index < Code.Length)
             {
-                byte instruction = MachineCode[index];
+                byte instruction = Code[index];
 
                 // JUMPDEST
                 if (instruction == 0x5b)
