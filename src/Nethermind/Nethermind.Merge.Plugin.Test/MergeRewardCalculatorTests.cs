@@ -7,10 +7,10 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,7 +39,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
         [Test]
@@ -60,7 +61,8 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
         [Test]
@@ -79,7 +81,8 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
         [Test]
@@ -104,7 +107,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
         [Test]
@@ -128,14 +132,15 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
         [Test]
         public void No_block_rewards_calculator()
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
-            Block block2 = Build.A.Block.WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
@@ -145,7 +150,8 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(0, rewards.Length);
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.AreEqual(1, rewards.Length);
+            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
         }
 
 
