@@ -94,9 +94,9 @@ namespace Nethermind.Evm.Test
 
                 var scenarios = Enum.GetValues<DeploymentScenario>();
                 var contexts = Enum.GetValues<DeploymentContext>();
-                foreach(var context in contexts)
+                foreach (var context in contexts)
                 {
-                    for(int i = 1; i < 1 << (scenarios.Length + 1); i++)
+                    for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
                         yield return basecase.GenerateDeploymentScenarios(scenario, context);

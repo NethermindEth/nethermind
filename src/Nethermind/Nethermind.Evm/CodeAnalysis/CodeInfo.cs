@@ -16,10 +16,11 @@ namespace Nethermind.Evm.CodeAnalysis
         public static ICodeInfo CreateCodeInfo(byte[] code, IReleaseSpec spec, ILogManager logManager = null)
         {
             var byteCodeValidator = new ByteCodeValidator(logManager);
-            if(spec.IsEip3540Enabled && byteCodeValidator.ValidateEofBytecode(code, out EofHeader? header))
+            if (spec.IsEip3540Enabled && byteCodeValidator.ValidateEofBytecode(code, out EofHeader? header))
             {
                 return new EofCodeInfo(code, header.Value);
-            } else
+            }
+            else
             {
                 return new CodeInfo(code);
             }

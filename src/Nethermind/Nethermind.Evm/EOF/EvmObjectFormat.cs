@@ -56,7 +56,7 @@ public class EvmObjectFormat
         return true;
     }
 
-    
+
     public class Eof1 : IEofVersionHandler
     {
         private const byte VERSION = 0x01;
