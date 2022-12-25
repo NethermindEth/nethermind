@@ -76,13 +76,11 @@ namespace Nethermind.Evm.Test
         public enum BodyScenario
         {
             None = 0,
+            UseUndefinedOpcode = 1 << 0,
+            UseDeprecatedOpcode = 1 << 1,
+            EndWithTruncatedPush = 1 << 2,
 
-            UseUndefinedOpcode   = 1 << 1,
-            UseDeprecatedOpcode  = 1 << 2,
-            UseDynamicJumpOpcode = 1 << 3,
-            EndWithTruncatedPush = 1 << 4,
-
-            WithDataSection = 1 << 5,
+            WithDataSection = 1 << 3,
         }
 
         [Flags]
@@ -183,7 +181,7 @@ namespace Nethermind.Evm.Test
                 if (scenario.HasFlag(BodyScenario.UseUndefinedOpcode))
                 {
                     byte opcode = 0x00;
-                    while(Enum.IsDefined(typeof(Instruction), opcode))
+                    while (Enum.IsDefined(typeof(Instruction), opcode))
                     {
                         opcode++;
                     }
@@ -191,30 +189,26 @@ namespace Nethermind.Evm.Test
                     opcodeCount += 1;
                 }
 
-                if (scenario.HasFlag(BodyScenario.UseDynamicJumpOpcode))
-                {
-                    prepare.PushData(opcodeCount + 3).JUMP();
-                    opcodeCount += 3;
-                }
-
                 if (scenario.HasFlag(BodyScenario.EndWithTruncatedPush))
                 {
                     prepare.Op(Instruction.PUSH32)
                         .Data(Enumerable.Range(0, 23).Select(i => (byte)i).ToArray());
-                } else
+                }
+                else
                 {
                     prepare.Op(Instruction.PUSH32)
                         .Data(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
                 }
-                
+
                 byte[] bytecode = prepare.Done;
                 byte[] databytes = scenario.HasFlag(BodyScenario.WithDataSection) ? new byte[] { 0xde, 0xad, 0xbe, 0xef } : Array.Empty<byte>();
                 var resultCase = new ScenarioCase(new FunctionCase[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes);
                 bytecode = resultCase.Bytecode;
+                bool validCase = scenario is BodyScenario.None || scenario is BodyScenario.WithDataSection;
                 return new TestCase(scenario.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (scenario is BodyScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 parsing : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.ToFullString()}"),
+                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.ToFullString()}"),
                 };
             }
             public byte[] Bytecode => GenerateFormatScenarios(FormatScenario.None).Bytecode;
@@ -443,7 +437,7 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 parsing : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.ToFullString()}"),
+                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.ToFullString()}"),
                 };
             }
             public TestCase GenerateDeploymentScenarios(DeploymentScenario scenarios, DeploymentContext ctx)

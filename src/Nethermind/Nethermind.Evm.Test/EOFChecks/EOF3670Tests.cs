@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
             get
             {
                 var scenarios = Enum.GetValues<BodyScenario>();
-                for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
+                for (int i = 0; i < 1 << (scenarios.Length - 1); i++)
                 {
                     BodyScenario scenario = (BodyScenario)i;
                     yield return ScenarioCase.CreateFromScenario(scenario);

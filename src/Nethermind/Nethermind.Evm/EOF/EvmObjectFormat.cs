@@ -94,7 +94,7 @@ public class EvmObjectFormat
         public Eof1(IReleaseSpec spec, ILogManager? logManager = null)
         {
             _logger = logManager?.GetClassLogger<Eof1>();
-            _releaseSpec= spec;
+            _releaseSpec = spec;
         }
 
         public bool ValidateCode(ReadOnlySpan<byte> container, out EofHeader? header)
@@ -243,7 +243,7 @@ public class EvmObjectFormat
         }
         bool ValidateInstructions(ReadOnlySpan<byte> container, ref EofHeader? header)
         {
-            if(!_releaseSpec.IsEip3670Enabled)
+            if (!_releaseSpec.IsEip3670Enabled)
             {
                 return true;
             }

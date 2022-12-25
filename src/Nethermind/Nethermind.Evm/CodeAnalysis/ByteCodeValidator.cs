@@ -26,7 +26,7 @@ namespace Nethermind.Evm.CodeAnalysis
             header = null;
             return !spec.IsEip3540Enabled || !EofFormatChecker.IsEof(code)
                 ? CodeDepositHandler.CodeIsValid(spec, code.ToArray())
-                : EofFormatChecker.TryExtractEofHeader(code, out header);
+                : EofFormatChecker.IsValidEof(code, out header);
         }
 
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec _spec)
