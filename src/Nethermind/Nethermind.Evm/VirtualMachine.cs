@@ -398,7 +398,7 @@ namespace Nethermind.Evm
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
                 // check if Eof and make EofCodeInfo
-                cachedCodeInfo = new CodeInfo(code);
+                cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
                 _codeCache.Set(codeHash, cachedCodeInfo);
             }
             else
@@ -624,13 +624,9 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            ReadOnlySpan<byte> codeSection = env.CodeInfo.MachineCode;
-            ReadOnlySpan<byte> dataSection = Span<byte>.Empty;
-            if (env.CodeInfo.IsEof)
-            {
-                codeSection = env.CodeInfo.CodeSection;
-                dataSection = env.CodeInfo.DataSection;
-            }
+            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection;
+            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection;
+
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
                 state.ProgramCounter = pc;
@@ -2484,7 +2480,7 @@ namespace Nethermind.Evm
                             callEnv.Caller = env.ExecutingAccount;
                             callEnv.ExecutingAccount = contractAddress;
                             callEnv.CodeSource = null;
-                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
+                            callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
                             callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                             callEnv.TransferValue = value;
                             callEnv.Value = value;

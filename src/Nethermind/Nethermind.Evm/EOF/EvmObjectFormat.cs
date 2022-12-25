@@ -10,7 +10,7 @@ namespace Nethermind.Evm.EOF;
 
 public interface IEofVersionHandler
 {
-    bool ValidateCode(ReadOnlySpan<byte> code);
+    bool ValidateCode(ReadOnlySpan<byte> code, out EofHeader? header);
     bool TryParseEofHeader(ReadOnlySpan<byte> code, out EofHeader? header);
 }
 
@@ -36,12 +36,13 @@ public class EvmObjectFormat
     /// <returns></returns>
     public bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(EOF_MAGIC);
 
-    public bool IsValidEof(ReadOnlySpan<byte> container)
+    public bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
+        header = null;
         if (container.Length < 7)
             return false;
         return _eofVersionHandlers.ContainsKey(container[2])
-            ? _eofVersionHandlers[container[2]].ValidateCode(container) // will handle rest of validations
+            ? _eofVersionHandlers[container[2]].ValidateCode(container, out header) // will handle rest of validations
             : false; // will handle version == 0;
     }
 
@@ -55,6 +56,7 @@ public class EvmObjectFormat
         return true;
     }
 
+    
     public class Eof1 : IEofVersionHandler
     {
         private const byte VERSION = 0x01;
@@ -64,7 +66,7 @@ public class EvmObjectFormat
         private const byte TERMINATOR = 0x00;
         private const byte VERSION_SIZE = 1;
         private const byte SECTION_SIZE = 3;
-        private const byte TERMINATOR_SIZE = 3;
+        private const byte TERMINATOR_SIZE = 1;
         public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
         public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
             + SECTION_SIZE // type
@@ -72,7 +74,15 @@ public class EvmObjectFormat
             + SECTION_SIZE // data
             + TERMINATOR_SIZE;
         public static int GetArraySectionSize(int numberOfSections) => 3 + numberOfSections * 2;
-
+        private bool CheckBounds(int index, int length, ref EofHeader? header)
+        {
+            if (index >= length)
+            {
+                header = null;
+                return false;
+            }
+            return true;
+        }
 
         private readonly ILogger? _logger;
         private bool _loggerEnabled => _logger?.IsTrace ?? false;
@@ -82,9 +92,9 @@ public class EvmObjectFormat
             _logger = logManager?.GetClassLogger<Eof1>();
         }
 
-        public bool ValidateCode(ReadOnlySpan<byte> container)
+        public bool ValidateCode(ReadOnlySpan<byte> container, out EofHeader? header)
         {
-            return TryParseEofHeader(container, out EofHeader? header) && ValidateBody(container, in header);
+            return TryParseEofHeader(container, out header) && ValidateBody(container, ref header);
         }
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
@@ -121,12 +131,19 @@ public class EvmObjectFormat
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
+
             pos++;
+            if (!CheckBounds(pos + 2, container.Length, ref header))
+            {
+                return false;
+            }
+
             SectionHeader typeSection = new()
             {
                 Start = headerSize,
                 Size = container[pos..(pos + 2)].ReadEthUInt16()
             };
+
             pos += 2;
 
             if (container[pos] != KIND_CODE)
@@ -135,11 +152,21 @@ public class EvmObjectFormat
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
+
             pos += 3; // kind_code(1) + num_code_sections(2)
+            if (!CheckBounds(pos, container.Length, ref header))
+            {
+                return false;
+            }
+
             List<SectionHeader> codeSections = new();
             int lastEndOffset = typeSection.EndOffset;
             for (ushort i = 0; i < numberOfCodeSections; i++)
             {
+                if (!CheckBounds(pos + 2, container.Length, ref header))
+                {
+                    return false;
+                }
                 SectionHeader codeSection = new()
                 {
                     Start = lastEndOffset,
@@ -148,6 +175,7 @@ public class EvmObjectFormat
                 codeSections.Add(codeSection);
                 lastEndOffset = codeSection.EndOffset;
                 pos += 2;
+
             }
 
 
@@ -158,6 +186,11 @@ public class EvmObjectFormat
                 return false;
             }
             pos++;
+            if (!CheckBounds(pos + 2, container.Length, ref header))
+            {
+                return false;
+            }
+
             SectionHeader dataSection = new()
             {
                 Start = lastEndOffset,
@@ -183,7 +216,7 @@ public class EvmObjectFormat
             return true;
         }
 
-        bool ValidateBody(ReadOnlySpan<byte> container, in EofHeader? header)
+        bool ValidateBody(ReadOnlySpan<byte> container, ref EofHeader? header)
         {
             int startOffset = CalculateHeaderSize(header.Value.CodeSections.Length);
             int calculatedCodeLength = header.Value.TypeSection.Size
@@ -194,6 +227,7 @@ public class EvmObjectFormat
 
             if (contractBody.Length != calculatedCodeLength)
             {
+                header = null;
                 if (_loggerEnabled)
                     _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
                 return false;

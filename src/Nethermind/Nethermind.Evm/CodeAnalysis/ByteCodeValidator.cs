@@ -34,7 +34,6 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateEofBytecode(ReadOnlySpan<byte> code,
             [NotNullWhen(true)] out EofHeader? header)
-            => EofFormatChecker.TryExtractEofHeader(code, out header);
-
+            => EofFormatChecker.IsValidEof(code, out header);
     }
 }

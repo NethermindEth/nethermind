@@ -2,21 +2,36 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-
+    public class CodeInfoFactory
+    {
+        public static ICodeInfo CreateCodeInfo(byte[] code, IReleaseSpec spec, ILogManager logManager = null)
+        {
+            var byteCodeValidator = new ByteCodeValidator(logManager);
+            if(spec.IsEip3540Enabled && byteCodeValidator.ValidateEofBytecode(code, out EofHeader? header))
+            {
+                return new EofCodeInfo(code, header.Value);
+            } else
+            {
+                return new CodeInfo(code);
+            }
+        }
+    }
     public interface ICodeInfo
     {
         byte[] MachineCode { get; }
         IPrecompile? Precompile { get; }
         bool IsPrecompile => Precompile is not null;
-        bool IsEof => false;
-        byte Version => 0;
+        byte Version { get; }
+        bool IsEof { get; }
         ReadOnlySpan<byte> TypeSection => Span<byte>.Empty;
         ReadOnlySpan<byte> CodeSection => MachineCode;
         ReadOnlySpan<byte> DataSection => Span<byte>.Empty;
@@ -26,11 +41,11 @@ namespace Nethermind.Evm.CodeAnalysis
     public class EofCodeInfo : CodeInfo
     {
         private EofHeader _header;
-        public bool IsEof => true;
-        public byte Version => _header.Version;
+        public override bool IsEof => true;
+        public override byte Version => _header.Version;
 
         public ReadOnlySpan<byte> TypeSection => MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
-        public override ReadOnlySpan<byte> CodeSection => MachineCode.Slice(_header.CodeSections[0].Start, _header.CodeSections[0].Size);
+        public override ReadOnlySpan<byte> CodeSection => MachineCode.Slice(_header.CodeSections[0].Start, _header.CodeSections.Sum(s => s.Size));
         public ReadOnlySpan<byte> DataSection => MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
 
         public EofCodeInfo(byte[] code, in EofHeader header) : base(code)
@@ -46,7 +61,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int NumberOfSamples = 100;
         private static Random _rand = new();
 
-
+        public virtual byte Version => 0;
+        public virtual bool IsEof => false;
         private ICodeInfoAnalyzer? _analyzer;
 
         public byte[] MachineCode { get; set; }
