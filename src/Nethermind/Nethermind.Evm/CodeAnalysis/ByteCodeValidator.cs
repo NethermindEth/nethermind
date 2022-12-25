@@ -16,8 +16,8 @@ namespace Nethermind.Evm.CodeAnalysis
     {
 
         private readonly EvmObjectFormat? EofFormatChecker;
-        public ByteCodeValidator(ILogManager logManager = null)
-            => EofFormatChecker = new EvmObjectFormat(logManager);
+        public ByteCodeValidator(IReleaseSpec spec, ILogManager logManager = null)
+            => EofFormatChecker = new EvmObjectFormat(spec, logManager);
 
         public bool HasEofPrefix(ReadOnlySpan<byte> code) => EofFormatChecker.IsEof(code);
         public bool ValidateBytecode(ReadOnlySpan<byte> code, IReleaseSpec spec,
@@ -34,7 +34,6 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateEofBytecode(ReadOnlySpan<byte> code,
             [NotNullWhen(true)] out EofHeader? header)
-            => EofFormatChecker.TryExtractEofHeader(code, out header);
-
+            => EofFormatChecker.IsValidEof(code, out header);
     }
 }

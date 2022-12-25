@@ -39,6 +39,7 @@ using System.Text.Json;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 using Castle.DynamicProxy.Contributors;
 using System.Threading.Tasks;
+using static Nethermind.Evm.Test.EofTestsBase;
 
 namespace Nethermind.Evm.Test
 {
@@ -51,491 +52,73 @@ namespace Nethermind.Evm.Test
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
 
-        public static IEnumerable<TestCase> Eip3670TestCases
+        public static IEnumerable<TestCase> Eip3670BodyTestCases
         {
             get
             {
-                yield return new TestCase
+                var scenarios = Enum.GetValues<BodyScenario>();
+                for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
                 {
-                    Code = Prepare.EvmCode
-                            .PushData(0x2a)
-                            .PushData(0x2b)
-                            .Op(Instruction.MSTORE8)
-                            .Op(Instruction.MSIZE)
-                            .PushData(0x0)
-                            .Op(Instruction.SSTORE)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "Last opcode is not a terminating opcode"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(Instruction.STOP)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Op(Instruction.STOP)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Return(0, 1)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with data section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(Instruction.PC)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Include PC instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(Instruction.JUMPDEST)
-                            .Op(Instruction.JUMPDEST)
-                            .Op(Instruction.JUMPDEST)
-                            .Op(Instruction.JUMPDEST)
-                            .Op(Instruction.PC)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Include PC instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .Op(Instruction.JUMP)
-                            .Op(Instruction.INVALID)
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Include JUMP instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .Op(Instruction.JUMP)
-                            .Op(Instruction.INVALID)
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with data section: Include JUMP instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(1)
-                            .PushData(6)
-                            .Op(Instruction.JUMPI)
-                            .Op(Instruction.INVALID)
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Include JUMPI instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(1)
-                            .PushData(6)
-                            .Op(Instruction.JUMPI)
-                            .Op(Instruction.INVALID)
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with data section: Include JUMPI instruction"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .Op(Instruction.JUMP)
-                            .Op(Instruction.STOP)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with data section: Try to jump into data section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .Op(Instruction.JUMP)
-                            .Op(Instruction.CODESIZE)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Failure, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with data section: Try to jump into data section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(1)
-                            .PushData(6)
-                            .Op(Instruction.JUMPI)
-                            .Op(Instruction.STOP)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Invalid Jump Destination"),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Try to conditinally jump into data section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(1)
-                            .PushData(6)
-                            .Op(Instruction.JUMPI)
-                            .Op(Instruction.CODESIZE)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Failure, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Try to conditinally jump into data section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .Op(Instruction.JUMP)
-                            .Op(Instruction.INVALID)
-                            .Op(Instruction.JUMPDEST)
-                            .PushData(1)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data(new byte[(int)Instruction.PUSH3])
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section: Push in header (Data count is 0x62 which is PUSH3))"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(Instruction.CODESIZE)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Include CODESIZE"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(Instruction.CODESIZE)
-                            .PushData(0)
-                            .Op(Instruction.MSTORE8)
-                            .Return(1, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section: Includes CODESIZE"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(19)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(19, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Includes CODECOPY, copies full code"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(26)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(26, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section : Includes CODECOPY, copies full code"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(10)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(10, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section : Includes CODECOPY, copies header"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(7)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(7, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Includes CODECOPY, copies header"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(12)
-                            .PushData(7)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(12, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : Includes CODECOPY, copies code section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(12)
-                            .PushData(10)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(12, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section: Includes CODECOPY copies code section"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(4)
-                            .PushData(22)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(4, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section: Includes CODECOPY copies Data section"
-                };
-
-
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(30)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(23, 0)
-                            .Done,
-                    Data = Prepare.EvmCode
-                            .Data("0xdeadbeef")
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution with Data section: copies Data out of bound (result is 0 padded)"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(23)
-                            .PushData(0)
-                            .PushData(0)
-                            .Op(Instruction.CODECOPY)
-                            .Return(23, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : copies Data out of bound (result is 0 padded)"
-                };
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .PushData(new byte[] { 23, 69 })
-                            .Return(2, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Success, null),
-                    ResultIfNotEOF = (StatusCode.Success, null),
-                    Description = "EOF1 execution : includes PUSHx Intructions"
-                };
-
-
-                yield return new TestCase
-                {
-                    Code = Prepare.EvmCode
-                            .Op(0xfb) // works as long as 0xfb is not defined yet
-                            .PushData(new byte[] { 23, 69 })
-                            .Return(2, 0)
-                            .Done,
-                    ResultIfEOF = (StatusCode.Failure, "Undefined Opcode"),
-                    ResultIfNotEOF = (StatusCode.Failure, "Undefined Opcode"),
-                    Description = "EOF1 execution : includes PUSHx Intructions"
-                };
+                    BodyScenario scenario = (BodyScenario)i;
+                    yield return ScenarioCase.CreateFromScenario(scenario);
+                }
             }
         }
 
-        // valid code
-        [TestCase("0xEF000101000100FE", true)]
-        [TestCase("0xEF00010100050060006000F3", true)]
-        [TestCase("0xEF00010100050060006000FD", true)]
-        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
-        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
-        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
-        [TestCase("0xEF00010100010030", true)]
-        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", true)]
-        // code with invalid magic
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Ends with Truncated Push Instruction")]
-        [TestCase("0xEF00010100010060", false, Description = "Ends with Truncated Push Instruction")]
-        [TestCase("0xEF0001010003006000FF", false, Description = "Ends with Selfdestruct")]
-        [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
-        [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
-        public void EIP3670_Compliant_formats_Test(string code, bool isCorrectlyFormated)
+        public static IEnumerable<TestCase> Eip3670TxTestCases
         {
-            var bytecode = Prepare.EvmCode
-                .FromCode(code)
-                .Done;
+            get
+            {
+                var basecase = new ScenarioCase(
+                    Functions: new FunctionCase[] {
+                        new FunctionCase(
+                            InputCount : 0,
+                            OutputCount : 0,
+                            MaxStack : 2,
+                            Body : Prepare.EvmCode
+                                    .MUL(23, 3)
+                                    .Done
+                            )
+                    },
+                    Data: new byte[] { 0xbb, 0xee, 0xee, 0xff }
+                );
 
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
-
-            bool checkResult = new ByteCodeValidator().ValidateBytecode(bytecode, TargetReleaseSpec, out _);
-
-            checkResult.Should().Be(isCorrectlyFormated);
+                var scenarios = Enum.GetValues<DeploymentScenario>();
+                var contexts = Enum.GetValues<DeploymentContext>();
+                foreach (var context in contexts)
+                {
+                    for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
+                    {
+                        DeploymentScenario scenario = (DeploymentScenario)i;
+                        yield return basecase.GenerateDeploymentScenarios(scenario, context);
+                    }
+                }
+            }
         }
 
         [Test]
-        public void Eip3670_execution_tests([ValueSource(nameof(Eip3670TestCases))] TestCase testcase)
+        public void EOF_execution_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
         {
-            var bytecode = testcase.GenerateCode(true);
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);
 
-            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(bytecode);
-
-            receipts.StatusCode.Should().Be(testcase.ResultIfEOF.Status, $"{testcase.Description}");
+            receipts.StatusCode.Should().Be(testcase.Result.Status, $"{testcase.Result.Msg}");
         }
 
+        [Test]
+        public void EOF_validation_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
+        }
+
+        [Test]
+        public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
+        }
     }
 }
