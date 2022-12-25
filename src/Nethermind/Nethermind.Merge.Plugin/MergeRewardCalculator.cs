@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Consensus;
@@ -23,7 +23,8 @@ namespace Nethermind.Merge.Plugin
         {
             if (_poSSwitcher.IsPostMerge(block.Header))
             {
-                return NoBlockRewards.Instance.CalculateRewards(block);
+                // return zero reward post merge
+                return new[] { new BlockReward(block.Beneficiary!, 0) };
             }
 
             return _beforeTheMerge.CalculateRewards(block);
