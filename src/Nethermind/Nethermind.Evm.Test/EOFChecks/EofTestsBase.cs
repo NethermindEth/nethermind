@@ -169,13 +169,11 @@ namespace Nethermind.Evm.Test
             {
                 Prepare prepare = Prepare.EvmCode;
                 int opcodeCount = 0;
-                if(!scenario.HasFlag(BodyScenario.WithEmptyCodeSection))
+                if (!scenario.HasFlag(BodyScenario.WithEmptyCodeSection))
                 {
                     if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
                         prepare = prepare
-                            .PC().POP()
-                            .SELFDESTRUCT()
                             .CALLCODE();
                         opcodeCount += 2;
 
