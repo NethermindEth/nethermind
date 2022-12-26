@@ -4,11 +4,9 @@
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NuGet.Frameworks;
 using NUnit.Framework;
 
@@ -24,19 +22,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(1, false)]
         public void Validates_when_only_jump_dest_present(int destination, bool isValid)
         {
-            var spec = new OverridableReleaseSpec(Berlin.Instance)
-            {
-                IsEip2315Enabled = true
-            };
-
             byte[] code =
             {
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(destination, false, spec).Should().Be(isValid);
+            codeInfo.ValidateJump(destination, false).Should().Be(isValid);
         }
 
         [TestCase(-1, false)]
@@ -44,66 +37,50 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCase(1, false)]
         public void Validates_when_only_begin_sub_present(int destination, bool isValid)
         {
-            var spec = new OverridableReleaseSpec(Berlin.Instance)
-            {
-                IsEip2315Enabled = true
-            };
-
             byte[] code =
             {
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
 
-            codeInfo.ValidateJump(destination, true, spec).Should().Be(isValid);
+            codeInfo.ValidateJump(destination, true).Should().Be(isValid);
         }
 
         [Test]
         public void Validates_when_push_with_data_like_jump_dest()
         {
-            var spec = new OverridableReleaseSpec(Berlin.Instance)
-            {
-                IsEip2315Enabled = true
-            };
-
             byte[] code =
             {
                 (byte)Instruction.PUSH1,
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(1, true, spec).Should().BeFalse();
-            codeInfo.ValidateJump(1, false, spec).Should().BeFalse();
+            codeInfo.ValidateJump(1, true).Should().BeFalse();
+            codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
 
         [Test]
         public void Validates_when_push_with_data_like_begin_sub()
         {
-            var spec = new OverridableReleaseSpec(Berlin.Instance)
-            {
-                IsEip2315Enabled = true
-            };
-
             byte[] code =
             {
                 (byte)Instruction.PUSH1,
                 (byte)Instruction.BEGINSUB
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(1, true, spec).Should().BeFalse();
-            codeInfo.ValidateJump(1, false, spec).Should().BeFalse();
+            codeInfo.ValidateJump(1, true).Should().BeFalse();
+            codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
 
         [Test]
         public void Validate_CodeBitmap_With_Push10()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH10,
@@ -111,15 +88,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(11, false, spec).Should().BeTrue();
+            codeInfo.ValidateJump(11, false).Should().BeTrue();
         }
 
         [Test]
         public void Validate_CodeBitmap_With_Push30()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH30,
@@ -127,23 +103,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(31, false, spec).Should().BeTrue();
+            codeInfo.ValidateJump(31, false).Should().BeTrue();
         }
 
         [Test]
         public void Small_Jumpdest_Use_CodeDataAnalyzer()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b,0x5b
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false, spec).Should().BeTrue();
+            codeInfo.ValidateJump(10, false).Should().BeTrue();
 
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
@@ -154,15 +129,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Small_Push1_Use_CodeDataAnalyzer()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,0x60,
             };
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false, spec).Should().BeFalse();
+            codeInfo.ValidateJump(10, false).Should().BeFalse();
 
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
@@ -173,12 +147,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Jumpdest_Over10k_Use_JumpdestAnalyzer()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false, spec).Should().BeTrue();
+            codeInfo.ValidateJump(10, false).Should().BeTrue();
 
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
@@ -189,12 +162,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Push1_Over10k_Use_JumpdestAnalyzer()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
-            CodeInfo codeInfo = new(code, spec);
+            CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10, false, spec).Should().BeFalse();
+            codeInfo.ValidateJump(10, false).Should().BeFalse();
 
             FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
@@ -205,7 +177,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Push1Jumpdest_Over10k_Use_JumpdestAnalyzer()
         {
-            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code = new byte[10_001];
             for (int i = 0; i < code.Length; i++)
             {
@@ -216,10 +187,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             int iterations = 1;
             while (iterations <= 10)
             {
-                CodeInfo codeInfo = new(code, spec);
+                CodeInfo codeInfo = new(code);
 
-                codeInfo.ValidateJump(10, false, spec).Should().BeFalse();
-                codeInfo.ValidateJump(11, false, spec).Should().BeFalse(); // 0x5b but not JUMPDEST but data
+                codeInfo.ValidateJump(10, false).Should().BeFalse();
+                codeInfo.ValidateJump(11, false).Should().BeFalse(); // 0x5b but not JUMPDEST but data
 
                 FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
                 calc = (ICodeInfoAnalyzer)field.GetValue(codeInfo);

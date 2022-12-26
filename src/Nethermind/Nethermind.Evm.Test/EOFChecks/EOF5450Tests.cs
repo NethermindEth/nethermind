@@ -37,10 +37,8 @@ using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
 
-using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
-using TestCase2 = Nethermind.Evm.Test.EOF4750Tests.TestCase2;
-using FunctionCase = Nethermind.Evm.Test.EOF4750Tests.FunctionCase;
 using NSubstitute.ReturnsExtensions;
+using static Nethermind.Evm.Test.EofTestsBase;
 
 namespace Nethermind.Evm.Test
 {
@@ -52,446 +50,563 @@ namespace Nethermind.Evm.Test
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
 
-        public static IEnumerable<TestCase2> Eip5450TestCases
+        public static IEnumerable<TestCase> Eip5450TxTestCases
         {
             get
             {
-                yield return new TestCase2
+                yield return new TestCase(1)
                 {
-                    Main = Prepare.EvmCode
-                        .MUL(3, 23)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Success, null),
-                    Description = "One code section"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Mono-Section bytecode"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(2)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .ADD()
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .PushData(23)
-                                .JUMPF(2)
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        },
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .ADD()
-                                .PushData(69)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        }
-                    },
-                    Result = (StatusCode.Success, null),
-                    Description = "multiple functions sections with jumpf"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Di-Section bytecode"),
                 };
 
-                yield return new TestCase2
+
+                yield return new TestCase(3)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .ADD()
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .JUMPF(2)
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        },
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .ADD()
-                                .PushData(69)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        }
-                    },
-                    Result = (StatusCode.Failure, null),
-                    Description = "stack underflow with jumpf"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                       .RJUMPV(new short[] { 6, 12 }, 3)
+                                       .PushData(0)
+                                       .PushData(1)
+                                       .ADD().POP()
+                                       .PushData(2)
+                                       .PushData(3)
+                                       .MUL().POP()
+                                       .MSTORE8(0, new byte[] { 1 })
+                                       .RETURN(0, 1)
+                                       .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Use Jumpv jumptables with valid destinations"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(4)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Result = (StatusCode.Success, null),
-                    Description = "two code sections with correct in/out type section"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                       .RJUMPV(new short[] { 2, 5, 6 }, 0)
+                                       .PushData(0)
+                                       .PushData(1)
+                                       .ADD().POP()
+                                       .MSTORE8(0, new byte[] { 1 })
+                                       .RETURN(0, 1)
+                                       .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Use Jumpv jumptables with invalid destinations"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(5)
                 {
-                    Main = Prepare.EvmCode
-                               .RJUMPV(new short[] { 6, 12 }, 3)
-                               .PushData(0)
-                               .PushData(1)
-                               .ADD().POP()
-                               .PushData(2)
-                               .PushData(3)
-                               .MUL().POP()
-                               .MSTORE8(0, new byte[] { 1 })
-                               .RETURN(0, 1)
-                               .Done,
-                    Result = (StatusCode.Success, null),
-                    Description = "valid jumpv destinations"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Function requires more than provided (stack underflow)"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(6)
                 {
-                    Main = Prepare.EvmCode
-                               .RJUMPV(new short[] { 2, 5, 6 }, 0)
-                               .PushData(0)
-                               .PushData(1)
-                               .ADD().POP()
-                               .MSTORE8(0, new byte[] { 1 })
-                               .RETURN(0, 1)
-                               .Done,
-                    Result = (StatusCode.Failure, null),
-                    Description = "invalid jumpv destinations : stack underflow"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(20)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    1, 1, 1,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Invalid Input stack height counts"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(6)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Result = (StatusCode.Failure, null),
-                    Description = "Stack underflow : Function needs 2 args but only 1 provided"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(20)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 0, 1,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Invalid Output stack height counts"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(6)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(20)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 1,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "two code sections with incorrect in/out type section"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(20)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 0, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .PushSequence(0, 1)
+                                        .POP().POP()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Invalid Max Stack Height"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(7)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(1)
-                        .RJUMPI(8)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Success, null),
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMPI(8, new byte[] { 1 })
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Conditional Static Jump with Valid destination"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(8)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(0)
-                        .RJUMPI(8)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Success, null),
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMPI(8, new byte[] { 0 })
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Conditional Static Jump with Valid destination"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(8)
                 {
-                    Main = Prepare.EvmCode
-                        .RJUMP(8)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Success, null),
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMPI(8, new byte[] { 0 })
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Conditional Static Jump with Valid destination"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(9)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(0)
-                        .RJUMPI(2)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "jump results in stack underflow"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMP(8)
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Static Jump With Unreachable opcode"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(9)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(1)
-                        .RJUMPI(2)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "jump results in stack underflow"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMP(0)
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, "Static Jump with Valid destination"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(10)
                 {
-                    Main = Prepare.EvmCode
-                        .RJUMP(2)
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "jump results in stack underflow"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMPI(2, new byte[] { 1 })
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Conditional Jump results in Stack Underflow"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(11)
                 {
-                    Main = Prepare.EvmCode
-                        .RJUMP(2)
-                        .PushSequence(
-                                Enumerable.Range(0, 3)
-                                          .Select(i => (UInt256?)i)
-                                          .ToArray()
-                        ).PushData(3)
-                         .CALLF(1)
-                         .POP()
-                         .STOP()
-                         .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "Stack is not empty after main"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMPI(2, new byte[] { 0 })
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Conditional Jump results in Stack Underflow"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(12)
                 {
-                    Main = Prepare.EvmCode
-                        .RJUMP(2)
-                        .PushSequence(
-                            Enumerable.Range(0, 1025)
-                                        .Select(i => (UInt256?)i)
-                                        .ToArray()
-                        )
-                        .PushData(3)
-                        .CALLF(1)
-                        .PutSequence(
-                            Enumerable.Range(0, 1023)
-                                        .Select(_ => Instruction.POP)
-                                        .ToArray()
-                        )
-                        .STOP()
-                         .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
-                    Result = (StatusCode.Failure, null),
-                    Description = "max items in stack is 1025"
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMP(2)
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Jump results in Stack Underflow"),
                 };
-            }
-        }
 
-        public static IEnumerable<TestCase> Eip5450cenarios
-        {
-            get
-            {
-                foreach (var testCase in Eip5450TestCases)
+                yield return new TestCase(13)
                 {
-                    foreach (var scenarioCase in testCase.GenerateScenarios())
-                    {
-                        yield return scenarioCase;
-                    }
-                }
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMP(2)
+                                        .PushSequence(
+                                                Enumerable.Range(0, 3)
+                                                          .Select(i => (UInt256?)i)
+                                                          .ToArray()
+                                        ).PushData(3)
+                                         .CALLF(1)
+                                         .POP()
+                                         .RETF()
+                                         .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Stack is not empty after main"),
+                };
+
+                yield return new TestCase(14)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .RJUMP(2)
+                                        .PushSequence(
+                                            Enumerable.Range(0, 1025)
+                                                        .Select(i => (UInt256?)i)
+                                                        .ToArray()
+                                        )
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .PutSequence(
+                                            Enumerable.Range(0, 1023)
+                                                        .Select(_ => Instruction.POP)
+                                                        .ToArray()
+                                        )
+                                        .STOP()
+                                         .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Max items in stack is 1025 > 1023"),
+                };
+
+                yield return new TestCase(15)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .MUL()
+                                        .POP()
+                                        .RETF()
+                                        .PushSequence(22, 1)
+                                        .CALLF(1)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1,
+                                    Prepare.EvmCode
+                                        .ADD()
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Contains Unreachable Code"),
+                };
             }
         }
 
         [Test]
-        public void Eip5450_execution_tests([ValueSource(nameof(Eip5450cenarios))] TestCase testCase)
+        public void EOF_execution_tests([ValueSource(nameof(Eip5450TxTestCases))] TestCase testcase)
         {
-            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testCase.Code);
-            receipts.StatusCode.Should().Be(testCase.ResultIfEOF.Status, receipts.Error);
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);
+
+            receipts.StatusCode.Should().Be(testcase.Result.Status, $"{testcase.Result.Msg}");
+        }
+
+        [Test]
+        public void EOF_validation_tests([ValueSource(nameof(Eip5450TxTestCases))] TestCase testcase)
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }
     }
 }

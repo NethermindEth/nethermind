@@ -5,6 +5,6 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public interface ICodeInfoAnalyzer
     {
-        bool ValidateJump(int destination, bool isSubroutine, int sectionId = 0);
+        bool ValidateJump(int destination, bool isSubroutine);
     }
 }

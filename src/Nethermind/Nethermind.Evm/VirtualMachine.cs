@@ -23,6 +23,7 @@ using System.ComponentModel.DataAnnotations;
 using Nethermind.Evm.EOF;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 
 namespace Nethermind.Evm
 {
@@ -58,8 +59,9 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+        internal static readonly ICache<Keccak, ICodeInfo> _codeCache = new LruCache<Keccak, ICodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
+        private readonly ILogManager _logManager;
         private IWorldState _worldState;
         private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
@@ -68,18 +70,17 @@ namespace Nethermind.Evm
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private ByteCodeValidator _byteCodeValidator;
 
         public VirtualMachine(
             IBlockhashProvider? blockhashProvider,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-            _byteCodeValidator = new ByteCodeValidator(logManager);
             InitializePrecompiledContracts();
         }
 
@@ -92,6 +93,7 @@ namespace Nethermind.Evm
             _worldState = worldState;
 
             IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
+            ByteCodeValidator byteCodeValidator = new(spec, _logManager);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -199,7 +201,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec))
+                                else if (currentState.ExecutionType.IsAnyCreate() && !byteCodeValidator.ValidateBytecode(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -244,7 +246,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !_byteCodeValidator.ValidateBytecode(callResult.Output, spec);
+                            bool invalidCode = !byteCodeValidator.ValidateBytecode(callResult.Output, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -373,7 +375,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
         {
             IStateProvider state = worldState.StateProvider;
             if (codeSource.IsPrecompile(vmSpec))
@@ -387,7 +389,7 @@ namespace Nethermind.Evm
             }
 
             Keccak codeHash = state.GetCodeHash(codeSource);
-            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+            ICodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo is null)
             {
                 byte[] code = state.GetCode(codeHash);
@@ -396,8 +398,8 @@ namespace Nethermind.Evm
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
-
-                cachedCodeInfo = new CodeInfo(code, vmSpec);
+                // check if Eof and make EofCodeInfo
+                cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
                 _codeCache.Set(codeHash, cachedCodeInfo);
             }
             else
@@ -596,6 +598,7 @@ namespace Nethermind.Evm
             bool traceOpcodes = _txTracer.IsTracingInstructions;
             ExecutionEnvironment env = vmState.Env;
             TxExecutionContext txCtx = env.TxExecutionContext;
+            ByteCodeValidator byteCodeValidator = new(spec, _logManager);
 
             if (!vmState.IsContinuation)
             {
@@ -623,15 +626,11 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            Span<byte> typeSection = Span<byte>.Empty;
-            Span<byte> codeSection = env.CodeInfo.MachineCode;
-            Span<byte> dataSection = Span<byte>.Empty;
-            if (env.CodeInfo.IsEof)
-            {
-                typeSection = env.CodeInfo.ExtractTypeSection();
-                codeSection = env.CodeInfo.ExtractCodeSection();
-                dataSection = env.CodeInfo.ExtractDataSection();
-            }
+            int sectionIndex = 0;
+            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection;
+            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection;
+            ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection;
+
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
                 state.ProgramCounter = pc;
@@ -650,26 +649,6 @@ namespace Nethermind.Evm
                 if (_txTracer.IsTracingStack)
                 {
                     _txTracer.SetOperationStack(stackValue.GetStackTrace());
-                }
-            }
-
-            void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
-            {
-                List<UInt256> arguments = new();
-                for (int i = 0; i < argsCount; i++)
-                {
-                    stack.PopUInt256(out var item);
-                    arguments.Add(item);
-                }
-
-                while (stack.Head > height)
-                {
-                    stack.PopUInt256(out _);
-                }
-
-                for (int i = argsCount - 1; i >= 0; i--)
-                {
-                    stack.PushUInt256(arguments[i]);
                 }
             }
 
@@ -708,7 +687,7 @@ namespace Nethermind.Evm
 
                 int jumpDestInt = (int)jumpDest;
 
-                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine, spec))
+                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
                 {
                     EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                     // https://github.com/NethermindEth/nethermind/issues/140
@@ -2426,11 +2405,11 @@ namespace Nethermind.Evm
                             // if container is EOF init code must be EOF
                             if (env.CodeInfo.IsEof)
                             {
-                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(initCode, out byte? codeVersion);
-                                bool initCodeIsValid = _byteCodeValidator.ValidateEofBytecode(initCode, spec, out EofHeader? initcodeHeader) && codeVersion == initcodeHeader.Value.Version;
+                                bool initCodeHasEofPrefix = byteCodeValidator.HasEofPrefix(initCode);
+                                bool initCodeIsValid = byteCodeValidator.ValidateEofBytecode(initCode, out EofHeader? initcodeHeader);
                                 if (!initCodeHasEofPrefix
                                     || !initCodeIsValid
-                                    || env.CodeInfo.Header?.Version != initcodeHeader?.Version)
+                                    || env.CodeInfo.Version != initcodeHeader?.Version)
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();
@@ -2505,7 +2484,7 @@ namespace Nethermind.Evm
                             callEnv.Caller = env.ExecutingAccount;
                             callEnv.ExecutingAccount = contractAddress;
                             callEnv.CodeSource = null;
-                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray(), spec);
+                            callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
                             callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                             callEnv.TransferValue = value;
                             callEnv.Value = value;
@@ -2533,15 +2512,15 @@ namespace Nethermind.Evm
                             UpdateMemoryCost(in memoryPos, length);
                             ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
 
-                            // EIP-3540
+                            // EIP-3540`
                             // Code container in the context of Create2? is Initcode
                             if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
                             {
-                                bool returnCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(returnData, out byte? codeVersion);
-                                bool returnCodeIsValid = _byteCodeValidator.ValidateEofBytecode(returnData, spec, out EofHeader? returnCodeHeader) && codeVersion == returnCodeHeader.Value.Version;
+                                bool returnCodeHasEofPrefix = byteCodeValidator.HasEofPrefix(returnData);
+                                bool returnCodeIsValid = byteCodeValidator.ValidateEofBytecode(returnData, out EofHeader? returnCodeHeader);
                                 if (!returnCodeHasEofPrefix
                                     || !returnCodeIsValid
-                                    || env.CodeInfo.Header?.Version != returnCodeHeader?.Version)
+                                    || env.CodeInfo.Version != returnCodeHeader?.Version)
                                 {
                                     _returnDataBuffer = Array.Empty<byte>();
                                     stack.PushZero();
@@ -3090,7 +3069,7 @@ namespace Nethermind.Evm
                             }
 
                             var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
-                            var inputCount = typeSection[index * 2];
+                            var inputCount = typeSection[index * 4];
 
                             if (vmState.ReturnStackHead == 1024)
                             {
@@ -3100,13 +3079,13 @@ namespace Nethermind.Evm
                             stack.EnsureDepth(inputCount);
                             vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                             {
-                                Index = env.CodeInfo.SectionId,
+                                Index = sectionIndex,
                                 Height = stack.Head - inputCount,
                                 Offset = programCounter + 2
                             };
 
-                            env.CodeInfo.SectionId = index;
-                            programCounter = env.CodeInfo.Header.Value.CodeSections[index].Start;
+                            sectionIndex = index;
+                            programCounter = env.CodeInfo.SectionOffset(index).Start;
                             break;
                         }
                     case Instruction.RETF:
@@ -3123,69 +3102,16 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            var index = env.CodeInfo.SectionId;
-                            var outputCount = typeSection[index * 2 + 1];
+                            var index = sectionIndex;
+                            var outputCount = typeSection[index * 4 + 1];
                             if (--vmState.ReturnStackHead == 0)
                             {
                                 break;
                             }
-                            var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
-                            if (stack.Head == stackFrame.Height + outputCount)
-                            {
-                                env.CodeInfo.SectionId = stackFrame.Index;
-                                programCounter = stackFrame.Offset;
-                            }
-                            else
-                            {
-                                if (stack.Head > stackFrame.Height + outputCount)
-                                {
-                                    // unreachable in EOF compatible with EIP-5450
-                                    RemoveInBetween(ref stack, stack.Head, outputCount);
-                                }
-                                else
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
-                                    return CallResult.AccessViolationException;
-
-                                }
-                            }
-                            break;
-                        }
-                    case Instruction.JUMPF:
-                        {
-                            if (!spec.IsEip4750Enabled || !env.CodeInfo.IsEof)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
-                            var inputCount = typeSection[index * 2];
 
                             var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
-                            if (stack.Head < stackFrame.Height + inputCount)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.InvalidStackState);
-                                return CallResult.AccessViolationException;
-                            }
-                            else
-                            {
-                                if (stack.Head > stackFrame.Height + inputCount)
-                                {
-                                    // unreachable in EOF compatible with EIP-5450
-                                    RemoveInBetween(ref stack, stack.Head, inputCount);
-                                }
-
-                                env.CodeInfo.SectionId = index;
-                                programCounter = env.CodeInfo.Header.Value.CodeSections[index].Start;
-                            }
-
+                            sectionIndex = stackFrame.Index;
+                            programCounter = stackFrame.Offset;
                             break;
                         }
                     default:

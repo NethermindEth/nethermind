@@ -2,70 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only 
 
 using System;
-using System.Collections;
 using System.Threading;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
-        internal class DataAnalysisResult
-        {
-            public byte[]? _codeBitmap;
-        }
-
-        private DataAnalysisResult?[] _analysisResults;
+        private byte[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
-        private IReleaseSpec _releaseSpec;
-        public EofHeader? Header { get; set; }
-
-        public CodeDataAnalyzer(byte[] code, EofHeader? header, IReleaseSpec spec)
+        public CodeDataAnalyzer(byte[] code)
         {
             MachineCode = code;
-            Header = header;
-            _releaseSpec = spec;
-            _analysisResults = new DataAnalysisResult[Header?.CodeSections.ChildSections.Length ?? 1];
         }
 
-        public bool ValidateJump(int destination, bool isSubroutine, int sectionId = 0)
+        public bool ValidateJump(int destination, bool isSubroutine)
         {
-            (var sectionStart, var sectionSize) = (0, MachineCode.Length);
-            if (Header is not null)
-            {
-                sectionStart = Header.Value.CodeSections[sectionId].Start;
-                sectionSize = Header.Value.CodeSections[sectionId].Size;
-            }
-            var codeSection = MachineCode.Slice(sectionStart, sectionSize);
+            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
 
-            if (_analysisResults[sectionId] is null)
-            {
-                _analysisResults[sectionId] = new DataAnalysisResult
-                {
-                    _codeBitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(codeSection, _releaseSpec)
-                };
-            }
-
-            var codeBitmap = _analysisResults[sectionId]._codeBitmap;
-
-            if (destination < 0 || destination >= codeSection.Length)
+            if (destination < 0 || destination >= MachineCode.Length)
             {
                 return false;
             }
 
-            if (!CodeDataAnalyzerHelper.IsCodeSegment(codeBitmap, destination))
+            if (!CodeDataAnalyzerHelper.IsCodeSegment(_codeBitmap, destination))
             {
                 return false;
             }
 
-            if (_releaseSpec.SubroutinesEnabled && isSubroutine)
+            if (isSubroutine)
             {
-                return codeSection[destination] == 0x5c;
+                return MachineCode[destination] == 0x5c;
             }
 
-            return codeSection[destination] == 0x5b;
+            return MachineCode[destination] == 0x5b;
         }
     }
 
@@ -84,7 +54,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code, IReleaseSpec spec)
+        public static byte[] CreateCodeBitmap(byte[] code)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the
@@ -94,46 +64,18 @@ namespace Nethermind.Evm.CodeAnalysis
             byte push1 = (byte)Instruction.PUSH1;
             byte push32 = (byte)Instruction.PUSH32;
 
-            byte rjump = (byte)Instruction.RJUMP;
-            byte rjumpi = (byte)Instruction.RJUMPI;
-            byte rjumpv = (byte)Instruction.RJUMPV;
-
-            byte callf = (byte)Instruction.CALLF;
-            byte jumpf = (byte)Instruction.JUMPF;
-
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if ((op < push1 || op > push32) && (op != rjump && op != rjumpv && op != rjumpi) && (op != callf))
+                if (op < push1 || op > push32)
                 {
                     continue;
                 }
 
-                if ((!spec.StaticRelativeJumpsEnabled && (op == rjump || op == rjumpi || op == rjumpv))
-                || (!spec.FunctionSections && (op == callf || op == jumpf)))
-                {
-                    continue;
-                }
 
-                int numbits;
-                switch ((Instruction)op)
-                {
-                    case Instruction.RJUMP:
-                    case Instruction.JUMPF:
-                    case Instruction.CALLF:
-                    case Instruction.RJUMPI:
-                        numbits = 2;
-                        break;
-                    case Instruction.RJUMPV:
-                        byte count = code[pc];
-                        numbits = count * 2 + 1;
-                        break;
-                    default:
-                        numbits = op - push1 + 1;
-                        break;
-                }
+                int numbits = op - push1 + 1;
 
                 if (numbits >= 8)
                 {
