@@ -4,7 +4,6 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -92,7 +91,7 @@ namespace Nethermind.Core.Test.Caching
         {
             ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
-            cache.Set(_addresses[0], null);
+            cache.Set(_addresses[0], null!);
             cache.Get(_addresses[0]).Should().Be(null);
         }
 
@@ -167,7 +166,7 @@ namespace Nethermind.Core.Test.Caching
 
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 {
-                    LruCache<int, int> cache = new(maxCapacity, "test");
+                    LruCache<int, int> unused = new(maxCapacity, "test");
                 });
 
         }

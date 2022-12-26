@@ -8,6 +8,7 @@ using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
@@ -15,6 +16,8 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
+
+        private readonly long _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;
 
         [TestCase("0x61013860006000f0", false, 32039)] //length 312
         [TestCase("0x61013860006000f0", true, 32059)] //extra 20 cost
@@ -39,32 +42,34 @@ namespace Nethermind.Evm.Test
 
             var tracer = Execute(BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1, callCode);
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
-            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - (GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow));
+            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost);
         }
 
-        [Test]
-        public void Test_EIP_3860_InitCode_CREATE_Exceeds_Limit()
+        [TestCase("60006000F0", 41225)] //static and dynamic cost deducted: 32000 (call) + 9225 (memory cost) = 41225 // 3074 (word cost) NOT deducted
+        [TestCase("60006000F5", 50447)] //static and dynamic cost deducted: 32000 (call) + 9222 (hash cost) + 9225 (memory cost) = 50447 // 3074 (word cost) NOT deducted
+        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode, long expectedGasUsage)
         {
             string dataLenghtHex = (Spec.MaxInitCodeSize + 1).ToString("X");
-            var dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
+            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
 
-            byte[] byteCode = Prepare.EvmCode
-                .FromCode(dataPush.ToString("X") + dataLenghtHex + "60006000f0")
-                .Done;
+            bool isCreate2 = createCode[^2..] == Instruction.CREATE2.ToString("X");
+            byte[] evmCode = isCreate2
+                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done
+                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(byteCode);
+            Keccak createCodeHash = TestState.UpdateCode(evmCode);
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
-            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done;
+            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 60000).Done;
 
             var tracer = Execute(callCode);
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
             //how to test byteCode returned empty (CREATE) not call ?
             //Assert.AreEqual(StatusCode.FailureBytes, tracer.ReturnValue);
             Assert.AreEqual(Array.Empty<byte>(), tracer.ReturnValue);
-            //init code gas cost not deducted, but cost of 3 * push deducted
-            Assert.AreEqual(0, tracer.GasSpent - (GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow + 3 * GasCostOf.VeryLow));
+            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost - (isCreate2 ? 4 : 3) * GasCostOf.VeryLow);
+            Assert.AreEqual((UInt256)0, TestState.GetAccount(TestItem.AddressC).Nonce);
         }
 
         [Test]

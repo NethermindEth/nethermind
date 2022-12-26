@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingStorage;
         private readonly bool _isTracingBlockHash;
         private readonly bool _isTracingBlockAccess;
+        private readonly bool _isTracingFees;
 
         public ITxTracer InnerTracer => _innerTracer;
 
@@ -106,6 +107,12 @@ namespace Nethermind.Evm.Tracing
         {
             get => _isTracingBlockAccess || _innerTracer.IsTracingAccess;
             init => _isTracingBlockAccess = value;
+        }
+
+        public bool IsTracingFees
+        {
+            get => _isTracingFees || _innerTracer.IsTracingFees;
+            init => _isTracingFees = value;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -420,6 +427,15 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingAccess)
             {
                 _innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
+            }
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingFees)
+            {
+                _innerTracer.ReportFees(fees, burntFees);
             }
         }
     }

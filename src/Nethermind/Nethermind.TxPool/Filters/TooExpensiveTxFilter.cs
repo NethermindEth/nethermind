@@ -51,7 +51,7 @@ namespace Nethermind.TxPool.Filters
                         out UInt256 txCost);
 
                     overflow |= UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
-                    overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+                    overflow |= UInt256.AddOverflow(cumulativeCost, transactions[i].Value, out cumulativeCost);
                 }
                 else
                 {

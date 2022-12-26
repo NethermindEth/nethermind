@@ -8,6 +8,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -32,6 +33,7 @@ public partial class EngineModuleTests
         public void Dispose() => Disposed = true;
         public Task<Block?> ImprovementTask { get; }
         public Block? CurrentBestBlock { get; }
+        public UInt256 BlockFees { get; }
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
     }

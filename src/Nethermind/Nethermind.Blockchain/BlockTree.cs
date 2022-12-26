@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain
             {
                 ChainLevelInfo chainLevelInfo = LoadLevel(BestSuggestedHeader.Number);
                 BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
-                if (canonicalBlock is not null)
+                if (canonicalBlock is not null && canonicalBlock.WasProcessed)
                 {
                     SetHeadBlock(canonicalBlock.BlockHash!);
                 }
@@ -403,7 +403,13 @@ namespace Nethermind.Blockchain
             long right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
-            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            left = Math.Max(
+                Math.Max(
+                    Head?.Number ?? 0,
+                    LowestInsertedBeaconHeader?.Number ?? 0),
+                BestSuggestedHeader?.Number ?? 0
+                ) - 1;
+
             right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
 
@@ -940,14 +946,48 @@ namespace Nethermind.Blockchain
 
             if (skip == 0)
             {
+                static BlockHeader[] FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
+                {
+                    if (startHeader is null) throw new ArgumentNullException(nameof(startHeader));
+                    if (numberOfBlocks == 1)
+                    {
+                        return new[] { startHeader };
+                    }
+
+                    BlockHeader[] result = new BlockHeader[numberOfBlocks];
+
+                    BlockHeader current = startHeader;
+                    int responseIndex = reverse ? 0 : numberOfBlocks - 1;
+                    int step = reverse ? 1 : -1;
+                    do
+                    {
+                        result[responseIndex] = current;
+                        responseIndex += step;
+                        if (responseIndex < 0)
+                        {
+                            break;
+                        }
+
+                        current = tree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    } while (current is not null && responseIndex < numberOfBlocks);
+
+                    return result;
+                }
+
                 /* if we do not skip and we have the last block then we can assume that all the blocks are there
                    and we can use the fact that we can use parent hash and that searching by hash is much faster
                    as it does not require the step of resolving number -> hash */
-                BlockHeader endHeader = FindHeader(startHeader.Number + numberOfBlocks - 1,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (endHeader is not null)
+                if (reverse)
                 {
-                    return FindHeadersReversedFull(endHeader, numberOfBlocks);
+                    return FindHeadersReversedFast(this, startHeader, numberOfBlocks, true);
+                }
+                else
+                {
+                    BlockHeader endHeader = FindHeader(startHeader.Number + numberOfBlocks - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (endHeader is not null)
+                    {
+                        return FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                    }
                 }
             }
 
@@ -966,33 +1006,6 @@ namespace Nethermind.Blockchain
                 }
 
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            } while (current is not null && responseIndex < numberOfBlocks);
-
-            return result;
-        }
-
-        private BlockHeader[] FindHeadersReversedFull(BlockHeader startHeader, int numberOfBlocks)
-        {
-            if (startHeader is null) throw new ArgumentNullException(nameof(startHeader));
-            if (numberOfBlocks == 1)
-            {
-                return new[] { startHeader };
-            }
-
-            BlockHeader[] result = new BlockHeader[numberOfBlocks];
-
-            BlockHeader current = startHeader;
-            int responseIndex = numberOfBlocks - 1;
-            do
-            {
-                result[responseIndex] = current;
-                responseIndex--;
-                if (responseIndex < 0)
-                {
-                    break;
-                }
-
-                current = this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;

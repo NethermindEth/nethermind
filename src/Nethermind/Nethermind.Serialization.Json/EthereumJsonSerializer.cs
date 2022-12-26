@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Nethermind.Core.Collections;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -14,15 +15,19 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private readonly int? _maxDepth;
         private JsonSerializer _internalSerializer;
         private JsonSerializer _internalReadableSerializer;
 
         private JsonSerializerSettings _settings;
         private JsonSerializerSettings _readableSettings;
 
-        public EthereumJsonSerializer()
+        public EthereumJsonSerializer(int? maxDepth = null, params JsonConverter[] converters)
         {
-            RebuildSerializers();
+            _maxDepth = maxDepth;
+            BasicConverters.AddRange(converters);
+            ReadableConverters.AddRange(converters);
+            RebuildSerializers(maxDepth);
         }
 
         public static IReadOnlyList<JsonConverter> CommonConverters { get; } = new ReadOnlyCollection<JsonConverter>(
@@ -125,17 +130,17 @@ namespace Nethermind.Serialization.Json
             BasicConverters.Add(converter);
             ReadableConverters.Add(converter);
 
-            RebuildSerializers();
+            RebuildSerializers(_maxDepth);
         }
 
-        private void RebuildSerializers()
+        private void RebuildSerializers(int? maxDepth = null)
         {
             _readableSettings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
-                Converters = ReadableConverters
+                Converters = ReadableConverters,
             };
 
             _settings = new JsonSerializerSettings
@@ -145,6 +150,11 @@ namespace Nethermind.Serialization.Json
                 Formatting = Formatting.None,
                 Converters = BasicConverters,
             };
+
+            if (maxDepth is not null)
+            {
+                _readableSettings.MaxDepth = _settings.MaxDepth = maxDepth.Value;
+            }
 
             _internalSerializer = JsonSerializer.Create(_settings);
             _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
