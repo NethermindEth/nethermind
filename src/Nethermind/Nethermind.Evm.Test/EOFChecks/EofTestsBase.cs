@@ -79,8 +79,9 @@ namespace Nethermind.Evm.Test
             UseUndefinedOpcode = 1 << 0,
             UseDeprecatedOpcode = 1 << 1,
             EndWithTruncatedPush = 1 << 2,
+            WithEmptyCodeSection = 1 << 3,
 
-            WithDataSection = 1 << 3,
+            WithDataSection = 1 << 4,
         }
 
         [Flags]
@@ -168,36 +169,39 @@ namespace Nethermind.Evm.Test
             {
                 Prepare prepare = Prepare.EvmCode;
                 int opcodeCount = 0;
-                if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
+                if(!scenario.HasFlag(BodyScenario.WithEmptyCodeSection))
                 {
-                    prepare = prepare
-                        .PC().POP()
-                        .SELFDESTRUCT()
-                        .CALLCODE();
-                    opcodeCount += 2;
-
-                }
-
-                if (scenario.HasFlag(BodyScenario.UseUndefinedOpcode))
-                {
-                    byte opcode = 0x00;
-                    while (Enum.IsDefined(typeof(Instruction), opcode))
+                    if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
-                        opcode++;
-                    }
-                    prepare = prepare.Op(opcode);
-                    opcodeCount += 1;
-                }
+                        prepare = prepare
+                            .PC().POP()
+                            .SELFDESTRUCT()
+                            .CALLCODE();
+                        opcodeCount += 2;
 
-                if (scenario.HasFlag(BodyScenario.EndWithTruncatedPush))
-                {
-                    prepare.Op(Instruction.PUSH32)
-                        .Data(Enumerable.Range(0, 23).Select(i => (byte)i).ToArray());
-                }
-                else
-                {
-                    prepare.Op(Instruction.PUSH32)
-                        .Data(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
+                    }
+
+                    if (scenario.HasFlag(BodyScenario.UseUndefinedOpcode))
+                    {
+                        byte opcode = 0x00;
+                        while (Enum.IsDefined(typeof(Instruction), opcode))
+                        {
+                            opcode++;
+                        }
+                        prepare = prepare.Op(opcode);
+                        opcodeCount += 1;
+                    }
+
+                    if (scenario.HasFlag(BodyScenario.EndWithTruncatedPush))
+                    {
+                        prepare.Op(Instruction.PUSH32)
+                            .Data(Enumerable.Range(0, 23).Select(i => (byte)i).ToArray());
+                    }
+                    else
+                    {
+                        prepare.Op(Instruction.PUSH32)
+                            .Data(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
+                    }
                 }
 
                 byte[] bytecode = prepare.Done;

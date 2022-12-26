@@ -131,7 +131,7 @@ public class EvmObjectFormat
             ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
             if(numberOfCodeSections < 1)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : At least one code section must be present");
                 return false;
             }
@@ -160,7 +160,7 @@ public class EvmObjectFormat
 
             if(typeSection.Size < 3)
             {
-                if (_loggerEnabled)
+                if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
                 return false;
             }
@@ -196,7 +196,7 @@ public class EvmObjectFormat
 
                 if (codeSection.Size == 0)
                 {
-                    if (_loggerEnabled)
+                    if (_loggingEnabled)
                         _logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
                     return false;
                 }
