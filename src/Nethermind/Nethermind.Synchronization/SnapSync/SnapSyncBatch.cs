@@ -20,5 +20,29 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
         public IReadOnlyList<byte[]>? AccountsToRefreshResponse { get; set; }
+
+        public override string ToString()
+        {
+            if (AccountRangeRequest is not null)
+            {
+                return AccountRangeRequest!.ToString();
+            }
+            else if (StorageRangeRequest is not null)
+            {
+                return StorageRangeRequest!.ToString();
+            }
+            else if (CodesRequest is not null)
+            {
+                return $"CodesRequest: ({CodesRequest.Length})";
+            }
+            else if (AccountsToRefreshRequest is not null)
+            {
+                return AccountsToRefreshRequest!.ToString();
+            }
+            else
+            {
+                return "Empty snap sync batch";
+            }
+        }
     }
 }

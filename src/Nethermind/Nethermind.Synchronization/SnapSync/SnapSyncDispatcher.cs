@@ -1,15 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -28,85 +24,29 @@ namespace Nethermind.Synchronization.SnapSync
             //TODO: replace with a constant "snap"
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {
-                if (batch.AccountRangeRequest is not null)
+                try
                 {
-                    Task<AccountsAndProofs> task = handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
-
-                    await task.ContinueWith(
-                        (t, state) =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsTrace)
-                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                            }
-
-                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batchLocal.AccountRangeResponse = t.Result;
-                            }
-                        }, batch);
+                    if (batch.AccountRangeRequest is not null)
+                    {
+                        batch.AccountRangeResponse = await handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
+                    }
+                    else if (batch.StorageRangeRequest is not null)
+                    {
+                        batch.StorageRangeResponse = await handler.GetStorageRange(batch.StorageRangeRequest, cancellationToken);
+                    }
+                    else if (batch.CodesRequest is not null)
+                    {
+                        batch.CodesResponse = await handler.GetByteCodes(batch.CodesRequest, cancellationToken);
+                    }
+                    else if (batch.AccountsToRefreshRequest is not null)
+                    {
+                        batch.AccountsToRefreshResponse = await handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+                    }
                 }
-                else if (batch.StorageRangeRequest is not null)
+                catch (Exception e)
                 {
-                    Task<SlotsAndProofs> task = handler.GetStorageRange(batch.StorageRangeRequest, cancellationToken);
-
-                    await task.ContinueWith(
-                        (t, state) =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsTrace)
-                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                            }
-
-                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batchLocal.StorageRangeResponse = t.Result;
-                            }
-                        }, batch);
-                }
-                else if (batch.CodesRequest is not null)
-                {
-                    Task<IReadOnlyList<byte[]>> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
-
-                    await task.ContinueWith(
-                        (t, state) =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsTrace)
-                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                            }
-
-                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batchLocal.CodesResponse = t.Result;
-                            }
-                        }, batch);
-                }
-                else if (batch.AccountsToRefreshRequest is not null)
-                {
-                    Task<IReadOnlyList<byte[]>> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
-
-                    await task.ContinueWith(
-                        (t, state) =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsTrace)
-                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                            }
-
-                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batchLocal.AccountsToRefreshResponse = t.Result;
-                            }
-                        }, batch);
+                    if (Logger.IsDebug)
+                        Logger.Error($"DEBUG/ERROR Error after dispatching the snap sync request. Request: {batch}", e);
                 }
             }
 
