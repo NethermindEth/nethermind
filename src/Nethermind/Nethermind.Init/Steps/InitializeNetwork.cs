@@ -99,10 +99,15 @@ public class InitializeNetwork : IStep
         }
 
         Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
+        CanonicalHashTrie cht = new(_api.DbProvider!.ChtDb);
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
+        if (_syncConfig.SnapServe)
+        {
+            _api.SnapServer = new SnapServer(_api.ReadOnlyTrieStore!, _api.DbProvider.CodeDb, _api.LogManager);
+        }
+
 
         SyncProgressResolver syncProgressResolver = new(
             _api.BlockTree!,
@@ -211,10 +216,17 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            if (_syncConfig.SnapServe)
+            {
+                snapCapabilitySwitcher.EnableSnapCapability();
+            }
+            else if (!stateSyncFinished)
+            {
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
@@ -510,6 +522,7 @@ public class InitializeNetwork : IStep
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             _api.SyncServer!,
+            _api.SnapServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 
@@ -21,5 +21,8 @@ namespace Nethermind.Trie
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
         public int MaxDegreeOfParallelism { get; init; } = 1;
+
+        public bool KeepTrackOfAbsolutePath { get; init; } = false;
+
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             stream.Encode(message.RequestId);
 
-            if (message.Slots is null || message.Slots.Length == 0)
+            if (message.Slots == null || message.Slots.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 stream.StartSequence(allSlotsLength);
 
-                for (int i = 0; i < message.Slots.Length; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     stream.StartSequence(accountSlotsLengths[i]);
 
@@ -95,15 +95,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Length];
+            int[] accountSlotsLengths = new int[message.Slots.Count];
 
-            if (message.Slots is null || message.Slots.Length == 0)
+            if (message.Slots == null || message.Slots.Count == 0)
             {
                 allSlotsLength = 1;
             }
             else
             {
-                for (var i = 0; i < message.Slots.Length; i++)
+                for (var i = 0; i < message.Slots.Count; i++)
                 {
                     int accountSlotsLength = 0;
 

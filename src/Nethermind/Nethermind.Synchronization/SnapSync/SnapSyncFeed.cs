@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             catch (Exception e)
             {
-                _logger.Error("Error when preparing a batch", e);
+                if (_logger.IsError) _logger.Error("Error when preparing a batch", e);
                 return Task.FromResult(EmptyBatch);
             }
         }
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _logger.Trace($"SNAP - timeout {peer}");
+                    if (_logger.IsTrace) _logger.Trace($"SNAP - timeout {peer}");
                     return SyncResponseHandlingResult.LesserQuality;
                 }
             }
@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     if (allLastFailures == peerLastFailures)
                                     {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
+                                        if (_logger.IsTrace) _logger.Trace($"SNAP - peer to be punished:{peer}");
                                         return SyncResponseHandlingResult.LesserQuality;
                                     }
 

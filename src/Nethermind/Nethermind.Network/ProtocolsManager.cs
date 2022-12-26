@@ -25,6 +25,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network
@@ -39,6 +40,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
+        private readonly ISnapServer? _snapServer;
         private readonly ITxPool _txPool;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly IDiscoveryApp _discoveryApp;
@@ -58,6 +60,7 @@ namespace Nethermind.Network
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
+            ISnapServer? snapServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
@@ -72,6 +75,7 @@ namespace Nethermind.Network
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            _snapServer = snapServer;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -196,7 +200,7 @@ namespace Nethermind.Network
                 {
                     var handler = version switch
                     {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
+                        1 => new SnapProtocolHandler(session, _stats, _serializer, _snapServer, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);

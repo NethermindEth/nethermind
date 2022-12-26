@@ -300,21 +300,68 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
+            byte[] array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                byte[] array = null;
                 Span<byte> nibbles = rawKey.Length <= 64
                     ? stackalloc byte[nibblesCount]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
                 return result;
             }
             catch (TrieException e)
             {
-                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+                throw new TrieException(
+                    $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+            finally
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+
+        [DebuggerStepThrough]
+        public byte[]? GetNodeByPath(byte[] nibbles, Keccak? rootHash = null)
+        {
+            try
+            {
+                int nibblesCount = nibbles.Length;
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                return result ?? Array.Empty<byte>();
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException(
+                    $"Failed to load by path {nibbles.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+        }
+
+        [DebuggerStepThrough]
+        public byte[]? GetNodeByKey(Span<byte> rawKey, Keccak? rootHash = null)
+        {
+            byte[] array = null;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                Span<byte> nibbles = rawKey.Length <= 64
+                    ? stackalloc byte[nibblesCount]
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                byte[]? result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                return result ?? Array.Empty<byte>();
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException(
+                    $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
+            finally
+            {
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -346,7 +393,8 @@ namespace Nethermind.Trie
             byte[]? updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Keccak? startRootHash = null)
+            Keccak? startRootHash = null,
+            bool isNodeRead = false)
         {
             if (isUpdate && startRootHash is not null)
             {
@@ -362,6 +410,11 @@ namespace Nethermind.Trie
 
             TraverseContext traverseContext =
                 new(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+
+            if (isNodeRead)
+            {
+                traverseContext.IsNodeRead = true;
+            }
 
             // lazy stack cleaning after the previous update
             if (traverseContext.IsUpdate)
@@ -408,7 +461,10 @@ namespace Nethermind.Trie
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
-
+            if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
+            {
+                return node.FullRlp;
+            }
             return node.NodeType switch
             {
                 NodeType.Branch => TraverseBranch(node, traverseContext),
@@ -755,11 +811,14 @@ namespace Nethermind.Trie
             int extensionLength = FindCommonPrefixLength(shorterPath, longerPath);
             if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
+                if (traverseContext.IsNodeRead)
+                {
+                    return node.FullRlp;
+                }
                 if (traverseContext.IsRead)
                 {
                     return node.Value;
                 }
-
                 if (traverseContext.IsDelete)
                 {
                     ConnectNodes(null);
@@ -776,7 +835,7 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            if (traverseContext.IsRead)
+            if (traverseContext.IsRead || traverseContext.IsNodeRead)
             {
                 return null;
             }
@@ -852,7 +911,7 @@ namespace Nethermind.Trie
                 return TraverseNode(next, traverseContext);
             }
 
-            if (traverseContext.IsRead)
+            if (traverseContext.IsRead || traverseContext.IsNodeRead)
             {
                 return null;
             }
@@ -929,7 +988,8 @@ namespace Nethermind.Trie
             public Span<byte> UpdatePath { get; }
             public byte[]? UpdateValue { get; }
             public bool IsUpdate { get; }
-            public bool IsRead => !IsUpdate;
+            public bool IsNodeRead { get; set; }
+            public bool IsRead => !IsUpdate && !IsNodeRead;
             public bool IsDelete => IsUpdate && UpdateValue is null;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; set; }
@@ -956,6 +1016,7 @@ namespace Nethermind.Trie
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
+                IsNodeRead = false;
             }
 
             public override string ToString()
@@ -993,7 +1054,8 @@ namespace Nethermind.Trie
                 // we introduced a notion of an account on the visit context level which should have no knowledge of account really
                 // but we know that we have multiple optimizations and assumptions on trees
                 ExpectAccounts = visitingOptions.ExpectAccounts,
-                MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism
+                MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
+                KeepTrackOfAbsolutePath = visitingOptions.KeepTrackOfAbsolutePath
             };
 
             TrieNode rootRef = null;

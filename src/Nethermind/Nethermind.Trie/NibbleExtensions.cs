@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -81,6 +84,44 @@ namespace Nethermind.Trie
             }
 
             return bytes;
+        }
+
+        public static byte[] ToBytes(List<byte> nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Count / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
+        public static byte[] CompactToHexEncode(byte[] compactPath)
+        {
+            if (compactPath.Length == 0)
+            {
+                return compactPath;
+            }
+            int nibblesCount = compactPath.Length * 2 + 1;
+            byte[] array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            try
+            {
+                Span<byte> nibbles = array.Slice(0, nibblesCount);
+                BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+                nibbles[^1] = 16;
+
+                if (nibbles[0] < 2)
+                {
+                    nibbles = nibbles[..^1];
+                }
+
+                int chop = 2 - (nibbles[0] & 1);
+                return nibbles[chop..].ToArray();
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(array);
+            }
         }
 
         public static byte[] ToCompactHexEncoding(byte[] nibbles)

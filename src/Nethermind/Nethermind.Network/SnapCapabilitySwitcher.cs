@@ -32,6 +32,12 @@ public class SnapCapabilitySwitcher
     {
         _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         _syncModeSelector.Changed += OnSyncModeChanged;
+        if (_logger.IsDebug) _logger.Debug("Enabled snap capability with switching");
+    }
+
+    public void EnableSnapCapability()
+    {
+        _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
     }
 

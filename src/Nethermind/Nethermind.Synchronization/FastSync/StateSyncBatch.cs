@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
@@ -22,13 +23,13 @@ namespace Nethermind.Synchronization.FastSync
 
         public StateSyncItem[]? RequestedNodes { get; }
 
-        public byte[][]? Responses { get; set; }
+        public IReadOnlyList<byte[]>? Responses { get; set; }
 
         public int ConsumerId { get; set; }
 
         public override string ToString()
         {
-            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Length ?? 0} responses";
+            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
         }
     }
 }

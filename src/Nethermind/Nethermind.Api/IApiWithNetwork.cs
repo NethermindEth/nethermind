@@ -52,5 +52,6 @@ namespace Nethermind.Api
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory SubscriptionFactory { get; set; }
         ISnapProvider SnapProvider { get; set; }
+        ISnapServer? SnapServer { get; set; }
     }
 }

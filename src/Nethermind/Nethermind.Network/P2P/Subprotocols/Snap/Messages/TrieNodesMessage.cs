@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -12,8 +13,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             Nodes = data ?? Array.Empty<byte[]>();
         }
 
+        public TrieNodesMessage(List<byte[]>? data)
+        {
+            Nodes = data ?? new List<byte[]>();
+        }
+
         public override int PacketType => SnapMessageCode.TrieNodes;
 
-        public byte[][] Nodes { get; set; }
+        public IReadOnlyList<byte[]> Nodes { get; set; }
     }
 }

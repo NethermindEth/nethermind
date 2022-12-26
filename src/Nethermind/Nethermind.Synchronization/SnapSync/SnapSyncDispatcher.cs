@@ -4,11 +4,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -24,7 +21,6 @@ namespace Nethermind.Synchronization.SnapSync
         protected override async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
-
             //TODO: replace with a constant "snap"
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {

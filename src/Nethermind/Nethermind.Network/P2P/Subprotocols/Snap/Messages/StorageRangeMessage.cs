@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using System.Collections.Generic;
@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of list of consecutive slots from the trie (one list per account)
         /// </summary>
-        public PathWithStorageSlot[][] Slots { get; set; }
+        public IReadOnlyList<PathWithStorageSlot[]> Slots { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the slot range
