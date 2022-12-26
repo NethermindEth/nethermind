@@ -37,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Test;
 using System.Text.Json;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
+using static Nethermind.Evm.Test.EofTestsBase;
 
 namespace Nethermind.Evm.Test
 {
@@ -46,520 +47,247 @@ namespace Nethermind.Evm.Test
     public class EOF4750Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
-        {
-            IsEip4200Enabled = true,
-            IsEip4750Enabled = true
-        });
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
 
-        public class FunctionCase
-        {
-            public int InputCount;
-            public int OutputCount;
-            public byte[] Body;
-        }
-        public class TestCase2
-        {
-            public int Index;
-            public byte[] Main;
-            public FunctionCase[] Functions = Array.Empty<FunctionCase>();
-            public byte[] Data;
-            public byte[] Type;
-            public (byte Status, string error) Result;
-            public string Description;
-            public IEnumerable<byte[]> Routines
-            {
-                get
-                {
-                    yield return Main;
-                    foreach (var functionDef in Functions)
-                    {
-                        yield return functionDef.Body;
-                    }
-                }
-            }
-
-            private enum Scenario
-            {
-                OmitSection = 1,
-                MisplaceSection = 2,
-            }
-            public IEnumerable<TestCase> GenerateScenarios()
-            {
-                byte[] GenerateCase(bool ommitTypeSection, bool misplaceTypeSection)
-                {
-                    byte[] bytes;
-                    var bytecodeSize = 3;
-                    bytecodeSize += ommitTypeSection ? 0 : 3; // typesectionHeader
-                    bytecodeSize += ommitTypeSection ? 0 : 2 * (Functions.Length + 1 /*Main Code*/); // typesection
-                    bytecodeSize += 3 * (Functions.Length + 1 /*Main Code*/); // codesectionHeader 
-                    bytecodeSize += Main.Length + Functions.Aggregate(0, (acc, funcCase) => acc + funcCase.Body.Length); // codesection 
-                    bytecodeSize += (Data is not null && Data.Length > 0 ? 3 : 0); // datasectionHeader 
-                    bytecodeSize += (Data is not null && Data.Length > 0 ? Data.Length : 0); // datasection
-                    bytecodeSize += 1; // terminator
-                    bytes = new byte[bytecodeSize];
-
-                    int i = 0;
-
-                    // set magic
-                    bytes[i++] = 0xEF; bytes[i++] = 0x00; bytes[i++] = 0x01;
-
-                    // set type section
-                    byte[] lenBytes;
-                    if (!misplaceTypeSection)
-                    {
-                        if (!ommitTypeSection)
-                        {
-                            lenBytes = ((1 + Functions.Length) * 2).ToByteArray();
-                            bytes[i++] = 0x03; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-                        }
-                    }
-
-                    // set code section
-                    foreach (var functionCase in Routines)
-                    {
-                        lenBytes = functionCase.Length.ToByteArray();
-                        bytes[i++] = 0x01; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-                    }
-
-                    if (misplaceTypeSection)
-                    {
-                        if (!ommitTypeSection)
-                        {
-                            lenBytes = ((1 + Functions.Length) * 2).ToByteArray();
-                            bytes[i++] = 0x03; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-                        }
-                    }
-
-                    // set Data section
-                    if (Data is not null && Data.Length > 0)
-                    {
-                        lenBytes = Data.Length.ToByteArray();
-                        bytes[i++] = 0x02; bytes[i++] = lenBytes[^2]; bytes[i++] = lenBytes[^1];
-                    }
-
-                    // set the terminator byte
-                    bytes[i++] = 0x00;
-
-                    //set typesection
-                    if (!ommitTypeSection)
-                    {
-                        bytes[i++] = (byte)0; bytes[i++] = (byte)0;
-                        foreach (var functionDef in Functions)
-                        {
-                            bytes[i++] = (byte)functionDef.InputCount; bytes[i++] = (byte)functionDef.OutputCount;
-                        }
-                    }
-
-                    foreach (var bytecode in Routines)
-                    {
-                        Array.Copy(bytecode, 0, bytes, i, bytecode.Length);
-                        i += bytecode.Length;
-                    }
-
-                    if (Data is not null && Data.Length > 0)
-                    {
-                        Array.Copy(Data, 0, bytes, i, Data.Length);
-                    }
-
-                    return bytes;
-                }
-
-                for (int i = 3; i <= 3; i++)
-                {
-                    var scenario = (Scenario)i;
-                    switch (scenario)
-                    {
-                        case Scenario.OmitSection:
-                            yield return new TestCase
-                            {
-                                Code = GenerateCase(true, false),
-                                ResultIfEOF = (StatusCode.Failure, "Missing Type Section")
-                            };
-                            break;
-                        case Scenario.MisplaceSection:
-                            yield return new TestCase
-                            {
-                                Code = GenerateCase(false, true),
-                                ResultIfEOF = (StatusCode.Failure, "Misplaced Type Section")
-                            };
-                            break;
-                        default:
-                            yield return new TestCase
-                            {
-                                Code = GenerateCase(false, false),
-                                ResultIfEOF = Result
-                            };
-                            break;
-                    }
-                }
-            }
-        }
-
-        public static IEnumerable<TestCase2> Eip4750TestCases
+        public static IEnumerable<TestCase> Eip4750TxTestCases
         {
             get
             {
-                yield return new TestCase2
+
+                yield return new TestCase(1)
                 {
-                    Main = Prepare.EvmCode
-                        .MUL(3, 23)
-                        .STOP()
-                        .Done,
-                    Data = Bytes.FromHexString("deadbeef"),
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Success, null),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(2)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1024,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Success, null),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(3)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .ADD()
-                        .POP()
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .PushData(23)
-                                .JUMPF(2)
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        },
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .ADD()
-                                .PushData(69)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 2
-                        }
-                    },
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .ADD()
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 1024,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .PushData(23)
+                                        .CALLF(2)
+                                        .RETF()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 2, 1024,
+                                    Prepare.EvmCode
+                                        .ADD()
+                                        .PushData(69)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Success, null),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(4)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .JUMPF(2)
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        },
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 3
-                        }
-                    },
-                    Result = (StatusCode.Failure, "function target of jumpf is incompatible with callee"),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Data = Bytes.FromHexString("deadbeef"),
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 0, 1024,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .POP()
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Success, null),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(5)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                            .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Result = (StatusCode.Failure, "Section 0 ends in non-terminating opcode"),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .Done,
-                            InputCount = 2,
-                            OutputCount = 1
-                        }
-                    },
-                    Result = (StatusCode.Failure, "Section 1 ends in non-terminating opcode"),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(2)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .ADD(54)
-                                .RETF()
-                                .Done,
-                            InputCount = 2,
-                            OutputCount = 0
-                        }
-                    },
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(2)
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 0, 1024,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Failure, "Invalid Code Section call"),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(6)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .CALLF(2)
-                                .RETF()
-                                .Done,
-                            InputCount = 2,
-                            OutputCount = 0
-                        },
-
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .ADD(54)
-                                .RJUMP(1)
-                                .INVALID()
-                                .RETF()
-                                .Done,
-                            InputCount = 1,
-                            OutputCount = 0
-                        }
-                    },
+                    Bytecode = new ScenarioCase(
+                            Functions: Enumerable.Range(0, 1024)
+                                .Select(_ => new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .STOP()
+                                        .Done
+                                    )
+                                ).ToArray(),
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Success, null),
                 };
 
-                yield return new TestCase2
+                yield return new TestCase(7)
                 {
-                    Main = Prepare.EvmCode
-                        .PushData(23)
-                        .PushData(3)
-                        .CALLF(1)
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[]
-                    {
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .MUL()
-                                .CALLF(3)
-                                .RETF()
-                                .Done,
-                            InputCount = 2,
-                            OutputCount = 0
-                        },
-
-                        new FunctionCase{
-                            Body = Prepare.EvmCode
-                                .ADD(54)
-                                .RJUMP(1)
-                                .INVALID()
-                                .RETF()
-                                .Done,
-                            InputCount = 1,
-                            OutputCount = 0
-                        }
-                    },
-                    Result = (StatusCode.Failure, "Invalid Code Section call"),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .STOP()
-                        .Done,
-                    Functions = Enumerable.Range(0, 1023).Select(_ => new FunctionCase
-                    {
-                        Body = Prepare.EvmCode
-                                .INVALID()
-                                .Done,
-                        InputCount = 0,
-                        OutputCount = 0
-                    }).ToArray(),
-                    Result = (StatusCode.Success, null),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .STOP()
-                        .Done,
-                    Functions = new FunctionCase[] {
-                        new FunctionCase
-                        {
-                            Body = Prepare.EvmCode
-                                    .Done,
-                            InputCount = 2,
-                            OutputCount = 0
-                        }
-                    },
-                    Result = (StatusCode.Failure, null),
-                };
-
-                yield return new TestCase2
-                {
-                    Main = Prepare.EvmCode
-                        .STOP()
-                        .Done,
-                    Functions = Enumerable.Range(0, 1025).Select(_ => new FunctionCase
-                    {
-                        Body = Prepare.EvmCode
-                                .INVALID()
-                                .Done,
-                        InputCount = 2,
-                        OutputCount = 0
-                    }).ToArray(),
+                    Bytecode = new ScenarioCase(
+                            Functions: Enumerable.Range(0, 1025)
+                                .Select(_ => new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .STOP()
+                                        .Done
+                                    )
+                                ).ToArray(),
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
                     Result = (StatusCode.Failure, "Code Section overflow (+1024)"),
                 };
-            }
-        }
 
-        public static IEnumerable<TestCase> Eip4750Scenarios
-        {
-            get
-            {
-                foreach (var testCase in Eip4750TestCases)
+                yield return new TestCase(8)
                 {
-                    foreach (var scenarioCase in testCase.GenerateScenarios())
-                    {
-                        yield return scenarioCase;
-                    }
-                }
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 1024,
+                                    Prepare.EvmCode.Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Invalid Code Section call"),
+                };
             }
         }
 
         [Test]
-        public void Eip4750_execution_tests([ValueSource(nameof(Eip4750Scenarios))] TestCase testCase)
+        public void EOF_Opcode_Deprecation_checks()
         {
-            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testCase.Code);
-            receipts.StatusCode.Should().Be(testCase.ResultIfEOF.Status, receipts.Error);
-        }
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
-        // valid code
-        [TestCase("0xEF000101000100FE", true)]
-        [TestCase("0xEF00010100050060006000F3", true)]
-        [TestCase("0xEF00010100050060006000FD", true)]
-        [TestCase("0xEF0001010022007F000000000000000000000000000000000000000000000000000000000000000000", true)]
-        [TestCase("0xEF0001010022007F0C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F00", true)]
-        [TestCase("0xEF000101000102002000000C0D0E0F1E1F2122232425262728292A2B2C2D2E2F494A4B4C4D4E4F5C5D5E5F", true)]
-        // code with invalid magic
-        [TestCase("0xEF0001010003006000FF", false, Description = "ends with SelfDestruct")]
-        [TestCase("0xEF0001010001000C", false, Description = "Undefined instruction")]
-        [TestCase("0xEF000101000100EF", false, Description = "Undefined instruction")]
-        [TestCase("0xEF00010100010060", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF00010100010030", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010020007F00000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
-        [TestCase("0xEF0001010021007F0000000000000000000000000000000000000000000000000000000000000000", false, Description = "Missing terminating instruction")]
-        public void EIP4570_Compliant_formats_Test(string code, bool isCorrectlyFormated)
-        {
-            var bytecode = Prepare.EvmCode
-                .FromCode(code)
-                .Done;
-
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            Instruction[] StaticRelativeJumpsOpcode =
             {
-                IsEip4750Enabled = true
+                Instruction.PC,
+                Instruction.JUMP,
+                Instruction.JUMPI,
             };
 
+            foreach (Instruction opcode in StaticRelativeJumpsOpcode)
+            {
+                Assert.False(opcode.IsValid(TargetReleaseSpec));
+            }
+        }
 
-            bool checkResult = ByteCodeValidator.Instance.ValidateBytecode(bytecode, TargetReleaseSpec, out _);
+        [Test]
+        public void EOF_Static_jumps_activation_tests()
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
-            checkResult.Should().Be(isCorrectlyFormated);
+            Instruction[] StaticRelativeJumpsOpcode =
+            {
+                Instruction.CALLF,
+                Instruction.RETF,
+            };
+
+            foreach (Instruction opcode in StaticRelativeJumpsOpcode)
+            {
+                Assert.True(opcode.IsValid(TargetReleaseSpec));
+            }
+        }
+
+        [Test]
+        public void EOF_execution_tests([ValueSource(nameof(Eip4750TxTestCases))] TestCase testcase)
+        {
+            TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);
+
+            receipts.StatusCode.Should().Be(testcase.Result.Status, $"{testcase.Result.Msg}");
+        }
+
+        [Test]
+        public void EOF_validation_tests([ValueSource(nameof(Eip4750TxTestCases))] TestCase testcase)
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }
     }
 }

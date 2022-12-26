@@ -112,6 +112,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.GAS);
         public static Prepare JUMPDEST(this Prepare @this)
             => @this.Op(Instruction.JUMPDEST);
+        public static Prepare NOP(this Prepare @this)
+            => @this.Op(Instruction.NOP);
         public static Prepare MSIZE(this Prepare @this)
             => @this.Op(Instruction.MSIZE);
         public static Prepare SWAPx(this Prepare @this, byte i)
@@ -344,9 +346,6 @@ namespace Nethermind.Evm
         #region opcodes_with_immediates
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
             => @this.Op(Instruction.CALLF)
-                .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
-        public static Prepare JUMPF(this Prepare @this, UInt16 sectionId)
-            => @this.Op(Instruction.JUMPF)
                 .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId, params byte[] arguments)
             => @this.PushData(arguments)

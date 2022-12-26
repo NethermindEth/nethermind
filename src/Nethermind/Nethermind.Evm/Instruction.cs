@@ -171,9 +171,8 @@ namespace Nethermind.Evm
 
         CREATE = 0xf0,
         CALL = 0xf1,
-        RETF = 0xb1, // FunctionSection
         CALLF = 0xb0, // FunctionSection
-        JUMPF = 0xb2,
+        RETF = 0xb1, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
@@ -189,12 +188,12 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.JUMPF or Instruction.RETF when spec.IsEip4750Enabled => true,
+            Instruction.RETF when spec.IsEip4750Enabled => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
 
-        public static bool IsValid(this Instruction instruction, IReleaseSpec spec, bool IsEofContext)
+        public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
         {
             if (!FastEnum.IsDefined(instruction))
             {
@@ -203,11 +202,11 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT when spec.IsEip3670Enabled => !IsEofContext,
-                Instruction.JUMPI or Instruction.JUMP when spec.IsEip4750Enabled == true => !IsEofContext,
-                Instruction.CALLF or Instruction.JUMPF or Instruction.RETF when spec.IsEip4750Enabled => IsEofContext,
+                Instruction.PC or Instruction.JUMP or Instruction.JUMPI when spec.IsEip4750Enabled => false,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT when spec.IsEip3670Enabled => false,
+                Instruction.CALLF or Instruction.RETF when spec.IsEip4750Enabled => true,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => IsEofContext,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
                 Instruction.REVERT => spec.RevertOpcodeEnabled,
                 Instruction.STATICCALL => spec.StaticCallEnabled,
@@ -241,7 +240,7 @@ namespace Nethermind.Evm
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
             Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
-            Instruction.RETF or Instruction.CALLF or Instruction.JUMPF => true,
+            Instruction.RETF or Instruction.CALLF => true,
             _ => false
         };
     }

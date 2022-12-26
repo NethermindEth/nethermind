@@ -10,6 +10,12 @@ namespace Nethermind.Core.Extensions;
 
 public static class EnumExtensions
 {
+    public static String ToFullString<T>(this T value) where T : struct, Enum
+        => FastEnum.GetValues<T>()
+                .Where(flag => value.HasFlag(flag))
+                .Select(flag => flag.ToString())
+                .Aggregate(string.Empty, (acc, flg) => $"{acc} | {flg}");
+
     /// <summary>
     /// Returns all combinations of enum values of type <see cref="T"/>.
     /// </summary>

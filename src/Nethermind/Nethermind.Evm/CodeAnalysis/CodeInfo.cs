@@ -2,61 +2,82 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
+using System.Reflection.PortableExecutable;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class CodeInfoFactory
+    {
+        public static ICodeInfo CreateCodeInfo(byte[] code, IReleaseSpec spec, ILogManager logManager = null)
+        {
+            ByteCodeValidator byteCodeValidator = new(spec, logManager);
+            if (spec.IsEip3540Enabled && byteCodeValidator.ValidateEofBytecode(code, out EofHeader? header))
+            {
+                return new EofCodeInfo(code, header.Value);
+            }
+            else
+            {
+                return new CodeInfo(code);
+            }
+        }
+    }
+    public interface ICodeInfo
+    {
+        byte[] MachineCode { get; }
+        IPrecompile? Precompile { get; }
+        bool IsPrecompile => Precompile is not null;
+        byte Version { get; }
+        bool IsEof { get; }
+        ReadOnlySpan<byte> TypeSection { get; }
+        ReadOnlySpan<byte> CodeSection { get; }
+        ReadOnlySpan<byte> DataSection { get; }
+        (int Start, int Size) SectionOffset(int i);
+        bool ValidateJump(int destination, bool isSubroutine);
+    }
+
+    public class EofCodeInfo : CodeInfo
+    {
+        private EofHeader _header;
+        public override bool IsEof => true;
+        public override byte Version => _header.Version;
+        public override (int Start, int Size) SectionOffset(int i) => (_header.CodeSections[i].Start, _header.CodeSections[i].Size);
+
+        public override ReadOnlySpan<byte> TypeSection => MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
+        public override ReadOnlySpan<byte> CodeSection => MachineCode.Slice(_header.CodeSections[0].Start, _header.CodeSections.Sum(s => s.Size));
+        public override ReadOnlySpan<byte> DataSection => MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
+
+        public EofCodeInfo(byte[] code, in EofHeader header) : base(code)
+        {
+            _header = header;
+        }
+    }
+
+    public class CodeInfo : ICodeInfo
     {
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
-        private EofHeader? _header;
-        private bool isEof = false;
         private static Random _rand = new();
 
-        public byte[] MachineCode { get; set; }
-        public int SectionId { get; set; } = 0;
-
-        public bool IsEof => isEof;
-        public EofHeader? Header => _header;
-
-        #region EofSection Extractors
-
-        public Span<byte> ExtractCodeSection()
-        {
-            return MachineCode.Slice(Header.Value.CodeSections.Start, Header.Value.CodeSections.Size);
-        }
-
-        public Span<byte> ExtractTypeSection()
-        {
-            return Header.Value.TypeSection.HasValue
-                ? (Span<byte>)MachineCode.Slice(Header.Value.TypeSection.Value.Start, Header.Value.TypeSection.Value.Size)
-                : Span<byte>.Empty;
-        }
-
-        public Span<byte> ExtractDataSection()
-        {
-            return Header.Value.DataSection.HasValue
-                ? (Span<byte>)MachineCode.Slice(Header.Value.DataSection.Value.Start, Header.Value.DataSection.Value.Size)
-                : Span<byte>.Empty;
-        }
-
-        #endregion
-
-        public IPrecompile? Precompile { get; set; }
+        public virtual byte Version => 0;
+        public virtual bool IsEof => false;
         private ICodeInfoAnalyzer? _analyzer;
 
-        public CodeInfo(byte[] code, IReleaseSpec spec)
+        public byte[] MachineCode { get; set; }
+        public IPrecompile? Precompile { get; set; }
+        public virtual ReadOnlySpan<byte> CodeSection => MachineCode;
+        public virtual ReadOnlySpan<byte> TypeSection => Array.Empty<byte>();
+        public virtual ReadOnlySpan<byte> DataSection => Array.Empty<byte>();
+
+        public CodeInfo(byte[] code)
         {
             MachineCode = code;
-            if (spec.IsEip3540Enabled)
-            {
-                isEof = ByteCodeValidator.Instance.ValidateEofBytecode(MachineCode, spec, out _header);
-            }
         }
 
         public bool IsPrecompile => Precompile is not null;
@@ -66,27 +87,24 @@ namespace Nethermind.Evm.CodeAnalysis
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
         }
+        public virtual (int Start, int Size) SectionOffset(int i) => (0, MachineCode.Length);
 
-        public bool ValidateJump(int destination, bool isSubroutine, IReleaseSpec spec)
+        public bool ValidateJump(int destination, bool isSubroutine)
         {
             if (_analyzer is null)
             {
-                CreateAnalyzer(spec);
+                CreateAnalyzer(CodeSection.ToArray());
             }
 
-            return _analyzer.ValidateJump(destination, isSubroutine, SectionId);
+            return _analyzer.ValidateJump(destination, isSubroutine);
         }
 
         /// <summary>
         /// Do sampling to choose an algo when the code is big enough.
         /// When the code size is small we can use the default analyzer.
         /// </summary>
-        private void CreateAnalyzer(IReleaseSpec spec)
+        protected void CreateAnalyzer(byte[] codeToBeAnalyzed)
         {
-            var (codeStart, codeSize) = isEof
-                ? (Header.Value.CodeSections.Start, Header.Value.CodeSections.Size)
-                : (0, MachineCode.Length);
-            var codeToBeAnalyzed = MachineCode.Slice(codeStart, codeSize);
             if (codeToBeAnalyzed.Length >= SampledCodeLength)
             {
                 byte push1Count = 0;
@@ -106,11 +124,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 // If there are many PUSH1 ops then use the JUMPDEST analyzer.
                 // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
                 // in a scenario when the code consists only of PUSH1 instructions.
-                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(codeToBeAnalyzed, Header, spec) : new CodeDataAnalyzer(codeToBeAnalyzed, Header, spec);
+                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(codeToBeAnalyzed) : new CodeDataAnalyzer(codeToBeAnalyzed);
             }
             else
             {
-                _analyzer = new CodeDataAnalyzer(codeToBeAnalyzed, Header, spec);
+                _analyzer = new CodeDataAnalyzer(codeToBeAnalyzed);
             }
         }
     }
