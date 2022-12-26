@@ -122,6 +122,13 @@ public class EvmObjectFormat
             }
 
             ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
+            if(numberOfCodeSections < 1)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : At least one code section must be present");
+                return false;
+            }
+
             int headerSize = CalculateHeaderSize(numberOfCodeSections);
             int pos = 3;
 
@@ -143,6 +150,13 @@ public class EvmObjectFormat
                 Start = headerSize,
                 Size = container[pos..(pos + 2)].ReadEthUInt16()
             };
+
+            if(typeSection.Size < 3)
+            {
+                if (_loggerEnabled)
+                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
+                return false;
+            }
 
             pos += 2;
 
@@ -172,6 +186,14 @@ public class EvmObjectFormat
                     Start = lastEndOffset,
                     Size = container[pos..(pos + 2)].ReadEthUInt16()
                 };
+
+                if (codeSection.Size == 0)
+                {
+                    if (_loggerEnabled)
+                        _logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
+                    return false;
+                }
+
                 codeSections.Add(codeSection);
                 lastEndOffset = codeSection.EndOffset;
                 pos += 2;
