@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -17,16 +16,18 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
+using NSubstitute.ClearExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test;
@@ -231,6 +232,80 @@ public partial class BlockDownloaderTests
         lastBestSuggestedBlock.TotalDifficulty.Should().NotBeEquivalentTo(UInt256.Zero);
     }
 
+    [Test]
+    public async Task Does_not_deadlock_on_replace_peer()
+    {
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(0, 4)
+            .InsertBeaconPivot(3);
+        MergeContext ctx = new();
+        ctx.MergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
+        ctx.BlockTreeScenario = blockTrees;
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(3, BlockTreeLookupOptions.None));
+
+        ManualResetEventSlim chainLevelHelperBlocker = new ManualResetEventSlim(false);
+        IChainLevelHelper chainLevelHelper = Substitute.For<IChainLevelHelper>();
+        chainLevelHelper
+            .When((clh) => clh.GetNextHeaders(Arg.Any<int>(), Arg.Any<int>()))
+            .Do((args) =>
+            {
+                chainLevelHelperBlocker.Wait();
+            });
+        ctx.ChainLevelHelper = chainLevelHelper;
+
+        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
+
+        // Setup a peer of any kind
+        ISyncPeer syncPeer1 = Substitute.For<ISyncPeer>();
+        syncPeer1.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 9999));
+
+        // Setup so that first allocation goes to sync peer 1
+        peerAllocationStrategy
+            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
+            .Returns(new PeerInfo(syncPeer1));
+        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks);
+        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
+        ctx.PeerPool
+            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
+            .Returns(Task.FromResult(peerAllocation));
+
+        // Need to be asleep at this time
+        ctx.Feed.FallAsleep();
+
+        CancellationTokenSource cts = new CancellationTokenSource();
+
+        Task ignored = ctx.BlockDownloader.Start(cts.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        // Feed should activate and allocate the first peer
+        Task accidentalDeadlockTask = Task.Factory.StartNew(() => ctx.Feed.Activate(), TaskCreationOptions.LongRunning);
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        // At this point, chain level helper is block, we then trigger replaced.
+        ISyncPeer syncPeer2 = Substitute.For<ISyncPeer>();
+        syncPeer2.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.2", 9999));
+        syncPeer2.HeadNumber.Returns(4);
+
+        // It will now get replaced with syncPeer2
+        peerAllocationStrategy.ClearSubstitute();
+        peerAllocationStrategy
+            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
+            .Returns(new PeerInfo(syncPeer2));
+        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        // Release it
+        chainLevelHelperBlocker.Set();
+
+        // Just making sure...
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        Assert.That(() => accidentalDeadlockTask.IsCompleted, Is.True.After(1000, 100));
+        cts.Cancel();
+        cts.Dispose();
+    }
+
     class MergeContext : Context
     {
         protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
@@ -268,21 +343,26 @@ public partial class BlockDownloaderTests
             SpecProvider,
             LimboLogs.Instance);
 
+        protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=
+            new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);
+
         private IChainLevelHelper? _chainLevelHelper = null;
-        public IChainLevelHelper ChainLevelHelper => _chainLevelHelper ??= new ChainLevelHelper(
-            BlockTree,
-            BeaconPivot,
-            new SyncConfig(),
-            LimboLogs.Instance);
+        public IChainLevelHelper ChainLevelHelper
+        {
+            get =>
+                _chainLevelHelper ??= new ChainLevelHelper(
+                    BlockTree,
+                    BeaconPivot,
+                    new SyncConfig(),
+                    LimboLogs.Instance);
+            set => _chainLevelHelper = value;
+        }
 
         private MergeBlockDownloader? _mergeBlockDownloader;
         public override BlockDownloader BlockDownloader
         {
             get
             {
-                TotalDifficultyBetterPeerStrategy preMergePeerStrategy = new(LimboLogs.Instance);
-                MergeBetterPeerStrategy betterPeerStrategy = new(preMergePeerStrategy, PosSwitcher, BeaconPivot, LimboLogs.Instance);
-
                 return _mergeBlockDownloader ?? new(
                     PosSwitcher,
                     BeaconPivot,
@@ -294,7 +374,7 @@ public partial class BlockDownloaderTests
                     NullSyncReport.Instance,
                     ReceiptStorage,
                     SpecProvider,
-                    betterPeerStrategy,
+                    BetterPeerStrategy,
                     ChainLevelHelper,
                     Substitute.For<ISyncProgressResolver>(),
                     LimboLogs.Instance);

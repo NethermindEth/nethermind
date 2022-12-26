@@ -927,7 +927,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             private ISyncPeerPool _peerPool;
-            protected ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
+            public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
 
             private ResponseBuilder? _responseBuilder = null;
             public ResponseBuilder ResponseBuilder =>
@@ -952,11 +952,16 @@ namespace Nethermind.Synchronization.Test
 
             private MultiSyncModeSelector _syncModeSelector;
 
+            protected IBetterPeerStrategy _betterPeerStrategy;
+
+            protected virtual IBetterPeerStrategy BetterPeerStrategy =>
+                _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
+
             private ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
                 new MultiSyncModeSelector(SyncProgressResolver, PeerPool, syncConfig, No.BeaconSync, BetterPeerStrategy, LimboLogs.Instance);
 
             private FullSyncFeed _feed;
-            protected ActivatedSyncFeed<BlocksRequest> Feed => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+            public ActivatedSyncFeed<BlocksRequest> Feed => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 
             private ISealValidator? _sealValidator;
             public ISealValidator SealValidator
@@ -983,7 +988,7 @@ namespace Nethermind.Synchronization.Test
                 ReceiptStorage,
                 SpecProvider,
                 new BlocksSyncPeerAllocationStrategyFactory(),
-                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
+                BetterPeerStrategy,
                 LimboLogs.Instance,
                 SyncBatchSize
             );
