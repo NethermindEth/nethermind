@@ -11,16 +11,14 @@ namespace Nethermind.Evm.CodeAnalysis
     {
         private byte[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
-        private IReleaseSpec _releaseSpec;
-        public CodeDataAnalyzer(byte[] code, IReleaseSpec spec)
+        public CodeDataAnalyzer(byte[] code)
         {
             MachineCode = code;
-            _releaseSpec = spec;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode, _releaseSpec);
+            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
 
             if (destination < 0 || destination >= MachineCode.Length)
             {
@@ -32,7 +30,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 return false;
             }
 
-            if (_releaseSpec.SubroutinesEnabled && isSubroutine)
+            if (isSubroutine)
             {
                 return MachineCode[destination] == 0x5c;
             }
@@ -56,7 +54,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code, IReleaseSpec spec)
+        public static byte[] CreateCodeBitmap(byte[] code)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the
@@ -66,42 +64,18 @@ namespace Nethermind.Evm.CodeAnalysis
             byte push1 = (byte)Instruction.PUSH1;
             byte push32 = (byte)Instruction.PUSH32;
 
-            byte rjump = (byte)Instruction.RJUMP;
-            byte rjumpi = (byte)Instruction.RJUMPI;
-            byte rjumpv = (byte)Instruction.RJUMPV;
-
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
 
-                if ((op < push1 || op > push32) && (op != rjump && op != rjumpv && op != rjumpi))
+                if (op < push1 || op > push32)
                 {
                     continue;
                 }
 
-                bool isPushInstr = op >= push1 && op <= push32;
 
-                if (!spec.StaticRelativeJumpsEnabled && !isPushInstr)
-                {
-                    continue;
-                }
-
-                int numbits;
-                switch ((Instruction)op)
-                {
-                    case Instruction.RJUMP:
-                    case Instruction.RJUMPI:
-                        numbits = 2;
-                        break;
-                    case Instruction.RJUMPV:
-                        byte count = code[pc];
-                        numbits = count * 2 + 1;
-                        break;
-                    default:
-                        numbits = op - push1 + 1;
-                        break;
-                }
+                int numbits = op - push1 + 1;
 
                 if (numbits >= 8)
                 {

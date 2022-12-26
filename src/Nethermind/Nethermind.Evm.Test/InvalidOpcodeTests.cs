@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -190,24 +191,8 @@ namespace Nethermind.Evm.Test
             {
                 logger.Info($"============ Testing opcode {i}==================");
                 Instruction instruction = (Instruction)i;
-                if (instruction is Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV)
-                {
-                    continue;
-                }
                 Prepare prepCode = Prepare.EvmCode
                     .Op(instruction);
-                if (InstructionsWithImmediates.Contains(instruction))
-                {
-                    var immediateArgs = instruction switch
-                    {
-                        >= Instruction.PUSH1 and <= Instruction.PUSH32 => Enumerable.Range(0, instruction - Instruction.PUSH1 + 1).Select(i => (byte)i),
-                        _ => Enumerable.Empty<byte>()
-                    };
-                    foreach (byte arg in immediateArgs)
-                    {
-                        prepCode.Data(arg);
-                    }
-                }
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains(instruction);
 
@@ -215,22 +200,18 @@ namespace Nethermind.Evm.Test
                 if (!instruction.IsOnlyForEofBytecode())
                 {
                     code = prepCode.Done;
-                }
-                else
-                {
-                    code = EofTestsBase.TestCase.EofBytecode(prepCode.STOP().Done);
-                }
 
-                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
+                    TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
 
-                if (isValidOpcode)
-                {
-                    result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                }
-                else
-                {
-                    result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                    result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    if (isValidOpcode)
+                    {
+                        result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                    }
+                    else
+                    {
+                        result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                        result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    }
                 }
             }
         }

@@ -1,25 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only 
 
-using System;
 using System.Collections;
-using System.Threading;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class JumpdestAnalyzer : ICodeInfoAnalyzer
     {
-        private byte[] MachineCode { get; set; }
+        private byte[] Code { get; set; }
 
         private BitArray? _validJumpDestinations;
         private BitArray? _validJumpSubDestinations;
-        private IReleaseSpec _releaseSpec;
-        public JumpdestAnalyzer(byte[] code, IReleaseSpec spec)
+
+        public JumpdestAnalyzer(byte[] code)
         {
-            MachineCode = code;
-            _releaseSpec = spec;
+            Code = code;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
@@ -40,48 +35,30 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private void CalculateJumpDestinations()
         {
-            _validJumpDestinations = new BitArray(MachineCode.Length);
-            _validJumpSubDestinations = new BitArray(MachineCode.Length);
-
-            byte push1 = (byte)Instruction.PUSH1;
-            byte push32 = (byte)Instruction.PUSH32;
-
-            byte rjump = (byte)Instruction.RJUMP;
-            byte rjumpi = (byte)Instruction.RJUMPI;
-            byte rjumpv = (byte)Instruction.RJUMPV;
-
-            byte jumpdest = (byte)Instruction.JUMPDEST;
+            _validJumpDestinations = new BitArray(Code.Length);
+            _validJumpSubDestinations = new BitArray(Code.Length);
 
             int index = 0;
-            while (index < MachineCode.Length)
+            while (index < Code.Length)
             {
-                byte instruction = MachineCode[index];
+                byte instruction = Code[index];
 
                 // JUMPDEST
-                if (instruction == jumpdest)
+                if (instruction == 0x5b)
                 {
                     _validJumpDestinations.Set(index, true);
                 }
                 // BEGINSUB
-                else if (_releaseSpec.SubroutinesEnabled && instruction == rjump)
+                else if (instruction == 0x5c)
                 {
                     _validJumpSubDestinations.Set(index, true);
                 }
 
                 // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
-                if (instruction >= push1 && instruction <= push32)
+                if (instruction >= 0x60 && instruction <= 0x7f)
                 {
                     //index += instruction - Instruction.PUSH1 + 2;
                     index += instruction - 0x60 + 2;
-                }
-                else if (_releaseSpec.StaticRelativeJumpsEnabled && (instruction == rjump || instruction == rjumpi))
-                {
-                    index += 3;
-                }
-                else if (_releaseSpec.StaticRelativeJumpsEnabled && instruction == rjumpv)
-                {
-                    byte count = MachineCode[index + 1];
-                    index += 2 + count * 2;
                 }
                 else
                 {

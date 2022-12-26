@@ -13,6 +13,6 @@ namespace Nethermind.Evm
     {
         TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer tracer);
 
-        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
+        ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
     }
 }

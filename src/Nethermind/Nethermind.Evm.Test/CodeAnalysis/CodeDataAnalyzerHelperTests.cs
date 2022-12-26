@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code, spec);
+            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(224);
         }
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code, spec);
+            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(255);
             bitmap[2].Should().Be(255);
