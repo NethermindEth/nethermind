@@ -79,12 +79,13 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 if (forceTake ||
                     (averageTransferSpeed == bestPeer.TransferSpeed ?
 
-                         // If its the same speed, just randomly try it. Prevent getting stuck on the same peer on small network.
-                        _random.NextSingle() < 0.25:
+                        // If its the same speed, just randomly try it. Prevent getting stuck on the same peer on small network.
+                        _random.NextSingle() < 0.25 :
 
                         (_priority ? averageTransferSpeed > bestPeer.TransferSpeed : averageTransferSpeed < bestPeer.TransferSpeed)
                     )
-                ) {
+                )
+                {
                     bestPeer = (info, averageTransferSpeed);
                 }
 
