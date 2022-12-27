@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -75,12 +76,7 @@ namespace Nethermind.Api
             LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
 
             // TODO: reuse the same trie cache here
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                _readOnlyDbProvider,
-                ReadOnlyTrieStore,
-                readOnlyTree,
-                SpecProvider,
-                LogManager);
+            IReadOnlyTxProcessorSourceExt readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, ReadOnlyTrieStore, readOnlyTree, SpecProvider, LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();

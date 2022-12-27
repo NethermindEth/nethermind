@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -61,14 +62,11 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(_blockTree),
-                _specProvider,
-                LimboLogs.Instance);
-
-            processingEnv.TransactionProcessor = _transactionProcessor;
+            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(_dbProvider, false), new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(_blockTree), _specProvider, LimboLogs.Instance)
+            {
+                TransactionProcessor = _transactionProcessor
+            };
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
@@ -204,12 +202,8 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(_blockTree),
-                _specProvider,
-                LimboLogs.Instance);
+            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(_dbProvider, false), new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(_blockTree), _specProvider, LimboLogs.Instance);
 
             Block head = Build.A.Block.WithNumber(headNumber).TestObject;
             Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;

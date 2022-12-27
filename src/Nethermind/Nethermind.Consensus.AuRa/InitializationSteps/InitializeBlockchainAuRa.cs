@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 contractRewriter
             );
 
-        protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
+        protected IReadOnlyTxProcessorSource CreateReadOnlyTransactionProcessorSource() =>
             new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         protected override IHealthHintService CreateHealthHintService() =>
@@ -199,7 +199,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _auRaStepCalculator = auRaStepCalculator;
         }
 
-        // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
+        // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
         //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
         //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 

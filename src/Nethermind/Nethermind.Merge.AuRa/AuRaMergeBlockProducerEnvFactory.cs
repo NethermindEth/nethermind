@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -66,7 +67,7 @@ namespace Nethermind.Merge.AuRa
         }
 
         protected override BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            IReadOnlyTxProcessorSource readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -87,13 +88,13 @@ namespace Nethermind.Merge.AuRa
         }
 
         protected override TxPoolTxSource CreateTxPoolTxSource(
-            ReadOnlyTxProcessingEnv processingEnv,
+            IReadOnlyTxProcessorSource processingEnv,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
         {
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
+            IReadOnlyTxProcessorSource constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
                 _dbProvider.AsReadOnly(false),
                 _blockTree.AsReadOnly());
 

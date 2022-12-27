@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -41,5 +42,5 @@ public class ReadOnlyTxProcessingEnvFactory
         _logManager = logManager;
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_readOnlyDbProvider, _readOnlyTrieStore, _readOnlyBlockTree, _specProvider, _logManager);
+    public IReadOnlyTxProcessorSource Create() => new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, _readOnlyTrieStore, _readOnlyBlockTree, _specProvider, _logManager);
 }

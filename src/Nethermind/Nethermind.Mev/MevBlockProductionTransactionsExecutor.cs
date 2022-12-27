@@ -28,7 +28,7 @@ namespace Nethermind.Mev
         private readonly IWorldState _worldState;
 
         public MevBlockProductionTransactionsExecutor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            IReadOnlyTxProcessorSource readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             ILogManager logManager) :
             this(
@@ -74,7 +74,7 @@ namespace Nethermind.Mev
                     }
                     else
                     {
-                        // otherwise process transaction as usual 
+                        // otherwise process transaction as usual
                         TxAction action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }

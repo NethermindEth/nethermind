@@ -11,11 +11,10 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.State;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Merge.AuRa
 {

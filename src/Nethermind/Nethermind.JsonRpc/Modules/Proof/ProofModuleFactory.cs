@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -48,8 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public override IProofRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            IReadOnlyTxProcessorSourceExt txProcessingEnv = new ReadOnlyTxProcessingEnv(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -19,6 +20,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -117,12 +119,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
 
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(DbProvider, false),
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(BlockTree),
-                SpecProvider,
-                LimboLogs.Instance);
+            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(DbProvider, false), new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(BlockTree), SpecProvider, LimboLogs.Instance);
 
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
