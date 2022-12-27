@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -47,21 +48,11 @@ namespace Nethermind.Merge.AuRa
 
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
+            IReadOnlyTxProcessorSource txProcessingEnv = new ReadOnlyTxProcessingEnv(
+                _api.DbProvider!.AsReadOnly(false), _api.ReadOnlyTrieStore, _api.BlockTree!.AsReadOnly(), _api.SpecProvider, _api.LogManager);
 
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
+            IReadOnlyTxProcessorSource constantContractsProcessingEnv = new ReadOnlyTxProcessingEnv(
+                _api.DbProvider!.AsReadOnly(false), _api.ReadOnlyTrieStore, _api.BlockTree!.AsReadOnly(), _api.SpecProvider, _api.LogManager);
 
             return new StartBlockProducerAuRa(_auraApi!)
                 .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);

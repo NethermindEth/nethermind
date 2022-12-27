@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance,
                 LimboLogs.Instance, receiptsRecovery, 1024);
 
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            IReadOnlyTxProcessorSource processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 new TrieStore(memDbProvider.StateDb, LimboLogs.Instance).AsReadOnly(memDbProvider.StateDb),
                 new ReadOnlyBlockTree(blockTree),

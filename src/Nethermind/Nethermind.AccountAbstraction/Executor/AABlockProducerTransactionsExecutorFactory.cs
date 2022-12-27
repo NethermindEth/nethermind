@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Executor
@@ -25,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _entryPointAddresses = entryPointAddresses;
         }
 
-        public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
+        public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessorSource readOnlyTxProcessingEnv)
             => new AABlockProducerTransactionsExecutor(
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyTxProcessingEnv.StateProvider,

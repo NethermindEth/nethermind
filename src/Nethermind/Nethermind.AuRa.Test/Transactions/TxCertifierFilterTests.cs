@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -128,7 +129,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain
         {
-            public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
+            public IReadOnlyTxProcessorSource ReadOnlyTransactionProcessorSource { get; private set; }
             public RegisterContract RegisterContract { get; private set; }
             public CertifierContract CertifierContract { get; private set; }
 

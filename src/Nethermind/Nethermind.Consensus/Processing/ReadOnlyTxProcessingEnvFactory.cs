@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -41,5 +42,5 @@ public class ReadOnlyTxProcessingEnvFactory
         _logManager = logManager;
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_readOnlyDbProvider, _readOnlyTrieStore, _readOnlyBlockTree, _specProvider, _logManager);
+    public IReadOnlyTxProcessorSource Create() => new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, _readOnlyTrieStore, _readOnlyBlockTree, _specProvider, _logManager);
 }

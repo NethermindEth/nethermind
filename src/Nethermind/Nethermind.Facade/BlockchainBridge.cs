@@ -18,6 +18,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -35,7 +36,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IReadOnlyTxProcessorSourceExt _processingEnv;
         private readonly ITxPool _txPool;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumEcdsa _ecdsa;
@@ -45,7 +46,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
 
-        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(IReadOnlyTxProcessorSourceExt processingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
