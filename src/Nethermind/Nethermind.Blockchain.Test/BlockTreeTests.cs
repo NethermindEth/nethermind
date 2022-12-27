@@ -433,9 +433,13 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithParent(block3).TestObject;
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
+            AddToMain(blockTree, block3);
+            AddToMain(blockTree, block4);
 
             BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
             Assert.AreEqual(2, headers.Length);

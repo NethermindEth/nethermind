@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
@@ -25,10 +26,10 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogger _logger;
+        private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
-        private readonly IdConverter _idConverter = new();
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
@@ -77,62 +78,46 @@ namespace Nethermind.JsonRpc
             {
                 if (token is JArray array)
                 {
-                    yield return (null, array.Select(JTokenToJsonRpcRequest).ToList());
+                    foreach (JToken tokenElement in array)
+                    {
+                        UpdateParams(tokenElement);
+                    }
+
+                    yield return (null, array.ToObject<List<JsonRpcRequest>>(_obsoleteBasicJsonSerializer));
                 }
                 else
                 {
-                    yield return (JTokenToJsonRpcRequest(token), null);
+                    UpdateParams(token);
+                    yield return (token.ToObject<JsonRpcRequest>(_obsoleteBasicJsonSerializer), null);
                 }
             }
         }
 
-        /// <summary>
-        /// Manually convert JToken to JsonRpcRequests as the param inside JsonRpcRequests is a JToken. If we use
-        /// a JTokenReader, it would iterate through the JSON which is a waste of time, as we already have a JToken.
-        /// </summary>
-        /// <param name="token"></param>
-        /// <returns></returns>
-        private JsonRpcRequest JTokenToJsonRpcRequest(JToken token)
+        private void UpdateParams(JToken token)
         {
-            JsonRpcRequest jsonRpcRequest = new();
-
-            JToken? jsonRpcField = token["jsonrpc"] ?? token["JsonRpc"];
-            if (jsonRpcField != null)
+            var paramsToken = token.SelectToken("params");
+            if (paramsToken is null)
             {
-                jsonRpcRequest.JsonRpc = jsonRpcField.Value<string>();
-            }
-
-            JToken? methodField = token["method"] ?? token["Method"];
-            if (methodField != null)
-            {
-                jsonRpcRequest.Method = methodField.Value<string>();
-            }
-
-            JToken? idField = token["id"] ?? token["Id"];
-            if (idField != null)
-            {
-                // Not sure what is the logic here.. not gonna unuse the IdConverter
-                JTokenReader reader = new(idField);
-                if (reader.Read())
+                paramsToken = token.SelectToken("Params");
+                if (paramsToken is null)
                 {
-                    jsonRpcRequest.Id = _idConverter.ReadJson(reader, null, null, null);
+                    return;
                 }
             }
 
-            JToken? paramsField = token["params"] ?? token["Params"];
-            if (paramsField != null)
+            if (paramsToken is JValue)
             {
-                if (paramsField is JArray asArray)
-                {
-                    jsonRpcRequest.Params = asArray.ToArray();
-                }
-                else
-                {
-                    throw new JsonSerializationException($"Params is expected to be an array. Got {paramsField.Type}");
-                }
+                return; // null
             }
 
-            return jsonRpcRequest;
+            JArray arrayToken = (JArray)paramsToken;
+            for (int i = 0; i < arrayToken.Count; i++)
+            {
+                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
+                {
+                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
+                }
+            }
         }
 
         public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)

@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Dirichlet.Numerics;
+using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
 namespace Nethermind.Ssz
 {
