@@ -197,9 +197,11 @@ public class DbOnTheRocks : IDbWithSpan
             propertyName);
         try
         {
-            return (T?)dbConfig.GetType()
-                .GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
-                .GetValue(dbConfig);
+            Type type = dbConfig.GetType();
+            PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            // if no custom db property default to generic one
+            propertyInfo ??= type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
         {

@@ -730,7 +730,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ref struct ValueDecoderContext
         {
-            public ValueDecoderContext(in Span<byte> data)
+            public ValueDecoderContext(scoped in Span<byte> data)
             {
                 Data = data;
                 Position = 0;
@@ -945,7 +945,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings. 
+            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
             private class DecodeKeccakRlpException : RlpException
             {
                 private readonly int _prefix;
@@ -1087,7 +1087,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1115,7 +1115,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1544,6 +1544,16 @@ namespace Nethermind.Serialization.Rlp
             return LengthOf(array.AsSpan());
         }
 
+        public static int LengthOf(IReadOnlyList<byte> array)
+        {
+            if (array.Count == 0)
+            {
+                return 1;
+            }
+
+            return LengthOfByteString(array.Count, array[0]);
+        }
+
         public static int LengthOf(Span<byte> array)
         {
             if (array.Length == 0)
@@ -1551,17 +1561,23 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            if (array.Length == 1 && array[0] < 128)
+            return LengthOfByteString(array.Length, array[0]);
+        }
+
+        // Assumes that length is greater then 0
+        private static int LengthOfByteString(int length, byte firstByte)
+        {
+            if (length == 1 && firstByte < 128)
             {
                 return 1;
             }
 
-            if (array.Length < 56)
+            if (length < 56)
             {
-                return array.Length + 1;
+                return length + 1;
             }
 
-            return LengthOfLength(array.Length) + 1 + array.Length;
+            return LengthOfLength(length) + 1 + length;
         }
 
         public static int LengthOf(string value)

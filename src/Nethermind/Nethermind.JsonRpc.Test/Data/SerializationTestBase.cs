@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Test.Data
 {
     public class SerializationTestBase
     {
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, JsonConverter<T>? converter = null, string? description = null)
         {
             IJsonSerializer serializer = BuildSerializer();
             if (converter is not null)
@@ -34,9 +34,9 @@ namespace Nethermind.JsonRpc.Test.Data
             }
         }
 
-        protected void TestRoundtrip<T>(T item, JsonConverter<T> converter = null, string description = null)
+        protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
         {
-            TestRoundtrip(item, (a, b) => a.Equals(b), converter, description);
+            TestRoundtrip(item, (a, b) => a!.Equals(b), converter, description);
         }
 
         protected void TestRoundtrip<T>(T item, string description)
@@ -44,12 +44,12 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(item, null, null, description);
         }
 
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, string description = null)
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
         {
             TestRoundtrip(item, equalityComparer, null, description);
         }
 
-        protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
+        protected void TestRoundtrip<T>(string json, JsonConverter? converter = null)
         {
             IJsonSerializer serializer = BuildSerializer();
             if (converter is not null)
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.AreEqual(json, result);
         }
 
-        private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
+        private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
         {
             IJsonSerializer serializer = BuildSerializer();
             if (converter is not null)

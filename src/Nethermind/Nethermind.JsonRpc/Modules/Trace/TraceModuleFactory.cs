@@ -31,7 +31,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
-        private ILogger _logger;
 
         public TraceModuleFactory(
             IDbProvider dbProvider,
@@ -49,12 +48,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _trieNodeResolver = trieNodeResolver;
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _rewardCalculatorSource =
-                rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
+            _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger();
+            logManager.GetClassLogger();
         }
 
         public override ITraceRpcModule Create()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -85,6 +86,14 @@ namespace Nethermind.Evm.Test
             ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
             Assert.AreNotEqual(initialSize, memory.Size);
             Assert.AreEqual(expectedResult, result.ToArray());
+        }
+
+        [Test]
+        public void GetTrace_should_not_thor_on_not_initialized_memory()
+        {
+            EvmPooledMemory memory = new();
+            memory.CalculateMemoryCost(0, 32);
+            memory.GetTrace().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
         }
     }
 }

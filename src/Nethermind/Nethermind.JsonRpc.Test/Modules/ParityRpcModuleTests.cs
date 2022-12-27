@@ -42,8 +42,8 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class ParityRpcModuleTests
     {
-        private IParityRpcModule _parityRpcModule;
-        private Signer _signerStore;
+        private IParityRpcModule _parityRpcModule = null!;
+        private Signer _signerStore = null!;
 
         [SetUp]
         public void Initialize()
@@ -82,21 +82,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 2;
             Transaction pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
-            pendingTransaction.Signature.V = 37;
-            stateProvider.CreateAccount(pendingTransaction.SenderAddress, UInt256.UInt128MaxValue);
+            pendingTransaction.Signature!.V = 37;
+            stateProvider.CreateAccount(pendingTransaction.SenderAddress!, UInt256.UInt128MaxValue);
             txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
 
             blockNumber = 1;
             Transaction transaction1 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
-            transaction1.Signature.V = 37;
-            stateProvider.CreateAccount(transaction1.SenderAddress, UInt256.UInt128MaxValue);
+            transaction1.Signature!.V = 37;
+            stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
             var transaction2 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
-            transaction2.Signature.V = 37;
+            transaction2.Signature!.V = 37;
 
             var transaction3 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
@@ -227,7 +227,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static Peer SetUpPeerC()
         {
-            Peer peer = new(null);
+            Peer peer = new(null!);
             peer.InSession = Substitute.For<ISession>();
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 

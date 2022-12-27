@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers.V1;
 
@@ -200,7 +201,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return t.Result;
         }
 
-        public async ValueTask<Block?> GetPayload(string payloadId)
+        public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
         {
             if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
             {
@@ -212,7 +213,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
 
-                    return blockContext.CurrentBestBlock;
+                    return blockContext;
                 }
             }
 

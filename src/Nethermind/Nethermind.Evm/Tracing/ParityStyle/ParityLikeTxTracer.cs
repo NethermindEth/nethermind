@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
                 BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
@@ -76,6 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingStorage { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         private static string GetCallType(ExecutionType executionType)
         {
@@ -410,17 +411,20 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            ParityTraceAction action = new();
-            action.IsPrecompiled = isPrecompileCall;
-            action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
-            action.From = @from;
-            action.To = to;
-            action.Value = value;
-            action.Input = input.ToArray();
-            action.Gas = gas;
-            action.CallType = GetCallType(callType);
-            action.Type = GetActionType(callType);
-            action.CreationMethod = GetCreateMethod(callType);
+            ParityTraceAction action = new ParityTraceAction
+            {
+                IsPrecompiled = isPrecompileCall,
+                // ignore pre compile calls with Zero value that originates from contracts
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                From = from,
+                To = to,
+                Value = value,
+                Input = input.ToArray(),
+                Gas = gas,
+                CallType = GetCallType(callType),
+                Type = GetActionType(callType),
+                CreationMethod = GetCreateMethod(callType)
+            };
 
             if (_currentOperation is not null && callType.IsAnyCreate())
             {
@@ -517,6 +521,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         }
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
             throw new NotImplementedException();
         }

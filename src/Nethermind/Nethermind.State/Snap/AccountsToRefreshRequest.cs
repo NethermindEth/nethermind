@@ -19,6 +19,11 @@ namespace Nethermind.State.Snap
         public Keccak RootHash { get; set; }
 
         public AccountWithStorageStartingHash[] Paths { get; set; }
+
+        public override string ToString()
+        {
+            return $"AccountsToRefreshRequest: ({RootHash}, {Paths.Length})";
+        }
     }
 
     public class AccountWithStorageStartingHash
