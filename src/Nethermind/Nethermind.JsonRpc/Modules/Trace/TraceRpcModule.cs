@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = Trace(block, new(txHash, ParityTraceTypes.Trace));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = Trace(block, new ParityLikeBlockTracer(txHash, ParityTraceTypes.Trace));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
