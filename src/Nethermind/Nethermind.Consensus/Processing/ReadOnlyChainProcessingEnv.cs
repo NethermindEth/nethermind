@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing
     /// </summary>
     public class ReadOnlyChainProcessingEnv : IDisposable
     {
-        private readonly ReadOnlyTxProcessingEnv _txEnv;
+        private readonly IReadOnlyTxProcessorSourceExt _txEnv;
 
         private readonly BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
         public IStateProvider StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
-            ReadOnlyTxProcessingEnv txEnv,
+            IReadOnlyTxProcessorSourceExt txEnv,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,

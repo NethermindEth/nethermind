@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -17,7 +17,7 @@ using Nethermind.Trie.Pruning;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSourceExt
     {
         private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }

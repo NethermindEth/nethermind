@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -71,7 +72,7 @@ namespace Nethermind.Consensus.Producers
             ReadOnlyDbProvider readOnlyDbProvider = _dbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv txProcessingEnv =
+            IReadOnlyTxProcessorSource txProcessingEnv =
                 CreateReadonlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree);
 
             BlockProcessor blockProcessor =
@@ -106,12 +107,12 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+        protected virtual IReadOnlyTxProcessorSource CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
+            new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
-            ReadOnlyTxProcessingEnv processingEnv,
+            IReadOnlyTxProcessorSource processingEnv,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
@@ -122,7 +123,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
-            ReadOnlyTxProcessingEnv processingEnv,
+            IReadOnlyTxProcessorSource processingEnv,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
@@ -135,7 +136,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
 
-        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessorSource readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,

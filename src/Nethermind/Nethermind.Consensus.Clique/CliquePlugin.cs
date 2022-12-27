@@ -16,6 +16,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 
@@ -94,12 +95,7 @@ namespace Nethermind.Consensus.Clique
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                readOnlyDbProvider,
-                getFromApi.ReadOnlyTrieStore,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
+            IReadOnlyTxProcessorSource producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);
 
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,

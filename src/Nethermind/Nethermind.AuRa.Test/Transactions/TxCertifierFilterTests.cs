@@ -17,6 +17,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -129,7 +130,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain
         {
-            public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
+            public IReadOnlyTxProcessorSource ReadOnlyTransactionProcessorSource { get; private set; }
             public RegisterContract RegisterContract { get; private set; }
             public CertifierContract CertifierContract { get; private set; }
 
