@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
-        private TaskCompletionSource<object?>? _dormantStateTask = new();
+        private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
@@ -86,7 +86,10 @@ namespace Nethermind.Synchronization.ParallelSync
                         if (allocatedPeer is not null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
-                            Task task = DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+
+                            // Use Task.Run to make sure it queues it instead of running part of it synchronously.
+                            Task task = Task.Run(() => DoDispatch(cancellationToken, allocatedPeer, request,
+                                allocation), cancellationToken);
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -217,7 +220,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     TaskCompletionSource<object?>? newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)
                     {
-                        newDormantStateTask = new TaskCompletionSource<object?>();
+                        newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
                     var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
