@@ -19,13 +19,11 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
         public IStateProvider StateProvider { get; }
         public IStorageProvider StorageProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
-        public IReadOnlyDbProvider DbProvider { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
 
@@ -48,11 +46,10 @@ namespace Nethermind.Consensus.Processing
         {
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
-            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
-            _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
+            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
-            StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
+            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
             IWorldState worldState = new WorldState(StateProvider, StorageProvider);
 
@@ -63,6 +60,6 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, _codeDb, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
     }
 }
