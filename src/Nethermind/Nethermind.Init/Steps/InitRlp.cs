@@ -34,6 +34,7 @@ namespace Nethermind.Init.Steps
             }
 
             HeaderDecoder.Eip1559TransitionBlock = _api.SpecProvider.GenesisSpec.Eip1559TransitionBlock;
+            HeaderDecoder.VerkleTreeTransitionTimestamp = _api.SpecProvider.GenesisSpec.VerkleTreeTransitionTimeStamp;
 
             return Task.CompletedTask;
         }

@@ -117,6 +117,7 @@ namespace Nethermind.Specs
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
+        public ulong VerkleTreeTransitionTimeStamp => _spec.VerkleTreeTransitionTimeStamp;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
