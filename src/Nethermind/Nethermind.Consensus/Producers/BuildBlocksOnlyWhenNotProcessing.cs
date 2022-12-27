@@ -95,17 +95,13 @@ namespace Nethermind.Consensus.Producers
         {
             CancellationToken cancellationToken = e.CancellationToken;
             // retry production until its allowed or its cancelled
-            while (!CanTriggerBlockProduction && !cancellationToken.IsCancellationRequested)
+            while (!CanTriggerBlockProduction)
             {
                 if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
                 await Task.Delay(ChainNotYetProcessedMillisecondsDelay, cancellationToken);
             }
-            cancellationToken.ThrowIfCancellationRequested();
 
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                TriggerBlockProduction?.Invoke(this, e);
-            }
+            TriggerBlockProduction?.Invoke(this, e);
 
             return await e.BlockProductionTask;
         }
