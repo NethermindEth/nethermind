@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.Peers
             if (peerInfo is not null)
             {
                 _stats.ReportSyncEvent(peerInfo.SyncPeer.Node, NodeStatsEventType.SyncFailed);
-                peerInfo.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, details);
+                peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolBreachOfProtocol, details);
             }
         }
 
@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(InitiateDisconnectReason.AppClosing, "App Close"); });
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
@@ -503,7 +503,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolUselessPeer, "PEER REVIEW / HEAD 0");
                     }
                 }
                 else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
@@ -511,7 +511,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolUselessPeer, "PEER REVIEW / 1920000");
                     }
                 }
                 else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
@@ -519,7 +519,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolUselessPeer, "PEER REVIEW / 7280022");
                     }
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && _betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(peerInfo.TotalDifficulty) && peerInfo.TotalDifficulty < ourDifficulty)
@@ -529,7 +529,7 @@ namespace Nethermind.Synchronization.Peers
                         // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
                         // worth to find a better way to discard them at the right time
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolUselessPeer, "STRAY PEER");
                     }
                 }
             }
@@ -590,7 +590,7 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, $"PEER REVIEW / {worstReason}");
+            worstPeer?.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolDropWorstPeer, $"PEER REVIEW / {worstReason}");
             return 1;
         }
 
@@ -734,7 +734,7 @@ namespace Nethermind.Synchronization.Peers
             }
             else
             {
-                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+                syncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolRefreshFailed, $"refresh peer info fault - {reason}");
             }
         }
 

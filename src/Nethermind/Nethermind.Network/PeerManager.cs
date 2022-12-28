@@ -693,7 +693,7 @@ namespace Nethermind.Network
                 if (initCount >= MaxActivePeers)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
-                    session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{initCount}");
+                    session.InitiateDisconnect(InitiateDisconnectReason.IncomingConnectionRejectedTooManyPeer, $"{initCount}");
                     return;
                 }
             }
@@ -828,7 +828,7 @@ namespace Nethermind.Network
                 if (newSessionIsIn && peerHasAnOpenInSession || newSessionIsOut && peerHasAnOpenOutSession)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Disconnecting a {session} - already connected");
-                    session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                    session.InitiateDisconnect(InitiateDisconnectReason.SessionAlreadyExist, "same");
                 }
                 else if (newSessionIsIn && peerHasAnOpenOutSession || newSessionIsOut && peerHasAnOpenInSession)
                 {
@@ -837,7 +837,7 @@ namespace Nethermind.Network
                     if (session.Direction != directionToKeep)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                        session.InitiateDisconnect(InitiateDisconnectReason.LostSessionDirectionDecision, "same");
                         if (newSessionIsIn)
                         {
                             _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
@@ -853,13 +853,13 @@ namespace Nethermind.Network
                     {
                         peer.InSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                        peer.OutSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
                     }
                     else
                     {
                         peer.OutSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.InSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                        peer.InSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
                     }
                 }
             }

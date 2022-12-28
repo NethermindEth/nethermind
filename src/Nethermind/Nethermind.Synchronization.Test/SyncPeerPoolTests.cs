@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Test
 
             public bool DisconnectRequested { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 DisconnectRequested = true;
             }
