@@ -216,14 +216,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
-        public void Can_load_xdai()
+        public void Can_load_gnosis()
         {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/xdai.json");
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("GnosisChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
 
             int berlinXdaiBlockNumber = 16101500;

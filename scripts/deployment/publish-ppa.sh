@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 #exit when any command fails
-RELEASES="bionic focal impish jammy"
+RELEASES="bionic focal jammy kinetic"
 
 set -e
 echo $VERSION > ver
