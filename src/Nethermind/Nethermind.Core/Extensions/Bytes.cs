@@ -564,7 +564,7 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
             StateSmall stateToPass = new(bytes, withZeroX);
 
-            return string.Create(length, stateToPass, (chars, state) =>
+            return string.Create(length, stateToPass, static (chars, state) =>
             {
                 ref char charsRef = ref MemoryMarshal.GetReference(chars);
 
@@ -595,7 +595,7 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
             StateSmall stateToPass = new(bytes, withZeroX);
 
-            return string.Create(length, stateToPass, (chars, state) =>
+            return string.Create(length, stateToPass, static (chars, state) =>
             {
                 ref var charsRef = ref MemoryMarshal.GetReference(chars);
 
@@ -829,7 +829,7 @@ namespace Nethermind.Core.Extensions
             }
 
             StateOld stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
-            return string.Create(length, stateToPass, (chars, state) =>
+            return string.Create(length, stateToPass, static (chars, state) =>
             {
                 string? hashHex = null;
                 bool isWithChecksum = state.WithEip55Checksum;
