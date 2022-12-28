@@ -22,4 +22,7 @@ public interface ITraceStoreConfig : IConfig
 
     [ConfigItem(Description = "Depth to deserialize traces.", DefaultValue = "1024", HiddenFromDocs = true)]
     int MaxDepth { get; set; }
+
+    [ConfigItem(Description = "Maximum parallelization when deserializing requests for trace_filter. 0 defaults to logical cores, set to something low if you experience too big resource usage.", DefaultValue = "0")]
+    int DeserializationParallelization { get; set; }
 }

@@ -53,7 +53,13 @@ namespace Nethermind.Merge.Plugin
             Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes);
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes);
+
+        [JsonRpcMethod(
+            Description = "Returns an array of execution payload bodies for the provided number range",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count);
 
         [JsonRpcMethod(
             Description = "Returns PoS transition configuration.",

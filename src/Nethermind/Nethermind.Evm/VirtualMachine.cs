@@ -586,7 +586,7 @@ namespace Nethermind.Evm
         }
 
         [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
