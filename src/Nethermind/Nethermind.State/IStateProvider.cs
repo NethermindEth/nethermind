@@ -51,5 +51,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="codeHash"></param>
         void TouchCode(Keccak codeHash);
+
+        int TakeSnapshot(bool newTransactionStart = false);
+
+        int IJournal<int>.TakeSnapshot() => TakeSnapshot();
     }
 }
