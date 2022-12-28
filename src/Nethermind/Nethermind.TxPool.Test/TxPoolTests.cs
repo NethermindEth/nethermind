@@ -1378,14 +1378,58 @@ namespace Nethermind.TxPool.Test
             peer.Received().SendNewTransaction(cheapTx);
 
             // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
-            Transaction foursTx = Build.A.Transaction
+            Transaction fourthTx = Build.A.Transaction
                 .WithNonce(3)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(foursTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-            peer.Received().SendNewTransaction(foursTx);
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(fourthTx);
+        }
+
+        [Test]
+        public void should_include_transaction_after_removal()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig {Size = 2}, specProvider);
+
+            // Send cheap transaction
+            Transaction txA = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            Transaction expensiveTx1 = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction expensiveTx2 = Build.A.Transaction
+                .WithNonce(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // Send two transactions with high gas price => txA removed from pool
+            _txPool.SubmitTx(expensiveTx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(expensiveTx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Rise new block event to cleanup cash and remove one expensive tx
+            _blockTree.BlockAddedToMain +=
+                Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
+                    new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+
+            // Send txA again => should be Accepted
+            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
