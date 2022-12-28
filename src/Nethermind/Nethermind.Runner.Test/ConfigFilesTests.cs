@@ -46,7 +46,6 @@ namespace Nethermind.Runner.Test
 
         [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false)]
         [TestCase("baseline", false, false)]
@@ -61,11 +60,6 @@ namespace Nethermind.Runner.Test
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
         [TestCase("baseline", true)]
-        [TestCase("ndm_consumer_goerli.cfg", true)]
-        [TestCase("ndm_consumer_local.cfg", true)]
-        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
-        [TestCase("ndm_consumer_ropsten.cfg", true)]
-        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
@@ -75,11 +69,6 @@ namespace Nethermind.Runner.Test
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
         [TestCase("baseline", true)]
-        [TestCase("ndm_consumer_goerli.cfg", true)]
-        [TestCase("ndm_consumer_local.cfg", true)]
-        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
-        [TestCase("ndm_consumer_ropsten.cfg", true)]
-        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
         public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
@@ -145,19 +134,6 @@ namespace Nethermind.Runner.Test
         {
             Test<IGrpcConfig, bool>(configWildcard, c => c.Enabled, expectedDefault);
         }
-
-        [TestCase("ndm_consumer_local.cfg")]
-        public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
-        {
-            Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
-        }
-
-        // [TestCase("ndm", true)]
-        // [TestCase("^ndm", false)]
-        // public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
-        // {
-        //     Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
-        // }
 
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
@@ -384,7 +360,6 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", null, false)]
         [TestCase("xdai.cfg", new[] { 16, 16, 16 })]
         [TestCase("xdai_archive.cfg", new[] { 16, 16, 16 })]
-        [TestCase("xdai_validator.cfg", null, false)]
         [TestCase("volta")]
         public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
         {
@@ -475,7 +450,6 @@ namespace Nethermind.Runner.Test
             "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",
-            "xdai_validator.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
             "volta.cfg",

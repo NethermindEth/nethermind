@@ -90,26 +90,6 @@
         <Link>configs\mainnet_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_consumer_goerli.cfg">
-        <Link>configs\ndm_consumer_goerli.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_consumer_local.cfg">
-        <Link>configs\ndm_consumer_local.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_consumer_mainnet_proxy.cfg">
-        <Link>configs\ndm_consumer_mainnet_proxy.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_consumer_ropsten.cfg">
-        <Link>configs\ndm_consumer_ropsten.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_consumer_ropsten_proxy.cfg">
-        <Link>configs\ndm_consumer_ropsten_proxy.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\poacore.cfg">
         <Link>configs\poacore.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -174,12 +154,8 @@
         <Link>configs\xdai_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\xdai_validator.cfg">
-        <Link>configs\xdai_validator.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="testBytecode">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>		
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
 
