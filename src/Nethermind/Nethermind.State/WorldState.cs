@@ -113,11 +113,19 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
         {
             StateProvider.Commit(releaseSpec, isGenesis);
+            StorageProvider.Commit();
         }
         public void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false)
         {
             StateProvider.Commit(releaseSpec, stateTracer, isGenesis);
         }
+
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+        {
+            StateProvider.Commit(releaseSpec, stateTracer, isGenesis);
+            StorageProvider.Commit(stateTracer);
+        }
+
         public byte[] GetOriginal(StorageCell storageCell)
         {
             return StorageProvider.GetOriginal(storageCell);
@@ -141,6 +149,7 @@ namespace Nethermind.State
         public void Reset()
         {
             StateProvider.Reset();
+            StorageProvider.Reset();
         }
         public void CommitTrees(long blockNumber)
         {

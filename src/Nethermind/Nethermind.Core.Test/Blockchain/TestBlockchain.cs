@@ -66,6 +66,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public IJsonSerializer JsonSerializer { get; set; } = null!;
         public IStateProvider State { get; set; } = null!;
+        public IWorldState WorldState { get; set; } = null!;
         public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
         public IDb StateDb => DbProvider.StateDb;
         public TrieStore TrieStore { get; set; } = null!;
@@ -131,6 +132,8 @@ namespace Nethermind.Core.Test.Blockchain
 
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
+
+            WorldState = new WorldState(State, Storage);
 
             ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
             StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
@@ -303,7 +306,7 @@ namespace Nethermind.Core.Test.Blockchain
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, WorldState),
                 State,
                 Storage,
                 ReceiptStorage,

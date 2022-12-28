@@ -294,11 +294,12 @@ namespace Nethermind.Synchronization.Test
             TransactionProcessor txProcessor =
                 new(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
 
+            IWorldState worldState = new WorldState(stateProvider, storageProvider);
             BlockProcessor blockProcessor = new(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, worldState),
                 stateProvider,
                 storageProvider,
                 receiptStorage,

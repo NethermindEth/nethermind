@@ -143,7 +143,7 @@ namespace Ethereum.Test.Base
                         storageProvider,
                         virtualMachine,
                         _logManager),
-                    stateProvider),
+                    new WorldState(stateProvider, storageProvider)),
                 stateProvider,
                 storageProvider,
                 receiptStorage,

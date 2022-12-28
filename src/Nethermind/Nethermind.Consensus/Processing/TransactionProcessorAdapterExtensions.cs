@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -15,11 +15,11 @@ namespace Nethermind.Consensus.Processing
             Transaction currentTx,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IStateProvider stateProvider)
+            IWorldState worldState)
         {
             if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
             {
-                currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                currentTx.Nonce = worldState.GetNonce(currentTx.SenderAddress);
             }
 
             receiptsTracer.StartNewTxTrace(currentTx);
