@@ -26,6 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -136,38 +138,6 @@ namespace Nethermind.Merge.Plugin
                                                                 $"with conflicting values {_blocksConfig.SecondsPerSlot} and {_mergeConfig.SecondsPerSlot}",
                             ExitCodes.ConflictingConfigurations);
                 }
-            }
-        }
-
-        private void FixTransitionBlock()
-        {
-            // Special case during mainnet merge where if a transition block does not get processed through gossip
-            // it does not get marked as main causing some issue on eth_getLogs.
-            Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
-            Block? block = _api.BlockTree!.FindBlock(blockHash);
-            if (block is not null)
-            {
-                ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
-                if (level is null)
-                {
-                    _logger.Warn("Unable to fix transition block. Unable to find chain level info.");
-                    return;
-                }
-
-                int? index = level.FindBlockInfoIndex(blockHash);
-                if (index is null)
-                {
-                    _logger.Warn("Unable to fix transition block. Missing block info for the transition block.");
-                    return;
-                }
-
-                if (index.Value != 0)
-                {
-                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
-                    _api.ChainLevelInfoRepository.PersistLevel(block.Number, level);
-                }
-
-                _api.ReceiptStorage!.EnsureCanonical(block);
             }
         }
 
@@ -337,7 +307,7 @@ namespace Nethermind.Merge.Plugin
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
-                    new NewPayloadHandler(
+                    new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
@@ -351,7 +321,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _api.SpecProvider,
                         _api.LogManager),
-                    new ForkchoiceUpdatedHandler(
+                    new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
@@ -362,7 +332,6 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _peerRefresher,
-                        _api.SpecProvider,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
                     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),

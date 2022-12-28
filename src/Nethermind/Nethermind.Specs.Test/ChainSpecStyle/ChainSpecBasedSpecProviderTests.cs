@@ -37,7 +37,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Instance.GetSpec(MainnetSpecProvider.ShanghaiActivation)).Clone();
             shandongSpec.Name = "shandong";
             shandongSpec.IsEip3651Enabled = true;
-            shandongSpec.IsEip3675Enabled = true;
             shandongSpec.IsEip3855Enabled = true;
             shandongSpec.IsEip3860Enabled = true;
             shandongSpec.Eip1559TransitionBlock = 0;
@@ -96,7 +95,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3675Enabled = true;
+            expectedSpec.IsEip3855Enabled = true;
             List<ForkActivation> forkActivationsToTest3 = new()
             {
                 (4, 4672),
@@ -142,7 +141,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3675Enabled = false; // this will only activate in the block after the last block activation happens
+            expectedSpec.IsEip3855Enabled = false; // this will only activate in the block after the last block activation happens
             List<ForkActivation> forkActivationsToTest2 = new()
             {
                 (1, 4672),
@@ -150,14 +149,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (3, 4680),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest2);
-            logger.Received(3).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            logger.Received(2).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
             expectedSpec.IsEip3198Enabled = true;
             List<ForkActivation> forkActivationsToTest3 = new()
             {
                 (4, 4672),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
-            expectedSpec.IsEip3675Enabled = true; // since the block transition happened the block before, now the timestamp transition activates, even though it should have activated long ago.
+            expectedSpec.IsEip3855Enabled = true; // since the block transition happened the block before, now the timestamp transition activates, even though it should have activated long ago.
             List<ForkActivation> forkActivationsToTest4 = new()
             {
                 (5, 4672),
@@ -582,8 +581,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,
+                    MergeForkIdTransition = 40000L,
                     Eip3651TransitionTimestamp = 1000000012,
-                    Eip3675TransitionTimestamp = 1000000012,
                     Eip3855TransitionTimestamp = 1000000012,
                     Eip3860TransitionTimestamp = 1000000012,
                     Eip1153TransitionTimestamp = 1000000024,
@@ -655,10 +654,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
 
-            TestTransitions((40000L, 1000000012), r =>
+            TestTransitions((41000L, 1000000012), r =>
             {
                 r.IsEip3651Enabled = true;
-                r.IsEip3675Enabled = true;
                 r.IsEip3855Enabled = true;
                 r.IsEip3860Enabled = true;
             });
