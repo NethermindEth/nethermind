@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P
         Initialized = 2,
 
         /// <summary>
-        /// Disconnecting all subprotocols (ETH, NDM and so on)
+        /// Disconnecting all subprotocols
         /// </summary>
         DisconnectingProtocols = 3,
 
