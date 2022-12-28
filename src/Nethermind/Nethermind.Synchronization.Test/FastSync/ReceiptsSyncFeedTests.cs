@@ -326,7 +326,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
-            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.Other, Arg.Any<string>());
+            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
         }
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)

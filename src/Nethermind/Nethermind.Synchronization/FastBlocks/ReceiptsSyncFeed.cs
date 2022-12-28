@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         if (batch.ResponseSourcePeer is not null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidReceipt, "invalid tx or uncles root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidReceiptRoot, "invalid tx or uncles root");
                         }
 
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);

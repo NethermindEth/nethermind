@@ -39,7 +39,7 @@ public enum InitiateDisconnectReason : byte
     HeaderBatchOnDifferentBranch,
     UnexpectedParentHeader,
     InvalidHeader,
-    InvalidReceipt,
+    InvalidReceiptRoot,
 
     // Try not to use this. Instead create a new one.
     Other,
@@ -98,7 +98,7 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.HeaderBatchOnDifferentBranch:
             case InitiateDisconnectReason.UnexpectedParentHeader:
             case InitiateDisconnectReason.InvalidHeader:
-            case InitiateDisconnectReason.InvalidReceipt:
+            case InitiateDisconnectReason.InvalidReceiptRoot:
                 return DisconnectReason.BreachOfProtocol;
         }
 
