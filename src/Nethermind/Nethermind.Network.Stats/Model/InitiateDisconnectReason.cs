@@ -8,7 +8,7 @@ namespace Nethermind.Stats.Model;
 /// </summary>
 public enum InitiateDisconnectReason : byte
 {
-    TooManyPeer,
+    TooManyPeers,
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
@@ -51,7 +51,7 @@ public static class InitiateDisconnectReasonExtension
     {
         switch (initiateDisconnectReason)
         {
-            case InitiateDisconnectReason.TooManyPeer:
+            case InitiateDisconnectReason.TooManyPeers:
                 return DisconnectReason.TooManyPeers;
             case InitiateDisconnectReason.SessionAlreadyExist:
             case InitiateDisconnectReason.ReplacingSessionWithOppositeDirection:

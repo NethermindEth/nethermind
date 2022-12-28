@@ -309,7 +309,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.InitiateDisconnect(InitiateDisconnectReason.TooManyPeer);
+            session.InitiateDisconnect(InitiateDisconnectReason.TooManyPeers);
             Assert.False(wasCalled);
             Assert.False(session.IsClosing);
         }
