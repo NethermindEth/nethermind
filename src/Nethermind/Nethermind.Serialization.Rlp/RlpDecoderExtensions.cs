@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpSequence[i] = items[i] is null ? Rlp.OfEmptySequence : decoder.Encode(items[i], behaviors);
             }
-            
+
             return Rlp.Encode(rlpSequence);
         }
 
