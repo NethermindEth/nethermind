@@ -885,7 +885,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10024);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10045).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty(blockHeader));
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 
@@ -917,7 +917,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10024);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10030).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty(blockHeader));
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 
@@ -952,7 +952,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10040);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10099).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty(blockHeader));
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 
