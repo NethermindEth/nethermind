@@ -506,11 +506,10 @@ public partial class EngineModuleTests
         fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 
-    // This test seems redundant
     [Test]
     public void Should_print_payload_attributes_as_expected()
     {
-        PayloadAttributes payloadAttributes = new()
+        PayloadAttributes attrs = new()
         {
             Timestamp = 1,
             PrevRandao = TestItem.KeccakH,
@@ -518,8 +517,8 @@ public partial class EngineModuleTests
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };
 
-        payloadAttributes.ToString().Should().Be(
-            "PayloadAttributes {Timestamp: 1, PrevRandao: 0x321c2cb0b0673952956a3bfa56cf1ce4df0cd3371ad51a2c5524561250b01836, SuggestedFeeRecipient: 0x65942aaf2c32a1aca4f14e82e94fce91960893a2, Withdrawals count: 1}");
+        attrs.ToString().Should().Be(
+            $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Count}}}");
     }
 
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
