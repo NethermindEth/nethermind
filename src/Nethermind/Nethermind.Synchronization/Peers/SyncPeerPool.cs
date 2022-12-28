@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.Peers
             ReportWeakPeer(peerInfo, allocationContexts);
         }
 
-        public void ReportBreachOfProtocol(PeerInfo? peerInfo, string details)
+        public void ReportBreachOfProtocol(PeerInfo? peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details)
         {
             /* since the allocations can have the peers dynamically changed
              * it may be hard for the external classes to ensure that the peerInfo is not null at the time when they report
@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.Peers
             if (peerInfo is not null)
             {
                 _stats.ReportSyncEvent(peerInfo.SyncPeer.Node, NodeStatsEventType.SyncFailed);
-                peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.SyncPeerPoolBreachOfProtocol, details);
+                peerInfo.SyncPeer.Disconnect(initiateDisconnectReason, details);
             }
         }
 

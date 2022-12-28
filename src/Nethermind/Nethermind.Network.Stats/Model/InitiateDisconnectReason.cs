@@ -22,7 +22,6 @@ public enum InitiateDisconnectReason : byte
     TxFlooding,
     NoCapabilityMatched,
 
-    SyncPeerPoolBreachOfProtocol,
     UselessInFastBlocks,
     DropWorstPeer,
     PeerRefreshFailed,
@@ -32,8 +31,18 @@ public enum InitiateDisconnectReason : byte
     SessionIdAlreadyExists,
     AppClosing,
 
-    // Try not to use this. Instead crease a new one.
-    Other
+    // Sync related
+    InvalidTxOrUncle,
+    HeaderResponseTooLong,
+    InconsistentHeaderBatch,
+    UnexpectedHeaderHash,
+    HeaderBatchOnDifferentBranch,
+    UnexpectedParentHeader,
+    InvalidHeader,
+    InvalidReceipt,
+
+    // Try not to use this. Instead create a new one.
+    Other,
 }
 
 public static class InitiateDisconnectReasonExtension
@@ -66,8 +75,6 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.NoCapabilityMatched:
                 return DisconnectReason.UselessPeer;
 
-            case InitiateDisconnectReason.SyncPeerPoolBreachOfProtocol:
-                return DisconnectReason.BreachOfProtocol;
             case InitiateDisconnectReason.UselessInFastBlocks:
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.DropWorstPeer:
@@ -83,6 +90,16 @@ public static class InitiateDisconnectReasonExtension
                 return DisconnectReason.AlreadyConnected;
             case InitiateDisconnectReason.AppClosing:
                 return DisconnectReason.ClientQuitting;
+
+            case InitiateDisconnectReason.InvalidTxOrUncle:
+            case InitiateDisconnectReason.HeaderResponseTooLong:
+            case InitiateDisconnectReason.InconsistentHeaderBatch:
+            case InitiateDisconnectReason.UnexpectedHeaderHash:
+            case InitiateDisconnectReason.HeaderBatchOnDifferentBranch:
+            case InitiateDisconnectReason.UnexpectedParentHeader:
+            case InitiateDisconnectReason.InvalidHeader:
+            case InitiateDisconnectReason.InvalidReceipt:
+                return DisconnectReason.BreachOfProtocol;
         }
 
         return DisconnectReason.Other;

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -325,7 +326,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
-            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, Arg.Any<string>());
+            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.Other, Arg.Any<string>());
         }
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)
