@@ -432,7 +432,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 current = parentBlock;
             }
 
-            if (current == null)
+            if (current is null)
             {
                 // block not part of beacon pivot chain, save in cache
                 _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
