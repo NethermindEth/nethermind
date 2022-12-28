@@ -61,20 +61,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
             StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState worldState = new(stateProvider, storageProvider);
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new(specProvider, worldState, virtualMachine, LimboLogs.Instance);
 
             _poSSwitcher = Substitute.For<IPoSSwitcher>();
             BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
                 new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                storageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                worldState,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

@@ -38,8 +38,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState worldState,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
@@ -52,8 +51,7 @@ namespace Nethermind.Consensus.AuRa
                 blockValidator,
                 rewardCalculator,
                 blockTransactionsExecutor,
-                stateProvider,
-                storageProvider,
+                worldState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
@@ -80,7 +78,7 @@ namespace Nethermind.Consensus.AuRa
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
+            _contractRewriter?.RewriteContracts(block.Number, _worldState, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);

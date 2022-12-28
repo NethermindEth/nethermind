@@ -10,8 +10,7 @@ namespace Nethermind.Evm.TransactionProcessing
     {
 
         public IStateReader StateReader { get; }
-        public IStateProvider StateProvider { get; }
-        public IStorageProvider StorageProvider { get; }
+        public IWorldState WorldState { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }

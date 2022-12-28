@@ -66,6 +66,7 @@ public class TestBlockchain : IDisposable
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IStateProvider State { get; set; } = null!;
+    public IWorldState WorldState { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public TrieStore TrieStore { get; set; } = null!;
@@ -132,6 +133,8 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
+        WorldState = new WorldState(State, Storage);
+
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
@@ -152,7 +155,7 @@ public class TestBlockchain : IDisposable
 
         ReceiptStorage = new InMemoryReceiptStorage();
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, WorldState, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
@@ -193,35 +196,35 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-        Block? genesis = GetGenesisBlock();
-        BlockTree.SuggestBlock(genesis);
+            Block? genesis = GetGenesisBlock();
+            BlockTree.SuggestBlock(genesis);
 
-        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
-        await AddBlocksOnStart();
-        return this;
-    }
-
-    private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
-    {
-        return specProvider is TestSpecProvider { AllowTestChainOverride: false }
-            ? specProvider
-            : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
-    }
-
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _resetEvent.Release(1);
-    }
-
-    protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
-
-    private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
-    {
-        if (!await semaphore.WaitAsync(timeout))
-        {
-            throw new InvalidOperationException(error);
+            await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+            await AddBlocksOnStart();
+            return this;
         }
-    }
+
+        private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+        {
+            return specProvider is TestSpecProvider { AllowTestChainOverride: false }
+                ? specProvider
+                : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+        }
+
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _resetEvent.Release(1);
+        }
+
+        protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
+
+        private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
+        {
+            if (!await semaphore.WaitAsync(timeout))
+            {
+                throw new InvalidOperationException(error);
+            }
+        }
 
     private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = DefaultTimeout)
     {
@@ -253,7 +256,7 @@ public class TestBlockchain : IDisposable
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
-            env.ReadOnlyStateProvider,
+            env.ReadOnlyWorldState,
             sealer,
             BlockTree,
             BlockProductionTrigger,
@@ -316,9 +319,8 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-            State,
-            Storage,
+            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, WorldState),
+            WorldState,
             ReceiptStorage,
             NullWitnessCollector.Instance,
             LogManager);

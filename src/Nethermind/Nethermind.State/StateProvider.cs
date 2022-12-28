@@ -323,7 +323,7 @@ namespace Nethermind.State
             PushDelete(address);
         }
 
-        int IJournal<int>.TakeSnapshot()
+        int IStateProvider.TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;

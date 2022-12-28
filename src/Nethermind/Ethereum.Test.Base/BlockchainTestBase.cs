@@ -128,6 +128,7 @@ namespace Ethereum.Test.Base
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
+            IWorldState worldState = new WorldState(stateProvider, storageProvider);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -144,9 +145,8 @@ namespace Ethereum.Test.Base
                         storageProvider,
                         virtualMachine,
                         _logManager),
-                    stateProvider),
-                stateProvider,
-                storageProvider,
+                    worldState),
+                worldState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);

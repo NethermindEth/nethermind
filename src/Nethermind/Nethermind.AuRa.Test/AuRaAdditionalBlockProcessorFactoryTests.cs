@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test
             stateDb[Arg.Any<byte[]>()].Returns((byte[])null);
 
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReadOnlyTxProcessorSource>(),

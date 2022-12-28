@@ -11,7 +11,7 @@ namespace Nethermind.Facade
 {
     public abstract class BlockchainBridgeContract : Contract
     {
-        public BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : base(abiEncoder, contractAddress, abiDefinition)
+        protected BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : base(abiEncoder, contractAddress, abiDefinition)
         {
         }
 

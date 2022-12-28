@@ -14,6 +14,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
@@ -65,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
                     _poSSwitcher);
 
-            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.WorldState);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv,
@@ -78,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _logManager,
                 rpcBlockTransactionsExecutor);
 
-            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+            Tracer tracer = new(chainProcessingEnv.WorldState, chainProcessingEnv.ChainProcessor);
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }

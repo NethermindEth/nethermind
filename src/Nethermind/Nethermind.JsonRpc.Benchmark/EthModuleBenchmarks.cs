@@ -64,6 +64,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState worldState = new(stateProvider, storageProvider);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
             BlockTree blockTree = new(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
@@ -79,9 +80,9 @@ namespace Nethermind.JsonRpc.Benchmark
             TransactionProcessor transactionProcessor
                  = new(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
 
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(stateProvider, storageProvider));
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+                worldState, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(

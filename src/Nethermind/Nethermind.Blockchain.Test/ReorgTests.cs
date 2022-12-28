@@ -47,6 +47,7 @@ namespace Nethermind.Blockchain.Test
             StateProvider stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState worldState = new WorldState(stateProvider, storageProvider);
             ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
@@ -83,9 +84,8 @@ namespace Nethermind.Blockchain.Test
                 MainnetSpecProvider.Instance,
                 Always.Valid,
                 new RewardCalculator(specProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                storageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(stateProvider, storageProvider)),
+                worldState,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
                 LimboLogs.Instance);
