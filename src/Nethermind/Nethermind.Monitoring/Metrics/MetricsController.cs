@@ -14,7 +14,7 @@ using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
-    public class MetricsController : IMetricsController
+    public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
@@ -43,9 +43,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private Gauge CreateMemberInfoMectricsGauge(MemberInfo propertyInfo)
         {
-            GaugeConfiguration configuration = new();
-
-            configuration.StaticLabels = propertyInfo
+            var staticLabels = propertyInfo
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
                 .ToDictionary(
                     attribute => attribute.Label,
@@ -53,7 +51,8 @@ namespace Nethermind.Monitoring.Metrics
 
             string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(propertyInfo);
-            return CreateGauge(name, description, configuration);
+
+            return CreateGauge(name, description, staticLabels);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -62,15 +61,11 @@ namespace Nethermind.Monitoring.Metrics
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
             if (info is null)
-            {
                 throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-            }
 
             object value = info.GetValue(null);
             if (value is null)
-            {
                 throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
-            }
 
             return value.ToString();
         }
@@ -103,25 +98,20 @@ namespace Nethermind.Monitoring.Metrics
             propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
         private static string BuildGaugeName(string propertyName) =>
-            $"nethermind_{Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant()}";
+            $"nethermind_{GetGaugeNameRegex().Replace(propertyName, "$1_$2").ToLowerInvariant()}";
 
-        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
-            => Prometheus.Metrics.CreateGauge(name, help, configuration);
+        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null) => labels is null
+            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty)
+            : Prometheus.Metrics.WithLabels(labels).CreateGauge(name, help ?? string.Empty);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
         }
 
-        public void StartUpdating()
-        {
-            _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
-        }
+        public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
 
-        public void StopUpdating()
-        {
-            _timer?.Change(Timeout.Infinite, 0);
-        }
+        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
 
         public void UpdateMetrics(object state)
         {
@@ -168,18 +158,16 @@ namespace Nethermind.Monitoring.Metrics
                 if (_gauges.TryGetValue(gaugeName, out var gauge))
                 {
                     if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                    {
                         gauge.Set(value);
-                    }
                 }
 
                 return gauge;
             }
         }
 
-        private string GetGaugeNameKey(params string[] par)
-        {
-            return string.Join('.', par);
-        }
+        private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
+
+        [GeneratedRegex("(\\p{Ll})(\\p{Lu})")]
+        private static partial Regex GetGaugeNameRegex();
     }
 }

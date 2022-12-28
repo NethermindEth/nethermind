@@ -5,15 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Castle.Core.Internal;
 using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
@@ -83,27 +80,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 JsonRpc = "2.0",
                 Method = method,
-                Params = parameters?.Select((param) =>
-                {
-                    if (param is null)
-                    {
-                        return JValue.CreateNull();
-                    }
-
-                    if (param.IsNullOrEmpty())
-                    {
-                        return JValue.FromObject(param);
-                    }
-
-                    if (param.StartsWith("{") || param.StartsWith("["))
-                    {
-                        return JToken.ReadFrom(new JsonTextReader(new StringReader(param)));
-                    }
-                    else
-                    {
-                        return JValue.FromObject(param);
-                    }
-                }).ToArray() ?? Array.Empty<JToken>(),
+                Params = parameters?.ToArray() ?? Array.Empty<string>(),
                 Id = 67
             };
 

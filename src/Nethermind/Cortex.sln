@@ -77,6 +77,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Ssz.Benchmark", "Nethermind.Ssz.Benchmark\Nethermind.Ssz.Benchmark.csproj", "{CF819EE6-60D9-43FA-84A1-77D41FD20541}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.Microsoft", "Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{446ED641-E039-4C72-AF38-50C08401EC9C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -219,6 +221,10 @@ Global
 		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Release|Any CPU.Build.0 = Release|Any CPU
+		{446ED641-E039-4C72-AF38-50C08401EC9C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{446ED641-E039-4C72-AF38-50C08401EC9C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{446ED641-E039-4C72-AF38-50C08401EC9C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{446ED641-E039-4C72-AF38-50C08401EC9C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

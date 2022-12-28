@@ -77,7 +77,6 @@ namespace Nethermind.Baseline.Test
             "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",
-            "xdai_validator.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
             "volta.cfg",
