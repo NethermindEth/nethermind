@@ -13,7 +13,6 @@ namespace Nethermind.Specs.Forks
         protected Shanghai()
         {
             Name = "Shanghai";
-            IsEip3675Enabled = true;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
             IsEip3860Enabled = true;
