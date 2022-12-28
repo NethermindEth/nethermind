@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
         <Nullable>enable</Nullable>
@@ -16,7 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
+      <PackageReference Include="System.IO.Abstractions" Version="19.1.1" />
     </ItemGroup>
 
 </Project>

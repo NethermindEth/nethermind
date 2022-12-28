@@ -245,7 +245,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -285,7 +285,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // DELEGATE CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -322,7 +322,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -565,7 +565,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -585,12 +585,57 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
             Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+        }
+
+        [Test]
+        public void Can_ignore_precompile_calls_in_contract()
+        {
+            byte[] deployedCode = Prepare.EvmCode
+                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(deployedCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(TestItem.AddressC, 40000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+
+            // One call to precompile and the other call to AddressC
+            Assert.AreEqual(2, trace.Action.Subtraces.Count, "[] subtraces");
+            Assert.AreEqual("call", trace.Action.CallType, "[] type");
+
+            // Precompile call
+            Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces.Count, "[0] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+
+            // AddressC call - only one call
+            Assert.AreEqual(2, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].CallType, "[1] type");
+
+            // Check the 1st subtrace - a precompile call
+            Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+            Assert.AreEqual(false, trace.Action.Subtraces[1].Subtraces[0].IncludeInTrace, "[1, 0] type");
+
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[1].Subtraces.Count, "[1, 1] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[1].CallType, "[1, 1] type");
+            Assert.AreEqual(true, trace.Action.Subtraces[1].Subtraces[1].IncludeInTrace, "[1, 1] type");
         }
 
         [Test]
@@ -625,7 +670,7 @@ namespace Nethermind.Evm.Test.Tracing
                 3, 3, 3, 3, 3, 3, // CREATE
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 

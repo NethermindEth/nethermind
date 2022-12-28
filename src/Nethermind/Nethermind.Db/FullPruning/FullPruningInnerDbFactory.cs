@@ -76,7 +76,7 @@ namespace Nethermind.Db.FullPruning
         {
             // gets path to non-index DB.
             string fullPath = _rocksDbFactory.GetFullDbPath(new RocksDbSettings(string.Empty, path));
-            IDirectoryInfo directory = _fileSystem.DirectoryInfo.FromDirectoryName(fullPath);
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (directory.Exists)
             {
                 if (directory.EnumerateFiles().Any())
