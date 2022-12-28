@@ -46,7 +46,6 @@ namespace Nethermind.Runner.Test
 
         [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false)]
         [TestCase("baseline", false, false)]
@@ -361,7 +360,6 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", null, false)]
         [TestCase("xdai.cfg", new[] { 16, 16, 16 })]
         [TestCase("xdai_archive.cfg", new[] { 16, 16, 16 })]
-        [TestCase("xdai_validator.cfg", null, false)]
         [TestCase("volta")]
         public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
         {
@@ -452,7 +450,6 @@ namespace Nethermind.Runner.Test
             "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",
-            "xdai_validator.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
             "volta.cfg",
