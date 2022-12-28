@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -16,7 +15,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -26,12 +24,14 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Handlers.V1;
-using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
+using ExchangeTransitionConfigurationV1Handler = Nethermind.Merge.Plugin.Handlers.ExchangeTransitionConfigurationV1Handler;
+using GetPayloadBodiesByHashV1Handler = Nethermind.Merge.Plugin.Handlers.GetPayloadBodiesByHashV1Handler;
+using GetPayloadBodiesByRangeV1Handler = Nethermind.Merge.Plugin.Handlers.GetPayloadBodiesByRangeV1Handler;
+using GetPayloadV1Handler = Nethermind.Merge.Plugin.Handlers.GetPayloadV1Handler;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -307,7 +307,7 @@ namespace Nethermind.Merge.Plugin
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
-                    new NewPayloadV1Handler(
+                    new NewPayloadHandler(
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
@@ -321,7 +321,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _api.SpecProvider,
                         _api.LogManager),
-                    new ForkchoiceUpdatedV1Handler(
+                    new ForkchoiceUpdatedHandler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
@@ -332,6 +332,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _peerRefresher,
+                        _api.SpecProvider,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
                     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
