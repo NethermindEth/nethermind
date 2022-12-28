@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -13,7 +12,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -166,23 +164,6 @@ namespace Nethermind.Core.Test.Encoding
             decoded.Hash.Should().Be(decodedByValueDecoderContext.Hash!);
             Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
         }
-
-
-        [TestCase("0x01f8d7831469cd81e1843b9acafe830186a08080b88073666000604d556000603f557f7bb83c8c38ffc9400c4a9e083354ae9d28a945ab90e6a67640718c7c86c8c6e46002527f6d5cce5cbe965bc09a917f4832eab7a96315e5d9aeed82f4194fa2ee4597db00602252601c60425360c760435360ef6044536045604553604a6046536081604753606d604853609d6049536096604ac001a052f2dd5fb748e065d9e0fb38c7f21110ce410f2a63f37ca0f01d4c94cc05530ba06cd404a5cd5719c0743b8d940d1201782e4b6ee8c210964c345c702c1b29bb83", ExpectedResult = false)]
-        public bool Incorrect_transactions_are_rejected(string rlp)
-        {
-            try
-            {
-                Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rlp), RlpBehaviors.SkipTypedWrapping);
-                TxValidator txValidator = new(ChainId.Mainnet);
-                return txValidator.IsWellFormed(tx, London.Instance);
-            }
-            catch (RlpException e)
-            {
-                return false; // RLP Exception means that we rejected transaction
-            }
-        }
-
 
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
