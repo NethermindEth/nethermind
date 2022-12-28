@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Producers
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                ReadOnlyWorldState = txProcessingEnv.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
@@ -145,8 +145,7 @@ namespace Nethermind.Consensus.Producers
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

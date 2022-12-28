@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
@@ -74,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReadOnlyTxProcessorSourceExt txEnv = new ReadOnlyTxProcessingEnv(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
 
             ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
-            BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
+            BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.WorldState);
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txEnv,
                 _blockValidator,

@@ -18,7 +18,7 @@ public class ContractRewriter
         _contractOverrides = contractOverrides;
     }
 
-    public void RewriteContracts(long blockNumber, IStateProvider stateProvider, IReleaseSpec spec)
+    public void RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
         if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))
         {

@@ -14,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -23,7 +24,7 @@ namespace Nethermind.AuRa.Test.Contract
     {
         private const int CorrectHeadGasLimit = 100000000;
 
-        // TestContract: 
+        // TestContract:
         // pragma solidity ^0.5.0;
         // contract TestValidatorSet {
         //    function blockGasLimit() public view returns(uint256) {
@@ -93,9 +94,8 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                    State,
-                    Storage,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, new WorldState(State, Storage)),
+                    WorldState,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,

@@ -29,8 +29,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessorSource readOnlyTxProcessingEnv)
             => new AABlockProducerTransactionsExecutor(
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.WorldState,
                 _specProvider,
                 _logManager,
                 _signer,

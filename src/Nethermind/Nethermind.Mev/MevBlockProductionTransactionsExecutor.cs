@@ -23,8 +23,6 @@ namespace Nethermind.Mev
     // this looks super complex, hmm, is it needed?
     public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
         private readonly IWorldState _worldState;
 
         public MevBlockProductionTransactionsExecutor(
@@ -33,8 +31,7 @@ namespace Nethermind.Mev
             ILogManager logManager) :
             this(
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.WorldState,
                 specProvider,
                 logManager)
         {
@@ -42,15 +39,12 @@ namespace Nethermind.Mev
 
         private MevBlockProductionTransactionsExecutor(
             ITransactionProcessor transactionProcessor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState worldState,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(transactionProcessor, stateProvider, storageProvider, specProvider, logManager)
+            : base(transactionProcessor, worldState, specProvider, logManager)
         {
-            _stateProvider = stateProvider;
-            _storageProvider = storageProvider;
-            _worldState = new WorldState(stateProvider, storageProvider);
+            _worldState = worldState;
         }
 
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -123,8 +117,7 @@ namespace Nethermind.Mev
                 ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
             }
 
-            _stateProvider.Commit(spec, receiptsTracer);
-            _storageProvider.Commit(receiptsTracer);
+            _worldState.Commit(spec, receiptsTracer);
 
             SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();
@@ -139,11 +132,11 @@ namespace Nethermind.Mev
 
             Snapshot snapshot = _worldState.TakeSnapshot();
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
-            UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+            UInt256 initialBalance = _worldState.GetBalance(block.Header.GasBeneficiary!);
 
             bool CheckFeeNotManipulated()
             {
-                UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+                UInt256 finalBalance = _worldState.GetBalance(block.Header.GasBeneficiary!);
                 UInt256 feeReceived = finalBalance - initialBalance;
                 UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
                 UInt256 actualGasPrice = feeReceived / (UInt256)receiptsTracer.LastReceipt.GasUsed!;

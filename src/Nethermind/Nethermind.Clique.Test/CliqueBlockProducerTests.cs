@@ -123,14 +123,14 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
                 StorageProvider storageProvider = new(trieStore, stateProvider, nodeLogManager);
+                IWorldState worldState = new WorldState(stateProvider, storageProvider);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                    stateProvider,
-                    storageProvider,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(stateProvider, storageProvider)),
+                    worldState,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);
@@ -142,6 +142,7 @@ namespace Nethermind.Clique.Test
 
                 StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
+                WorldState minerWorldState = new WorldState(minerStateProvider, minerStorageProvider);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
 
@@ -150,8 +151,7 @@ namespace Nethermind.Clique.Test
                     Always.Valid,
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, minerStorageProvider, goerliSpecProvider, _logManager),
-                    minerStateProvider,
-                    minerStorageProvider,
+                    minerWorldState,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);

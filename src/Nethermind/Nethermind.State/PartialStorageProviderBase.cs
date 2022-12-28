@@ -249,7 +249,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Increment position and size (if needed) of _changes 
+        /// Increment position and size (if needed) of _changes
         /// </summary>
         protected void IncrementChangePosition()
         {
