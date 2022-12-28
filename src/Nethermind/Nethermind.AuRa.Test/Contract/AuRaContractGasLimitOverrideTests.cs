@@ -15,6 +15,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -94,9 +95,8 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                    State,
-                    Storage,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, new WorldState(State, Storage)),
+                    WorldState,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,

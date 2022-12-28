@@ -209,6 +209,10 @@ namespace Nethermind.Init.Steps
                 stateProvider,
                 getApi.LogManager);
 
+            IWorldState worldState = setApi.WorldState = new WorldState(
+                stateProvider,
+                storageProvider);
+
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
@@ -218,7 +222,6 @@ namespace Nethermind.Init.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            WorldState worldState = new(stateProvider, storageProvider);
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 worldState,
@@ -361,9 +364,8 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, new WorldState(_api.StateProvider!, _api.StorageProvider!)),
+                _api.WorldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

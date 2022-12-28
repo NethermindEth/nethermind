@@ -59,9 +59,7 @@ namespace Nethermind.Evm
         private static readonly LruCache<KeccakKey, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
-        private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
-        private IStorageProvider _storage;
         private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
@@ -82,9 +80,6 @@ namespace Nethermind.Evm
         public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
-
-            _state = worldState.StateProvider;
-            _storage = worldState.StorageProvider;
             _worldState = worldState;
 
             IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
@@ -250,8 +245,8 @@ namespace Nethermind.Evm
                             bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                Keccak codeHash = _state.UpdateCode(callResult.Output);
-                                _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
+                                Keccak codeHash = _worldState.UpdateCode(callResult.Output);
+                                _worldState.UpdateCodeHash(callCodeOwner, codeHash, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)
@@ -267,7 +262,7 @@ namespace Nethermind.Evm
                                     worldState.Restore(previousState.Snapshot);
                                     if (!previousState.IsCreateOnPreExistingAccount)
                                     {
-                                        _state.DeleteAccount(callCodeOwner);
+                                        worldState.DeleteAccount(callCodeOwner);
                                     }
 
                                     previousCallResult = BytesZero;
@@ -367,9 +362,9 @@ namespace Nethermind.Evm
         {
             if (_parityTouchBugAccount.ShouldDelete)
             {
-                if (_state.AccountExists(_parityTouchBugAccount.Address))
+                if (_worldState.AccountExists(_parityTouchBugAccount.Address))
                 {
-                    _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
+                    _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
                 }
 
                 _parityTouchBugAccount.ShouldDelete = false;
@@ -378,7 +373,6 @@ namespace Nethermind.Evm
 
         public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
         {
-            IStateProvider state = worldState.StateProvider;
             if (codeSource.IsPrecompile(vmSpec))
             {
                 if (_precompiles is null)
@@ -389,11 +383,11 @@ namespace Nethermind.Evm
                 return _precompiles[codeSource];
             }
 
-            Keccak codeHash = state.GetCodeHash(codeSource);
+            Keccak codeHash = worldState.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo is null)
             {
-                byte[] code = state.GetCode(codeHash);
+                byte[] code = worldState.GetCode(codeHash);
 
                 if (code is null)
                 {
@@ -406,7 +400,7 @@ namespace Nethermind.Evm
             else
             {
                 // need to touch code so that any collectors that track database access are informed
-                state.TouchCode(codeHash);
+                worldState.TouchCode(codeHash);
             }
 
             return cachedCodeInfo;
@@ -539,14 +533,14 @@ namespace Nethermind.Evm
             long dataGasCost = precompile.DataGasCost(callData, spec);
 
             bool wasCreated = false;
-            if (!_state.AccountExists(state.Env.ExecutingAccount))
+            if (!_worldState.AccountExists(state.Env.ExecutingAccount))
             {
                 wasCreated = true;
-                _state.CreateAccount(state.Env.ExecutingAccount, transferValue);
+                _worldState.CreateAccount(state.Env.ExecutingAccount, transferValue);
             }
             else
             {
-                _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
+                _worldState.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
             }
 
             // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
@@ -604,18 +598,18 @@ namespace Nethermind.Evm
 
             if (!vmState.IsContinuation)
             {
-                if (!_state.AccountExists(env.ExecutingAccount))
+                if (!_worldState.AccountExists(env.ExecutingAccount))
                 {
-                    _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
+                    _worldState.CreateAccount(env.ExecutingAccount, env.TransferValue);
                 }
                 else
                 {
-                    _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
+                    _worldState.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
                 }
 
                 if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
                 {
-                    _state.IncrementNonce(env.ExecutingAccount);
+                    _worldState.IncrementNonce(env.ExecutingAccount);
                 }
             }
 
@@ -1339,7 +1333,7 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            UInt256 balance = _state.GetBalance(address);
+                            UInt256 balance = _worldState.GetBalance(address);
                             stack.PushUInt256(in balance);
                             break;
                         }
@@ -1707,7 +1701,7 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+                            UInt256 balance = _worldState.GetBalance(env.ExecutingAccount);
                             stack.PushUInt256(in balance);
                             break;
                         }
@@ -1839,7 +1833,7 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            byte[] value = _storage.Get(storageCell);
+                            byte[] value = _worldState.Get(storageCell);
                             stack.PushBytes(value);
 
                             if (_txTracer.IsTracingOpLevelStorage)
@@ -1901,7 +1895,7 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            Span<byte> currentValue = _storage.Get(storageCell);
+                            Span<byte> currentValue = _worldState.Get(storageCell);
                             // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
                             bool currentIsZero = currentValue.IsZero();
 
@@ -1939,7 +1933,7 @@ namespace Nethermind.Evm
                                 }
                                 else // net metered, C != N
                                 {
-                                    Span<byte> originalValue = _storage.GetOriginal(storageCell);
+                                    Span<byte> originalValue = _worldState.GetOriginal(storageCell);
                                     bool originalIsZero = originalValue.IsZero();
 
                                     bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -2015,7 +2009,7 @@ namespace Nethermind.Evm
                             if (!newSameAsCurrent)
                             {
                                 Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                                _storage.Set(storageCell, valueToStore.ToArray());
+                                _worldState.Set(storageCell, valueToStore.ToArray());
                             }
 
                             if (_txTracer.IsTracingInstructions)
@@ -2052,7 +2046,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 storageIndex);
                             StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
 
-                            byte[] value = _storage.GetTransientState(storageCell);
+                            byte[] value = _worldState.GetTransientState(storageCell);
                             stack.PushBytes(value);
 
                             if (_txTracer.IsTracingOpLevelStorage)
@@ -2098,7 +2092,7 @@ namespace Nethermind.Evm
 
                             StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
                             byte[] currentValue = newValue.ToArray();
-                            _storage.SetTransientState(storageCell, currentValue);
+                            _worldState.SetTransientState(storageCell, currentValue);
 
                             if (_txTracer.IsTracingOpLevelStorage)
                             {
@@ -2374,9 +2368,9 @@ namespace Nethermind.Evm
                             }
 
                             // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-                            if (!_state.AccountExists(env.ExecutingAccount))
+                            if (!_worldState.AccountExists(env.ExecutingAccount))
                             {
-                                _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+                                _worldState.CreateAccount(env.ExecutingAccount, UInt256.Zero);
                             }
 
                             stack.PopUInt256(out UInt256 value);
@@ -2421,7 +2415,7 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+                            UInt256 balance = _worldState.GetBalance(env.ExecutingAccount);
                             if (value > balance)
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
@@ -2429,7 +2423,7 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-                            UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+                            UInt256 accountNonce = _worldState.GetNonce(env.ExecutingAccount);
                             UInt256 maxNonce = ulong.MaxValue;
                             if (accountNonce >= maxNonce)
                             {
@@ -2449,7 +2443,7 @@ namespace Nethermind.Evm
                             }
 
                             Address contractAddress = instruction == Instruction.CREATE
-                                ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+                                ? ContractAddress.From(env.ExecutingAccount, _worldState.GetNonce(env.ExecutingAccount))
                                 : ContractAddress.From(env.ExecutingAccount, salt, initCode);
 
                             if (spec.UseHotAndColdStorage)
@@ -2458,12 +2452,12 @@ namespace Nethermind.Evm
                                 vmState.WarmUp(contractAddress);
                             }
 
-                            _state.IncrementNonce(env.ExecutingAccount);
+                            _worldState.IncrementNonce(env.ExecutingAccount);
 
                             Snapshot snapshot = _worldState.TakeSnapshot();
 
-                            bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
+                            bool accountExists = _worldState.AccountExists(contractAddress);
+                            if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _worldState.GetNonce(contractAddress) != 0))
                             {
                                 /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
                                 if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2474,14 +2468,14 @@ namespace Nethermind.Evm
 
                             if (accountExists)
                             {
-                                _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                                _worldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
                             }
-                            else if (_state.IsDeadAccount(contractAddress))
+                            else if (_worldState.IsDeadAccount(contractAddress))
                             {
-                                _storage.ClearStorage(contractAddress);
+                                _worldState.ClearStorage(contractAddress);
                             }
 
-                            _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+                            _worldState.SubtractFromBalance(env.ExecutingAccount, value, spec);
                             ExecutionEnvironment callEnv = new();
                             callEnv.TxExecutionContext = env.TxExecutionContext;
                             callEnv.CallDepth = env.CallDepth + 1;
@@ -2590,11 +2584,11 @@ namespace Nethermind.Evm
                                 gasExtra += GasCostOf.CallValue;
                             }
 
-                            if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
+                            if (!spec.ClearEmptyAccountWhenTouched && !_worldState.AccountExists(target))
                             {
                                 gasExtra += GasCostOf.NewAccount;
                             }
-                            else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
+                            else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _worldState.IsDeadAccount(target))
                             {
                                 gasExtra += GasCostOf.NewAccount;
                             }
@@ -2631,7 +2625,7 @@ namespace Nethermind.Evm
                                 gasLimitUl += GasCostOf.CallStipend;
                             }
 
-                            if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+                            if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _worldState.GetBalance(env.ExecutingAccount) < transferValue)
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
@@ -2655,7 +2649,7 @@ namespace Nethermind.Evm
                             ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
                             Snapshot snapshot = _worldState.TakeSnapshot();
-                            _state.SubtractFromBalance(caller, transferValue, spec);
+                            _worldState.SubtractFromBalance(caller, transferValue, spec);
 
                             ExecutionEnvironment callEnv = new();
                             callEnv.TxExecutionContext = env.TxExecutionContext;
@@ -2748,9 +2742,9 @@ namespace Nethermind.Evm
 
                             vmState.DestroyList.Add(env.ExecutingAccount);
 
-                            UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
+                            UInt256 ownerBalance = _worldState.GetBalance(env.ExecutingAccount);
                             if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);
-                            if (spec.ClearEmptyAccountWhenTouched && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+                            if (spec.ClearEmptyAccountWhenTouched && ownerBalance != 0 && _worldState.IsDeadAccount(inheritor))
                             {
                                 if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                                 {
@@ -2759,7 +2753,7 @@ namespace Nethermind.Evm
                                 }
                             }
 
-                            bool inheritorAccountExists = _state.AccountExists(inheritor);
+                            bool inheritorAccountExists = _worldState.AccountExists(inheritor);
                             if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
                             {
                                 if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
@@ -2771,14 +2765,14 @@ namespace Nethermind.Evm
 
                             if (!inheritorAccountExists)
                             {
-                                _state.CreateAccount(inheritor, ownerBalance);
+                                _worldState.CreateAccount(inheritor, ownerBalance);
                             }
                             else if (!inheritor.Equals(env.ExecutingAccount))
                             {
-                                _state.AddToBalance(inheritor, ownerBalance, spec);
+                                _worldState.AddToBalance(inheritor, ownerBalance, spec);
                             }
 
-                            _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
+                            _worldState.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                             EndInstructionTrace();
@@ -2900,13 +2894,13 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
+                            if (!_worldState.AccountExists(address) || _worldState.IsDeadAccount(address))
                             {
                                 stack.PushZero();
                             }
                             else
                             {
-                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                                stack.PushBytes(_worldState.GetCodeHash(address).Bytes);
                             }
 
                             break;

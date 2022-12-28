@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -91,9 +92,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider),
-                _api.StateProvider,
-                _api.StorageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, new WorldState(_api.StateProvider!, _api.StorageProvider!)),
+                new WorldState(_api.StateProvider, _api.StorageProvider),
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 chainSpecAuRa.TwoThirdsMajorityTransition);
 
             IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                    _api.StateProvider,
+                    new WorldState(_api.StateProvider, _api.StorageProvider),
                     _api.TransactionProcessor,
                     _api.BlockTree,
                     readOnlyTxProcessorSource,

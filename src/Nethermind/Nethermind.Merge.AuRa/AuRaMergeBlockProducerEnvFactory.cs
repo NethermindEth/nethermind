@@ -76,13 +76,12 @@ namespace Nethermind.Merge.AuRa
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
                 logManager,
                 _blockTree,
                 new BlockProductionWithdrawalProcessor(
-                    new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager))
+                    new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager))
                 );
         }
 

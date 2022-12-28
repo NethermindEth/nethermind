@@ -44,7 +44,7 @@ namespace Nethermind.Merge.AuRa
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
                 blockProductionTrigger,
-                producerEnv.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyWorldState,
                 _gasLimitCalculator ?? targetAdjustedGasLimitCalculator,
                 _sealEngine,
                 _timestamper,

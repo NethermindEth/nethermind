@@ -16,17 +16,17 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IStateProvider _stateProvider;
+            private readonly IWorldState _worldState;
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState worldState)
+                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState)
             {
             }
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState worldState)
             {
                 _transactionProcessor = transactionProcessor;
-                _stateProvider = stateProvider;
+                _worldState = worldState;
             }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Processing
 
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _worldState);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }

@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
-    public interface ITxTracer : IStateTracer, IStorageTracer
+    public interface ITxTracer : IWorldStateTracer
     {
         /// <summary>
         /// Defines whether MarkAsSuccess or MarkAsFailed will be called

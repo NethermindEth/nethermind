@@ -15,11 +15,11 @@ namespace Nethermind.Consensus.Processing
             Transaction currentTx,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IStateProvider stateProvider)
+            IWorldState worldState)
         {
             if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
             {
-                currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                currentTx.Nonce = worldState.GetNonce(currentTx.SenderAddress);
             }
 
             receiptsTracer.StartNewTxTrace(currentTx);

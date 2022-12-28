@@ -296,13 +296,13 @@ namespace Nethermind.Synchronization.Test
             TransactionProcessor txProcessor =
                 new(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
 
+            IWorldState worldState = new WorldState(stateProvider, storageProvider);
             BlockProcessor blockProcessor = new(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
-                stateProvider,
-                storageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, worldState),
+                worldState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
@@ -317,6 +317,7 @@ namespace Nethermind.Synchronization.Test
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
+            IWorldState devWorldState = new WorldState(devState, devStorage);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devStorage, devEvm, logManager);
 
@@ -325,8 +326,7 @@ namespace Nethermind.Synchronization.Test
                 blockValidator,
                 rewardCalculator,
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, devStorage, specProvider, logManager),
-                devState,
-                devStorage,
+                devWorldState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

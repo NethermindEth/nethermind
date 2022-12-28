@@ -178,7 +178,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.WorldState,
                 _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 

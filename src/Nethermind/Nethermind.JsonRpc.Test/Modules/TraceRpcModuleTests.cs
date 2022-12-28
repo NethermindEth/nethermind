@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
-                RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+                RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.WorldState);
                 ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                     txProcessingEnv,
                     Always.Valid,
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Blockchain.LogManager,
                     rpcBlockTransactionsExecutor);
 
-                Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+                Tracer tracer = new(chainProcessingEnv.WorldState, chainProcessingEnv.ChainProcessor);
                 TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
                 for (int i = 1; i < 10; i++)

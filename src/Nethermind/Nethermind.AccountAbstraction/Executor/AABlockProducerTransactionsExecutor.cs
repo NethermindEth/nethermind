@@ -18,28 +18,24 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class AABlockProducerTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
+        private readonly IWorldState _worldState;
         private readonly ISigner _signer;
         private readonly Address[] _entryPointAddresses;
 
         public AABlockProducerTransactionsExecutor(
             ITransactionProcessor transactionProcessor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState worldState,
             ISpecProvider specProvider,
             ILogManager logManager,
             ISigner signer,
             Address[] entryPointAddresses)
             : base(
             transactionProcessor,
-            stateProvider,
-            storageProvider,
+            worldState,
             specProvider,
             logManager)
         {
-            _stateProvider = stateProvider;
-            _storageProvider = storageProvider;
+            _worldState = worldState;
             _signer = signer;
             _entryPointAddresses = entryPointAddresses;
         }
@@ -68,8 +64,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            _stateProvider.Commit(spec, receiptsTracer);
-            _storageProvider.Commit(receiptsTracer);
+            _worldState.Commit(spec, receiptsTracer);
 
             SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();

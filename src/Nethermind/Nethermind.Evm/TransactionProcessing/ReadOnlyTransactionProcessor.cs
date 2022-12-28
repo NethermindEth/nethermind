@@ -13,17 +13,15 @@ namespace Nethermind.Evm.TransactionProcessing
     public class ReadOnlyTransactionProcessor : IReadOnlyTransactionProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
+        private readonly IWorldState _worldState;
         private readonly Keccak _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, IStorageProvider storageProvider, Keccak startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState worldState, Keccak startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _stateBefore = _stateProvider.StateRoot;
-            _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
+            _worldState = worldState;
+            _stateBefore = _worldState.StateRoot;
+            _worldState.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
 
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
@@ -39,13 +37,12 @@ namespace Nethermind.Evm.TransactionProcessing
             _transactionProcessor.Trace(transaction, block, txTracer);
 
 
-        public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
+        public bool IsContractDeployed(Address address) => _worldState.IsContract(address);
 
         public void Dispose()
         {
-            _stateProvider.StateRoot = _stateBefore;
-            _stateProvider.Reset();
-            _storageProvider.Reset();
+            _worldState.StateRoot = _stateBefore;
+            _worldState.Reset();
         }
     }
 }

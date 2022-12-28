@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 blockProductionTrigger,
-                producerEnv.ReadOnlyStateProvider,
+                producerEnv.ReadOnlyWorldState,
                 _api.Sealer,
                 _api.BlockTree,
                 _api.Timestamper,
@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 new LocalTxFilter(_api.EngineSigner));
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                    changeableTxProcessingEnv.StateProvider,
+                    changeableTxProcessingEnv.WorldState,
                     changeableTxProcessingEnv.TransactionProcessor,
                     changeableTxProcessingEnv.BlockTree,
                     constantContractTxProcessingEnv,
@@ -154,8 +154,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
                 _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-                changeableTxProcessingEnv.StateProvider,
-                changeableTxProcessingEnv.StorageProvider,
+                changeableTxProcessingEnv.WorldState,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
@@ -260,7 +259,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 {
                     BlockTree = readOnlyBlockTree,
                     ChainProcessor = chainProcessor,
-                    ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                    ReadOnlyWorldState = txProcessingEnv.WorldState,
                     TxSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv, additionalTxSource),
                     ReadOnlyTxProcessingEnv = constantContractsProcessingEnv
                 };
