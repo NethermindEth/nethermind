@@ -27,7 +27,7 @@ configs = {
     "goerli": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "poacore": {
         "url": "https://core.poa.network",
@@ -64,6 +64,16 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    "viviani": {
+        "url": "https://viviani.iex.ec/",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },    
+    "bellecour": {
+        "url": "https://bellecour.iex.ec/",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },        
     # mev section
     "mainnet_mev": {
         "url": "api.etherscan.io",
@@ -73,7 +83,7 @@ configs = {
     "goerli_mev": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "xdai_mev": {
         "url": "https://rpc.gnosischain.com",
@@ -89,7 +99,7 @@ configs = {
     "goerli_aa": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "xdai_aa": {
         "url": "https://rpc.gnosischain.com",
