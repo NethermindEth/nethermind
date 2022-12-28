@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -65,7 +51,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
@@ -78,7 +64,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -179,7 +165,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak? random = TestItem.KeccakF;
-        UInt256 timestamp = chain.BlockTree.Head!.Timestamp + 5;
+        ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
         ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
@@ -203,7 +189,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         string _ = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -224,7 +210,9 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.WithTransactions(
             Build.A.Transaction.WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
             Build.A.Transaction.WithTo(TestItem.AddressD).WithType(TxType.EIP1559).WithMaxFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
-        payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(block);
+        IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
+        improvementContext.CurrentBestBlock.Returns(block);
+        payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(improvementContext);
         using MergeTestBlockchain chain = await CreateBlockChain(null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -246,9 +234,10 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -264,7 +253,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -281,13 +270,13 @@ public partial class EngineModuleTests
         improvementContextFactory.CreatedContexts.Should().OnlyContain(i => i.Disposed);
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 10 * delay;
+        TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,
@@ -307,13 +296,13 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100);
+        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
 
         ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -328,12 +317,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 10 * delay;
+        TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay));
         chain.PayloadPreparationService = new PayloadPreparationService(
             chain.PostMergeBlockProducer!,

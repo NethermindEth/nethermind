@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Numerics;
@@ -26,12 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -212,7 +197,7 @@ namespace Nethermind.Network.Test
                 msg.ChainId = 1;
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
-                msg.ProtocolVersion = 63;
+                msg.ProtocolVersion = 66;
 
                 return ReceiveStatus(msg);
             }
@@ -231,7 +216,7 @@ namespace Nethermind.Network.Test
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
                 Assert.AreEqual(1, stats.EthNodeDetails.ChainId);
                 Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
-                Assert.AreEqual(63, stats.EthNodeDetails.ProtocolVersion);
+                Assert.AreEqual(66, stats.EthNodeDetails.ProtocolVersion);
                 Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
                 return this;
             }
@@ -246,7 +231,7 @@ namespace Nethermind.Network.Test
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { new("eth", 62) };
+                msg.Capabilities = new List<Capability> { new("eth", 66) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
@@ -282,7 +267,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHelloWrongEth()
             {
-                return ReceiveHelloEth(61);
+                return ReceiveHelloEth(65);
             }
 
             public Context ReceiveStatusWrongChain()
@@ -292,7 +277,7 @@ namespace Nethermind.Network.Test
                 msg.ChainId = 2;
                 msg.GenesisHash = TestItem.KeccakA;
                 msg.BestHash = TestItem.KeccakA;
-                msg.ProtocolVersion = 63;
+                msg.ProtocolVersion = 66;
 
                 return ReceiveStatus(msg);
             }
@@ -304,7 +289,7 @@ namespace Nethermind.Network.Test
                 msg.ChainId = 1;
                 msg.GenesisHash = TestItem.KeccakB;
                 msg.BestHash = TestItem.KeccakB;
-                msg.ProtocolVersion = 63;
+                msg.ProtocolVersion = 66;
 
                 return ReceiveStatus(msg);
             }

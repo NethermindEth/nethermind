@@ -1,14 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Overseer.Test.JsonRpc.Dto;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -51,10 +47,10 @@ public class BySpeedStrategyTests
             peers.Add(pInfo);
         }
 
-        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, minDiffPercentageForSpeedSwitch, minDiffSpeed);
+        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, minDiffPercentageForSpeedSwitch, minDiffSpeed, 0, 0);
 
         PeerInfo? currentPeer = null;
-        if (currentPeerIdx != null) currentPeer = peers[currentPeerIdx.Value];
+        if (currentPeerIdx is not null) currentPeer = peers[currentPeerIdx.Value];
 
         PeerInfo? selectedPeer = strategy.Allocate(currentPeer, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
 
@@ -62,7 +58,106 @@ public class BySpeedStrategyTests
         selectedPeerIdx.Should().Be(expectedSelectedPeerIdx);
     }
 
-    private static PeerInfo CreatePeerInfoWithSpeed(long speed, INodeStatsManager nodeStatsManager)
+    [TestCase(1, 0, 0, false)]
+    [TestCase(0, 1, 0, true)]
+    [TestCase(1, 1, 1, false)]
+    [TestCase(1, 1, 2, true)]
+    [TestCase(10, 10, 2, false)]
+    [TestCase(10, 10, 11, true)]
+    [TestCase(10, 0, 11, false)]
+    public void TestMinimumKnownSpeed(int peerWithKnownSpeed, int peerWithUnknownSpeed, int desiredKnownPeer, bool pickedNewPeer)
+    {
+        long?[] peerSpeeds = Enumerable.Repeat<long?>(100, peerWithKnownSpeed)
+            .Concat(Enumerable.Repeat<long?>(null, peerWithUnknownSpeed))
+            .ToArray();
+
+        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+
+        List<PeerInfo> peers = new();
+        for (int i = 0; i < peerSpeeds.Length; i++)
+        {
+            PeerInfo pInfo = CreatePeerInfoWithSpeed(peerSpeeds[i], nodeStatsManager);
+            peers.Add(pInfo);
+        }
+
+        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, 0, desiredKnownPeer);
+
+        PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
+
+        int selectedPeerIdx = peers.IndexOf(selectedPeer);
+        if (pickedNewPeer)
+        {
+            selectedPeerIdx.Should().Be(peerWithKnownSpeed); // It picked the first peer with unknown speed
+        }
+        else
+        {
+            selectedPeerIdx.Should().BeLessThan(peerWithKnownSpeed); // It picked earlier peers which have known speed
+        }
+    }
+
+    [Test]
+    public void TestWhenSameSpeed_RandomlyTryOtherPeer()
+    {
+        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+
+        List<PeerInfo> peers = Enumerable.Repeat<long?>(10, 50)
+            .Concat(Enumerable.Repeat<long?>(100, 50))
+            .Select((speed) => CreatePeerInfoWithSpeed(speed, nodeStatsManager))
+            .ToList();
+
+        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, 0, 0);
+
+        PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
+        int selectedPeerIdx = peers.IndexOf(selectedPeer);
+        selectedPeerIdx.Should().BeGreaterThan(50);
+    }
+
+    [TestCase(10, 0, 0, 0)]
+    [TestCase(10, 0, 1, 0)]
+    [TestCase(10, 10, 1, 0.5)]
+    [TestCase(10, 10, 0.5, 0.25)]
+    [Retry(3)]
+    public void TestRecalculateSpeedProbability(int peerWithKnownSpeed, int peerWithUnknownSpeed, double recalculateSpeedProbability, double chanceOfPickingPeerWithNoSpeed)
+    {
+        long?[] peerSpeeds = Enumerable.Repeat<long?>(100, peerWithKnownSpeed)
+            .Concat(Enumerable.Repeat<long?>(null, peerWithUnknownSpeed))
+            .ToArray();
+
+        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+
+        List<PeerInfo> peers = new();
+        for (int i = 0; i < peerSpeeds.Length; i++)
+        {
+            PeerInfo pInfo = CreatePeerInfoWithSpeed(peerSpeeds[i], nodeStatsManager);
+            peers.Add(pInfo);
+        }
+
+        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, recalculateSpeedProbability, 0);
+
+        long peerWithSpeedPicked = 0;
+        long peerWithoutSpeedPicked = 0;
+
+        for (int i = 0; i < 100; i++)
+        {
+            PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
+            int selectedPeerIdx = peers.IndexOf(selectedPeer);
+            if (peerSpeeds[selectedPeerIdx] is null)
+            {
+                peerWithoutSpeedPicked++;
+            }
+            else
+            {
+                peerWithSpeedPicked++;
+            }
+        }
+
+        double noSpeedPeerChance = (double)peerWithoutSpeedPicked / (peerWithSpeedPicked + peerWithoutSpeedPicked);
+        double marginOfError = 0.1;
+        noSpeedPeerChance.Should().BeInRange(chanceOfPickingPeerWithNoSpeed - marginOfError,
+            chanceOfPickingPeerWithNoSpeed + marginOfError);
+    }
+
+    private static PeerInfo CreatePeerInfoWithSpeed(long? speed, INodeStatsManager nodeStatsManager)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         Node node = new(TestPublicKey, IPEndPoint.Parse("127.0.0.1"));

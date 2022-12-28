@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -100,7 +87,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -397,11 +384,11 @@ namespace Nethermind.Evm
 
             Keccak codeHash = state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo == null)
+            if (cachedCodeInfo is null)
             {
                 byte[] code = state.GetCode(codeHash);
 
-                if (code == null)
+                if (code is null)
                 {
                     throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
                 }
@@ -599,7 +586,7 @@ namespace Nethermind.Evm
         }
 
         [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -721,7 +708,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (previousCallResult != null)
+            if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
@@ -1605,7 +1592,7 @@ namespace Nethermind.Evm
 
                             if (isTrace)
                             {
-                                if (_txTracer.IsTracingBlockHash && blockHash != null)
+                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
                                 {
                                     _txTracer.ReportBlockHash(blockHash);
                                 }
@@ -2159,6 +2146,25 @@ namespace Nethermind.Evm
 
                             break;
                         }
+                    case Instruction.PUSH0:
+                        {
+                            if (spec.IncludePush0Instruction)
+                            {
+                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                stack.PushZero();
+                            }
+                            else
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+                            break;
+                        }
                     case Instruction.PUSH1:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
@@ -2347,7 +2353,9 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
-                            long gasCost = GasCostOf.Create + (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+                            long gasCost = GasCostOf.Create +
+                                (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+
                             if (!UpdateGas(gasCost, ref gasAvailable))
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -2355,6 +2363,25 @@ namespace Nethermind.Evm
                             }
 
                             UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
+
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled)
+                            {
+                                if (initCodeLength > spec.MaxInitCodeSize)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+                                else
+                                {
+                                    if (!UpdateGas(GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength), ref gasAvailable))
+                                    {
+                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                        return CallResult.OutOfGasException;
+                                    }
+                                }
+                            }
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                             if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -3021,7 +3048,7 @@ namespace Nethermind.Evm
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }
             public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute == null;
+            public bool IsReturn => StateToExecute is null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
         }
     }

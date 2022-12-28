@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -132,7 +119,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                if (infos[0] is not null)
                 {
                     batch = new ReceiptsSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
@@ -170,7 +157,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
             BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
-            if (header == null)
+            if (header is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
                 preparedReceipts = null;
@@ -190,7 +177,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            return preparedReceipts != null;
+            return preparedReceipts is not null;
         }
 
         private int InsertReceipts(ReceiptsSyncBatch batch)
@@ -205,11 +192,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
 
-                if (receipts != null)
+                if (receipts is not null)
                 {
                     TxReceipt[]? prepared = null;
                     // last batch
-                    if (blockInfo == null)
+                    if (blockInfo is null)
                     {
                         break;
                     }
@@ -218,7 +205,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (isValid)
                     {
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        if (block == null)
+                        if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)
                             {
@@ -246,7 +233,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer != null)
+                        if (batch.ResponseSourcePeer is not null)
                         {
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
                         }
@@ -256,7 +243,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    if (blockInfo != null)
+                    if (blockInfo is not null)
                     {
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }

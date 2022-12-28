@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -107,20 +94,25 @@ namespace Nethermind.Evm.Precompiles
 
         private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
         {
+            bool overflow = false;
+            bool underflow = false;
+            UInt256 result;
+
             int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
-                return lengthOver32 * 8;
+                overflow |= UInt256.MultiplyOverflow(lengthOver32, 8, out result);
+                return overflow ? UInt256.MaxValue : result;
             }
 
-            return
-                (
-                    lengthOver32
-                    + (UInt256)exponent.Length
-                    - (UInt256)leadingZeros
-                    - (UInt256)1)
-                * 8
-                + (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex() - 1);
+            overflow |= UInt256.AddOverflow(lengthOver32, (UInt256)exponent.Length, out result);
+            underflow |= UInt256.SubtractUnderflow(result, (UInt256)leadingZeros, out result);
+            underflow |= UInt256.SubtractUnderflow(result, (UInt256)1, out result);
+            overflow |= UInt256.MultiplyOverflow(result, 8, out result);
+            overflow |= UInt256.AddOverflow(result, (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex()), out result);
+            underflow |= UInt256.SubtractUnderflow(result, (UInt256)1, out result);
+
+            return overflow ? UInt256.MaxValue : underflow ? UInt256.MinValue : result;
         }
     }
 }
