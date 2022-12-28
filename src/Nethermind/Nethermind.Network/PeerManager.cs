@@ -837,7 +837,7 @@ namespace Nethermind.Network
                     if (session.Direction != directionToKeep)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
-                        session.InitiateDisconnect(InitiateDisconnectReason.LostSessionDirectionDecision, "same");
+                        session.InitiateDisconnect(InitiateDisconnectReason.ReplacingSessionWithOppositeDirection, "same");
                         if (newSessionIsIn)
                         {
                             _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);

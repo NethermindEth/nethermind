@@ -103,7 +103,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized);
-                    Disconnect(InitiateDisconnectReason.PoSDisconnectGossipingPeer, postFinalized);
+                    Disconnect(InitiateDisconnectReason.GossipingInPoS, postFinalized);
                     return false;
                 }
 

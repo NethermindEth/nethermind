@@ -10,7 +10,7 @@ public enum InitiateDisconnectReason : byte
 {
     IncomingConnectionRejectedTooManyPeer,
     SessionAlreadyExist,
-    LostSessionDirectionDecision,
+    ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
 
     SnapServerNotImplemented,
@@ -23,13 +23,13 @@ public enum InitiateDisconnectReason : byte
     NoCapabilityMatched,
 
     SyncPeerPoolBreachOfProtocol,
-    SyncPeerPoolUselessPeer,
-    SyncPeerPoolDropWorstPeer,
-    SyncPeerPoolRefreshFailed,
+    UselessInFastBlocks,
+    DropWorstPeer,
+    PeerRefreshFailed,
 
     ForwardSyncFailed,
-    PoSDisconnectGossipingPeer,
-    SyncPeerAddFailed,
+    GossipingInPoS,
+    SessionIdAlreadyExists,
     AppClosing,
 
     // Try not to use this. Instead crease a new one.
@@ -45,7 +45,7 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.IncomingConnectionRejectedTooManyPeer:
                 return DisconnectReason.TooManyPeers;
             case InitiateDisconnectReason.SessionAlreadyExist:
-            case InitiateDisconnectReason.LostSessionDirectionDecision:
+            case InitiateDisconnectReason.ReplacingSessionWithOppositeDirection:
             case InitiateDisconnectReason.OppositeDirectionCleanup:
                 return DisconnectReason.AlreadyConnected;
 
@@ -68,18 +68,18 @@ public static class InitiateDisconnectReasonExtension
 
             case InitiateDisconnectReason.SyncPeerPoolBreachOfProtocol:
                 return DisconnectReason.BreachOfProtocol;
-            case InitiateDisconnectReason.SyncPeerPoolUselessPeer:
+            case InitiateDisconnectReason.UselessInFastBlocks:
                 return DisconnectReason.UselessPeer;
-            case InitiateDisconnectReason.SyncPeerPoolDropWorstPeer:
+            case InitiateDisconnectReason.DropWorstPeer:
                 return DisconnectReason.TooManyPeers;
-            case InitiateDisconnectReason.SyncPeerPoolRefreshFailed:
+            case InitiateDisconnectReason.PeerRefreshFailed:
                 return DisconnectReason.DisconnectRequested;
 
             case InitiateDisconnectReason.ForwardSyncFailed:
                 return DisconnectReason.DisconnectRequested;
-            case InitiateDisconnectReason.PoSDisconnectGossipingPeer:
+            case InitiateDisconnectReason.GossipingInPoS:
                 return DisconnectReason.BreachOfProtocol;
-            case InitiateDisconnectReason.SyncPeerAddFailed:
+            case InitiateDisconnectReason.SessionIdAlreadyExists:
                 return DisconnectReason.AlreadyConnected;
             case InitiateDisconnectReason.AppClosing:
                 return DisconnectReason.ClientQuitting;
