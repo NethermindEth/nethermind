@@ -1392,7 +1392,7 @@ namespace Nethermind.TxPool.Test
         public void should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
-            _txPool = CreatePool(new TxPoolConfig {Size = 2}, specProvider);
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
 
             // Send cheap transaction
             Transaction txA = Build.A.Transaction
