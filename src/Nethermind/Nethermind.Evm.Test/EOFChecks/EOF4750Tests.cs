@@ -245,7 +245,7 @@ namespace Nethermind.Evm.Test
                             },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
-                    Result = (StatusCode.Failure, "Invalid Code Section call"),
+                    Result = (StatusCode.Failure, "Empty code section"),
                 };
             }
         }

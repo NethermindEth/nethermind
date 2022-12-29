@@ -21,7 +21,6 @@ namespace Nethermind.Evm
         public const long RJumpv = 4;
         public const long Callf = 5;
         public const long Retf = 4;
-        public const long Jumpf = 4;
         public const long SLoadEip150 = 200;
         public const long SLoadEip1884 = 800;
         public const long JumpDest = 1;
