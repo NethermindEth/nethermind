@@ -341,7 +341,7 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
+                        session.InitiateDisconnect(InitiateDisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
