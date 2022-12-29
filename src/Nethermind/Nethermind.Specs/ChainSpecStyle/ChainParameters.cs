@@ -116,5 +116,15 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
         /// </summary>
         public ulong? Eip3651TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// EVN Object Format
+        /// </summary>
+        public ulong? Eip3540TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// EOF Bytecode Validation
+        /// </summary>
+        public ulong? Eip3670TransitionTimestamp { get; set; }
     }
 }
