@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
-            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, new WorldState(txProcessingEnv.StateProvider, txProcessingEnv.StorageProvider));
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv,

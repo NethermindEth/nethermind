@@ -30,6 +30,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -56,7 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
-                RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+                RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, new WorldState(txProcessingEnv.StateProvider, txProcessingEnv.StorageProvider));
                 ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                     txProcessingEnv,
                     Always.Valid,
