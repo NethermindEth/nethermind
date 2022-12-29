@@ -69,7 +69,7 @@ The output must show the image digest, and then you can copy that output to the 
 -   Install dependencies:
 
     ```sh
-    brew install rocksdb gmp snappy lz4 zstd
+    brew install gmp snappy lz4 zstd
     ```
 
 #### Ubuntu
