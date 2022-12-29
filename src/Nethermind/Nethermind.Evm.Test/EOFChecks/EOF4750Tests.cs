@@ -53,7 +53,6 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-
                 yield return new TestCase(1)
                 {
                     Bytecode = new ScenarioCase(
@@ -69,6 +68,23 @@ namespace Nethermind.Evm.Test
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null),
+                };
+
+                yield return new TestCase(1)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    1, 1, 1024,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Main Section must have 0 inputs and 0 outputs"),
                 };
 
                 yield return new TestCase(2)

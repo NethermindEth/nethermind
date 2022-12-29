@@ -248,7 +248,7 @@ public class EvmObjectFormat
         bool ValidateBody(ReadOnlySpan<byte> container, ref EofHeader? header)
         {
             var codeSections = header.Value.CodeSections;
-            var typeSections = header.Value.TypeSection.Size;
+            var (typeSectionStart, typeSectionSize) = header.Value.TypeSection;
             if (codeSections.Length == 0 || codeSections.Any(section => section.Size == 0))
             {
                 if (_loggingEnabled)
@@ -258,11 +258,20 @@ public class EvmObjectFormat
                 header = null; return false;
             }
 
-            if (codeSections.Length > 1 && codeSections.Length != (typeSections / 4))
+            if (codeSections.Length != (typeSectionSize / 4))
             {
                 if (_loggingEnabled)
                 {
-                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSections / 4}");
+                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / 4}");
+                }
+                header = null; return false;
+            }
+
+            if (container[typeSectionStart] != 0 && container[typeSectionStart] != 0)
+            {
+                if (_loggingEnabled)
+                {
+                    _logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
                 }
                 header = null; return false;
             }
