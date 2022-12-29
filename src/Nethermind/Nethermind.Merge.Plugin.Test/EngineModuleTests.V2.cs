@@ -506,7 +506,6 @@ public partial class EngineModuleTests
         fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
     }
 
-    // This test seems redundant
     [Test]
     public void Should_print_payload_attributes_as_expected()
     {
