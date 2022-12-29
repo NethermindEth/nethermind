@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Test
         public bool IsInitialized { get; set; } = true;
         public bool IsPriority { get; set; }
 
-        public void Disconnect(DisconnectReason reason, string details)
+        public void Disconnect(InitiateDisconnectReason reason, string details)
         {
             throw new NotImplementedException();
         }
