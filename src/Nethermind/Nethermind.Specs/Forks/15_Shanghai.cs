@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using Nethermind.Core.Specs;
@@ -17,6 +17,7 @@ namespace Nethermind.Specs.Forks
             IsEip3675Enabled = true;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
+            IsEip3860Enabled = true;
             IsEip3670Enabled = true;
             IsEip3540Enabled = true;
             IsEip4200Enabled = true;
