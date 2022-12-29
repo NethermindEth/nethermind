@@ -58,7 +58,9 @@ namespace Nethermind.JsonRpc.Benchmark
         [Benchmark(Baseline = true)]
         public string Current()
         {
-            return string.Concat("0x", _scenarios[ScenarioIndex].ToString("x").TrimStart('0'));
+#pragma warning disable CS0612 // Type or member is obsolete
+            return _scenarios[ScenarioIndex].ToHexStringOld(true);
+#pragma warning restore CS0612 // Type or member is obsolete
         }
     }
 }
