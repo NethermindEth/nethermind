@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
                             },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
-                    Result = (StatusCode.Failure, "Mono-Section with incorrect input count"),
+                    Result = (StatusCode.Failure, "Mono-Section with incorrect output count"),
                 };
 
                 yield return new TestCase(2)
