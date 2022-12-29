@@ -24,8 +24,8 @@ namespace Nethermind.Overseer.Test.Framework
             var passedCount = _results.Count(r => r.Passed);
             var failedCount = _results.Count - passedCount;
 
-            TestContext.WriteLine("=========================== NDM TESTS RESULTS ===========================");
-            TestContext.WriteLine($"NDM TESTS PASSED: {passedCount}, FAILED: {failedCount}");
+            TestContext.WriteLine("=========================== TESTS RESULTS ===========================");
+            TestContext.WriteLine($"TESTS PASSED: {passedCount}, FAILED: {failedCount}");
             foreach (var testResult in _results)
             {
                 string message = $"{testResult.Order}. {testResult.Name} has " +
