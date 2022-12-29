@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(false);
 
             _session.DidNotReceiveWithAnyArgs()
-                .InitiateDisconnect(DisconnectReason.UselessPeer, null);
+                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, null);
 
             for (int i = 0; i < 6000 - 601; i++)
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(false);
 
             _session.Received()
-                .InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
+                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, Arg.Any<string>());
         }
 
         [Test]

@@ -264,7 +264,6 @@ namespace Nethermind.Init.Steps
                 new(txSigner, getApi.Timestamper, txPool, getApi.EthereumEcdsa!);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer);
 
-            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();

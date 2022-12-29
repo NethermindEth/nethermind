@@ -113,7 +113,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     {
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
         HeadersSyncProgressReport.MarkEnd();
-        _dependencies.Clear(); // there may be some dependencies from wrong branches
+        ClearDependencies(); // there may be some dependencies from wrong branches
         _pending.Clear(); // there may be pending wrong branches
         _sent.Clear(); // we my still be waiting for some bad branches
         HeadersSyncQueueReport.Update(0L);
