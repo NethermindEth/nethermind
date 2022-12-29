@@ -208,6 +208,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip3651Enabled = (_chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3540Enabled = (_chainSpec.Parameters.Eip3540TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3670Enabled = (_chainSpec.Parameters.Eip3670TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip4200Enabled = (_chainSpec.Parameters.Eip4200TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
