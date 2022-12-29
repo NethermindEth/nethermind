@@ -6,7 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using static System.Collections.Specialized.BitVector32;
 using System.ComponentModel;
 using System.Reflection.Emit;
@@ -602,7 +601,7 @@ public class EvmObjectFormat
                             }
                         default:
                             {
-                                if (opcode.IsTerminatingInstruction())
+                                if (opcode.IsTerminating(_releaseSpec))
                                 {
                                     var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * 4 + 1] : 0;
                                     if (expectedHeight != stackHeight)
