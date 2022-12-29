@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Core;
@@ -18,7 +18,7 @@ public class ContractRewriter
         _contractOverrides = contractOverrides;
     }
 
-    public void RewriteContracts(long blockNumber, IStateProvider stateProvider, IReleaseSpec spec)
+    public void RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
         if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))
         {

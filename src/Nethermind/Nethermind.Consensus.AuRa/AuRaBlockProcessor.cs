@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.AuRa
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Number));
+            _contractRewriter?.RewriteContracts(block.Number, _worldState, _specProvider.GetSpec(block.Number));
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
