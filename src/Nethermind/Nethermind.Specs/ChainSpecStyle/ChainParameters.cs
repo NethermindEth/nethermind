@@ -136,5 +136,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// EOF Function Sections
         /// </summary>
         public ulong? Eip4750TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// EOF Stack Validation
+        /// </summary>
+        public ulong? Eip5450TransitionTimestamp { get; set; }
     }
 }
