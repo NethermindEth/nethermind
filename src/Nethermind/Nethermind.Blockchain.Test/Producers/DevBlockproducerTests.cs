@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using FluentAssertions;
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, new WorldState(stateProvider, storageProvider)),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

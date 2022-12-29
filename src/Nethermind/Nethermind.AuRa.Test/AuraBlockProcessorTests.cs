@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -149,21 +149,23 @@ namespace Nethermind.AuRa.Test
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
+            IWorldState worldState = new WorldState(stateProvider, storageProvider);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                worldState,
+                storageProvider,
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            return (processor, stateProvider);
+            return (processor, worldState);
         }
     }
 }
