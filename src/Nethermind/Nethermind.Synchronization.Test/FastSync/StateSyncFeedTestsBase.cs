@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }

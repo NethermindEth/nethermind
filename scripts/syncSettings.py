@@ -64,6 +64,11 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    "exosama": {
+        "url": "https://rpc.exosama.com",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
     # mev section
     "mainnet_mev": {
         "url": "api.etherscan.io",

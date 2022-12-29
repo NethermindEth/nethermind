@@ -220,7 +220,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         if (_agreedCapabilities.Count == 0)
         {
             Session.InitiateDisconnect(
-                DisconnectReason.UselessPeer,
+                InitiateDisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
