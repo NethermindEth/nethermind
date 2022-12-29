@@ -15,27 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Specs.Forks;
-using NSubstitute;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Blockchain;
 using System;
-using static Nethermind.Evm.CodeAnalysis.ByteCodeValidator;
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Int256;
-using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.Specs.Test;
-using System.Text.Json;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 using static Nethermind.Evm.Test.EofTestsBase;
 
@@ -75,6 +61,23 @@ namespace Nethermind.Evm.Test
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecodes: new[] {
+                        Prepare.EvmCode
+                                .RJUMP(1)
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done
+                    },
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMP not valid in Non-Eof bytecodes")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
                     bytecodes: new[] {
                         Prepare.EvmCode
@@ -89,6 +92,57 @@ namespace Nethermind.Evm.Test
                     },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecodes: new[] {
+                        Prepare.EvmCode
+                                .RJUMPI(1, new byte[] { 1 })
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done
+                    },
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPI not valid in Non-Eof bytecodes")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecodes: new[] {
+                        Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
+                                .INVALID()
+                                .INVALID()
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done
+                    },
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Success, null)
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecodes: new[] {
+                        Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
+                                .INVALID()
+                                .INVALID()
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done
+                    },
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPV not valid in Non-Eof bytecodes")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
@@ -204,23 +258,6 @@ namespace Nethermind.Evm.Test
                                 .RJUMPI(0, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1).Done
-                    },
-                    databytes: Array.Empty<byte>(),
-                    expectedResults: (StatusCode.Success, null)
-                );
-
-                yield return ScenarioCase.CreateFromBytecode(
-                    BytecodeTypes.EvmObjectFormat,
-                    bytecodes: new[] {
-                        Prepare.EvmCode
-                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
-                                .INVALID()
-                                .INVALID()
-                                .PushData(2)
-                                .PushData(3)
-                                .MSTORE8(0, new byte[] { 1 })
-                                .RETURN(0, 1)
-                                .Done
                     },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
