@@ -288,7 +288,7 @@ public class EvmObjectFormat
                     header = null; return false;
                 }
 
-                if (_releaseSpec.IsEip4200Enabled)
+                if (_releaseSpec.StaticRelativeJumpsEnabled)
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
@@ -385,7 +385,7 @@ public class EvmObjectFormat
                 }
             }
 
-            if (_releaseSpec.IsEip4200Enabled)
+            if (_releaseSpec.StaticRelativeJumpsEnabled)
             {
                 foreach (int rjumpdest in rjumpdests)
                 {
