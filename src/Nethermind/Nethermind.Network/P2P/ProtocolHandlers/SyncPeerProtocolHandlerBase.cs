@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
         }
 
-        public void Disconnect(DisconnectReason reason, string details)
+        public void Disconnect(InitiateDisconnectReason reason, string details)
         {
             if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);
