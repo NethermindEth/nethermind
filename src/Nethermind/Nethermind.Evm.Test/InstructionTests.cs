@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Return_jumpsub_name_for_jumpsub_opcode_for_pre_eof()
         {
-            Instruction.RJUMPV.GetName(true, GrayGlacier.Instance).Should().Be("JUMPSUP");
+            Instruction.RJUMPV.GetName(true, GrayGlacier.Instance).Should().Be("JUMPSUB");
         }
     }
 }
