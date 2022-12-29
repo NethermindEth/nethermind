@@ -69,6 +69,21 @@ namespace Nethermind.Evm.Test
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecode: Prepare.EvmCode
+                                .RJUMP(1)
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMP not valid in Non-Eof bytecodes")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
                     bytecode: Prepare.EvmCode
                                 .RJUMPI(1, new byte[] { 1 })
@@ -81,6 +96,51 @@ namespace Nethermind.Evm.Test
                                 .Done,
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPI(1, new byte[] { 1 })
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPI not valid in Non-Eof bytecodes")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
+                                .INVALID()
+                                .INVALID()
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Success, null)
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.Classical,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
+                                .INVALID()
+                                .INVALID()
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPV not valid in Non-Eof bytecodes")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
@@ -181,21 +241,6 @@ namespace Nethermind.Evm.Test
                                 .RJUMPI(0, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1).Done,
-                    databytes: Array.Empty<byte>(),
-                    expectedResults: (StatusCode.Success, null)
-                );
-
-                yield return ScenarioCase.CreateFromBytecode(
-                    BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
-                                .RJUMPV(new short[] { 1, 2, 4 }, 1)
-                                .INVALID()
-                                .INVALID()
-                                .PushData(2)
-                                .PushData(3)
-                                .MSTORE8(0, new byte[] { 1 })
-                                .RETURN(0, 1)
-                                .Done,
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
