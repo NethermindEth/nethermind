@@ -3056,7 +3056,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CALLF:
                         {
-                            if (!spec.IsEip4750Enabled || !env.CodeInfo.IsEof)
+                            if (!spec.FunctionSections || !env.CodeInfo.IsEof)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
@@ -3090,7 +3090,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETF:
                         {
-                            if (!spec.IsEip4750Enabled || !env.CodeInfo.IsEof)
+                            if (!spec.FunctionSections || !env.CodeInfo.IsEof)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;

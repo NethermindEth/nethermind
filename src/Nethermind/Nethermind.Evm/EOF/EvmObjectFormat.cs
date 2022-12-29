@@ -345,7 +345,7 @@ public class EvmObjectFormat
                         {
                             if (_loggingEnabled)
                             {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                                _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             }
                             header = null; return false;
                         }
@@ -413,7 +413,7 @@ public class EvmObjectFormat
                     }
                 }
 
-                if (_releaseSpec.IsEip4750Enabled)
+                if (_releaseSpec.FunctionSections)
                 {
                     if (opcode is Instruction.CALLF)
                     {

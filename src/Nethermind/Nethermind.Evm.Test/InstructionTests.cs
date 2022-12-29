@@ -35,8 +35,6 @@ namespace Nethermind.Evm.Test
             Instruction.BEGINSUB.GetName(true, GrayGlacier.Instance).Should().Be("BEGINSUB");
         }
 
-
-
         [Test]
         public void Return_rjumpi_name_for_returnsub_opcode_for_post_eof()
         {
@@ -48,6 +46,20 @@ namespace Nethermind.Evm.Test
         public void Return_returnsub_name_for_returnsub_opcode_for_pre_eof()
         {
             Instruction.RETURNSUB.GetName(true, GrayGlacier.Instance).Should().Be("RETURNSUB");
+        }
+
+
+        [Test]
+        public void Return_rjumpv_name_for_jumpsub_opcode_for_post_eof()
+        {
+            Instruction.RJUMPV.GetName(true, Shanghai.Instance).Should().Be("RJUMPV");
+        }
+
+
+        [Test]
+        public void Return_jumpsub_name_for_jumpsub_opcode_for_pre_eof()
+        {
+            Instruction.RJUMPV.GetName(true, GrayGlacier.Instance).Should().Be("JUMPSUB");
         }
     }
 }

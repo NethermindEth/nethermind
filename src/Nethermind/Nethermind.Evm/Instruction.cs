@@ -189,7 +189,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.RETF when spec.IsEip4750Enabled => true,
+            Instruction.RETF when spec.FunctionSections => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
@@ -203,9 +203,9 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.PC or Instruction.JUMP or Instruction.JUMPI when spec.IsEip4750Enabled => false,
+                Instruction.PC or Instruction.JUMP or Instruction.JUMPI when spec.FunctionSections => false,
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT when spec.IsEip3670Enabled => false,
-                Instruction.CALLF or Instruction.RETF when spec.IsEip4750Enabled => true,
+                Instruction.CALLF or Instruction.RETF when spec.FunctionSections => true,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
                 Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
@@ -220,7 +220,7 @@ namespace Nethermind.Evm
                 Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
                 Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
                 Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
-                Instruction.JUMP or Instruction.JUMPI => !spec.IsEip4750Enabled,
+                Instruction.JUMP or Instruction.JUMPI => !spec.FunctionSections,
                 _ => true
             };
         }
@@ -269,7 +269,7 @@ namespace Nethermind.Evm
                 Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
                 Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
-                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "RETURNSUB",
+                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "JUMPSUB",
                 Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };

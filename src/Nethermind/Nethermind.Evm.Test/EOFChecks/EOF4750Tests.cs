@@ -100,6 +100,17 @@ namespace Nethermind.Evm.Test
                     Result = (StatusCode.Success, null),
                 };
 
+                yield return new TestCase(2)
+                {
+                    Bytecode = Prepare.EvmCode
+                        .PushData(23)
+                        .PushData(3)
+                        .CALLF(1)
+                        .STOP()
+                        .Done,
+                    Result = (StatusCode.Failure, "RETF used in non-Eof context"),
+                };
+
                 yield return new TestCase(3)
                 {
                     Bytecode = new ScenarioCase(
