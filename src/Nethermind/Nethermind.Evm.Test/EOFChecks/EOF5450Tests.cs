@@ -72,6 +72,41 @@ namespace Nethermind.Evm.Test
                     Result = (StatusCode.Success, "Mono-Section bytecode"),
                 };
 
+                yield return new TestCase(1)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    1, 0, 2,
+                                    Prepare.EvmCode
+                                        .MUL(3)
+                                        .POP()
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Mono-Section with incorrect input count"),
+                };
+
+                yield return new TestCase(1)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Mono-Section with incorrect input count"),
+                };
+
                 yield return new TestCase(2)
                 {
                     Bytecode = new ScenarioCase(
