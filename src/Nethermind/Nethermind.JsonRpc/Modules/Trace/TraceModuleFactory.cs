@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _logManager,
                 rpcBlockTransactionsExecutor);
 
-            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+            Tracer tracer = new Tracer(chainProcessingEnv.WorldState, chainProcessingEnv.ChainProcessor);
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }

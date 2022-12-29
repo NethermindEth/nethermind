@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IStateProvider StateProvider => _txEnv.StateProvider;
+        public IWorldState WorldState { get; }
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -38,16 +38,17 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             _txEnv = txEnv;
+            WorldState = new WorldState(_txEnv.StateProvider, _txEnv.StorageProvider);
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, WorldState);
 
             BlockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                StateProvider,
+                WorldState,
                 _txEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,

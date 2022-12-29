@@ -303,7 +303,7 @@ namespace Nethermind.Core.Test.Blockchain
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, new WorldState(State, Storage)),
                 State,
                 Storage,
                 ReceiptStorage,
