@@ -6,9 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using static System.Collections.Specialized.BitVector32;
-using System.ComponentModel;
-using System.Reflection.Emit;
 
 namespace Nethermind.Evm.EOF;
 
