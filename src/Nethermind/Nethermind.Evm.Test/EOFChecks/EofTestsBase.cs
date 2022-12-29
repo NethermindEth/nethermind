@@ -199,8 +199,6 @@ namespace Nethermind.Evm.Test
                     if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
                         prepare = prepare
-                            .PC().POP()
-                            .SELFDESTRUCT()
                             .CALLCODE();
                         opcodeCount += 2;
 

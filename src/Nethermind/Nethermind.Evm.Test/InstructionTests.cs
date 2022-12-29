@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
 
 
         [Test]
-        public void Return_beginsub_name_for_beginsub_opcode_for_post_eof()
+        public void Return_beginsub_name_for_beginsub_opcode_for_pre_eof()
         {
             Instruction.BEGINSUB.GetName(true, GrayGlacier.Instance).Should().Be("BEGINSUB");
         }
@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
 
 
         [Test]
-        public void Return_returnsub_name_for_returnsub_opcode_for_post_eof()
+        public void Return_returnsub_name_for_returnsub_opcode_for_pre_eof()
         {
             Instruction.RETURNSUB.GetName(true, GrayGlacier.Instance).Should().Be("RETURNSUB");
         }
