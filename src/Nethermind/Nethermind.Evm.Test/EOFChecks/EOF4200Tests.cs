@@ -289,7 +289,58 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done,
                     databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Jumpv to Push Immediate")
+                );
+
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPI(1, new byte[] { 1 })
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "JumpI to Push Immediate")
+                );
+
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMP(1)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jump to Push Immediate")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPV(new short[] { 1 }, 0)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Jumpv cant be last Instruction")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMP(0)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Jump cant be last Instruction")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .RJUMPI(0, new byte[] { 0 })
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "JumpI cant be last Instruction")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
@@ -304,10 +355,19 @@ namespace Nethermind.Evm.Test
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
                     bytecode: Prepare.EvmCode
-                                .RJUMPV(new short[] { 1 }, 0)
+                                .RJUMP(100)
                                 .Done,
                     databytes: Array.Empty<byte>(),
-                    expectedResults: (StatusCode.Failure, "Jumpv cant be last Instruction")
+                    expectedResults: (StatusCode.Failure, "Jump outside Code boundaries")
+                );
+
+                yield return ScenarioCase.CreateFromBytecode(
+                    BytecodeTypes.EvmObjectFormat,
+                    bytecode: Prepare.EvmCode
+                                .Op(Instruction.RJUMP)
+                                .Done,
+                    databytes: Array.Empty<byte>(),
+                    expectedResults: (StatusCode.Failure, "Jump truncated bytecode")
                 );
             }
         }
