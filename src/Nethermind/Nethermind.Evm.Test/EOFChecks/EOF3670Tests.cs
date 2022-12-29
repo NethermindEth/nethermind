@@ -101,6 +101,23 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void EOF_Opcode_Deprecation_checks()
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instruction[] StaticRelativeJumpsOpcode =
+            {
+                Instruction.CALLCODE,
+                Instruction.SELFDESTRUCT,
+            };
+
+            foreach (Instruction opcode in StaticRelativeJumpsOpcode)
+            {
+                Assert.False(opcode.IsValid(TargetReleaseSpec));
+            }
+        }
+
+        [Test]
         public void EOF_execution_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
         {
             TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);

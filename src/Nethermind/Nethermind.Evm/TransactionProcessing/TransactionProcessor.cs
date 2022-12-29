@@ -336,7 +336,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     : CodeInfoFactory.CreateCodeInfo(machineCode, spec);
 
                 ExecutionType executionType =
-                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
                     new(unspentGas, env, executionType, true, snapshot, false))
                 {

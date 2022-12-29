@@ -80,12 +80,11 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(Keccak key, byte[]? val)
+        public bool Set(Keccak key, byte[]? val)
         {
             if (val is null)
             {
-                Delete(key);
-                return;
+                return Delete(key);
             }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
@@ -93,6 +92,7 @@ namespace Nethermind.Core.Caching
                 node.Value.Value = val;
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
+                return false;
             }
             else
             {
@@ -122,18 +122,24 @@ namespace Nethermind.Core.Caching
                     _currentDictionaryCapacity = capacityRemembered;
                     Replace(key, val);
                 }
+
+                return true;
             }
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Delete(Keccak key)
+        public bool Delete(Keccak key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 MemorySize -= node.Value.MemorySize;
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);
+
+                return true;
             }
+
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
