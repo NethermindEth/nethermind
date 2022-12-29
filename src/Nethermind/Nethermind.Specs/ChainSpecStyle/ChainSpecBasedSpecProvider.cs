@@ -128,7 +128,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
-        } 
+        }
 
         private void FillReleaseSpec(ReleaseSpec releaseSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
