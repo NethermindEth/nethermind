@@ -31,8 +31,9 @@ public class EofCodeInfo : ICodeInfo
     {
         _codeInfo = codeInfo;
         _header = header;
-        TypeSection = MachineCode.AsMemory().Slice(_header.TypeSection.Start, _header.TypeSection.Size);
-        CodeSection = MachineCode.AsMemory().Slice(_header.CodeSections[0].Start, _header.CodeSectionsSize);
-        DataSection = MachineCode.AsMemory().Slice(_header.DataSection.Start, _header.DataSection.Size);
+        ReadOnlyMemory<byte> memory = MachineCode.AsMemory();
+        TypeSection = memory.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
+        CodeSection = memory.Slice(_header.CodeSections[0].Start, _header.CodeSectionsSize);
+        DataSection = memory.Slice(_header.DataSection.Start, _header.DataSection.Size);
     }
 }
