@@ -3,6 +3,9 @@
 
 namespace Nethermind.Stats.Model
 {
+    /// <summary>
+    /// Eth network level disconnect reason
+    /// </summary>
     public enum DisconnectReason : byte
     {
         DisconnectRequested = 0x00,
