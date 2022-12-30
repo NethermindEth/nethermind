@@ -16,7 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
         private (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
-        private (ForkActivation Activation, ReleaseSpec Spec)[] _timestampOnlyTransitions;
+        private ForkActivation? _firstTimestampActivation;
 
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
@@ -94,7 +94,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
-            _timestampOnlyTransitions = _transitions.Where(t => t.Activation.Timestamp is not null).ToArray();
+            _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
 
             if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
             {
@@ -253,15 +253,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
             // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
-            if (activation.Timestamp is not null)
+            if (_firstTimestampActivation is not null && activation.Timestamp is not null)
             {
-                if (_timestampOnlyTransitions.TryGetSearchedItem(activation, CompareTransitionOnTimestamp, out (ForkActivation Activation, ReleaseSpec Spec) timestampTransition))
+                if (_firstTimestampActivation.Value.Timestamp < activation.Timestamp
+                    && _firstTimestampActivation.Value.BlockNumber > activation.BlockNumber)
                 {
-                    if (timestampTransition.Activation.Timestamp < activation.Timestamp
-                        && timestampTransition.Activation.BlockNumber > activation.BlockNumber)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition {timestampTransition.Activation} is configured to happen before the last block transition based on activation {activation}.");
-                    }
+                    if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
                 }
             }
 
