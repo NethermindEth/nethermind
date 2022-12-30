@@ -16,6 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
         private (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
+        private (ForkActivation Activation, ReleaseSpec Spec)[] _timestampOnlyTransitions;
 
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
@@ -42,6 +43,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
+            AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
             AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
 
@@ -92,6 +94,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
+            _timestampOnlyTransitions = _transitions.Where(t => t.Activation.Timestamp is not null).ToArray();
 
             if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
             {
@@ -249,21 +252,31 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
-            if (_transitions.TryGetSearchedItem(activation, CompareTransitionOnActivation, out (ForkActivation Activation, ReleaseSpec Spec) transition))
+            // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
+            if (activation.Timestamp is not null)
             {
-                if (transition.Activation.BlockNumber > activation.BlockNumber)
+                if (_timestampOnlyTransitions.TryGetSearchedItem(activation, CompareTransitionOnTimestamp, out (ForkActivation Activation, ReleaseSpec Spec) timestampTransition))
                 {
-                    if (_logger.IsWarn) _logger.Warn("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                    if (timestampTransition.Activation.Timestamp < activation.Timestamp
+                        && timestampTransition.Activation.BlockNumber > activation.BlockNumber)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                    }
                 }
-
-                return transition.Spec;
             }
 
-            return GenesisSpec;
+            return _transitions.TryGetSearchedItem(activation,
+                CompareTransitionOnActivation,
+                out (ForkActivation Activation, ReleaseSpec Spec) transition)
+                ? transition.Spec
+                : GenesisSpec;
         }
 
         private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Spec) transition) =>
             activation.CompareTo(transition.Activation);
+
+        private static int CompareTransitionOnTimestamp(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Spec) transition) =>
+            activation.Timestamp!.Value.CompareTo(transition.Activation.Timestamp);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
