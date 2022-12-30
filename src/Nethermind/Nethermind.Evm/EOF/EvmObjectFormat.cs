@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -63,13 +64,23 @@ public class EvmObjectFormat
     {
         private IReleaseSpec _releaseSpec;
         private const byte VERSION = 0x01;
+
         private const byte KIND_TYPE = 0x01;
         private const byte KIND_CODE = 0x02;
         private const byte KIND_DATA = 0x03;
         private const byte TERMINATOR = 0x00;
+
         private const byte VERSION_SIZE = 1;
         private const byte SECTION_SIZE = 3;
         private const byte TERMINATOR_SIZE = 1;
+
+        private const byte MINIMUM_TYPESECTION_SIZE = 4;
+        private const byte MINIMUM_CODESECTION_SIZE = 1;
+
+        private const ushort MINIMUM_CODESECTIONS_COUNT = 1;
+        private const ushort MAXIMUM_CODESECTIONS_COUNT = 1024;
+
+        private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;
         public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
         public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
             + SECTION_SIZE // type
@@ -113,26 +124,35 @@ public class EvmObjectFormat
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
                 return false;
             }
-            if (container[2] != VERSION)
+            if (container[EOF_MAGIC.Length] != VERSION)
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
             }
+
             if (container.Length < MINIMUM_HEADER_SIZE
-                + 1 + 1 + 2 // minimum type section body size
-                + 1) // minimum code section body size
+                + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                + MINIMUM_CODESECTION_SIZE) // minimum code section body size
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
+
             ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
-            if (numberOfCodeSections < 1)
+            if (numberOfCodeSections < MINIMUM_CODESECTIONS_COUNT)
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : At least one code section must be present");
+                return false;
+            }
+
+            if (numberOfCodeSections > MAXIMUM_CODESECTIONS_COUNT)
+            {
+                if (_loggingEnabled)
+                    _logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
                 return false;
             }
 
@@ -147,7 +167,7 @@ public class EvmObjectFormat
             }
 
             pos++;
-            if (!CheckBounds(pos + 2, container.Length, ref header))
+            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
             {
                 return false;
             }
@@ -155,17 +175,17 @@ public class EvmObjectFormat
             SectionHeader typeSection = new()
             {
                 Start = headerSize,
-                Size = container[pos..(pos + 2)].ReadEthUInt16()
+                Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
             };
 
-            if (typeSection.Size < 3)
+            if (typeSection.Size < MINIMUM_TYPESECTION_SIZE)
             {
                 if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
+                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 4, but found {typeSection.Size}");
                 return false;
             }
 
-            pos += 2;
+            pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
             if (container[pos] != KIND_CODE)
             {
@@ -184,15 +204,16 @@ public class EvmObjectFormat
             int lastEndOffset = typeSection.EndOffset;
             for (ushort i = 0; i < numberOfCodeSections; i++)
             {
-                if (!CheckBounds(pos + 2, container.Length, ref header))
+                if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
                 {
                     header = null;
                     return false;
                 }
+
                 SectionHeader codeSection = new()
                 {
                     Start = lastEndOffset,
-                    Size = container[pos..(pos + 2)].ReadEthUInt16()
+                    Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
                 };
 
                 if (codeSection.Size == 0)
@@ -206,7 +227,7 @@ public class EvmObjectFormat
 
                 codeSections.Add(codeSection);
                 lastEndOffset = codeSection.EndOffset;
-                pos += 2;
+                pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
             }
 
@@ -218,7 +239,7 @@ public class EvmObjectFormat
                 return false;
             }
             pos++;
-            if (!CheckBounds(pos + 2, container.Length, ref header))
+            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
             {
                 return false;
             }
@@ -226,9 +247,9 @@ public class EvmObjectFormat
             SectionHeader dataSection = new()
             {
                 Start = lastEndOffset,
-                Size = container[(pos)..(pos + 2)].ReadEthUInt16()
+                Size = container[(pos)..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
             };
-            pos += 2;
+            pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
 
             if (container[pos] != TERMINATOR)
@@ -263,11 +284,11 @@ public class EvmObjectFormat
                 return false;
             }
 
-            if (codeSections.Length != (typeSectionSize / 4))
+            if (codeSections.Length != (typeSectionSize / MINIMUM_TYPESECTION_SIZE))
             {
                 if (_loggingEnabled)
                 {
-                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / 4}");
+                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
                 }
 
                 header = null;
@@ -285,11 +306,11 @@ public class EvmObjectFormat
                 return false;
             }
 
-            if (codeSections.Length > 1024)
+            if (codeSections.Length > MAXIMUM_CODESECTIONS_COUNT)
             {
                 if (_loggingEnabled)
                 {
-                    _logger.Trace($"EIP-4750 : Code section count limit exceeded only 1024 allowed but found {codeSections.Length}");
+                    _logger.Trace($"EIP-4750 : Code section count limit exceeded only {MAXIMUM_CODESECTIONS_COUNT} allowed but found {codeSections.Length}");
                 }
 
                 header = null;
@@ -357,19 +378,20 @@ public class EvmObjectFormat
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 2 > codeSectionSize)
+                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
                         {
                             if (_loggingEnabled)
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             }
+
                             header = null;
                             return false;
                         }
 
-                        short offset = code.Slice(i, 2).ReadEthInt16();
+                        var offset = code.Slice(i, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
                         immediates.Add(new Range(i, i + 1));
-                        int rjumpdest = offset + 2 + i;
+                        var rjumpdest = offset + IMMEDIATE_16BIT_BYTE_COUNT + i;
                         rjumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
                         {
@@ -385,7 +407,7 @@ public class EvmObjectFormat
 
                     if (opcode is Instruction.RJUMPV)
                     {
-                        if (i + 2 > codeSectionSize)
+                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -405,7 +427,8 @@ public class EvmObjectFormat
                             header = null;
                             return false;
                         }
-                        if (i + count * 2 > codeSectionSize)
+
+                        if (i + count * IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -414,12 +437,13 @@ public class EvmObjectFormat
                             header = null;
                             return false;
                         }
-                        int immediateValueSize = 1 + count * 2;
+
+                        var immediateValueSize = 1 + count * IMMEDIATE_16BIT_BYTE_COUNT;
                         immediates.Add(new Range(i, i + immediateValueSize - 1));
                         for (int j = 0; j < count; j++)
                         {
-                            short offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
-                            int rjumpdest = offset + immediateValueSize + i;
+                            var offset = code.Slice(i + 1 + j * IMMEDIATE_16BIT_BYTE_COUNT, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
+                            var rjumpdest = offset + immediateValueSize + i;
                             rjumpdests.Add(rjumpdest);
                             if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
                             {
@@ -439,7 +463,7 @@ public class EvmObjectFormat
                 {
                     if (opcode is Instruction.CALLF)
                     {
-                        if (i + 2 > codeSectionSize)
+                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -449,7 +473,7 @@ public class EvmObjectFormat
                             return false;
                         }
 
-                        ushort targetSectionId = code.Slice(i, 2).ReadEthUInt16();
+                        ushort targetSectionId = code.Slice(i, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthUInt16();
                         immediates.Add(new Range(i, i + 1));
 
                         if (targetSectionId >= header.Value.CodeSections.Length)
@@ -461,7 +485,7 @@ public class EvmObjectFormat
                             header = null;
                             return false;
                         }
-                        i += 2;
+                        i += IMMEDIATE_16BIT_BYTE_COUNT;
                     }
                 }
 
