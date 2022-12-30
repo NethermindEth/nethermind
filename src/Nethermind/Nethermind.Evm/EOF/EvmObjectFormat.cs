@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -63,13 +64,23 @@ public class EvmObjectFormat
     {
         private IReleaseSpec _releaseSpec;
         private const byte VERSION = 0x01;
+
         private const byte KIND_TYPE = 0x01;
         private const byte KIND_CODE = 0x02;
         private const byte KIND_DATA = 0x03;
         private const byte TERMINATOR = 0x00;
+
         private const byte VERSION_SIZE = 1;
         private const byte SECTION_SIZE = 3;
         private const byte TERMINATOR_SIZE = 1;
+
+        private const byte MINIMUM_TYPESECTION_SIZE = 4;
+        private const byte MINIMUM_CODESECTION_SIZE = 1;
+
+        private const ushort MINIMUM_CODESECTIONS_COUNT = 1;
+        private const ushort MAXIMUM_CODESECTIONS_COUNT = 1024;
+
+        private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;
         public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
         public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
             + SECTION_SIZE // type
@@ -113,26 +124,35 @@ public class EvmObjectFormat
                     _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
                 return false;
             }
-            if (container[2] != VERSION)
+            if (container[EOF_MAGIC.Length] != VERSION)
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
             }
+
             if (container.Length < MINIMUM_HEADER_SIZE
-                + 1 + 1 + 2 // minimum type section body size
-                + 1) // minimum code section body size
+                + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                + MINIMUM_CODESECTION_SIZE) // minimum code section body size
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
+
             ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
-            if (numberOfCodeSections < 1)
+            if (numberOfCodeSections < MINIMUM_CODESECTIONS_COUNT)
             {
                 if (_loggingEnabled)
                     _logger.Trace($"EIP-3540 : At least one code section must be present");
+                return false;
+            }
+
+            if (numberOfCodeSections > MAXIMUM_CODESECTIONS_COUNT)
+            {
+                if (_loggingEnabled)
+                    _logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
                 return false;
             }
 
@@ -147,7 +167,7 @@ public class EvmObjectFormat
             }
 
             pos++;
-            if (!CheckBounds(pos + 2, container.Length, ref header))
+            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
             {
                 return false;
             }
@@ -155,17 +175,17 @@ public class EvmObjectFormat
             SectionHeader typeSection = new()
             {
                 Start = headerSize,
-                Size = container[pos..(pos + 2)].ReadEthUInt16()
+                Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
             };
 
-            if (typeSection.Size < 3)
+            if (typeSection.Size < MINIMUM_TYPESECTION_SIZE)
             {
                 if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
+                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 4, but found {typeSection.Size}");
                 return false;
             }
 
-            pos += 2;
+            pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
             if (container[pos] != KIND_CODE)
             {
@@ -184,14 +204,15 @@ public class EvmObjectFormat
             int lastEndOffset = typeSection.EndOffset;
             for (ushort i = 0; i < numberOfCodeSections; i++)
             {
-                if (!CheckBounds(pos + 2, container.Length, ref header))
+                if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
                 {
                     header = null; return false;
                 }
+
                 SectionHeader codeSection = new()
                 {
                     Start = lastEndOffset,
-                    Size = container[pos..(pos + 2)].ReadEthUInt16()
+                    Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
                 };
 
                 if (codeSection.Size == 0)
@@ -203,7 +224,7 @@ public class EvmObjectFormat
 
                 codeSections.Add(codeSection);
                 lastEndOffset = codeSection.EndOffset;
-                pos += 2;
+                pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
             }
 
@@ -215,7 +236,7 @@ public class EvmObjectFormat
                 return false;
             }
             pos++;
-            if (!CheckBounds(pos + 2, container.Length, ref header))
+            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
             {
                 return false;
             }
@@ -223,9 +244,9 @@ public class EvmObjectFormat
             SectionHeader dataSection = new()
             {
                 Start = lastEndOffset,
-                Size = container[(pos)..(pos + 2)].ReadEthUInt16()
+                Size = container[(pos)..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
             };
-            pos += 2;
+            pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
 
             if (container[pos] != TERMINATOR)
