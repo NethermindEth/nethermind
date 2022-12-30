@@ -51,7 +51,7 @@ internal static class EvmObjectFormat
     {
         if (container.Length >= 7
             && _eofVersionHandlers.TryGetValue(container[2], out IEofVersionHandler handler)
-            && handler.TryParseEofHeader(container, out  header))
+            && handler.TryParseEofHeader(container, out header))
         {
             EofHeader h = header.Value;
             if (handler.ValidateBody(container, in h))
