@@ -4,7 +4,7 @@ namespace Nethermind.Evm.EOF;
 
 public readonly record struct EofHeader(byte Version,
     SectionHeader TypeSection,
-    IReadOnlyList<SectionHeader> CodeSections,
+    SectionHeader[] CodeSections,
     int CodeSectionsSize,
     SectionHeader DataSection);
 

@@ -17,7 +17,7 @@ internal static class EvmObjectFormat
     }
 
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    private static byte[] EOF_MAGIC = { 0xEF, 0x00 };
+    private static byte[] MAGIC = { 0xEF, 0x00 };
     private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
     internal static ILogger Logger { get; set; } = NullLogger.Instance;
 
@@ -31,7 +31,7 @@ internal static class EvmObjectFormat
     /// </summary>
     /// <param name="container">Machine code to be checked</param>
     /// <returns></returns>
-    public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(EOF_MAGIC);
+    public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, byte version)
     {
@@ -79,12 +79,15 @@ internal static class EvmObjectFormat
         private const byte KIND_CODE = 0x02;
         private const byte KIND_DATA = 0x03;
         private const byte TERMINATOR = 0x00;
+
         private const byte VERSION_SIZE = 1;
         private const byte SECTION_SIZE = 3;
         private const byte TERMINATOR_SIZE = 1;
         public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
 
-        public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
+        public static int CalculateHeaderSize(int numberOfSections) =>
+            MAGIC.Length
+            + VERSION_SIZE
             + SECTION_SIZE // type
             + GetArraySectionSize(numberOfSections) // code
             + SECTION_SIZE // data
@@ -106,9 +109,9 @@ internal static class EvmObjectFormat
         {
             header = null;
 
-            if (!container.StartsWith(EOF_MAGIC))
+            if (!container.StartsWith(MAGIC))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
                 return false;
             }
 
@@ -174,7 +177,7 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            List<SectionHeader> codeSections = new();
+            SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
             int lastEndOffset = typeSection.EndOffset;
             int codeSectionsSize = 0;
             for (ushort i = 0; i < numberOfCodeSections; i++)
@@ -196,7 +199,7 @@ internal static class EvmObjectFormat
                     return false;
                 }
 
-                codeSections.Add(codeSection);
+                codeSections[i] = codeSection;
                 lastEndOffset = codeSection.EndOffset;
                 codeSectionsSize += codeSection.Size;
                 pos += 2;
@@ -240,9 +243,17 @@ internal static class EvmObjectFormat
             return true;
         }
 
+        private const byte INPUTS_OFFSET = 0;
+        private const byte INPUTS_MAX = 0x7F;
+        private const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
+        private const byte OUTPUTS_MAX = 0x7F;
+        private const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
+        private const int MAX_STACK_HEIGHT_LENGTH = 2;
+        private const ushort MAX_STACK_HEIGHT = 0x3FF;
+
         public bool ValidateBody(ReadOnlySpan<byte> container, in EofHeader header)
         {
-            int startOffset = CalculateHeaderSize(header.CodeSections.Count);
+            int startOffset = CalculateHeaderSize(header.CodeSections.Length);
             int calculatedCodeLength = header.TypeSection.Size
                 + header.CodeSectionsSize
                 + header.DataSection.Size;
@@ -254,6 +265,25 @@ internal static class EvmObjectFormat
                 if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
                 return false;
             }
+
+            // if (contractBody[INPUTS_OFFSET] > INPUTS_MAX)
+            // {
+            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
+            //     return false;
+            // }
+            //
+            // if (contractBody[OUTPUTS_OFFSET] > OUTPUTS_MAX)
+            // {
+            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
+            //     return false;
+            // }
+            //
+            // ushort maxStackHeight = contractBody.Slice(MAX_STACK_HEIGHT_OFFSET, MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
+            // if (maxStackHeight > MAX_STACK_HEIGHT)
+            // {
+            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
+            //     return false;
+            // }
 
             return true;
         }
