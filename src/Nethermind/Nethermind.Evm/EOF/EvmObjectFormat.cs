@@ -71,7 +71,7 @@ public class EvmObjectFormat
         private const byte SECTION_SIZE = 3;
         private const byte TERMINATOR_SIZE = 1;
 
-        private const byte MINIMUM_TYPESECTION_SIZE= 4;
+        private const byte MINIMUM_TYPESECTION_SIZE = 4;
         private const byte MINIMUM_CODESECTION_SIZE = 1;
 
         private const ushort MINIMUM_CODESECTIONS_COUNT = 1;
