@@ -260,7 +260,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     if (timestampTransition.Activation.Timestamp < activation.Timestamp
                         && timestampTransition.Activation.BlockNumber > activation.BlockNumber)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                        if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition {timestampTransition.Activation} is configured to happen before the last block transition based on activation {activation}.");
                     }
                 }
             }
