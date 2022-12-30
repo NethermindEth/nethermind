@@ -4,19 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
-
-internal static class EvmObjectFormatCodeInfoExtensions
-{
-    public static bool IsEof(this ICodeInfo codeInfo) =>
-        EvmObjectFormat.IsEof(codeInfo.MachineCode);
-
-    public static byte EofVersion(this ICodeInfo codeInfo) =>
-        codeInfo is EofCodeInfo eofCodeInfo ? eofCodeInfo.Version : (byte)0;
-}
 
 internal static class EvmObjectFormat
 {
