@@ -7,7 +7,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
@@ -39,8 +38,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
         [Test]
@@ -61,8 +59,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
         [Test]
@@ -81,8 +78,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
         [Test]
@@ -107,8 +103,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
         [Test]
@@ -132,8 +127,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
         [Test]
@@ -150,8 +144,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(0, rewards.Length);
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(UInt256.Zero, rewards[0].Value);
+            Assert.AreEqual(0, rewards.Length);
         }
 
 

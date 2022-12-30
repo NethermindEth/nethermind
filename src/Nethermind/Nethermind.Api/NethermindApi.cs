@@ -173,6 +173,7 @@ namespace Nethermind.Api
 
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
+        public IPoSSwitcher? PoSSwitcher { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
 
         public ISyncProgressResolver? SyncProgressResolver { get; set; }

@@ -23,8 +23,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (_poSSwitcher.IsPostMerge(block.Header))
             {
-                // return zero reward post merge
-                return new[] { new BlockReward(block.Beneficiary!, 0) };
+                return NoBlockRewards.Instance.CalculateRewards(block);
             }
 
             return _beforeTheMerge.CalculateRewards(block);

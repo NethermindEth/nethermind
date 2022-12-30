@@ -110,6 +110,8 @@ namespace Nethermind.Merge.Plugin
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
             }
 
+            _api.PoSSwitcher = _poSSwitcher;
+
             return Task.CompletedTask;
         }
 
