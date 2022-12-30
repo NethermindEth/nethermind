@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -95,16 +95,13 @@ namespace Nethermind.Consensus.Producers
         {
             CancellationToken cancellationToken = e.CancellationToken;
             // retry production until its allowed or its cancelled
-            while (!CanTriggerBlockProduction && !cancellationToken.IsCancellationRequested)
+            while (!CanTriggerBlockProduction)
             {
                 if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
                 await Task.Delay(ChainNotYetProcessedMillisecondsDelay, cancellationToken);
             }
 
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                TriggerBlockProduction?.Invoke(this, e);
-            }
+            TriggerBlockProduction?.Invoke(this, e);
 
             return await e.BlockProductionTask;
         }
