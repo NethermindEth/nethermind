@@ -510,7 +510,7 @@ namespace Nethermind.Evm.Test
                         initcode = corruptBytecode(hasEofInitCode, initcode);
                     }
 
-                    if(scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch))
+                    if (scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch))
                     {
                         initcode[2] = 01; deployed[2] = 02;
                     }
@@ -556,9 +556,10 @@ namespace Nethermind.Evm.Test
                     if (scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch))
                     {
                         initcode[2] = 02; result[2] = 01;
-                    } else
+                    }
+                    else
                     {
-                        if(hasEofContainer && hasEofInitCode) 
+                        if (hasEofContainer && hasEofInitCode)
                             result[2] = initcode[2];
                     }
 
