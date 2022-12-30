@@ -113,8 +113,8 @@ jobs:
         macos_arm64_hash="$(shasum -a 256 $PACKAGE_PREFIX-macos-arm64.zip | awk '{print $1}')"
         echo $macos_x64_hash $macos_arm64_hash
         cd $GITHUB_WORKSPACE/homebrew-nethermind
-        sed -i "s/app_version =.*/app_version = '"$VERSION"'/" nethermind.rb
-        sed -i "s/package_prefix =.*/package_prefix = '"PACKAGE_PREFIX"'/" nethermind.rb
+        sed -i "s/app_version = .*/app_version = '"$VERSION"'/" nethermind.rb
+        sed -i "s/package_prefix = .*/package_prefix = '"$PACKAGE_PREFIX"'/" nethermind.rb
         awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_x64_hash'\""); } 1' nethermind.rb
         awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_arm64_hash'\""); } 1' nethermind.rb
     - name: Create pull request
