@@ -313,7 +313,7 @@ public class EvmObjectFormat
                 {
                     if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > sectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -322,9 +322,9 @@ public class EvmObjectFormat
                             header = null; return false;
                         }
 
-                        var offset = code.Slice(i, 2).ReadEthInt16();
+                        var offset = code.Slice(i, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
                         immediates.Add(new Range(i, i + 1));
-                        var rjumpdest = offset + 2 + i;
+                        var rjumpdest = offset + IMMEDIATE_16BIT_BYTE_COUNT + i;
                         rjumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= sectionSize)
                         {
@@ -339,7 +339,7 @@ public class EvmObjectFormat
 
                     if (opcode is Instruction.RJUMPV)
                     {
-                        if (i + 2 > sectionSize)
+                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > sectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -358,7 +358,7 @@ public class EvmObjectFormat
                             header = null; return false;
                         }
 
-                        if (i + count * 2 > sectionSize)
+                        if (i + count * IMMEDIATE_16BIT_BYTE_COUNT > sectionSize)
                         {
                             if (_loggingEnabled)
                             {
@@ -367,11 +367,11 @@ public class EvmObjectFormat
                             header = null; return false;
                         }
 
-                        var immediateValueSize = 1 + count * 2;
+                        var immediateValueSize = 1 + count * IMMEDIATE_16BIT_BYTE_COUNT;
                         immediates.Add(new Range(i, i + immediateValueSize - 1));
                         for (int j = 0; j < count; j++)
                         {
-                            var offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
+                            var offset = code.Slice(i + 1 + j * IMMEDIATE_16BIT_BYTE_COUNT, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
                             var rjumpdest = offset + immediateValueSize + i;
                             rjumpdests.Add(rjumpdest);
 
