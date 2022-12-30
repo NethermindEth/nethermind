@@ -27,7 +27,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ByteCodeValidator _byteCodeValidator;
 
         [Flags]
         private enum ExecutionOptions
@@ -79,7 +78,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _storageProvider = worldState.StorageProvider;
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
-            _byteCodeValidator = new ByteCodeValidator(logManager);
         }
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -381,7 +379,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (!_byteCodeValidator.ValidateBytecode(substate.Output.Span, spec))
+                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec))
                         {
                             throw new InvalidCodeException();
                         }
