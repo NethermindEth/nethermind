@@ -93,7 +93,6 @@ namespace Nethermind.Init.Steps
             if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
             if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
             if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
-            if (_api.PoSSwitcher is null) throw new StepDependencyException(nameof(_api.PoSSwitcher));
 
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
