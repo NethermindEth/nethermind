@@ -363,7 +363,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             }
-                            header = null;return false;
+                            header = null;
+                            return false;
                         }
 
                         short offset = code.Slice(i, 2).ReadEthInt16();
