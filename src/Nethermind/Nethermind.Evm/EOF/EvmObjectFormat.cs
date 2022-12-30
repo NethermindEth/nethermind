@@ -186,7 +186,8 @@ public class EvmObjectFormat
             {
                 if (!CheckBounds(pos + 2, container.Length, ref header))
                 {
-                    header = null; return false;
+                    header = null;
+                    return false;
                 }
                 SectionHeader codeSection = new()
                 {
@@ -198,7 +199,9 @@ public class EvmObjectFormat
                 {
                     if (_loggingEnabled)
                         _logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
-                    header = null; return false;
+
+                    header = null;
+                    return false;
                 }
 
                 codeSections.Add(codeSection);
@@ -247,15 +250,17 @@ public class EvmObjectFormat
 
         bool ValidateBody(ReadOnlySpan<byte> container, ref EofHeader? header)
         {
-            var codeSections = header.Value.CodeSections;
-            var (typeSectionStart, typeSectionSize) = header.Value.TypeSection;
+            SectionHeader[]? codeSections = header.Value.CodeSections;
+            (int typeSectionStart, ushort typeSectionSize) = header.Value.TypeSection;
             if (codeSections.Length == 0 || codeSections.Any(section => section.Size == 0))
             {
                 if (_loggingEnabled)
                 {
                     _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Length}");
                 }
-                header = null; return false;
+
+                header = null;
+                return false;
             }
 
             if (codeSections.Length != (typeSectionSize / 4))
@@ -264,7 +269,9 @@ public class EvmObjectFormat
                 {
                     _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / 4}");
                 }
-                header = null; return false;
+
+                header = null;
+                return false;
             }
 
             if (container[typeSectionStart] != 0 && container[typeSectionStart] != 0)
@@ -273,7 +280,9 @@ public class EvmObjectFormat
                 {
                     _logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
                 }
-                header = null; return false;
+
+                header = null;
+                return false;
             }
 
             if (codeSections.Length > 1024)
@@ -282,7 +291,9 @@ public class EvmObjectFormat
                 {
                     _logger.Trace($"EIP-4750 : Code section count limit exceeded only 1024 allowed but found {codeSections.Length}");
                 }
-                header = null; return false;
+
+                header = null;
+                return false;
             }
 
             int startOffset = CalculateHeaderSize(header.Value.CodeSections.Length);
@@ -318,15 +329,15 @@ public class EvmObjectFormat
 
         public bool ValidateSectionInstructions(ref ReadOnlySpan<byte> container, int sectionId, ref EofHeader? header)
         {
-            var (typeSectionBegin, typeSectionSize) = header.Value.TypeSection;
-            var (codeSectionBegin, codeSectionSize) = header.Value.CodeSections[sectionId];
+            (int typeSectionBegin, ushort typeSectionSize) = header.Value.TypeSection;
+            (int codeSectionBegin, ushort codeSectionSize) = header.Value.CodeSections[sectionId];
 
             ReadOnlySpan<byte> code = container.Slice(codeSectionBegin, codeSectionSize);
             ReadOnlySpan<byte> typesection = container.Slice(typeSectionBegin, typeSectionSize);
             Instruction? opcode = null;
 
-            HashSet<Range> immediates = new HashSet<Range>();
-            HashSet<Int32> rjumpdests = new HashSet<Int32>();
+            HashSet<Range> immediates = new();
+            HashSet<Int32> rjumpdests = new();
             for (int i = 0; i < codeSectionSize;)
             {
                 opcode = (Instruction)code[i];
@@ -338,7 +349,8 @@ public class EvmObjectFormat
                     {
                         _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                     }
-                    header = null; return false;
+                    header = null;
+                    return false;
                 }
 
                 if (_releaseSpec.StaticRelativeJumpsEnabled)
@@ -351,12 +363,12 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             }
-                            header = null; return false;
+                            header = null;return false;
                         }
 
-                        var offset = code.Slice(i, 2).ReadEthInt16();
+                        short offset = code.Slice(i, 2).ReadEthInt16();
                         immediates.Add(new Range(i, i + 1));
-                        var rjumpdest = offset + 2 + i;
+                        int rjumpdest = offset + 2 + i;
                         rjumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
                         {
@@ -364,7 +376,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
                         i += 2;
                     }
@@ -377,7 +390,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
 
                         byte count = code[i];
@@ -387,7 +401,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
                         if (i + count * 2 > codeSectionSize)
                         {
@@ -395,14 +410,15 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
-                        var immediateValueSize = 1 + count * 2;
+                        int immediateValueSize = 1 + count * 2;
                         immediates.Add(new Range(i, i + immediateValueSize - 1));
                         for (int j = 0; j < count; j++)
                         {
-                            var offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
-                            var rjumpdest = offset + immediateValueSize + i;
+                            short offset = code.Slice(i + 1 + j * 2, 2).ReadEthInt16();
+                            int rjumpdest = offset + immediateValueSize + i;
                             rjumpdests.Add(rjumpdest);
                             if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
                             {
@@ -410,7 +426,8 @@ public class EvmObjectFormat
                                 {
                                     _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
                                 }
-                                header = null; return false;
+                                header = null;
+                                return false;
                             }
                         }
                         i += immediateValueSize;
@@ -427,10 +444,11 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4750 : CALLF Argument underflow");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
 
-                        var targetSectionId = code.Slice(i, 2).ReadEthUInt16();
+                        ushort targetSectionId = code.Slice(i, 2).ReadEthUInt16();
                         immediates.Add(new Range(i, i + 1));
 
                         if (targetSectionId >= header.Value.CodeSections.Length)
@@ -439,7 +457,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4750 : Invalid Section Id");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
                         i += 2;
                     }
@@ -458,7 +477,8 @@ public class EvmObjectFormat
                     {
                         _logger.Trace($"EIP-3670 : PC Reached out of bounds");
                     }
-                    header = null; return false;
+                    header = null;
+                    return false;
                 }
             }
 
@@ -467,7 +487,7 @@ public class EvmObjectFormat
 
                 foreach (int rjumpdest in rjumpdests)
                 {
-                    foreach (var range in immediates)
+                    foreach (Range range in immediates)
                     {
                         if (range.Includes(rjumpdest))
                         {
@@ -475,7 +495,8 @@ public class EvmObjectFormat
                             {
                                 _logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
                             }
-                            header = null; return false;
+                            header = null;
+                            return false;
                         }
                     }
                 }
