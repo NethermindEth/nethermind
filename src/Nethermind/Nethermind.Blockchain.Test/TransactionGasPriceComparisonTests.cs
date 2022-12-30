@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Consensus;
@@ -144,10 +144,10 @@ namespace Nethermind.Blockchain.Test
 
         private class TestingContext
         {
-            private IBlockTree _blockTree;
-            private ITransactionComparerProvider _transactionComparerProvider;
-            private long blockNumber;
-            private UInt256 baseFee;
+            private readonly IBlockTree _blockTree;
+            private readonly ITransactionComparerProvider _transactionComparerProvider;
+            private long _blockNumber;
+            private UInt256 _baseFee;
 
             public TestingContext(bool isEip1559Enabled = false, long eip1559TransitionBlock = 0)
             {
@@ -173,14 +173,14 @@ namespace Nethermind.Blockchain.Test
 
             public TestingContext WithHeadBlockNumber(long headBlockNumber)
             {
-                blockNumber = headBlockNumber;
+                _blockNumber = headBlockNumber;
                 UpdateBlockTreeHead();
                 return this;
             }
 
             public TestingContext WithHeadBaseFeeNumber(UInt256 headBaseFee)
             {
-                baseFee = headBaseFee;
+                _baseFee = headBaseFee;
                 UpdateBlockTreeHead();
                 return this;
             }
@@ -188,8 +188,8 @@ namespace Nethermind.Blockchain.Test
             private void UpdateBlockTreeHead()
             {
                 Block block = Build.A.Block
-                    .WithNumber(blockNumber)
-                    .WithBaseFeePerGas(baseFee).TestObject;
+                    .WithNumber(_blockNumber)
+                    .WithBaseFeePerGas(_baseFee).TestObject;
                 _blockTree.Head.Returns(block);
             }
         }
