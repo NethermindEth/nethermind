@@ -78,6 +78,7 @@ public class EvmObjectFormat
 
         private const ushort MINIMUM_CODESECTIONS_COUNT = 1;
         private const ushort MAXIMUM_CODESECTIONS_COUNT = 1024;
+        private const ushort MAXIMUM_DATA_STACKHEIGHT = 1023;
 
         private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;
         public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
@@ -693,7 +694,7 @@ public class EvmObjectFormat
                 header = null; return false;
             }
 
-            return peakStackHeight < MAXIMUM_CODESECTIONS_COUNT;
+            return peakStackHeight <= MAXIMUM_DATA_STACKHEIGHT;
         }
     }
 }
