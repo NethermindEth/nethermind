@@ -1,6 +1,6 @@
 Fixes Closes Resolves #
 
-_Please choose one of the keywords above to refer to the issue this PR solves, followed by the issue number (e.g. Fixes #000). If no issue number, remove the line. Finally, remove everything marked optional that is not applicable. Remove this note after reading._
+_Please choose one of the keywords above to refer to the issue this PR solves followed by the issue number (e.g. Fixes #000). If no issue number, remove the line. Also, remove everything marked optional that is not applicable. Remove this note after reading._
 
 ## Changes
 
