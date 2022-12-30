@@ -121,5 +121,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// EVN Object Format
         /// </summary>
         public ulong? Eip3540TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// EOF Bytecode Validation
+        /// </summary>
+        public ulong? Eip3670TransitionTimestamp { get; set; }
     }
 }
