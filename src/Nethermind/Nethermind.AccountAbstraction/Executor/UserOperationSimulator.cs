@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -84,13 +84,13 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            IEip1559Spec specfor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
-                BuildSimulateValidationTransaction(userOperation, parent, specfor1559);
+                BuildSimulateValidationTransaction(userOperation, parent, specFor1559);
 
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
