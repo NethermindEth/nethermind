@@ -73,7 +73,7 @@ namespace Nethermind.Merge.Plugin
             _syncConfig = nethermindApi.Config<ISyncConfig>();
             _blocksConfig = nethermindApi.Config<IBlocksConfig>();
 
-            MigrateSecondsPerSlot();
+            MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
 
             _logger = _api.LogManager.GetClassLogger();
 
@@ -119,23 +119,23 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        private void MigrateSecondsPerSlot()
+        internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
         {
-            ulong defaultValue = _blocksConfig.GetDefaultValue<ulong>(nameof(IBlocksConfig.SecondsPerSlot));
-            if (_blocksConfig.SecondsPerSlot != _mergeConfig.SecondsPerSlot)
+            ulong defaultValue = blocksConfig.GetDefaultValue<ulong>(nameof(IBlocksConfig.SecondsPerSlot));
+            if (blocksConfig.SecondsPerSlot != mergeConfig.SecondsPerSlot)
             {
-                if (_blocksConfig.SecondsPerSlot == defaultValue)
+                if (blocksConfig.SecondsPerSlot == defaultValue)
                 {
-                    _blocksConfig.SecondsPerSlot = _mergeConfig.SecondsPerSlot;
+                    blocksConfig.SecondsPerSlot = mergeConfig.SecondsPerSlot;
                 }
-                else if (_mergeConfig.SecondsPerSlot == defaultValue)
+                else if (mergeConfig.SecondsPerSlot == defaultValue)
                 {
-                    _mergeConfig.SecondsPerSlot = _blocksConfig.SecondsPerSlot;
+                    mergeConfig.SecondsPerSlot = blocksConfig.SecondsPerSlot;
                 }
                 else
                 {
                     throw new InvalidConfigurationException($"Configuration mismatch at {nameof(IBlocksConfig.SecondsPerSlot)} " +
-                                                                $"with conflicting values {_blocksConfig.SecondsPerSlot} and {_mergeConfig.SecondsPerSlot}",
+                                                                $"with conflicting values {blocksConfig.SecondsPerSlot} and {mergeConfig.SecondsPerSlot}",
                             ExitCodes.ConflictingConfigurations);
                 }
             }
