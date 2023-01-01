@@ -36,17 +36,17 @@ namespace Nethermind.Network.Test.P2P
         private Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T: P2PMessage
+        private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
             return new(message.Protocol, message.PacketType, _serializer.Serialize(message));
         }
 
-        private Packet CreateZeroPacket<T>(T message) where T: P2PMessage
+        private Packet CreateZeroPacket<T>(T message) where T : P2PMessage
         {
             return new(new ZeroPacket(_serializer.ZeroSerialize(message))
             {
                 Protocol = message.Protocol,
-                PacketType = (byte) message.PacketType,
+                PacketType = (byte)message.PacketType,
             });
         }
 
