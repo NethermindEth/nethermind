@@ -34,6 +34,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -122,6 +123,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 Timestamper.Default,
                 logFinder,
                 specProvider,
+                new BlocksConfig(),
                 false);
 
             GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);

@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -38,6 +39,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
 
@@ -50,7 +52,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
             ITimestamper timestamper,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlocksConfig blocksConfig)
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
@@ -60,6 +63,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
             _timestamper = timestamper;
+            _blocksConfig = blocksConfig;
             _logger = logManager.GetClassLogger<UserOperationSimulator>();
 
             _abiEncoder = new AbiEncoder();
@@ -200,7 +204,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
+            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new BlockchainBridge.CallOutput

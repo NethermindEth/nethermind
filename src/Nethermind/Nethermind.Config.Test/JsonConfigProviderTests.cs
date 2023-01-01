@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using Nethermind.Api;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -30,6 +33,17 @@ namespace Nethermind.Config.Test
             StatsParameters statsConfig = StatsParameters.Instance;
 
             _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
+        }
+
+        [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
+        [TestCase(false, typeof(BlocksConfig), nameof(BlocksConfig.RandomizedBlocks))]
+        [TestCase("chainspec/foundation.json", typeof(InitConfig), nameof(InitConfig.ChainSpecPath))]
+        [TestCase(DumpOptions.Receipts, typeof(InitConfig), nameof(InitConfig.AutoDump))]
+        public void Test_getDefaultValue<T>(T expected, Type type, string propName)
+        {
+            IConfig config = Activator.CreateInstance(type) as IConfig ?? throw new Exception("type is not IConfig");
+            T actual = config.GetDefaultValue<T>(propName);
+            Assert.AreEqual(expected, actual);
         }
 
         [Test]
