@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Test
 
             public bool DisconnectRequested { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 DisconnectRequested = true;
             }
@@ -585,7 +585,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             var peers = await SetupPeers(ctx, 3);
             var peerInfo = ctx.Pool.InitializedPeers.First();
-            ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
+            ctx.Pool.ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.Other, "issue details");
 
             Assert.True(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested);
         }
