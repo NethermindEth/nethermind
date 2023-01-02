@@ -900,9 +900,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private void AddCode(StateProvider stateProvider, Address account, byte[] code)
         {
-            Keccak codeHash = stateProvider.UpdateCode(code);
-            stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
-
+            stateProvider.InsertCode(account, code, MuirGlacier.Instance);
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
         }
     }

@@ -169,7 +169,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec((ForkActivation)1));
+            _stateProvider.InsertCode(TestItem.AddressA, System.Text.Encoding.UTF8.GetBytes("A"), _specProvider.GetSpec((ForkActivation)1));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.SenderIsContract);
         }
@@ -237,7 +237,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, hasCode ? TestItem.KeccakH : Keccak.OfAnEmptyString, London.Instance);
+            _stateProvider.InsertCode(TestItem.AddressA, hasCode ? System.Text.Encoding.UTF8.GetBytes("H") : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
             return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
         }

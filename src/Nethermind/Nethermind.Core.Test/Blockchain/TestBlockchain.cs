@@ -124,8 +124,7 @@ namespace Nethermind.Core.Test.Blockchain
             State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
-            State.UpdateCode(code);
-            State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
+            State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
             Storage = new StorageProvider(TrieStore, State, LogManager);
             Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));

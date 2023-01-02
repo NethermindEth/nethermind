@@ -27,13 +27,11 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            Keccak codeHash = TestState.UpdateCode(contractCode);
-
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressC, codeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, contractCode, Spec);
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressD, codeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)

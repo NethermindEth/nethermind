@@ -112,7 +112,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak codehash = Keccak.Compute("some code");
-            TestState.UpdateCodeHash(TestItem.AddressC, codehash, Spec);
+            TestState.InsertCode(TestItem.AddressC, "some code"u8.ToArray(), Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -138,8 +138,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(selfDestructCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, selfDestructCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, selfDestructCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -150,7 +149,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, selfDestructCodeHash);
+            AssertStorage(0, Keccak.Compute(selfDestructCode));
         }
 
         [Test]
@@ -165,12 +164,10 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(selfDestructCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, selfDestructCode, Spec);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak revertCodeHash = TestState.UpdateCode(callAndRevertCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, revertCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, callAndRevertCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -181,7 +178,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, selfDestructCodeHash);
+            AssertStorage(0, Keccak.Compute(selfDestructCode));
         }
 
         [Test]
@@ -241,8 +238,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.REVERT).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -269,8 +265,7 @@ namespace Nethermind.Evm.Test
                 .Create(initCode, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)

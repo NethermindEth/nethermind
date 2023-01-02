@@ -49,8 +49,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -79,8 +78,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(expectedAddress, 1.Ether());
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -119,8 +117,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -151,8 +148,7 @@ namespace Nethermind.Evm.Test
             // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -185,8 +181,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)

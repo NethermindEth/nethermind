@@ -82,10 +82,6 @@ namespace Nethermind.State
         {
             StateProvider.CreateAccount(address, in balance, in nonce);
         }
-        public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec, bool isGenesis = false)
-        {
-            StateProvider.UpdateCodeHash(address, codeHash, spec, isGenesis);
-        }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
             StateProvider.AddToBalance(address, in balanceChange, spec);
@@ -106,10 +102,12 @@ namespace Nethermind.State
         {
             StateProvider.DecrementNonce(address);
         }
-        public Keccak UpdateCode(ReadOnlyMemory<byte> code)
+
+        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            return StateProvider.UpdateCode(code);
+            StateProvider.InsertCode(address, code, spec, isGenesis);
         }
+
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
         {
             StateProvider.Commit(releaseSpec, isGenesis);
