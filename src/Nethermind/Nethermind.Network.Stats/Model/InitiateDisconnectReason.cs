@@ -21,6 +21,7 @@ public enum InitiateDisconnectReason : byte
     ProtocolInitTimeout,
     TxFlooding,
     NoCapabilityMatched,
+    MessageHandlingException,
 
     UselessInFastBlocks,
     DropWorstPeer,

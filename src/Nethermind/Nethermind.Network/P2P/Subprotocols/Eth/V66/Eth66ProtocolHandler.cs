@@ -219,7 +219,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         _logger.Error($"Error handling message {message}", exception);
                     }
-                    Session.InitiateDisconnect(DisconnectReason.Other, $"Exception: {exception}");
+                    Session.InitiateDisconnect(InitiateDisconnectReason.MessageHandlingException, $"Exception: {exception}");
                 }
                 finally
                 {

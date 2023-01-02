@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.BlockHeaders);
-            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -183,7 +183,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
-            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -283,7 +283,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
-            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            _session.EventuallyReceived().InitiateDisconnect(Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
