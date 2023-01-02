@@ -86,11 +86,22 @@ jobs:
           ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
           ${{ env.SCRIPTS_PATH }}/
         key: packages-${{ steps.build-runner.outputs.COMMIT_HASH }}
+        
+  approval:
+    name: Approve
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: Releases
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
+    steps:
+    - name: Wait for approval
+      run: echo "Waiting for approval..."
 
   update-homebrew:
     name: Update Homebrew to the latest version
     runs-on: ubuntu-latest
-    needs: build
+    needs: approval
     if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
@@ -131,20 +142,10 @@ jobs:
         add-paths: |
           nethermind.rb
 
-  trigger-publish:
-    name: Trigger publish event to different sources
-    runs-on: ubuntu-latest
-    needs: update-homebrew
-    environment:
-      name: Releases
-      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
-    steps:
-    - run: echo "Just a middle-man job"
-
   publish-github:
     name: Publish packages to GitHub Releases
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: approval
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -165,7 +166,7 @@ jobs:
   publish-downloads:
     name: Publish packages to Downloads page
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: approval
     if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
@@ -190,7 +191,7 @@ jobs:
   publish-dockers:
     name: Publish Docker images to Docker Hub
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: approval
     env:
       DOCKER_IMAGE: nethermind/nethermind
     steps:
@@ -225,7 +226,7 @@ jobs:
   publish-ppa:
     name: Publish Nethermind to PPA repository
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: approval
     if: needs.build.outputs.PRERELEASE == 'false'
     env:
       PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
