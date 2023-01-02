@@ -215,7 +215,11 @@ namespace Nethermind.Network.Rlpx
 
             channel.CloseCompletion.ContinueWith(async x =>
             {
+                // The close completion is completed before actual closing or remaining packet is processed.
+                // So usually, we do get a disconnect reason from peer, we just receive it after this. So w need to
+                // add some delay to account for whatever that is holding the network pipeline.
                 await Task.Delay(TimeSpan.FromSeconds(1));
+
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
                 session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
             });
