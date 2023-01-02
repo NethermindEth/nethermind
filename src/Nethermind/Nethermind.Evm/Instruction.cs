@@ -255,7 +255,7 @@ namespace Nethermind.Evm
             Instruction.RJUMPI when spec.IsEip4200Enabled || spec.SubroutinesEnabled => spec.IsEip4200Enabled ? (1, 2, 0) : (0, 0, 0),
             Instruction.RETF => (0, 0, 0),
             >= Instruction.LOG0 and <= Instruction.LOG4 => (2 + instruction - Instruction.LOG0, 0, 0),
-            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, instruction - Instruction.PUSH0, instruction - Instruction.PUSH0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, instruction - Instruction.PUSH0, 1),
             >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, 0, instruction - Instruction.DUP1 + 2),
             >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, 0, instruction - Instruction.SWAP1 + 2),
             _ => throw new NotImplementedException()
