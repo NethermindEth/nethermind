@@ -24,8 +24,7 @@ public class ContractRewriter
         {
             foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
             {
-                Keccak codeHash = stateProvider.UpdateCode(contractOverride.Value);
-                stateProvider.UpdateCodeHash(contractOverride.Key, codeHash, spec);
+                stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
             }
         }
     }

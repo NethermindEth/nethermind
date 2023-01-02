@@ -227,8 +227,7 @@ namespace Nethermind.AccountAbstraction.Test
             chain.SendUserOperation(entryPointAddress[0], op);
             if (changeCodeHash)
             {
-                Keccak codeHash = chain.State.UpdateCode(Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00));
-                chain.State.UpdateCodeHash(walletAddress[0]!, codeHash, chain.SpecProvider.GenesisSpec);
+                chain.State.InsertCode(walletAddress[0]!, Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00), chain.SpecProvider.GenesisSpec);
                 chain.State.Commit(chain.SpecProvider.GenesisSpec);
                 chain.State.RecalculateStateRoot();
                 chain.State.CommitTree(chain.BlockTree.Head!.Number);

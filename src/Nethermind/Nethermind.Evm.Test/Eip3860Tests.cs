@@ -35,8 +35,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(byteCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, byteCode, Spec);
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
@@ -58,8 +57,7 @@ namespace Nethermind.Evm.Test
                 : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(evmCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
 
             const int contractCreationGasLimit = 50000;
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;

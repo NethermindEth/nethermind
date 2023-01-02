@@ -50,8 +50,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
@@ -91,8 +90,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough

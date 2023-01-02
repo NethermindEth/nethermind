@@ -108,7 +108,7 @@ public partial class EthRpcModuleTests
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
-        ctx.Test.State.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakH, London.Instance);
+        ctx.Test.State.InsertCode(TestItem.AddressA, System.Text.Encoding.UTF8.GetBytes("H"), London.Instance);
         transaction.To = TestItem.AddressB;
 
         string serialized =

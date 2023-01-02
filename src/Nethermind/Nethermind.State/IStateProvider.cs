@@ -21,7 +21,7 @@ namespace Nethermind.State
 
         void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
 
-        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec, bool isGenesis = false);
+        void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
         void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -32,8 +32,6 @@ namespace Nethermind.State
         void IncrementNonce(Address address);
 
         void DecrementNonce(Address address);
-
-        Keccak UpdateCode(ReadOnlyMemory<byte> code);
 
         /* snapshots */
 

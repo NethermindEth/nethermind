@@ -245,8 +245,7 @@ namespace Nethermind.Evm
                             bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                Keccak codeHash = _worldState.UpdateCode(callResult.Output);
-                                _worldState.UpdateCodeHash(callCodeOwner, codeHash, spec);
+                                _worldState.InsertCode(callCodeOwner, callResult.Output, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)

@@ -357,8 +357,7 @@ namespace Nethermind.Evm.Test
             //TestState.CommitTree(0);
 
             TestState.CreateAccount(deploymentAddress, UInt256.One);
-            Keccak codeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
+            TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
             Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
             Storage.Commit();

@@ -292,8 +292,7 @@ namespace Ethereum.Test.Base
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     stateProvider.IncrementNonce(accountState.Key);
