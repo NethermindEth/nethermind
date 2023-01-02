@@ -23,8 +23,8 @@ namespace Nethermind.Trie.Test.Pruning
     [TestFixture]
     public class TreeStoreTests
     {
-        private ILogManager _logManager = new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
-
+        private readonly ILogManager _logManager = LimboLogs.Instance;
+        // new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
 
         [SetUp]
         public void Setup()
@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Initial_memory_is_0()
         {
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
 
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
             trieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false));
@@ -57,7 +57,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode2 = new(NodeType.Branch, TestItem.KeccakA);
             TrieNode trieNode3 = new(NodeType.Branch, TestItem.KeccakB);
 
-            TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode);
             trieStore.CommitNode(124, new NodeCommitInfo(trieNode2));
@@ -71,7 +71,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) { LastSeen = 1 };
 
             long reorgBoundaryCount = 0L;
-            TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
+            using TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
             trieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
             reorgBoundaryCount.Should().Be(0);
@@ -89,7 +89,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
             long reorgBoundaryCount = 0L;
-            TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
             trieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
             trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
@@ -101,7 +101,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Pruning_off_cache_should_not_find_cached_or_unknown()
         {
-            TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
             TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC);
@@ -114,7 +114,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
@@ -136,7 +136,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
             TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
 
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
             trieStore.MemoryUsedByDirtyCache.Should().Be(
@@ -152,7 +152,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode3 = new(NodeType.Leaf, TestItem.KeccakA);
             TrieNode trieNode4 = new(NodeType.Leaf, TestItem.KeccakB);
 
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
@@ -180,7 +180,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode4 = new(NodeType.Leaf, new byte[3]);
             trieNode4.ResolveKey(null!, true);
 
-            TrieStore trieStore = new(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
@@ -209,7 +209,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode4 = new(NodeType.Leaf, new byte[3]);
             trieNode4.ResolveKey(null!, true);
 
-            TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
@@ -251,7 +251,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
@@ -272,7 +272,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), No.Persistence, _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), No.Persistence, _logManager);
 
             trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
@@ -291,7 +291,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new();
             memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
 
-            TrieStore trieStore = new(memDb, _logManager);
+            using TrieStore trieStore = new(memDb, _logManager);
             trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
         }
 
@@ -303,7 +303,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -331,7 +331,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -360,7 +360,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -413,7 +413,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            TrieStore trieStore = new(new BadDb(), _logManager);
+            using TrieStore trieStore = new(new BadDb(), _logManager);
             StateTree tree = new(trieStore, _logManager);
             tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
             tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
@@ -435,7 +435,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.CommitNode(1, new NodeCommitInfo(storage1));
@@ -472,7 +472,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -522,7 +522,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new();
 
-            TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(storage1));
@@ -559,7 +559,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb originalStore = new MemDb();
             WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
             IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
-            TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
+            using TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
 
@@ -582,7 +582,8 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode.Seal();
 
             MemDb memDb = new();
-            ITrieStore trieStore = new TrieStore(memDb, Prune.WhenCacheReaches(10.MB()), Persist.IfBlockOlderThan(10), _logManager);
+            using TrieStore store = new(memDb, Prune.WhenCacheReaches(10.MB()), Persist.IfBlockOlderThan(10), _logManager);
+            ITrieStore trieStore = store;
             trieNode.ResolveKey(trieStore, false);
             trieStore.CommitNode(1, new NodeCommitInfo(trieNode));
 
@@ -634,7 +635,7 @@ namespace Nethermind.Trie.Test.Pruning
             node.Key = HexPrefix.Leaf("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
-            TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);
+            using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
             var originalNode = trieStore.FindCachedOrUnknown(node.Keccak);
