@@ -213,10 +213,11 @@ namespace Nethermind.Network.Rlpx
             }
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
-            channel.CloseCompletion.ContinueWith(x =>
+            channel.CloseCompletion.ContinueWith(async x =>
             {
+                await Task.Delay(TimeSpan.FromSeconds(1));
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
             });
         }
 
