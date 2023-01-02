@@ -108,7 +108,7 @@ internal static class EvmObjectFormat
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHeaderSize(int codeSections) =>
-            TERMINATOR_OFFSET + 1 + codeSections * TWO_BYTE_LENGTH;
+            TERMINATOR_OFFSET + ONE_BYTE_LENGTH + codeSections * TWO_BYTE_LENGTH;
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
