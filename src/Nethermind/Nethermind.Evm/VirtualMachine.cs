@@ -69,7 +69,6 @@ namespace Nethermind.Evm
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private ByteCodeValidator _byteCodeValidator;
 
         public VirtualMachine(
             IBlockhashProvider? blockhashProvider,
@@ -80,7 +79,6 @@ namespace Nethermind.Evm
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-            _byteCodeValidator = new ByteCodeValidator(logManager);
             InitializePrecompiledContracts();
         }
 
@@ -200,7 +198,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !_byteCodeValidator.ValidateBytecode(callResult.Output, spec))
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -245,7 +243,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !_byteCodeValidator.ValidateBytecode(callResult.Output, spec);
+                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -624,8 +622,8 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection;
-            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection;
+            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -2399,18 +2397,11 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
-                            if (env.CodeInfo.IsEof)
+                            if (!CodeDepositHandler.IsVersionValid(env.CodeInfo, initCode, spec))
                             {
-                                bool initCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(initCode);
-                                bool initCodeIsValid = _byteCodeValidator.ValidateEofBytecode(initCode, out EofHeader? initcodeHeader);
-                                if (!initCodeHasEofPrefix
-                                    || !initCodeIsValid
-                                    || env.CodeInfo.Version != initcodeHeader?.Version)
-                                {
-                                    _returnDataBuffer = Array.Empty<byte>();
-                                    stack.PushZero();
-                                    break;
-                                }
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
                             }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
@@ -2510,18 +2501,11 @@ namespace Nethermind.Evm
 
                             // EIP-3540`
                             // Code container in the context of Create2? is Initcode
-                            if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
+                            if (vmState.ExecutionType.IsAnyCreate() && !CodeDepositHandler.IsVersionValid(env.CodeInfo, returnData, spec))
                             {
-                                bool returnCodeHasEofPrefix = _byteCodeValidator.HasEofPrefix(returnData);
-                                bool returnCodeIsValid = _byteCodeValidator.ValidateEofBytecode(returnData, out EofHeader? returnCodeHeader);
-                                if (!returnCodeHasEofPrefix
-                                    || !returnCodeIsValid
-                                    || env.CodeInfo.Version != returnCodeHeader?.Version)
-                                {
-                                    _returnDataBuffer = Array.Empty<byte>();
-                                    stack.PushZero();
-                                    break;
-                                }
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
                             }
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
