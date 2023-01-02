@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
     /// </summary>
     public class Eth64ProtocolHandler : Eth63ProtocolHandler
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly ForkInfo _forkInfo;
 
         public Eth64ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ISpecProvider specProvider,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _forkInfo = new ForkInfo(specProvider ?? throw new ArgumentNullException(nameof(specProvider)), SyncServer.Genesis.Hash!);
         }
 
         public override string Name => "eth64";
@@ -40,8 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         protected override void EnrichStatusMessage(StatusMessage statusMessage)
         {
             base.EnrichStatusMessage(statusMessage);
-            statusMessage.ForkId =
-                ForkInfo.CalculateForkId(_specProvider, SyncServer.Head.Number, SyncServer.Head.Timestamp, SyncServer.Genesis.Hash);
+            statusMessage.ForkId = _forkInfo.GetForkId(SyncServer.Head!.Number, SyncServer.Head.Timestamp);
         }
     }
 }
