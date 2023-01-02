@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 1, 2,
+                                    0, 0, 2,
                                     Prepare.EvmCode
                                         .MUL(3, 23)
                                         .STOP()
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
                             },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
-                    Result = (StatusCode.Failure, "Mono-Section with incorrect output count"),
+                    Result = (StatusCode.Success, "Mono-Section with incorrect output count"),
                 };
 
                 yield return new TestCase(2)

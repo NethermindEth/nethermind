@@ -654,14 +654,17 @@ public class EvmObjectFormat
                             {
                                 if (opcode.IsTerminating(_releaseSpec))
                                 {
-                                    var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1] : 0;
-                                    if (expectedHeight != stackHeight)
+                                    if(opcode is Instruction.RETF)
                                     {
-                                        if (_loggingEnabled)
+                                        var expectedHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1];
+                                        if (expectedHeight != stackHeight)
                                         {
-                                            _logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                                            if (_loggingEnabled)
+                                            {
+                                                _logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                                            }
+                                            header = null; return false;
                                         }
-                                        header = null; return false;
                                     }
                                     stop = true;
                                 }
