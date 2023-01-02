@@ -53,7 +53,7 @@ namespace Nethermind.Cli.Console
                 else
                 {
                     ReadLine.AddHistory(_removedString);
-                    _historyCloned.Insert(0, statement);
+                    _historyCloned.Insert(0, _removedString);
                 }
 
                 File.WriteAllLines(HistoryFilePath, _historyCloned.Distinct().Reverse().ToArray());
