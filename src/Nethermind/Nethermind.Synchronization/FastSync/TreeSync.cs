@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.FastSync
                     bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
                     {
-                        _hintsToResetRoot++;
+                        Interlocked.Increment(ref _hintsToResetRoot);
 
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
@@ -319,7 +319,6 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
-                    _handleWatch += handleWatch.ElapsedMilliseconds;
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler =
                         (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) +
