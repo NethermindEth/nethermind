@@ -181,7 +181,7 @@ namespace Nethermind.Merge.Plugin
             }
             else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
             {
-                isPostMerge = header.Difficulty == 0;
+                isPostMerge = header.Difficulty == 0 && !header.IsGenesis;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD
             }
             else
