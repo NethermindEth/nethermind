@@ -104,7 +104,7 @@ public class InvalidBlockInterceptor : IBlockValidator
         if (ShouldNotTrackInvalidation(block.Header)) return true;
 
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
-        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak ignored)) return true;
+        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _)) return true;
         if (!BlockValidator.ValidateUnclesHashMatches(block)) return true;
         return false;
     }
