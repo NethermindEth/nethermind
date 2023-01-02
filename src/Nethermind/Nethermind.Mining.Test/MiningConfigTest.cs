@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Exceptions;
 using NUnit.Framework;

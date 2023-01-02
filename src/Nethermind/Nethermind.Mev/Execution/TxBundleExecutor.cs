@@ -59,7 +59,7 @@ namespace Nethermind.Mev.Execution
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
             };
 
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
             header.Hash = header.CalculateHash();
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());

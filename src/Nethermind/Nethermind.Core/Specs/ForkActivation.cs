@@ -21,7 +21,7 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
         timestamp = Timestamp;
     }
 
-    public static implicit operator ForkActivation(long blockNumber) => new(blockNumber);
+    public static explicit operator ForkActivation(long blockNumber) => new(blockNumber);
 
     public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) forkActivation)
         => new(forkActivation.blocknumber, forkActivation.timestamp);

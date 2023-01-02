@@ -17,7 +17,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            _theMergeBlock = blockNumber;
+            _theMergeBlock = (ForkActivation)blockNumber;
         if (terminalTotalDifficulty is not null)
             _terminalTotalDifficulty = terminalTotalDifficulty;
     }
@@ -33,7 +33,7 @@ public class SepoliaSpecProvider : ISpecProvider
 
     public ulong ChainId => Core.ChainId.Rinkeby;
 
-    public ForkActivation[] TransitionBlocks { get; } = { 1735371 };
+    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371 };
 
     private SepoliaSpecProvider() { }
 

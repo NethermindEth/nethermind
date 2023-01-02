@@ -285,7 +285,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public static ISpecProvider GetSpecProviderWithEip1559EnabledAs(bool isEip1559) =>
-            new CustomSpecProvider((0, isEip1559 ? London.Instance : Berlin.Instance));
+            new CustomSpecProvider(((ForkActivation)0, isEip1559 ? London.Instance : Berlin.Instance));
 
         [Test]
         public void GetGasPricesFromRecentBlocks_IfNoValidTxsInABlock_DefaultPriceAddedToListInstead()

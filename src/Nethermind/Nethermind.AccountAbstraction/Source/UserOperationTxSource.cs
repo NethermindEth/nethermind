@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.AccountAbstraction.Source
 {
@@ -164,7 +165,7 @@ namespace Nethermind.AccountAbstraction.Source
                         parent,
                         totalGasUsed,
                         initialNonce,
-                        _specProvider.GetSpec(parent.Number + 1));
+                        _specProvider.GetSpecFor1559(parent.Number + 1));
                 if (_logger.IsDebug)
                     _logger.Debug($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
                 // TODO: Remove logging, just for testing
@@ -191,7 +192,7 @@ namespace Nethermind.AccountAbstraction.Source
                         parent,
                         callOutput.GasSpent + 200000,
                         initialNonce + txsBuilt,
-                        _specProvider.GetSpec(parent.Number + 1));
+                        _specProvider.GetSpecFor1559(parent.Number + 1));
 
                 txsBuilt++;
                 yield return updatedUserOperationTransaction;

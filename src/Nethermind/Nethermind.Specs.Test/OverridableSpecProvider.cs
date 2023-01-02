@@ -36,6 +36,6 @@ namespace Nethermind.Specs.Test
 
         public ulong ChainId => _specProvider.ChainId;
 
-        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
     }
 }

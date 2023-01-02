@@ -3,6 +3,7 @@
 
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -26,7 +27,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(terminalBlockNumber + 1, provider.MergeBlockNumber?.BlockNumber);
-        Assert.AreEqual(0, provider.TransitionBlocks.Length); // merge block number shouldn't affect transition blocks
+        Assert.AreEqual(0, provider.TransitionActivations.Length); // merge block number shouldn't affect transition blocks
     }
 
     [Test]
@@ -41,9 +42,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         Assert.AreEqual((UInt256)10, chainSpec.TerminalTotalDifficulty);
         Assert.AreEqual(72, chainSpec.MergeForkIdBlockNumber);
 
-        Assert.True(provider.TransitionBlocks.ToList().Contains(72)); // MergeForkIdBlockNumber should affect transition blocks
-        Assert.False(provider.TransitionBlocks.ToList().Contains(100)); // merge block number shouldn't affect transition blocks
-        Assert.False(provider.TransitionBlocks.ToList().Contains(101)); // merge block number shouldn't affect transition blocks
+        Assert.True(provider.TransitionActivations.ToList().Contains((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+        Assert.False(provider.TransitionActivations.ToList().Contains((ForkActivation)100)); // merge block number shouldn't affect transition blocks
+        Assert.False(provider.TransitionActivations.ToList().Contains((ForkActivation)101)); // merge block number shouldn't affect transition blocks
     }
 
     [Test]
@@ -56,7 +57,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(null, provider.MergeBlockNumber);
-        Assert.AreEqual(0, provider.TransitionBlocks.Length);
+        Assert.AreEqual(0, provider.TransitionActivations.Length);
     }
 
     [Test]
