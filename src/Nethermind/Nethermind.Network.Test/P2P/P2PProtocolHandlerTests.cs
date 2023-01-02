@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -24,15 +26,28 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
-            _serializer = Substitute.For<IMessageSerializationService>();
+            _serializer = new MessageSerializationService();
+            _serializer.Register(new HelloMessageSerializer());
+            _serializer.Register(new PingMessageSerializer());
         }
 
         private ISession _session;
         private IMessageSerializationService _serializer;
+        private Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket(P2PMessage message)
+        private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
             return new(message.Protocol, message.PacketType, _serializer.Serialize(message));
+        }
+
+        private Packet CreateZeroPacket<T>(T message) where T : P2PMessage
+        {
+            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            });
         }
 
         private const int ListenPort = 8003;
@@ -40,13 +55,14 @@ namespace Nethermind.Network.Test.P2P
         private P2PProtocolHandler CreateSession()
         {
             _session.LocalPort.Returns(ListenPort);
-            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             _session.Node.Returns(node);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
+
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(timerFactory, LimboLogs.Instance),
+                _nodeStatsManager,
                 _serializer,
                 LimboLogs.Instance);
         }
@@ -73,10 +89,28 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public void On_hello_with_no_matching_capability()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
+
+            Packet message = CreatePacket(new HelloMessage()
+            {
+                Capabilities = new List<Capability>() { new Capability(Protocol.Eth, 63) },
+                NodeId = TestItem.PublicKeyA,
+            });
+
+            p2PProtocolHandler.HandleMessage(message);
+
+            _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
+            _session.Received(1).InitiateDisconnect(InitiateDisconnectReason.NoCapabilityMatched, Arg.Any<string>());
+        }
+
+        [Test]
         public void Pongs_to_ping()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
+            p2PProtocolHandler.HandleMessage(CreateZeroPacket(PingMessage.Instance));
             _session.Received(1).DeliverMessage(Arg.Any<PongMessage>());
         }
 
