@@ -521,14 +521,14 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peerInfo = new(syncPeer);
 
             CancellationTokenSource cancellation = new();
-            cancellation.CancelAfter(1000);
+            cancellation.CancelAfter(990);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "headers"));
 
             syncPeer.HeadNumber.Returns(2000);
             // peerInfo.HeadNumber *= 2;
             cancellation = new CancellationTokenSource();
-            cancellation.CancelAfter(1000);
+            cancellation.CancelAfter(990);
             task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "blocks"));
         }

@@ -513,6 +513,7 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test, Retry(3)]
+        [Parallelizable(ParallelScope.None)] // It touches global metrics
         public void Can_receive_messages()
         {
             Metrics.P2PBytesReceived = 0;
