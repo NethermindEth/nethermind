@@ -20,12 +20,16 @@ internal static class EvmObjectFormat
 
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
     private static byte[] MAGIC = { 0xEF, 0x00 };
+    private const byte ONE_BYTE_LENGTH = 1;
+    private const byte TWO_BYTE_LENGTH = 2;
+    private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
+
     private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
     internal static ILogger Logger { get; set; } = NullLogger.Instance;
 
     static EvmObjectFormat()
     {
-        _eofVersionHandlers.Add(0x01, new Eof1());
+        _eofVersionHandlers.Add(Eof1.VERSION, new Eof1());
     }
 
     /// <summary>
@@ -37,9 +41,9 @@ internal static class EvmObjectFormat
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, byte version)
     {
-        if (container.Length >= 7
-            && container[2] == version
-            && _eofVersionHandlers.TryGetValue(container[2], out IEofVersionHandler handler)
+        if (container.Length >= VERSION_OFFSET
+            && container[VERSION_OFFSET] == version
+            && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out EofHeader? header))
         {
             EofHeader h = header.Value;
@@ -51,8 +55,8 @@ internal static class EvmObjectFormat
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
-        if (container.Length >= 7
-            && _eofVersionHandlers.TryGetValue(container[2], out IEofVersionHandler handler)
+        if (container.Length >= VERSION_OFFSET
+            && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
         {
             EofHeader h = header.Value;
@@ -69,30 +73,22 @@ internal static class EvmObjectFormat
     public static bool TryExtractHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
     {
         header = null;
-        return container.Length >= 7
-               && _eofVersionHandlers.TryGetValue(container[2], out IEofVersionHandler handler)
+        return container.Length >= VERSION_OFFSET
+               && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
                && handler.TryParseEofHeader(container, out header);
     }
 
     private class Eof1 : IEofVersionHandler
     {
-        private const byte VERSION = 0x01;
+        public const byte VERSION = 0x01;
         private const byte KIND_TYPE = 0x01;
         private const byte KIND_CODE = 0x02;
         private const byte KIND_DATA = 0x03;
         private const byte TERMINATOR = 0x00;
 
-        private const byte VERSION_SIZE = 1;
-        private const byte SECTION_SIZE = 3;
-        private const byte TERMINATOR_SIZE = 1;
-
         private const byte MINIMUM_TYPESECTION_SIZE = 4;
         private const byte MINIMUM_CODESECTION_SIZE = 1;
 
-        private const byte ONE_BYTE_LENGTH = 1;
-        private const byte TWO_BYTE_LENGTH = 2;
-
-        private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
         private const byte KIND_TYPE_OFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH; // version length
         private const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + ONE_BYTE_LENGTH; // kind type length
         private const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + TWO_BYTE_LENGTH; // type size length
@@ -105,6 +101,12 @@ internal static class EvmObjectFormat
 
         private const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
         private const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
+
+        private const ushort MINIMUM_SIZE = TERMINATOR_OFFSET
+                                           + TWO_BYTE_LENGTH // one code size
+                                           + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                                           + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHeaderSize(int codeSections) =>
@@ -119,12 +121,7 @@ internal static class EvmObjectFormat
             header = null;
 
             // we need to be able to parse header + minimum section lenghts
-            int requiredSize = TERMINATOR_OFFSET
-                               + TWO_BYTE_LENGTH // one code size
-                               + MINIMUM_TYPESECTION_SIZE // minimum type section body size
-                               + MINIMUM_CODESECTION_SIZE; // minimum code section body size
-
-            if (container.Length < requiredSize)
+            if (container.Length < MINIMUM_SIZE)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
@@ -184,10 +181,10 @@ internal static class EvmObjectFormat
             int dynamicOffset = codeSizeLenght;
 
             // we need to be able to parse header + all code sizes
-            requiredSize = TERMINATOR_OFFSET
-                           + codeSizeLenght
-                           + MINIMUM_TYPESECTION_SIZE // minimum type section body size
-                           + MINIMUM_CODESECTION_SIZE; // minimum code section body size
+            int requiredSize = TERMINATOR_OFFSET
+                               + codeSizeLenght
+                               + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                               + MINIMUM_CODESECTION_SIZE; // minimum code section body size
 
             if (container.Length < requiredSize)
             {
