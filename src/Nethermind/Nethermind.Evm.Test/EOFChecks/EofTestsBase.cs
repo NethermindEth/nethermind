@@ -90,7 +90,10 @@ namespace Nethermind.Evm.Test
 
             CorruptInitCode = 1 << 4,
             CorruptDeployedCode = 1 << 5,
-            CorruptContainer = 1 << 6
+            CorruptContainer = 1 << 6,
+
+            ContainerInitcodeVersionMismatch = EofInitCode | EofContainer | 1 << 7,
+            InitcodeDeploycodeVersionMismatch = EofInitCode | EofDeployedCode | 1 << 8,
         }
 
         [Flags]
@@ -412,8 +415,8 @@ namespace Nethermind.Evm.Test
                 {
                     if (isEof)
                     {
-                        // corrupt EOF : wrong version
-                        arg[2] = 0;
+                        // corrupt EOF : wrong magic
+                        arg[1] = 0xFF;
                         return arg;
                     }
                     else
@@ -468,6 +471,17 @@ namespace Nethermind.Evm.Test
                         initcode = CorruptBytecode(hasEofInitCode, initcode);
                     }
 
+                    if (scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch))
+                    {
+                        initcode[2] = 01; deployed[2] = 02;
+                    }
+                    else
+                    {
+
+                        if (hasEofInitCode && hasEofCode)
+                            initcode[2] = deployed[2];
+                    }
+
                     // wrap initcode in container
                     byte[] result = ctx switch
                     {
@@ -499,6 +513,17 @@ namespace Nethermind.Evm.Test
                     {
                         result = CorruptBytecode(hasEofContainer, result);
                     }
+
+                    if (scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch))
+                    {
+                        initcode[2] = 02; result[2] = 01;
+                    }
+                    else
+                    {
+                        if (hasEofContainer && hasEofInitCode)
+                            result[2] = initcode[2];
+                    }
+
                     return result;
                 }
 
@@ -517,7 +542,7 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (!isValid ? StatusCode.Failure : StatusCode.Success, message),
+                    Result = (isValid ? StatusCode.Success : StatusCode.Failure, message),
                 };
             }
         }
