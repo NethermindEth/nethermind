@@ -124,7 +124,7 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            if (container[EOF_MAGIC.Length] != VERSION)
+            if (container[MAGIC.Length] != VERSION)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
@@ -148,7 +148,7 @@ internal static class EvmObjectFormat
 
             if (numberOfCodeSections > MAXIMUM_CODESECTIONS_COUNT)
             {
-                if (_loggerEnabled) _logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
                 return false;
             }
 
@@ -175,7 +175,7 @@ internal static class EvmObjectFormat
 
             if (typeSection.Size < MINIMUM_TYPESECTION_SIZE)
             {
-                if (Logger.IsTrace) _logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
                 return false;
             }
 
