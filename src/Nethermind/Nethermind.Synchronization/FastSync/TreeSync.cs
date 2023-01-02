@@ -59,7 +59,10 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly IBlockTree _blockTree;
 
-        private readonly ReaderWriterLockSlim _pendingRequestsLock = new();
+        // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
+        // below which need to be cleared atomically during reset root, hence the write lock, while allowing
+        // concurrent request handling with the read lock.
+        private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new();
         private LruKeyCache<Keccak> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
@@ -138,7 +141,7 @@ namespace Nethermind.Synchronization.FastSync
 
             try
             {
-                _pendingRequestsLock.EnterReadLock();
+                _syncStateLock.EnterReadLock();
                 try
                 {
                     if (!_pendingRequests.TryRemove(batch, out _))
@@ -315,6 +318,7 @@ namespace Nethermind.Synchronization.FastSync
                                 $"Handle watch {handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
+                    Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
                     _handleWatch += handleWatch.ElapsedMilliseconds;
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler =
@@ -326,7 +330,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 finally
                 {
-                    _pendingRequestsLock.ExitReadLock();
+                    _syncStateLock.ExitReadLock();
                 }
             }
             catch (Exception e)
@@ -416,7 +420,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRoot(long blockNumber, Keccak stateRoot, SyncFeedState currentState)
         {
-            _pendingRequestsLock.EnterWriteLock();
+            _syncStateLock.EnterWriteLock();
             try
             {
                 _lastResetRoot = DateTime.UtcNow;
@@ -482,7 +486,7 @@ namespace Nethermind.Synchronization.FastSync
             }
             finally
             {
-                _pendingRequestsLock.ExitWriteLock();
+                _syncStateLock.ExitWriteLock();
             }
         }
 
