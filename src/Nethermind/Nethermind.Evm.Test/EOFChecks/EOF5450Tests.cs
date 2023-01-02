@@ -77,6 +77,23 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .POP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "CodeSection ending in a non-terminating opcode"),
+                };
+
+                yield return new TestCase(1)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
                                     1, 0, 2,
                                     Prepare.EvmCode
                                         .MUL(3)
