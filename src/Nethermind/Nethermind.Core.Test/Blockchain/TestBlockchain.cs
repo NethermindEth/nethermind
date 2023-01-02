@@ -15,7 +15,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -122,9 +121,7 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
         byte[] code = Bytes.FromHexString("0xabcd");
-        Keccak codeHash = Keccak.Compute(code);
-        State.UpdateCode(code);
-        State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
+        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
         Storage = new StorageProvider(TrieStore, State, LogManager);
         Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));

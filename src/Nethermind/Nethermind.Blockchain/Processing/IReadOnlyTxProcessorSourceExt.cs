@@ -5,7 +5,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Processing;
 
-public interface IReadOnlyTxProcessorSourceExt: IReadOnlyTxProcessorSource
+public interface IReadOnlyTxProcessorSourceExt : IReadOnlyTxProcessorSource
 {
     public IBlockTree BlockTree { get; }
 }
