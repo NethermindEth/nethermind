@@ -27,10 +27,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
-            _forkInfo = new ForkInfo(specProvider ?? throw new ArgumentNullException(nameof(specProvider)), SyncServer.Genesis.Hash!);
+            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
         }
 
         public override string Name => "eth64";
