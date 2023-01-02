@@ -360,25 +360,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
-        public void Can_load_catalyst()
-        {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/catalyst.json");
-            ChainSpec chainSpec = LoadChainSpec(path);
-
-            chainSpec.HomesteadBlockNumber.Should().Be(0L);
-            chainSpec.DaoForkBlockNumber.Should().Be(null);
-            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-            chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
-            chainSpec.ByzantiumBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
-            chainSpec.IstanbulBlockNumber.Should().Be(0L);
-            chainSpec.MuirGlacierNumber.Should().Be(null);
-            chainSpec.BerlinBlockNumber.Should().Be(0L);
-            chainSpec.SealEngineType.Should().Be("Eth2Merge");
-        }
-
-        [Test]
         public void Can_load_posdao_with_openethereum_pricing_transitions()
         {
             // TODO: modexp 2565

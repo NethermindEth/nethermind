@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -75,6 +77,24 @@ public class InvalidBlockInterceptorTest
     {
         Block block = Build.A.Block.TestObject;
         block.Header.StateRoot = Keccak.Zero;
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
+    }
+
+    [Test]
+    public void TestBlockWithNotMatchingTxShouldNotGetTracked()
+    {
+        Block block = Build.A.Block
+            .WithTransactions(10, MainnetSpecProvider.Instance)
+            .TestObject;
+
+        block = new Block(block.Header, block.Body.WithChangedTransactions(
+            block.Transactions.Take(9).ToArray()
+        ));
 
         _baseValidator.ValidateSuggestedBlock(block).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block);
