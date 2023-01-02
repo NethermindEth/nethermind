@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;

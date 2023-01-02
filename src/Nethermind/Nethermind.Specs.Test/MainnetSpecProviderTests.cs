@@ -17,11 +17,11 @@ namespace Nethermind.Specs.Test
         [TestCase(12_244_000, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
-            _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);
-            _specProvider.GetSpec(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2315Enabled.Should().Be(false);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled.Should().Be(false);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
 
         [TestCase(12_964_999, false)]
@@ -29,14 +29,14 @@ namespace Nethermind.Specs.Test
         public void London_eips(long blockNumber, bool isEnabled)
         {
             if (isEnabled)
-                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
+                _specProvider.GetSpec((ForkActivation)blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
             else
-                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
+                _specProvider.GetSpec((ForkActivation)blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
 
-            _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
-            _specProvider.GetSpec(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
 
         [Test]

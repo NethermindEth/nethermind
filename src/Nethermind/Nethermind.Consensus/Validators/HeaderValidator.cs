@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec(header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(header);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
             if (parent is null)
             {

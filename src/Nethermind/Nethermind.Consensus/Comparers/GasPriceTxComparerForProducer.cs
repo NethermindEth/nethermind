@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Comparers
@@ -22,7 +23,7 @@ namespace Nethermind.Consensus.Comparers
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpecFor1559(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
             return GasPriceTxComparerHelper.Compare(x, y, _blockPreparationContext.BaseFee, isEip1559Enabled);
         }
     }

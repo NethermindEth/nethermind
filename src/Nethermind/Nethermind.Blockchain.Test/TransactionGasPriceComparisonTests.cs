@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -143,18 +144,20 @@ namespace Nethermind.Blockchain.Test
 
         private class TestingContext
         {
-            private IBlockTree _blockTree;
-            private ITransactionComparerProvider _transactionComparerProvider;
-            private long blockNumber;
-            private UInt256 baseFee;
+            private readonly IBlockTree _blockTree;
+            private readonly ITransactionComparerProvider _transactionComparerProvider;
+            private long _blockNumber;
+            private UInt256 _baseFee;
 
             public TestingContext(bool isEip1559Enabled = false, long eip1559TransitionBlock = 0)
             {
                 ReleaseSpec releaseSpec = new();
                 ReleaseSpec eip1559ReleaseSpec = new() { IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock };
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<ForkActivation>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
-                specProvider.GetSpec(Arg.Is<ForkActivation>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
+                specProvider.GetSpecFor1559(Arg.Is<long>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
+                specProvider.GetSpecFor1559(Arg.Is<long>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
+                specProvider.GetSpec(Arg.Is<BlockHeader>(x => x.Number >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
+                specProvider.GetSpec(Arg.Is<BlockHeader>(x => x.Number < eip1559TransitionBlock)).Returns(releaseSpec);
                 _blockTree = Substitute.For<IBlockTree>();
                 UpdateBlockTreeHead();
                 _transactionComparerProvider =
@@ -170,14 +173,14 @@ namespace Nethermind.Blockchain.Test
 
             public TestingContext WithHeadBlockNumber(long headBlockNumber)
             {
-                blockNumber = headBlockNumber;
+                _blockNumber = headBlockNumber;
                 UpdateBlockTreeHead();
                 return this;
             }
 
             public TestingContext WithHeadBaseFeeNumber(UInt256 headBaseFee)
             {
-                baseFee = headBaseFee;
+                _baseFee = headBaseFee;
                 UpdateBlockTreeHead();
                 return this;
             }
@@ -185,8 +188,8 @@ namespace Nethermind.Blockchain.Test
             private void UpdateBlockTreeHead()
             {
                 Block block = Build.A.Block
-                    .WithNumber(blockNumber)
-                    .WithBaseFeePerGas(baseFee).TestObject;
+                    .WithNumber(_blockNumber)
+                    .WithBaseFeePerGas(_baseFee).TestObject;
                 _blockTree.Head.Returns(block);
             }
         }

@@ -186,7 +186,7 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                bool theMergeEnabled = header.Number >= _specProvider.MergeBlockNumber;
+                bool theMergeEnabled = (ForkActivation)header.Number >= _specProvider.MergeBlockNumber;
                 if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled) // if transition finished or we know terminalBlock from config we can decide by blockNumber
                 {
                     isPostMerge = true;
