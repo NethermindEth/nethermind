@@ -18,7 +18,7 @@ public static class ConfigExtensions
         Type interfaceType = type.GetInterface($"I{type.Name}");
         PropertyInfo propertyInfo = interfaceType.GetProperty(propertyName);
         ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-        var defaultValue = attribute.DefaultValue;
+        string defaultValue = attribute.DefaultValue;
         return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue);
     }
 }

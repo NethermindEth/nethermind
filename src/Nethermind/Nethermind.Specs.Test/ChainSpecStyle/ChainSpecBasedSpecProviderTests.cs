@@ -107,7 +107,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
         [Test]
         [NonParallelizable]
-
         public void Logs_warning_when_timestampActivation_happens_before_blockActivation()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
