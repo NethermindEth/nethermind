@@ -25,6 +25,7 @@ jobs:
       BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
       COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
       PACKAGE_PREFIX: ${{ steps.archive.outputs.PACKAGE_PREFIX }}
+      PRERELEASE: ${{ contains(github.event.inputs.tag, '-') }}
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
@@ -90,6 +91,7 @@ jobs:
     name: Update Homebrew to the latest version
     runs-on: ubuntu-latest
     needs: build
+    if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -157,12 +159,14 @@ jobs:
         GIT_TAG: ${{ github.event.inputs.tag }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
+        PRERELEASE: ${{ needs.build.outputs.PRERELEASE }}
       run: $SCRIPTS_PATH/publish-github.sh
 
   publish-downloads:
     name: Publish packages to Downloads page
     runs-on: ubuntu-latest
     needs: trigger-publish
+    if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -205,12 +209,12 @@ jobs:
       run: |
         echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
     - name: Build and push image to Docker registry (major) / trigger DAppNode build
-      if: ${{ !contains(github.event.inputs.tag, '-') }}
+      if: needs.build.outputs.PRERELEASE == 'false'
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
         curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
     - name: Build and push image to Docker registry  (patch)
-      if: ${{ contains(github.event.inputs.tag, '-') }}
+      if: needs.build.outputs.PRERELEASE == 'true'
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
@@ -222,6 +226,7 @@ jobs:
     name: Publish Nethermind to PPA repository
     runs-on: ubuntu-latest
     needs: trigger-publish
+    if: needs.build.outputs.PRERELEASE == 'false'
     env:
       PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
       VERSION: ${{ github.event.inputs.tag }}
