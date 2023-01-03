@@ -20,7 +20,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -50,11 +50,11 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 5_062_605;
         public ulong ChainId => Core.ChainId.Goerli;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            IstanbulBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber
         };
     }
 }

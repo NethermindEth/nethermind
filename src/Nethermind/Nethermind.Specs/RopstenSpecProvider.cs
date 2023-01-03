@@ -16,7 +16,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -50,16 +50,16 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 10_499_401;
 
         public ulong ChainId => Core.ChainId.Ropsten;
-        public ForkActivation[] TransitionBlocks => new ForkActivation[]
+        public ForkActivation[] TransitionActivations => new ForkActivation[]
         {
-            SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber,
-            ConstantinopleBlockNumber,
-            ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber,
-            MuirGlacierBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber
+            (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber,
+            (ForkActivation)ConstantinopleBlockNumber,
+            (ForkActivation)ConstantinopleFixBlockNumber,
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)MuirGlacierBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber
         };
 
         public RopstenSpecProvider() { }

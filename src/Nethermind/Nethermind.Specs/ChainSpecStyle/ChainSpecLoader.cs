@@ -134,6 +134,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
                 Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
                 Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
+                Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
+                Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
+                Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
                 Eip3540TransitionTimestamp = chainSpecJson.Params.Eip3540TransitionTimestamp,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
@@ -211,7 +214,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
                 : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip1153TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (long.MaxValue - 1);
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
