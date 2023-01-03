@@ -31,8 +31,6 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 3. To run the launcher: `nethermind`
 4. To run the runner: `nethermind -c mainnet`
 
-_Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
-
 #### Using Homebrew
 
 1. `brew tap nethermindeth/nethermind`
@@ -69,7 +67,7 @@ The output must show the image digest, and then you can copy that output to the 
 -   Install dependencies:
 
     ```sh
-    brew install rocksdb gmp snappy lz4 zstd
+    brew install gmp snappy lz4 zstd
     ```
 
 #### Ubuntu
@@ -87,8 +85,6 @@ The output must show the image digest, and then you can copy that output to the 
     sudo apt-get install libgflags-dev
     ```
 
-_Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10_
-
 #### Debian
 
 -   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-debian)
@@ -97,8 +93,6 @@ _Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10_
     ```sh
     sudo apt-get install libsnappy-dev libc6-dev libc6
     ```
-
-_Tested on Debian 10 (9 not working)_
 
 #### CentOS
 
@@ -112,8 +106,6 @@ _Tested on Debian 10 (9 not working)_
     sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
     ```
 
-_Tested on CentOS 8_
-
 #### Fedora
 
 -   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-fedora)
@@ -125,8 +117,6 @@ _Tested on CentOS 8_
     # Link libraries
     sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
     ```
-
-_Tested on Fedora 32_
 
 ### Build and run
 

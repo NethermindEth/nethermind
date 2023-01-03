@@ -1,24 +1,24 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
         private byte[]? _codeBitmap;
-        public byte[] MachineCode { get; set; }
-        public CodeDataAnalyzer(byte[] code)
+        private ReadOnlyMemory<byte> MachineCode { get; }
+
+        public CodeDataAnalyzer(ReadOnlyMemory<byte> code)
         {
             MachineCode = code;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
+            ReadOnlySpan<byte> machineCode = MachineCode.Span;
+            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(machineCode);
 
             if (destination < 0 || destination >= MachineCode.Length)
             {
@@ -32,29 +32,29 @@ namespace Nethermind.Evm.CodeAnalysis
 
             if (isSubroutine)
             {
-                return MachineCode[destination] == 0x5c;
+                return machineCode[destination] == 0x5c;
             }
 
-            return MachineCode[destination] == 0x5b;
+            return machineCode[destination] == 0x5b;
         }
     }
 
     public static class CodeDataAnalyzerHelper
     {
-        private const UInt16 Set2BitsMask = 0b1100_0000_0000_0000;
-        private const UInt16 Set3BitsMask = 0b1110_0000_0000_0000;
-        private const UInt16 Set4BitsMask = 0b1111_0000_0000_0000;
-        private const UInt16 Set5BitsMask = 0b1111_1000_0000_0000;
-        private const UInt16 Set6BitsMask = 0b1111_1100_0000_0000;
-        private const UInt16 Set7BitsMask = 0b1111_1110_0000_0000;
+        private const ushort Set2BitsMask = 0b1100_0000_0000_0000;
+        private const ushort Set3BitsMask = 0b1110_0000_0000_0000;
+        private const ushort Set4BitsMask = 0b1111_0000_0000_0000;
+        private const ushort Set5BitsMask = 0b1111_1000_0000_0000;
+        private const ushort Set6BitsMask = 0b1111_1100_0000_0000;
+        private const ushort Set7BitsMask = 0b1111_1110_0000_0000;
 
-        private static readonly byte[] _lookup = new byte[8] { 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1, };
+        private static readonly byte[] _lookup = { 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1 };
 
         /// <summary>
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code)
+        public static byte[] CreateCodeBitmap(ReadOnlySpan<byte> code)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the

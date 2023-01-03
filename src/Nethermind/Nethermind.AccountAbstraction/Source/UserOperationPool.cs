@@ -253,8 +253,8 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void UpdateCurrentBaseFee()
         {
-            IReleaseSpec spec = _specProvider.GetSpec(_blockTree.Head!.Number + 1);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, spec);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(_blockTree.Head!.Number + 1);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, specFor1559);
             _currentBaseFee = baseFee;
         }
 

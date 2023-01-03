@@ -39,6 +39,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
+using Nethermind.Config;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -210,7 +211,7 @@ namespace Nethermind.AccountAbstraction.Test
                         entryPoint!,
                         SpecProvider);
                 }
-
+                BlocksConfig blocksConfig = new();
                 foreach (Address entryPoint in entryPointContractAddresses)
                 {
                     UserOperationSimulator[entryPoint] = new(
@@ -222,7 +223,8 @@ namespace Nethermind.AccountAbstraction.Test
                         WhitelistedPayamsters,
                         SpecProvider,
                         Timestamper,
-                        LogManager);
+                        LogManager,
+                        blocksConfig);
                 }
 
                 IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());

@@ -18,6 +18,7 @@ using Nethermind.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
 {
