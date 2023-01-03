@@ -26,6 +26,7 @@ public class StatementHistoryManagerTests
         _file = Substitute.For<IFile>();
         _fileSystem.File.Returns(_file);
         _historyManager = new(_console, _fileSystem);
+        ReadLine.ClearHistory();
     }
 
 
