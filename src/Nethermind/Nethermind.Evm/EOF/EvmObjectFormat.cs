@@ -428,7 +428,7 @@ public class EvmObjectFormat
                             return false;
                         }
 
-                        if (i + count * IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                        if (i + 1 + count * IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
                         {
                             if (_loggingEnabled)
                             {
