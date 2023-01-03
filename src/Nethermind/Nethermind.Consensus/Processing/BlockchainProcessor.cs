@@ -347,28 +347,28 @@ namespace Nethermind.Consensus.Processing
 
             Keccak stateRoot = null;
 
-            if (!suggestedBlock.IsGenesis)
-            {
-                var branchingPoint = _blockTree.FindParentHeader(suggestedBlock.Header,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                branchingPoint ??= suggestedBlock.Header; // Case it was root
-                stateRoot = branchingPoint?.StateRoot;
-            }
+            //if (!suggestedBlock.IsGenesis)
+            //{
+            //    var branchingPoint = _blockTree.FindParentHeader(suggestedBlock.Header,
+            //        BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            //    branchingPoint ??= suggestedBlock.Header; // Case it was root
+            //    stateRoot = branchingPoint?.StateRoot;
+            //}
 
             ProcessingBranch processingBranch = new ProcessingBranch(stateRoot, new List<Block>(){});
 
             //TODO: test unit tests for no PrepareProcessingBranch in case of ForceProcessing flag!
-            if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
-            {
-                processingBranch.Blocks.Clear();
-                processingBranch.BlocksToProcess.Add(suggestedBlock);
-                _recoveryStep.RecoverData(suggestedBlock);
-            }
-            else
-            {
+            //if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
+            //{
+            //    processingBranch.Blocks.Clear();
+            //   processingBranch.BlocksToProcess.Add(suggestedBlock);
+            //    _recoveryStep.RecoverData(suggestedBlock);
+            //}
+            //else
+            //{
                 processingBranch = PrepareProcessingBranch(suggestedBlock, options);
                 PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-            }
+           // }
 
             _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
@@ -565,7 +565,7 @@ namespace Nethermind.Consensus.Processing
             do
             {
                 iterations++;
-                if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
+                if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
                 }
@@ -642,7 +642,8 @@ namespace Nethermind.Consensus.Processing
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-                bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+                bool notReachedTheReorgBoundary = (options & ProcessingOptions.Trace) == ProcessingOptions.Trace
+                && ( branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
