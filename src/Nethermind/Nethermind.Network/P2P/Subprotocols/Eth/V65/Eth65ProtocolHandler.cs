@@ -34,9 +34,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, forkInfo, logManager)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }

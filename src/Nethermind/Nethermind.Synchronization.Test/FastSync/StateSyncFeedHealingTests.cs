@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,9 +31,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
@@ -137,10 +138,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 startingHashIndex += 1000;
             }
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-
             dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 9);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
