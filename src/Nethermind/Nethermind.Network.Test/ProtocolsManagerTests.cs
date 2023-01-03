@@ -107,7 +107,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    MainnetSpecProvider.Instance,
+                    new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!),
                     _gossipPolicy,
                     LimboLogs.Instance);
 

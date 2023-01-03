@@ -9,6 +9,7 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
 {
     public long BlockNumber { get; }
     public ulong? Timestamp { get; }
+    public ulong Activation => Timestamp ?? (ulong)BlockNumber;
 
     public ForkActivation(long blockNumber, ulong? timestamp = null)
     {
