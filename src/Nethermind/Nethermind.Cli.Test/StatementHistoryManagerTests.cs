@@ -38,23 +38,23 @@ public class StatementHistoryManagerTests
 
         _historyManager.UpdateHistory("notSecured");
 
-        CollectionAssert.AreEqual(new []{"notSecured"}, fileContents);
-        CollectionAssert.AreEqual(new []{"notSecured"}, ReadLine.GetHistory());
+        CollectionAssert.AreEqual(new[] { "notSecured" }, fileContents);
+        CollectionAssert.AreEqual(new[] { "notSecured" }, ReadLine.GetHistory());
 
         _historyManager.UpdateHistory("unlockAccount");
 
-        CollectionAssert.AreEqual(new []{"notSecured"}, fileContents);
-        CollectionAssert.AreEqual(new []{"notSecured", "*removed*"}, ReadLine.GetHistory());
+        CollectionAssert.AreEqual(new[] { "notSecured" }, fileContents);
+        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*" }, ReadLine.GetHistory());
 
         _historyManager.UpdateHistory("notSecured2");
 
-        CollectionAssert.AreEqual(new []{"notSecured", "notSecured2"}, fileContents);
-        CollectionAssert.AreEqual(new []{"notSecured", "*removed*", "notSecured2"}, ReadLine.GetHistory());
+        CollectionAssert.AreEqual(new[] { "notSecured", "notSecured2" }, fileContents);
+        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*", "notSecured2" }, ReadLine.GetHistory());
 
         _historyManager.UpdateHistory("newAccount");
 
-        CollectionAssert.AreEqual(new []{"notSecured", "notSecured2"}, fileContents);
-        CollectionAssert.AreEqual(new []{"notSecured", "*removed*", "notSecured2", "*removed*"}, ReadLine.GetHistory());
+        CollectionAssert.AreEqual(new[] { "notSecured", "notSecured2" }, fileContents);
+        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*", "notSecured2", "*removed*" }, ReadLine.GetHistory());
     }
 
     [Test]
@@ -62,7 +62,7 @@ public class StatementHistoryManagerTests
     {
         _file.Exists(Arg.Any<string>()).Returns(true);
 
-        List<string> fileContents = new(){"ab", "cd", "efg"};
+        List<string> fileContents = new(){ "ab", "cd", "efg" };
         _file.ReadLines(Arg.Any<string>()).Returns(fileContents);
 
         _historyManager.Init();
