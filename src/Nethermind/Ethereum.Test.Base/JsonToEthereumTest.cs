@@ -1,20 +1,5 @@
-/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -40,8 +25,15 @@ namespace Ethereum.Test.Base
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
+            network = network.Replace("Merged", "GrayGlacier");
             network = network.Replace("Merge", "GrayGlacier");
             network = network.Replace("London+3540+3670", "Shanghai");
+            network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
+            network = network.Replace("GrayGlacier+3860", "Shanghai");
+            network = network.Replace("GrayGlacier+3855", "Shanghai");
+            network = network.Replace("Merge+3540+3670", "Shanghai");
+            network = network.Replace("Shanghai+3855", "Shanghai");
+            network = network.Replace("Shanghai+3860", "Shanghai");
             return network switch
             {
                 "Frontier" => Frontier.Instance,
@@ -164,12 +156,14 @@ namespace Ethereum.Test.Base
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new();
-            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUInt256();
-            state.Code = Bytes.FromHexString(accountStateJson.Code);
-            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
-            state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Bytes.FromHexString(p.Key).ToUInt256(),
-                p => Bytes.FromHexString(p.Value));
+            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
+            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
+            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
+            state.Storage = accountStateJson.Storage is not null
+                ? accountStateJson.Storage.ToDictionary(
+                    p => Bytes.FromHexString(p.Key).ToUInt256(),
+                    p => Bytes.FromHexString(p.Value))
+                : new();
             return state;
         }
 

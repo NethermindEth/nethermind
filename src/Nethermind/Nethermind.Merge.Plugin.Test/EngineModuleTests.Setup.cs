@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -31,7 +18,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -40,14 +26,13 @@ using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using NLog.Fluent;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -75,6 +60,9 @@ namespace Nethermind.Merge.Plugin.Test
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new GetPayloadV2Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
                 new NewPayloadV1Handler(
@@ -106,7 +94,8 @@ namespace Nethermind.Merge.Plugin.Test
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
-                new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
+                new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
+                new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }
@@ -157,15 +146,15 @@ namespace Nethermind.Merge.Plugin.Test
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
                 IBlockProducer preMergeBlockProducer =
                     base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
-                MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
-                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+                BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
+                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
                 ISyncConfig syncConfig = new SyncConfig();
                 EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
                 PostMergeBlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,
                     Timestamper,
-                    miningConfig,
+                    blocksConfig,
                     LogManager,
                     targetAdjustedGasLimitCalculator);
 
@@ -180,7 +169,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager);
 
 

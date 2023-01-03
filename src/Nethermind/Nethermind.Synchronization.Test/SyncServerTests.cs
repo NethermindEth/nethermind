@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -502,10 +489,49 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
             await Task.Delay(100); // notifications fire on separate task
             await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
             remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
             remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
+        }
+
+        [Test]
+        public async Task Skip_known_block()
+        {
+            Context ctx = new();
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                blockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock1 = new(blockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+            PeerInfo peer1 = new(syncPeerMock1);
+            ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock2 = new(blockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2);
+            PeerInfo peer2 = new(syncPeerMock2);
+            PeerInfo[] peers = { peer1, peer2 };
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            Block head = blockTree.Head!;
+            ctx.SyncServer.AddNewBlock(head, peer1.SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
+            remoteServer1.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            remoteServer2.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            blockTree.FindLevel(head.Number)!.BlockInfos.Length.Should().Be(1);
         }
 
         [Test]

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -65,7 +52,7 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateSuggestedBlock(Block block)
         {
             Transaction[] txs = block.Transactions;
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
             for (int i = 0; i < txs.Length; i++)
             {
@@ -82,7 +69,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (block.Header.UnclesHash != UnclesHash.Calculate(block))
+            if (!ValidateUnclesHashMatches(block))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
@@ -101,8 +88,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            Keccak txRoot = new TxTrie(block.Transactions).RootHash;
-            if (txRoot != block.Header.TxRoot)
+            if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");
                 return false;
@@ -157,6 +143,17 @@ namespace Nethermind.Consensus.Validators
             }
 
             return isValid;
+        }
+
+        public static bool ValidateTxRootMatchesTxs(Block block, out Keccak txRoot)
+        {
+            txRoot = new TxTrie(block.Transactions).RootHash;
+            return txRoot == block.Header.TxRoot;
+        }
+
+        public static bool ValidateUnclesHashMatches(Block block)
+        {
+            return block.Header.UnclesHash == UnclesHash.Calculate(block);
         }
     }
 }

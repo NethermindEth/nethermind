@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 import json
 import subprocess
 import emoji
@@ -58,6 +61,11 @@ configs = {
     },
     "volta": {
         "url": "https://volta-rpc.energyweb.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "exosama": {
+        "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },

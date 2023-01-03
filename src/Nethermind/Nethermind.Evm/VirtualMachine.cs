@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -119,10 +106,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            if (!(currentState.IsTopLevel && currentState.Env.Value == UInt256.Zero))
-                            {
-                                _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
-                            }
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
                         }
 
                         callResult = ExecutePrecompile(currentState, spec);
@@ -602,7 +586,7 @@ namespace Nethermind.Evm
         }
 
         [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -2369,16 +2353,7 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled && initCodeLength > spec.MaxInitCodeSize)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
                             long gasCost = GasCostOf.Create +
-                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                                 (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
 
                             if (!UpdateGas(gasCost, ref gasAvailable))
@@ -2388,6 +2363,25 @@ namespace Nethermind.Evm
                             }
 
                             UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
+
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled)
+                            {
+                                if (initCodeLength > spec.MaxInitCodeSize)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+                                else
+                                {
+                                    if (!UpdateGas(GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength), ref gasAvailable))
+                                    {
+                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                        return CallResult.OutOfGasException;
+                                    }
+                                }
+                            }
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                             if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients

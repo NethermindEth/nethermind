@@ -1,24 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -26,7 +12,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -297,7 +282,13 @@ namespace Nethermind.Consensus.Processing
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                        _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
+
+                        bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+                        if (!readOnlyChain)
+                        {
+                            _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+                        }
+
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
@@ -381,8 +372,8 @@ namespace Nethermind.Consensus.Processing
                 _blockTree.UpdateMainChain(processingBranch.Blocks, true);
             }
 
-            bool notReadOnlyChain = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            if (notReadOnlyChain)
+            bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            if (!readonlyChain)
             {
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
@@ -395,9 +386,9 @@ namespace Nethermind.Consensus.Processing
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
-            if (!notReadOnlyChain)
+            if (!readonlyChain)
             {
-                _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
+                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
             }
 
             return lastProcessed;

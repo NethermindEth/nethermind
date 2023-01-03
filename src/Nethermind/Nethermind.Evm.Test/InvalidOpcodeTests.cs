@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -67,92 +54,77 @@ namespace Nethermind.Evm.Test
                 new[] { Instruction.DELEGATECALL }).ToArray();
 
         private static readonly Instruction[] ByzantiumInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    new[]
-                    {
-                        Instruction.REVERT, Instruction.STATICCALL, Instruction.RETURNDATACOPY,
-                        Instruction.RETURNDATASIZE
-                    })).ToArray();
+            HomesteadInstructions.Union(
+                new[]
+                {
+                    Instruction.REVERT, Instruction.STATICCALL, Instruction.RETURNDATACOPY,
+                    Instruction.RETURNDATASIZE
+                }).ToArray();
 
         private static readonly Instruction[] ConstantinopleFixInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        new[]
-                        {
-                            Instruction.CREATE2, Instruction.EXTCODEHASH, Instruction.SHL, Instruction.SHR,
-                            Instruction.SAR
-                        }))).ToArray();
+            ByzantiumInstructions.Union(
+                new[]
+                {
+                    Instruction.CREATE2, Instruction.EXTCODEHASH, Instruction.SHL, Instruction.SHR,
+                    Instruction.SAR
+                }).ToArray();
 
         private static readonly Instruction[] IstanbulInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            new[] { Instruction.SELFBALANCE, Instruction.CHAINID })))).ToArray();
+            ConstantinopleFixInstructions.Union(
+                new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
         private static readonly Instruction[] BerlinInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                // new[]
-                                // {
-                                //     Instruction.BEGINSUB,
-                                //     Instruction.JUMPSUB,
-                                //     Instruction.RETURNSUB
-                                // }
-                                new Instruction[] { }
-                            ))))).ToArray();
+            IstanbulInstructions.Union(
+                // new[]
+                // {
+                //     Instruction.BEGINSUB,
+                //     Instruction.JUMPSUB,
+                //     Instruction.RETURNSUB
+                // }
+                new Instruction[] { }
+            ).ToArray();
 
         private static readonly Instruction[] LondonInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                BerlinInstructions.Union(
-                                new Instruction[]
-                                    {
-                                        Instruction.BASEFEE
-                                    }
-                                )
-                            ))))).ToArray();
+            BerlinInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.BASEFEE
+                }
+            ).ToArray();
 
         private static readonly Instruction[] ShanghaiInstructions =
-            FrontierInstructions.Union(
-                HomesteadInstructions.Union(
-                    ByzantiumInstructions.Union(
-                        ConstantinopleFixInstructions.Union(
-                            IstanbulInstructions.Union(
-                                BerlinInstructions.Union(
-                                    LondonInstructions.Union(
-                                    new Instruction[]
-                                        {
-                                            Instruction.TLOAD,
-                                            Instruction.TSTORE,
-                                            Instruction.PUSH0
-                                        }
-                                    )
-                            )))))).ToArray();
+            LondonInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.PUSH0
+                }
+            ).ToArray();
+
+        private static readonly Instruction[] CancunInstructions =
+            ShanghaiInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.TSTORE,
+                    Instruction.TLOAD
+                }
+            ).ToArray();
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
-                { 0, FrontierInstructions },
-                { MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions },
-                { MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions },
-                { MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions },
-                { MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions },
-                { MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions },
-                { MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions },
-                { MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions },
-                { MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions },
-                { MainnetSpecProvider.LondonBlockNumber, LondonInstructions },
-                { MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions },
-                { (long.MaxValue, ulong.MaxValue), ShanghaiInstructions }
+                {(ForkActivation)0, FrontierInstructions},
+                {(ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
+                {(ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
+                {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
+                {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
+                {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
+                {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
+                {MainnetSpecProvider.CancunActivation, CancunInstructions},
+                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -176,6 +148,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {

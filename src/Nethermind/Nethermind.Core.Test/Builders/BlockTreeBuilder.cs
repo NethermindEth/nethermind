@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -30,10 +17,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Specs.Forks;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -137,8 +123,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block
@@ -153,7 +139,7 @@ namespace Nethermind.Core.Test.Builders
                 List<TxReceipt> receipts = new();
                 foreach (var transaction in currentBlock.Transactions)
                 {
-                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
+                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,
@@ -164,12 +150,12 @@ namespace Nethermind.Core.Test.Builders
                     };
 
                     receipts.Add(receipt);
-                    currentBlock.Bloom.Add(receipt.Logs);
+                    currentBlock.Bloom!.Add(receipt.Logs);
                 }
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Number), txReceipts).RootHash;
+                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Header), txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -245,7 +231,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static void ExtendTree(IBlockTree blockTree, long newChainLength)
         {
-            Block previous = blockTree.RetrieveHeadBlock();
+            Block previous = blockTree.RetrieveHeadBlock()!;
             long initialLength = previous.Number + 1;
             for (long i = initialLength; i < newChainLength; i++)
             {

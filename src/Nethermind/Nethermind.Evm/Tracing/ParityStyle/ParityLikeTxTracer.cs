@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -50,7 +37,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace = new ParityLikeTxTrace
             {
                 TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? (int?)null : Array.IndexOf(block.Transactions!, tx),
+                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
                 BlockNumber = block.Number,
                 BlockHash = block.Hash!
             };
@@ -89,6 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingStorage { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         private static string GetCallType(ExecutionType executionType)
         {
@@ -423,17 +411,20 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            ParityTraceAction action = new();
-            action.IsPrecompiled = isPrecompileCall;
-            action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
-            action.From = @from;
-            action.To = to;
-            action.Value = value;
-            action.Input = input.ToArray();
-            action.Gas = gas;
-            action.CallType = GetCallType(callType);
-            action.Type = GetActionType(callType);
-            action.CreationMethod = GetCreateMethod(callType);
+            ParityTraceAction action = new ParityTraceAction
+            {
+                IsPrecompiled = isPrecompileCall,
+                // ignore pre compile calls with Zero value that originates from contracts
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                From = from,
+                To = to,
+                Value = value,
+                Input = input.ToArray(),
+                Gas = gas,
+                CallType = GetCallType(callType),
+                Type = GetActionType(callType),
+                CreationMethod = GetCreateMethod(callType)
+            };
 
             if (_currentOperation is not null && callType.IsAnyCreate())
             {
@@ -530,6 +521,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         }
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
             throw new NotImplementedException();
         }

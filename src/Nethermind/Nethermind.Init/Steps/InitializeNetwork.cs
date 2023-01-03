@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -131,7 +118,9 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+        Network.Metrics.PeerLimit = maxPeersCount;
         SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
@@ -178,7 +167,7 @@ public class InitializeNetwork : IStep
 
         _api.DisposeStack.Push(_api.Synchronizer);
 
-        _api.SyncServer = new SyncServer(
+        ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!,
             _api.DbProvider.CodeDb,
             _api.BlockTree!,
@@ -194,8 +183,8 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             cht);
 
-        _ = _api.SyncServer.BuildCHT();
-        _api.DisposeStack.Push(_api.SyncServer);
+        _ = syncServer.BuildCHT();
+        _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -218,8 +207,9 @@ public class InitializeNetwork : IStep
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -493,7 +483,6 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
-            _networkConfig.LocalIp!,
             _networkConfig.P2PPort,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
@@ -518,9 +507,10 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
+        ISyncServer syncServer = _api.SyncServer!;
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
-            _api.SyncServer!,
+            syncServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,
@@ -529,7 +519,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            _api.SpecProvider!,
+            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
             _api.GossipPolicy,
             _api.LogManager);
 
@@ -556,8 +546,9 @@ public class InitializeNetwork : IStep
             _api.LogManager);
 
         string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
-        enrDiscovery.SearchTree($"all.{chainName}.ethdisco.net").ContinueWith(t =>
+        enrDiscovery.SearchTree(domain).ContinueWith(t =>
 #pragma warning restore CS4014
         {
             if (t.IsFaulted)

@@ -1,20 +1,6 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -29,7 +15,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -54,7 +40,8 @@ namespace Nethermind.Specs
                 { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
                 { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
                 { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
-                _ => Shanghai.Instance
+                { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
+                _ => Cancun.Instance
             };
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -81,16 +68,14 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
-            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber,
+            (ForkActivation)HomesteadBlockNumber, (ForkActivation)DaoBlockNumberConst, (ForkActivation)TangerineWhistleBlockNumber, (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber, (ForkActivation)ConstantinopleFixBlockNumber, (ForkActivation)IstanbulBlockNumber, (ForkActivation)MuirGlacierBlockNumber,
+            (ForkActivation)BerlinBlockNumber, (ForkActivation)LondonBlockNumber, (ForkActivation)ArrowGlacierBlockNumber, (ForkActivation)GrayGlacierBlockNumber,
             //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
             //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };
-
-        private MainnetSpecProvider() { }
 
         public static readonly MainnetSpecProvider Instance = new();
     }

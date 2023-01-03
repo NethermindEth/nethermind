@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -359,7 +346,6 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
         ulong timestamp = _timestamper.UnixTime.Seconds;
-        IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
         BlockHeader header = new(
             parentHeader.Hash,
@@ -400,7 +386,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         }
 
         // Set the correct difficulty
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header));
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
         header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
         if (_logger.IsDebug)

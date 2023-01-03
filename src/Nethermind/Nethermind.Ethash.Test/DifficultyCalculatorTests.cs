@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
@@ -22,6 +9,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 using NSubstitute;
+using Nethermind.Core;
 
 namespace Nethermind.Ethash.Test
 {
@@ -37,6 +25,8 @@ namespace Nethermind.Ethash.Test
             releaseSpec.IsEip100Enabled.Returns(true);
             releaseSpec.IsTimeAdjustmentPostOlympic.Returns(true);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).Returns(releaseSpec);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(releaseSpec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
@@ -48,6 +38,8 @@ namespace Nethermind.Ethash.Test
         public void CalculateOlympic_should_returns_expected_results()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).Returns(Olympic.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Olympic.Instance);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Olympic.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
@@ -58,6 +50,8 @@ namespace Nethermind.Ethash.Test
         public void CalculateBerlin_should_returns_expected_results()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).Returns(Berlin.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
@@ -98,14 +92,18 @@ namespace Nethermind.Ethash.Test
             long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)
         {
             UInt256 parentDifficulty = 0x55f78f7;
-            UInt256 parentTimestamp = 1613570258;
-            UInt256 currentTimestamp = 0x602d20d2;
+            ulong parentTimestamp = 1613570258;
+            ulong currentTimestamp = 0x602d20d2;
             ISpecProvider firstHardForkSpecProvider = Substitute.For<ISpecProvider>();
+            firstHardForkSpecProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).Returns(firstHardfork);
+            firstHardForkSpecProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(firstHardfork);
             firstHardForkSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(firstHardfork);
             EthashDifficultyCalculator firstHardforkDifficultyCalculator = new(firstHardForkSpecProvider);
             UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
 
             ISpecProvider secondHardforkSpecProvider = Substitute.For<ISpecProvider>();
+            secondHardforkSpecProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).Returns(secondHardfork);
+            secondHardforkSpecProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(secondHardfork);
             secondHardforkSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(secondHardfork);
             EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
             UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);

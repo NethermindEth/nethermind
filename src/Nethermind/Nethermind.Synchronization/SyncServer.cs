@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +49,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruKeyCache<Keccak> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<Keccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -180,12 +167,19 @@ namespace Nethermind.Synchronization
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
 
+            // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
             {
                 return;
             }
 
-            if (_recentlySuggested.Set(block.Hash))
+            // We skip already imported blocks
+            if (_blockTree.IsKnownBlock(block.Number, block.Hash))
+            {
+                return;
+            }
+
+            if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
             {
                 if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
@@ -383,7 +377,7 @@ namespace Nethermind.Synchronization
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
-                if (!_recentlySuggested.Get(hash) && !_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
@@ -448,7 +442,7 @@ namespace Nethermind.Synchronization
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                BroadcastBlock(block, true);
+                BroadcastBlock(block, true, _recentlySuggested.Get(block.Hash));
             }
         }
 

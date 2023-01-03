@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -117,7 +104,7 @@ namespace Nethermind.Synchronization.Peers
             ReportWeakPeer(peerInfo, allocationContexts);
         }
 
-        public void ReportBreachOfProtocol(PeerInfo? peerInfo, string details)
+        public void ReportBreachOfProtocol(PeerInfo? peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details)
         {
             /* since the allocations can have the peers dynamically changed
              * it may be hard for the external classes to ensure that the peerInfo is not null at the time when they report
@@ -126,7 +113,7 @@ namespace Nethermind.Synchronization.Peers
             if (peerInfo is not null)
             {
                 _stats.ReportSyncEvent(peerInfo.SyncPeer.Node, NodeStatsEventType.SyncFailed);
-                peerInfo.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, details);
+                peerInfo.SyncPeer.Disconnect(initiateDisconnectReason, details);
             }
         }
 
@@ -179,7 +166,7 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(InitiateDisconnectReason.AppClosing, "App Close"); });
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
@@ -516,7 +503,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / HEAD 0");
                     }
                 }
                 else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
@@ -524,7 +511,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / 1920000");
                     }
                 }
                 else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
@@ -532,7 +519,7 @@ namespace Nethermind.Synchronization.Peers
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / 7280022");
                     }
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && _betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(peerInfo.TotalDifficulty) && peerInfo.TotalDifficulty < ourDifficulty)
@@ -542,7 +529,7 @@ namespace Nethermind.Synchronization.Peers
                         // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
                         // worth to find a better way to discard them at the right time
                         peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "STRAY PEER");
                     }
                 }
             }
@@ -603,7 +590,7 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, $"PEER REVIEW / {worstReason}");
+            worstPeer?.SyncPeer.Disconnect(InitiateDisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
             return 1;
         }
 
@@ -747,7 +734,7 @@ namespace Nethermind.Synchronization.Peers
             }
             else
             {
-                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+                syncPeer.Disconnect(InitiateDisconnectReason.PeerRefreshFailed, $"refresh peer info fault - {reason}");
             }
         }
 
