@@ -2936,8 +2936,9 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
-                                var offset = codeSection.Slice(programCounter, 2).ReadEthInt16();
-                                programCounter += 2 + offset;
+                                const byte IMMEDIATE_ARGUMENT_SIZE = 2;
+                                var offset = codeSection.Slice(programCounter, IMMEDIATE_ARGUMENT_SIZE).ReadEthInt16();
+                                programCounter += IMMEDIATE_ARGUMENT_SIZE + offset;
                                 break;
                             }
                             else
@@ -2969,15 +2970,16 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
+                                const byte IMMEDIATE_ARGUMENT_SIZE = 2;
                                 Span<byte> condition = stack.PopBytes();
-                                var offset = codeSection.Slice(programCounter, 2).ReadEthInt16();
+                                var offset = codeSection.Slice(programCounter, IMMEDIATE_ARGUMENT_SIZE).ReadEthInt16();
                                 if (!condition.SequenceEqual(BytesZero32))
                                 {
-                                    programCounter += 2 + offset;
+                                    programCounter += IMMEDIATE_ARGUMENT_SIZE + offset;
                                 }
                                 else
                                 {
-                                    programCounter += 2;
+                                    programCounter += IMMEDIATE_ARGUMENT_SIZE;
                                 }
                             }
                             else
@@ -3014,16 +3016,17 @@ namespace Nethermind.Evm
                                     return CallResult.OutOfGasException;
                                 }
 
+                                const byte IMMEDIATE_ARGUMENT_SIZE = 2;
                                 var case_v = stack.PopByte();
                                 var count = codeSection[programCounter];
-                                var immediateValueSize = 1 + count * 2;
+                                var immediateValueSize = 1 + count * IMMEDIATE_ARGUMENT_SIZE;
                                 if (case_v >= count)
                                 {
                                     programCounter += immediateValueSize;
                                 }
                                 else
                                 {
-                                    int caseOffset = codeSection.Slice(programCounter + 1 + case_v * 2, 2).ReadEthInt16();
+                                    int caseOffset = codeSection.Slice(programCounter + 1 + case_v * immediateValueSize, immediateValueSize).ReadEthInt16();
                                     programCounter += immediateValueSize + caseOffset;
                                 }
                             }
@@ -3072,10 +3075,14 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            var index = (int)codeSection[programCounter..(programCounter + 2)].ReadEthUInt16();
-                            var inputCount = typeSection[index * 4];
+                            const byte IMMEDIATE_ARGUMENT_SIZE = 2; // the size in the type sectionn allocated to each function section
+                            const byte TYPESECTION_UNIT_SIZE = 4; // the size in the type sectionn allocated to each function section
+                            const short RETURN_STACK_MAX_HEIGHT = 1024; // the size in the type sectionn allocated to each function section
 
-                            if (vmState.ReturnStackHead == 1024)
+                            var index = (int)codeSection.Slice(programCounter, IMMEDIATE_ARGUMENT_SIZE).ReadEthUInt16();
+                            var inputCount = typeSection[index * TYPESECTION_UNIT_SIZE];
+
+                            if (vmState.ReturnStackHead == RETURN_STACK_MAX_HEIGHT)
                             {
                                 return CallResult.StackOverflowException;
                             }
@@ -3085,7 +3092,7 @@ namespace Nethermind.Evm
                             {
                                 Index = sectionIndex,
                                 Height = stack.Head - inputCount,
-                                Offset = programCounter + 2
+                                Offset = programCounter + IMMEDIATE_ARGUMENT_SIZE
                             };
 
                             sectionIndex = index;
@@ -3106,8 +3113,9 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
+                            const byte TYPESECTION_UNIT_SIZE = 4; // the size in the type sectionn allocated to each function section
                             var index = sectionIndex;
-                            var outputCount = typeSection[index * 4 + 1];
+                            var outputCount = typeSection[index * TYPESECTION_UNIT_SIZE + 1];
                             if (--vmState.ReturnStackHead == 0)
                             {
                                 break;
