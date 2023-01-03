@@ -5,32 +5,32 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
 
-public interface IEofVersionHandler
+internal static class EvmObjectFormat
 {
-    bool ValidateCode(ReadOnlySpan<byte> code, out EofHeader? header);
-    bool TryParseEofHeader(ReadOnlySpan<byte> code, out EofHeader? header);
-}
-
-public class EvmObjectFormat
-{
-    // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    private static byte[] EOF_MAGIC = { 0xEF, 0x00 };
-
-    private readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
-
-    private readonly ILogger _logger;
-    private bool _loggingEnabled => _logger?.IsTrace ?? false;
-    public EvmObjectFormat(IReleaseSpec releaseSpec, ILogManager logManager = null)
+    private interface IEofVersionHandler
     {
-        _logger = logManager?.GetClassLogger<EvmObjectFormat>();
-        _eofVersionHandlers.Add(0x01, new Eof1(releaseSpec, logManager));
+        bool ValidateBody(ReadOnlySpan<byte> code, in EofHeader header);
+        bool TryParseEofHeader(ReadOnlySpan<byte> code, [NotNullWhen(true)] out EofHeader? header);
+    }
+
+    // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
+    private static byte[] MAGIC = { 0xEF, 0x00 };
+    private const byte ONE_BYTE_LENGTH = 1;
+    private const byte TWO_BYTE_LENGTH = 2;
+    private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
+
+    private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
+    internal static ILogger Logger { get; set; } = NullLogger.Instance;
+
+    static EvmObjectFormat()
+    {
+        _eofVersionHandlers.Add(Eof1.VERSION, new Eof1());
     }
 
     /// <summary>
@@ -38,225 +38,207 @@ public class EvmObjectFormat
     /// </summary>
     /// <param name="container">Machine code to be checked</param>
     /// <returns></returns>
-    public bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(EOF_MAGIC);
+    public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
 
-    public bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
+    public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
+        if (container.Length >= VERSION_OFFSET
+            && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
+            && handler.TryParseEofHeader(container, out header))
+        {
+            EofHeader h = header.Value;
+            if (handler.ValidateBody(container, in h))
+            {
+                return true;
+            }
+        }
+
         header = null;
-        if (container.Length < 7)
-            return false;
-        return _eofVersionHandlers.ContainsKey(container[2])
-            ? _eofVersionHandlers[container[2]].ValidateCode(container, out header) // will handle rest of validations
-            : false; // will handle version == 0;
+        return false;
     }
 
-    public bool TryExtractEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
+    public static bool TryExtractHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
     {
         header = null;
-        if (container.Length < 7 || !_eofVersionHandlers.ContainsKey(container[2]))
-            return false; // log
-        if (!_eofVersionHandlers[container[2]].TryParseEofHeader(container, out header))
-            return false; // log
-        return true;
+        return container.Length >= VERSION_OFFSET
+               && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
+               && handler.TryParseEofHeader(container, out header);
     }
 
-
-    public class Eof1 : IEofVersionHandler
+    public static byte GetCodeVersion(ReadOnlySpan<byte> container)
     {
-        private IReleaseSpec _releaseSpec;
-        private const byte VERSION = 0x01;
+        return container.Length < VERSION_OFFSET
+            ? byte.MinValue
+            : container[VERSION_OFFSET];
+    }
+
+    private class Eof1 : IEofVersionHandler
+    {
+        public const byte VERSION = 0x01;
 
         private const byte KIND_TYPE = 0x01;
         private const byte KIND_CODE = 0x02;
         private const byte KIND_DATA = 0x03;
         private const byte TERMINATOR = 0x00;
 
-        private const byte VERSION_SIZE = 1;
-        private const byte SECTION_SIZE = 3;
-        private const byte TERMINATOR_SIZE = 1;
-
         private const byte MINIMUM_TYPESECTION_SIZE = 4;
         private const byte MINIMUM_CODESECTION_SIZE = 1;
 
-        private const ushort MINIMUM_CODESECTIONS_COUNT = 1;
-        private const ushort MAXIMUM_CODESECTIONS_COUNT = 1024;
 
-        private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;
-        public static int MINIMUM_HEADER_SIZE => CalculateHeaderSize(1);
-        public static int CalculateHeaderSize(int numberOfSections) => EOF_MAGIC.Length + VERSION_SIZE
-            + SECTION_SIZE // type
-            + GetArraySectionSize(numberOfSections) // code
-            + SECTION_SIZE // data
-            + TERMINATOR_SIZE;
+        private const byte KIND_TYPE_OFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH; // version length
+        private const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + ONE_BYTE_LENGTH; // kind type length
+        private const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + TWO_BYTE_LENGTH; // type size length
+        private const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + ONE_BYTE_LENGTH; // kind code length
+        private const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + TWO_BYTE_LENGTH; // num code sections length
+        private const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
+        private const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
+        private const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
 
-        public static int GetArraySectionSize(int numberOfSections) => 3 + numberOfSections * 2;
-        private bool CheckBounds(int index, int length, ref EofHeader? header)
+        private const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
+
+        private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;// indicates the number of bytes to skip for immediates
+        private const byte JUMPV_COUNT_BYTE_COUNT = 1; // indicates the length of the count immediate of jumpv
+        private const byte MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
+
+        private const byte SECTION_INPUT_COUNT_OFFSET = 0; // to mark dynamic offset needs to be added
+        private const byte SECTION_OUTPUT_COUNT_OFFSET = 1; // to mark dynamic offset needs to be added
+
+        private const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
+        private const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
+
+        private const ushort MINIMUM_SIZE = TERMINATOR_OFFSET
+                                           + TWO_BYTE_LENGTH // one code size
+                                           + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                                           + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CalculateHeaderSize(int codeSections) =>
+            TERMINATOR_OFFSET + ONE_BYTE_LENGTH + codeSections * TWO_BYTE_LENGTH;
+
+        public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
-            if (index >= length)
-            {
-                header = null;
-                return false;
-            }
-            return true;
-        }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static ushort GetUInt16(ReadOnlySpan<byte> container, int offset) =>
+                container.Slice(offset, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-        private readonly ILogger? _logger;
-        private bool _loggingEnabled => _logger?.IsTrace ?? false;
-
-        public Eof1(IReleaseSpec spec, ILogManager? logManager = null)
-        {
-            _logger = logManager?.GetClassLogger<Eof1>();
-            _releaseSpec = spec;
-        }
-
-        public bool ValidateCode(ReadOnlySpan<byte> container, out EofHeader? header)
-        {
-            return TryParseEofHeader(container, out header)
-                && ValidateBody(container, ref header)
-                && ValidateInstructions(container, ref header);
-        }
-
-        public bool TryParseEofHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
-        {
             header = null;
-            if (!container.StartsWith(EOF_MAGIC))
+
+            // we need to be able to parse header + minimum section lenghts
+            if (container.Length < MINIMUM_SIZE)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {EOF_MAGIC.ToHexString(true)} ");
-                return false;
-            }
-            if (container[EOF_MAGIC.Length] != VERSION)
-            {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
-            if (container.Length < MINIMUM_HEADER_SIZE
-                + MINIMUM_TYPESECTION_SIZE // minimum type section body size
-                + MINIMUM_CODESECTION_SIZE) // minimum code section body size
+            if (!container.StartsWith(MAGIC))
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
                 return false;
             }
 
-
-            ushort numberOfCodeSections = container[7..9].ReadEthUInt16();
-            if (numberOfCodeSections < MINIMUM_CODESECTIONS_COUNT)
+            if (container[VERSION_OFFSET] != VERSION)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : At least one code section must be present");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
             }
 
-            if (numberOfCodeSections > MAXIMUM_CODESECTIONS_COUNT)
+            if (container[KIND_TYPE_OFFSET] != KIND_TYPE)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
-            int headerSize = CalculateHeaderSize(numberOfCodeSections);
-            int pos = 3;
-
-            if (container[pos] != KIND_TYPE)
+            if (container[KIND_CODE_OFFSET] != KIND_CODE)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
-            pos++;
-            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
-            {
-                return false;
-            }
+            ushort numberOfCodeSections = GetUInt16(container, NUM_CODE_SECTIONS_OFFSET);
 
             SectionHeader typeSection = new()
             {
-                Start = headerSize,
-                Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
+                Start = CalculateHeaderSize(numberOfCodeSections),
+                Size = GetUInt16(container, TYPE_SIZE_OFFSET)
             };
 
             if (typeSection.Size < MINIMUM_TYPESECTION_SIZE)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : TypeSection Size must be at least 4, but found {typeSection.Size}");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
                 return false;
             }
 
-            pos += IMMEDIATE_16BIT_BYTE_COUNT;
-
-            if (container[pos] != KIND_CODE)
+            if (numberOfCodeSections < MINIMUM_NUM_CODE_SECTIONS)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : At least one code section must be present");
                 return false;
             }
 
-            pos += 3; // kind_code(1) + num_code_sections(2)
-            if (!CheckBounds(pos, container.Length, ref header))
+            if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
             {
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
                 return false;
             }
 
-            List<SectionHeader> codeSections = new();
-            int lastEndOffset = typeSection.EndOffset;
-            for (ushort i = 0; i < numberOfCodeSections; i++)
+            int codeSizeLenght = numberOfCodeSections * TWO_BYTE_LENGTH;
+            int dynamicOffset = codeSizeLenght;
+
+            // we need to be able to parse header + all code sizes
+            int requiredSize = TERMINATOR_OFFSET
+                               + codeSizeLenght
+                               + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                               + MINIMUM_CODESECTION_SIZE; // minimum code section body size
+
+            if (container.Length < requiredSize)
             {
-                if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
+                return false;
+            }
+
+            int codeSectionsSize = 0;
+            SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
+            for (ushort pos = 0; pos < numberOfCodeSections; pos++)
+            {
+                if (pos + IMMEDIATE_16BIT_BYTE_COUNT > container.Length)
                 {
-                    header = null;
                     return false;
                 }
 
+                int currentCodeSizeOffset = CODESIZE_OFFSET + pos * TWO_BYTE_LENGTH; // offset of pos'th code size
                 SectionHeader codeSection = new()
                 {
-                    Start = lastEndOffset,
-                    Size = container[pos..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
+                    Start = typeSection.EndOffset,
+                    Size = GetUInt16(container, currentCodeSizeOffset)
                 };
 
                 if (codeSection.Size == 0)
                 {
-                    if (_loggingEnabled)
-                        _logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
-
-                    header = null;
+                    if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
                     return false;
                 }
 
-                codeSections.Add(codeSection);
-                lastEndOffset = codeSection.EndOffset;
-                pos += IMMEDIATE_16BIT_BYTE_COUNT;
-
+                codeSections[pos] = codeSection;
+                codeSectionsSize += codeSection.Size;
             }
 
-
-            if (container[pos] != KIND_DATA)
+            if (container[KIND_DATA_OFFSET + dynamicOffset] != KIND_DATA)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
-                return false;
-            }
-            pos++;
-            if (!CheckBounds(pos + IMMEDIATE_16BIT_BYTE_COUNT, container.Length, ref header))
-            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
+            // do data section now to properly check length
+            int dataSectionOffset = DATA_SIZE_OFFSET + dynamicOffset;
             SectionHeader dataSection = new()
             {
-                Start = lastEndOffset,
-                Size = container[(pos)..(pos + IMMEDIATE_16BIT_BYTE_COUNT)].ReadEthUInt16()
+                Start = dataSectionOffset,
+                Size = GetUInt16(container, dataSectionOffset)
             };
-            pos += IMMEDIATE_16BIT_BYTE_COUNT;
 
-
-            if (container[pos] != TERMINATOR)
+            if (container[TERMINATOR_OFFSET + dynamicOffset] != TERMINATOR)
             {
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -264,266 +246,277 @@ public class EvmObjectFormat
             {
                 Version = VERSION,
                 TypeSection = typeSection,
-                CodeSections = codeSections.ToArray(),
+                CodeSections = codeSections,
+                CodeSectionsSize = codeSectionsSize,
                 DataSection = dataSection
             };
+
             return true;
         }
 
-        bool ValidateBody(ReadOnlySpan<byte> container, ref EofHeader? header)
+        private const byte INPUTS_OFFSET = 0;
+        private const byte INPUTS_MAX = 0x7F;
+        private const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
+        private const byte OUTPUTS_MAX = 0x7F;
+        private const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
+        private const int MAX_STACK_HEIGHT_LENGTH = 2;
+        private const ushort MAX_STACK_HEIGHT = 0x3FF;
+
+        public bool ValidateBody(ReadOnlySpan<byte> container, in EofHeader header)
         {
-            SectionHeader[]? codeSections = header.Value.CodeSections;
-            (int typeSectionStart, ushort typeSectionSize) = header.Value.TypeSection;
+            int startOffset = CalculateHeaderSize(header.CodeSections.Length);
+            int calculatedCodeLength = header.TypeSection.Size
+                + header.CodeSectionsSize
+                + header.DataSection.Size;
+            SectionHeader[]? codeSections = header.CodeSections;
+            ReadOnlySpan<byte> contractBody = container[startOffset..];
+            (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
+
+
+            if (contractBody.Length != calculatedCodeLength)
+            {
+                if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
+                return false;
+            }
+
             if (codeSections.Length == 0 || codeSections.Any(section => section.Size == 0))
             {
-                if (_loggingEnabled)
+                if (Logger.IsTrace)
                 {
-                    _logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Length}");
+                    Logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Length}");
                 }
-
-                header = null;
                 return false;
             }
 
             if (codeSections.Length != (typeSectionSize / MINIMUM_TYPESECTION_SIZE))
             {
-                if (_loggingEnabled)
+                if (Logger.IsTrace)
                 {
-                    _logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
+                    Logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
                 }
 
-                header = null;
                 return false;
             }
 
-            if (container[typeSectionStart] != 0 || container[typeSectionStart + 1] != 0)
+            ReadOnlySpan<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
+            if (ValidateTypeSection(typesection))
             {
-                if (_loggingEnabled)
+                if (Logger.IsTrace)
                 {
-                    _logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
+                    Logger.Trace($"EIP-4750: invalid typesection found");
                 }
-
-                header = null;
                 return false;
             }
 
-            if (codeSections.Length > MAXIMUM_CODESECTIONS_COUNT)
+            for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
             {
-                if (_loggingEnabled)
+                SectionHeader sectionHeader = header.CodeSections[sectionIdx];
+                (int codeSectionStartOffset, int codeSectionSize) = (sectionHeader.Start, sectionHeader.Size);
+                ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
+                if (!ValidateInstructions(code, header))
                 {
-                    _logger.Trace($"EIP-4750 : Code section count limit exceeded only {MAXIMUM_CODESECTIONS_COUNT} allowed but found {codeSections.Length}");
+                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection {sectionIdx} contains invalid body");
+                    return false;
                 }
-
-                header = null;
-                return false;
             }
 
-            int startOffset = CalculateHeaderSize(header.Value.CodeSections.Length);
-            int calculatedCodeLength = header.Value.TypeSection.Size
-                + header.Value.CodeSections.Sum(c => c.Size)
-                + header.Value.DataSection.Size;
-
-            ReadOnlySpan<byte> contractBody = container[startOffset..];
-
-            if (contractBody.Length != calculatedCodeLength)
-            {
-                header = null;
-                if (_loggingEnabled)
-                    _logger.Trace($"EIP-3540 : SectionSizes indicated in bundeled header are incorrect, or ContainerCode is incomplete");
-                return false;
-            }
             return true;
         }
-        public bool ValidateInstructions(ReadOnlySpan<byte> container, ref EofHeader? header)
+
+        bool ValidateTypeSection(ReadOnlySpan<byte> types)
         {
-            if (!_releaseSpec.IsEip3670Enabled)
+            if (types[SECTION_INPUT_COUNT_OFFSET] != 0 || types[SECTION_OUTPUT_COUNT_OFFSET] != 0)
             {
-                return true;
-            }
-
-            bool valid = true;
-            for (int i = 0; valid && i < header.Value.CodeSections.Length; i++)
-            {
-                valid &= ValidateSectionInstructions(ref container, i, ref header);
-            }
-            return valid;
-        }
-
-        public bool ValidateSectionInstructions(ref ReadOnlySpan<byte> container, int sectionId, ref EofHeader? header)
-        {
-            (int typeSectionBegin, ushort typeSectionSize) = header.Value.TypeSection;
-            (int codeSectionBegin, ushort codeSectionSize) = header.Value.CodeSections[sectionId];
-
-            ReadOnlySpan<byte> code = container.Slice(codeSectionBegin, codeSectionSize);
-            ReadOnlySpan<byte> typesection = container.Slice(typeSectionBegin, typeSectionSize);
-            Instruction? opcode = null;
-
-            HashSet<Range> immediates = new();
-            HashSet<Int32> rjumpdests = new();
-            for (int i = 0; i < codeSectionSize;)
-            {
-                opcode = (Instruction)code[i];
-                i++;
-                // validate opcode
-                if (!opcode.Value.IsValid(_releaseSpec))
+                if (Logger.IsTrace)
                 {
-                    if (_loggingEnabled)
-                    {
-                        _logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
-                    }
-                    header = null;
+                    Logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
+                }
+                return false;
+            }
+
+            if (types.Length % MINIMUM_TYPESECTION_SIZE != 0)
+            {
+                if (Logger.IsTrace)
+                {
+                    Logger.Trace($"EIP-4750: type section length must be a product of {MINIMUM_TYPESECTION_SIZE}");
+                }
+
+                return false;
+            }
+
+            for (int offset = 0; offset < types.Length; offset += MINIMUM_TYPESECTION_SIZE)
+            {
+                byte inputCount = types[offset + SECTION_INPUT_COUNT_OFFSET];
+                byte outputCount = types[offset + SECTION_OUTPUT_COUNT_OFFSET];
+                ushort maxStackHeight = types.Slice(offset + MAX_STACK_HEIGHT_OFFSET, MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
+
+                if (inputCount > INPUTS_MAX)
+                {
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
                     return false;
                 }
 
-                if (_releaseSpec.StaticRelativeJumpsEnabled)
+                if (outputCount > OUTPUTS_MAX)
                 {
-                    if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
-                    {
-                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
-                            }
-
-                            header = null;
-                            return false;
-                        }
-
-                        var offset = code.Slice(i, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
-                        immediates.Add(new Range(i, i + 1));
-                        var rjumpdest = offset + IMMEDIATE_16BIT_BYTE_COUNT + i;
-                        rjumpdests.Add(rjumpdest);
-                        if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
-                            }
-                            header = null;
-                            return false;
-                        }
-                        i += 2;
-                    }
-
-                    if (opcode is Instruction.RJUMPV)
-                    {
-                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
-                            }
-                            header = null;
-                            return false;
-                        }
-
-                        byte count = code[i];
-                        if (count < 1)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
-                            }
-                            header = null;
-                            return false;
-                        }
-
-                        if (i + 1 + count * IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : jumpv jumptable underflow");
-                            }
-                            header = null;
-                            return false;
-                        }
-
-                        var immediateValueSize = 1 + count * IMMEDIATE_16BIT_BYTE_COUNT;
-                        immediates.Add(new Range(i, i + immediateValueSize - 1));
-                        for (int j = 0; j < count; j++)
-                        {
-                            var offset = code.Slice(i + 1 + j * IMMEDIATE_16BIT_BYTE_COUNT, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
-                            var rjumpdest = offset + immediateValueSize + i;
-                            rjumpdests.Add(rjumpdest);
-                            if (rjumpdest < 0 || rjumpdest >= codeSectionSize)
-                            {
-                                if (_loggingEnabled)
-                                {
-                                    _logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
-                                }
-                                header = null;
-                                return false;
-                            }
-                        }
-                        i += immediateValueSize;
-                    }
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
+                    return false;
                 }
 
-                if (_releaseSpec.FunctionSections)
+                if (maxStackHeight > MAX_STACK_HEIGHT)
                 {
-                    if (opcode is Instruction.CALLF)
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
+                    return false;
+                }
+            }
+            return true;
+        }
+        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
+        {
+            HashSet<Range> immediates = new HashSet<Range>();
+            HashSet<Int32> rjumpdests = new HashSet<Int32>();
+            for (int pos = 0; pos < code.Length;)
+            {
+                Instruction opcode = (Instruction)code[pos];
+                pos++;
+
+                if (!opcode.IsValid(IsEofContext: true))
+                {
+                    if (Logger.IsTrace)
                     {
-                        if (i + IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4750 : CALLF Argument underflow");
-                            }
-                            header = null;
-                            return false;
-                        }
-
-                        ushort targetSectionId = code.Slice(i, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthUInt16();
-                        immediates.Add(new Range(i, i + 1));
-
-                        if (targetSectionId >= header.Value.CodeSections.Length)
-                        {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4750 : Invalid Section Id");
-                            }
-                            header = null;
-                            return false;
-                        }
-                        i += IMMEDIATE_16BIT_BYTE_COUNT;
+                        Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                     }
+                    return false;
+                }
+
+                if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                {
+                    if (pos + IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                        }
+                        return false;
+                    }
+
+                    var offset = code.Slice(pos, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
+                    immediates.Add(new Range(pos, pos + 1));
+                    var rjumpdest = offset + IMMEDIATE_16BIT_BYTE_COUNT + pos;
+                    rjumpdests.Add(rjumpdest);
+                    if (rjumpdest < 0 || rjumpdest >= code.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                        }
+                        return false;
+                    }
+                    pos += IMMEDIATE_16BIT_BYTE_COUNT;
+                }
+
+                if (opcode is Instruction.RJUMPV)
+                {
+                    if (pos + IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                        }
+                        return false;
+                    }
+
+                    byte count = code[pos];
+                    if (count < MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
+                        }
+                        return false;
+                    }
+
+                    if (pos + JUMPV_COUNT_BYTE_COUNT + count * IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                        }
+                        return false;
+                    }
+
+                    var immediateValueSize = JUMPV_COUNT_BYTE_COUNT + count * IMMEDIATE_16BIT_BYTE_COUNT;
+                    immediates.Add(new Range(pos, pos + immediateValueSize - 1));
+                    for (int j = 0; j < count; j++)
+                    {
+                        var offset = code.Slice(pos + JUMPV_COUNT_BYTE_COUNT + j * IMMEDIATE_16BIT_BYTE_COUNT, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
+                        var rjumpdest = offset + immediateValueSize + pos;
+                        rjumpdests.Add(rjumpdest);
+
+                        if (rjumpdest < 0 || rjumpdest >= code.Length)
+                        {
+                            if (Logger.IsTrace)
+                            {
+                                Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                            }
+                            return false;
+                        }
+                    }
+                    pos += immediateValueSize;
+                }
+
+                if (opcode is Instruction.CALLF)
+                {
+                    if (pos + IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4750 : CALLF Argument underflow");
+                        }
+                        return false;
+                    }
+
+                    ushort targetSectionId = code.Slice(pos, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthUInt16();
+                    immediates.Add(new Range(pos, pos + 1));
+
+                    if (targetSectionId >= header.CodeSections.Length)
+                    {
+                        if (Logger.IsTrace)
+                        {
+                            Logger.Trace($"EIP-4750 : Invalid Section Id");
+                        }
+                        return false;
+                    }
+                    pos += IMMEDIATE_16BIT_BYTE_COUNT;
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
-                    int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
-                    immediates.Add(new Range(i, i + len - 1));
-                    i += len;
+                    int len = code[pos - 1] - (int)Instruction.PUSH1 + 1;
+                    immediates.Add(new Range(pos, pos + len - 1));
+                    pos += len;
                 }
 
-                if (i > codeSectionSize)
+                if (pos >= code.Length)
                 {
-                    if (_loggingEnabled)
+                    if (Logger.IsTrace)
                     {
-                        _logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                        Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                     }
-                    header = null;
                     return false;
                 }
             }
 
-            if (_releaseSpec.StaticRelativeJumpsEnabled)
+            foreach (int rjumpdest in rjumpdests)
             {
-
-                foreach (int rjumpdest in rjumpdests)
+                foreach (var range in immediates)
                 {
-                    foreach (Range range in immediates)
+                    if (range.Includes(rjumpdest))
                     {
-                        if (range.Includes(rjumpdest))
+                        if (Logger.IsTrace)
                         {
-                            if (_loggingEnabled)
-                            {
-                                _logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
-                            }
-                            header = null;
-                            return false;
+                            Logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
                         }
+                        return false;
                     }
                 }
             }

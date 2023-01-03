@@ -46,6 +46,7 @@ using NSubstitute.ExceptionExtensions;
 using NSubstitute.Exceptions;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -1322,7 +1323,7 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec(_headers[blockHashes[i]].Number), receipts[i]).RootHash;
+                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 
                 ReceiptsMessage message = new(receipts);

@@ -35,12 +35,12 @@ namespace Nethermind.Consensus.Ethash
 
         public UInt256 Calculate(
             in UInt256 parentDifficulty,
-            in UInt256 parentTimestamp,
-            in UInt256 currentTimestamp,
+            ulong parentTimestamp,
+            ulong currentTimestamp,
             long blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber, currentTimestamp);
             if (spec.FixedDifficulty is not null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;

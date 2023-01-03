@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (specProvider is not null)
             {
-                var spec = specProvider.GetSpec(block.Number);
+                var spec = specProvider.GetSpec(block.Header);
                 if (spec.IsEip1559Enabled)
                 {
                     BaseFeePerGas = block.Header.BaseFeePerGas;

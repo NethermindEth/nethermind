@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
@@ -185,15 +182,14 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec) => instruction switch
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
-            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.RETF when spec.FunctionSections => true,
+            Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
 
-        public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
+        public static bool IsValid(this Instruction instruction, bool IsEofContext)
         {
             if (!FastEnum.IsDefined(instruction))
             {
@@ -202,24 +198,7 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.PC or Instruction.JUMP or Instruction.JUMPI when spec.FunctionSections => false,
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT when spec.IsEip3670Enabled => false,
-                Instruction.CALLF or Instruction.RETF when spec.FunctionSections => true,
-                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB when spec.SubroutinesEnabled => true,
-                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV when spec.StaticRelativeJumpsEnabled => true,
-                Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
-                Instruction.REVERT => spec.RevertOpcodeEnabled,
-                Instruction.STATICCALL => spec.StaticCallEnabled,
-                Instruction.CREATE2 => spec.Create2OpcodeEnabled,
-                Instruction.DELEGATECALL => spec.DelegateCallEnabled,
-                Instruction.PUSH0 => spec.IncludePush0Instruction,
-                Instruction.BASEFEE => spec.BaseFeeEnabled,
-                Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
-                Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
-                Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
-                Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
-                Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
-                Instruction.JUMP or Instruction.JUMPI => !spec.FunctionSections,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT or Instruction.PC or Instruction.JUMP or Instruction.JUMPI => !IsEofContext,
                 _ => true
             };
         }

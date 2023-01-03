@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -198,6 +199,7 @@ namespace Nethermind.Synchronization.FastSync
             return requestItems;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public string RecalculatePriorities()
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
