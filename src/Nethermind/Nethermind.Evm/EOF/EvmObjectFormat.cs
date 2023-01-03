@@ -39,20 +39,6 @@ internal static class EvmObjectFormat
     /// <returns></returns>
     public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
 
-    public static bool IsValidEof(ReadOnlySpan<byte> container, byte version)
-    {
-        if (container.Length >= VERSION_OFFSET
-            && container[VERSION_OFFSET] == version
-            && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
-            && handler.TryParseEofHeader(container, out EofHeader? header))
-        {
-            EofHeader h = header.Value;
-            return handler.ValidateBody(container, in h);
-        }
-
-        return false;
-    }
-
     public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
         if (container.Length >= VERSION_OFFSET
@@ -76,6 +62,13 @@ internal static class EvmObjectFormat
         return container.Length >= VERSION_OFFSET
                && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
                && handler.TryParseEofHeader(container, out header);
+    }
+
+    public static byte GetCodeVersion(ReadOnlySpan<byte> container)
+    {
+        return container.Length < VERSION_OFFSET
+            ? byte.MinValue
+            : container[VERSION_OFFSET];
     }
 
     private class Eof1 : IEofVersionHandler

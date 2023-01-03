@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EOF;
@@ -28,15 +29,15 @@ namespace Nethermind.Evm
 
         public static bool CodeIsInvalid(ReadOnlySpan<byte> code, IReleaseSpec spec) => !CodeIsValid(code, spec);
 
-        public static bool IsVersionValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
+        public static bool IsInitCodeOrReturnCodeValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
         {
             if (spec.IsEip3540Enabled)
             {
                 byte version = codeInfo.EofVersion();
-                if (version != 0)
-                {
-                    return EvmObjectFormat.IsValidEof(initCode, version);
-                }
+                if (version > 0 && version != EvmObjectFormat.GetCodeVersion(initCode))
+                    return false;
+                if (EvmObjectFormat.IsEof(initCode)) // this needs test cases
+                    return EvmObjectFormat.IsValidEof(initCode, out _);
             }
 
             return true;
