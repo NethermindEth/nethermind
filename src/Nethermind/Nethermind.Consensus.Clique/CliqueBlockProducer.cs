@@ -427,11 +427,12 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>(), Enumerable.Empty<Withdrawal>());
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
-        if (_specProvider.GetSpec(header.Number, header.Timestamp).IsEip4844Enabled)
+        IReleaseSpec? spec = _specProvider.GetSpec(header.Number, header.Timestamp);
+        if (spec.IsEip4844Enabled)
         {
-            header.ExcessDataGas = Evm.IntrinsicGasCalculator.CalcExcessDataGas(parentBlock.ExcessDataGas,
-                block.Transactions.Sum(x => x.BlobVersionedHashes.Length));
-            header.ParentExcessDataGas = parentHeader.ParentExcessDataGas;
+            header.ExcessDataGas = Evm.IntrinsicGasCalculator.CalculateExcessDataGas(parentBlock.ExcessDataGas,
+                block.Transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0), spec);
+            header.ParentExcessDataGas = parentHeader.ExcessDataGas ?? 0;
         }
         return block;
     }

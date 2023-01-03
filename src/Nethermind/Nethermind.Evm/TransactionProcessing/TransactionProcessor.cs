@@ -255,7 +255,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 blobsGasCost = IntrinsicGasCalculator.BlobsGas(transaction, block.ParentExcessDataGas, spec);
+            UInt256 blobsGasCost = IntrinsicGasCalculator.CalculateBlobsGasCost(transaction, block.ParentExcessDataGas, spec);
             UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + blobsGasCost);
 
             if (notSystemTransaction)

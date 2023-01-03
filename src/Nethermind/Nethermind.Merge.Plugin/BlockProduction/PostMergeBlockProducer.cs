@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -11,7 +11,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -71,11 +70,13 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             Block block = base.PrepareBlock(parent, payloadAttributes);
             AmendHeader(block.Header);
-            if (_specProvider.GetSpec(block.Number, block.Timestamp).IsEip4844Enabled)
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number, block.Timestamp);
+            if (spec.IsEip4844Enabled)
             {
-                block.Header.ExcessDataGas = IntrinsicGasCalculator.CalcExcessDataGas(parent.ExcessDataGas,
-                    block.Transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0));
-                block.Header.ParentExcessDataGas = parent.ParentExcessDataGas;
+                block.Header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(parent.ExcessDataGas,
+                    block.Transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0), spec);
+                block.Header.ParentExcessDataGas = parent.ExcessDataGas ?? 0;
             }
 
             return block;

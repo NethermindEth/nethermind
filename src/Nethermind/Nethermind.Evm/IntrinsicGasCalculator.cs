@@ -93,11 +93,17 @@ namespace Nethermind.Evm
             return accessListCost;
         }
 
-        static UInt256 DataGasPriceUpdateFraction = 2225652;
-        static UInt256 MinDataGasPrice = 1L;
-
-        // FakeExponential
-        public static UInt256 BlobsGas(Transaction transaction, UInt256 parentExcessDataGas, IReleaseSpec releaseSpec)
+        /// <summary>
+        /// Blobs add additional cost to a transaction. The cost is calculated within separate gas market.
+        /// Parent block holds traces of high demand in <see cref="Block.ExcessDataGas"/> field, which value affects
+        /// the current block's blob data cost, raises it exponentially.
+        /// </summary>
+        /// <param name="transaction">Blob transaction</param>
+        /// <param name="parentExcessDataGas"><see cref="Block.ExcessDataGas"/> of the parent block</param>
+        /// <param name="releaseSpec">The current fork's specification</param>
+        /// <returns>Gas cost added by blobs</returns>
+        /// <exception cref="InvalidOperationException">Raised in case of inproperly set parentExcessDataGas</exception>
+        public static UInt256 CalculateBlobsGasCost(Transaction transaction, UInt256 parentExcessDataGas, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip4844Enabled || transaction.Type != TxType.Blob || transaction.BlobVersionedHashes?.Any() != true)
             {
@@ -111,34 +117,50 @@ namespace Nethermind.Evm
             return (ulong)transaction.BlobVersionedHashes!.Length * CostPerBlob(parentExcessDataGas);
         }
 
-        public static UInt256 CostPerBlob(UInt256 parentExcessDataGas)
+        private static UInt256 CostPerBlob(UInt256 parentExcessDataGas)
         {
-            UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denom)
+            UInt256 DataGasPriceUpdateFraction = 2225652;
+            UInt256 MinDataGasPrice = 1L;
+
+            UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denominator)
             {
                 UInt256 output = UInt256.Zero;
 
-                UInt256 numAccum = factor * denom;
+                UInt256 numAccum = factor * denominator;
 
                 for (UInt256 i = 1; numAccum > 0; i++)
                 {
                     output += numAccum;
                     numAccum *= num;
-                    numAccum /= i * denom;
+                    numAccum /= i * denominator;
                 }
-                return output / denom;
+                return output / denominator;
             }
 
-            var r = FakeExponential(MinDataGasPrice, parentExcessDataGas, DataGasPriceUpdateFraction);
-            return r * 1<<17;
+            UInt256 scaleDueToParentExcessDataGas = FakeExponential(MinDataGasPrice, parentExcessDataGas, DataGasPriceUpdateFraction);
+            return scaleDueToParentExcessDataGas * 1<<17;
         }
 
-        static UInt256 DataGasPerBlob = 1 << 19;
-        static UInt256 TargetDataGasPerBlock = 1 << 18;
-
-        public static UInt256 CalcExcessDataGas(UInt256? parentExcessDataGas, int newBlobs)
+        /// <summary>
+        /// Calculates the current block's ExcessDataGas, that regulates blob gas market price.
+        /// </summary>
+        /// <param name="parentExcessDataGas">Parent block's ExcessDataGas</param>
+        /// <param name="newBlobsCount">Current block's blob count</param>
+        /// <param name="releaseSpec"></param>
+        /// <returns>ExcessDataGas</returns>
+        public static UInt256 CalculateExcessDataGas(UInt256? parentExcessDataGas, int newBlobsCount,
+            IReleaseSpec releaseSpec)
         {
+            if (!releaseSpec.IsEip4844Enabled)
+            {
+                return 0;
+            }
+
+            UInt256 DataGasPerBlob = 1 << 17;
+            UInt256 TargetDataGasPerBlock = 1 << 18;
+
             UInt256 excessDataGas = parentExcessDataGas.GetValueOrDefault();
-            UInt256 consumedGas = DataGasPerBlob * (UInt256)newBlobs;
+            UInt256 consumedGas = DataGasPerBlob * (UInt256)newBlobsCount;
             excessDataGas += consumedGas;
             return excessDataGas < TargetDataGasPerBlock ? UInt256.Zero : (excessDataGas - TargetDataGasPerBlock);
         }

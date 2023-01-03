@@ -307,11 +307,12 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
 
-            if (_specProvider.GetSpec(header.Number, header.Timestamp).IsEip4844Enabled)
+            IReleaseSpec releaseSpec =  _specProvider.GetSpec(header.Number, header.Timestamp);
+            if (releaseSpec.IsEip4844Enabled)
             {
-                header.ExcessDataGas = IntrinsicGasCalculator.CalcExcessDataGas(parent.ExcessDataGas,
-                    transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0));
-                header.ParentExcessDataGas = parent.ParentExcessDataGas;
+                header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(parent.ExcessDataGas,
+                    transactions.Sum(x => x.BlobVersionedHashes?.Length ?? 0), releaseSpec);
+                header.ParentExcessDataGas = parent.ExcessDataGas ?? 0;
             }
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
