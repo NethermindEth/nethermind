@@ -1,13 +1,14 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
-using System.Linq;
 using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Specs;
 
 namespace Nethermind.Evm.EOF;
 
@@ -295,7 +296,7 @@ public class EvmObjectFormat
                 return false;
             }
 
-            if (container[typeSectionStart] != 0 && container[typeSectionStart] != 0)
+            if (container[typeSectionStart] != 0 || container[typeSectionStart + 1] != 0)
             {
                 if (_loggingEnabled)
                 {
