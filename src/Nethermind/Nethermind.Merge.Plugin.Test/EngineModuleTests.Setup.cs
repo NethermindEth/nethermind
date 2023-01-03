@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -93,7 +94,8 @@ namespace Nethermind.Merge.Plugin.Test
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
-                new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
+                new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
+                new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }

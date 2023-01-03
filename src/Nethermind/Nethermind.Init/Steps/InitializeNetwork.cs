@@ -167,7 +167,7 @@ public class InitializeNetwork : IStep
 
         _api.DisposeStack.Push(_api.Synchronizer);
 
-        _api.SyncServer = new SyncServer(
+        ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!,
             _api.DbProvider.CodeDb,
             _api.BlockTree!,
@@ -183,8 +183,8 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             cht);
 
-        _ = _api.SyncServer.BuildCHT();
-        _api.DisposeStack.Push(_api.SyncServer);
+        _ = syncServer.BuildCHT();
+        _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -207,8 +207,9 @@ public class InitializeNetwork : IStep
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -506,9 +507,10 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
+        ISyncServer syncServer = _api.SyncServer!;
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
-            _api.SyncServer!,
+            syncServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,
@@ -517,7 +519,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            _api.SpecProvider!,
+            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
             _api.GossipPolicy,
             _api.LogManager);
 

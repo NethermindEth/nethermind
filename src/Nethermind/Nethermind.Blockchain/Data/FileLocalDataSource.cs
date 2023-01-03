@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Data
             IFileInfo fileInfo = null;
             try
             {
-                fileInfo = _fileSystem.FileInfo.FromFileName(filePath);
+                fileInfo = _fileSystem.FileInfo.New(filePath);
             }
             catch (ArgumentException) { }
             catch (PathTooLongException) { }
