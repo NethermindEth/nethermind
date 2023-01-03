@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -15,7 +16,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -38,6 +38,7 @@ namespace Nethermind.Merge.Plugin
         private ILogger _logger = null!;
         protected IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
+        private IBlocksConfig _blocksConfig = null!;
         protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
@@ -67,6 +68,10 @@ namespace Nethermind.Merge.Plugin
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _syncConfig = nethermindApi.Config<ISyncConfig>();
+            _blocksConfig = nethermindApi.Config<IBlocksConfig>();
+
+            MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
+
             _logger = _api.LogManager.GetClassLogger();
 
             if (MergeEnabled)
@@ -106,42 +111,30 @@ namespace Nethermind.Merge.Plugin
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
-
-                FixTransitionBlock();
             }
 
             return Task.CompletedTask;
         }
 
-        private void FixTransitionBlock()
+        internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
         {
-            // Special case during mainnet merge where if a transition block does not get processed through gossip
-            // it does not get marked as main causing some issue on eth_getLogs.
-            Keccak blockHash = new Keccak("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286");
-            Block? block = _api.BlockTree!.FindBlock(blockHash);
-            if (block is not null)
+            ulong defaultValue = blocksConfig.GetDefaultValue<ulong>(nameof(IBlocksConfig.SecondsPerSlot));
+            if (blocksConfig.SecondsPerSlot != mergeConfig.SecondsPerSlot)
             {
-                ChainLevelInfo? level = _api.ChainLevelInfoRepository!.LoadLevel(block.Number);
-                if (level is null)
+                if (blocksConfig.SecondsPerSlot == defaultValue)
                 {
-                    _logger.Warn("Unable to fix transition block. Unable to find chain level info.");
-                    return;
+                    blocksConfig.SecondsPerSlot = mergeConfig.SecondsPerSlot;
                 }
-
-                int? index = level.FindBlockInfoIndex(blockHash);
-                if (index is null)
+                else if (mergeConfig.SecondsPerSlot == defaultValue)
                 {
-                    _logger.Warn("Unable to fix transition block. Missing block info for the transition block.");
-                    return;
+                    mergeConfig.SecondsPerSlot = blocksConfig.SecondsPerSlot;
                 }
-
-                if (index.Value != 0)
+                else
                 {
-                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
-                    _api.ChainLevelInfoRepository.PersistLevel(block.Number, level);
+                    throw new InvalidConfigurationException($"Configuration mismatch at {nameof(IBlocksConfig.SecondsPerSlot)} " +
+                                                                $"with conflicting values {blocksConfig.SecondsPerSlot} and {mergeConfig.SecondsPerSlot}",
+                            ExitCodes.ConflictingConfigurations);
                 }
-
-                _api.ReceiptStorage!.EnsureCanonical(block);
             }
         }
 
@@ -150,10 +143,9 @@ namespace Nethermind.Merge.Plugin
             if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
                 return;
 
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            if (syncConfig.FastSync)
+            if (_syncConfig.FastSync)
             {
-                if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
+                if (!_syncConfig.DownloadReceiptsInFastSync || !_syncConfig.DownloadBodiesInFastSync)
                 {
                     throw new InvalidConfigurationException(
                         "Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync",
@@ -244,7 +236,7 @@ namespace Nethermind.Merge.Plugin
                     _invalidChainTracker,
                     _api.LogManager);
                 _api.HealthHintService =
-                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _mergeConfig);
+                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
                 _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
                 _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
@@ -292,13 +284,13 @@ namespace Nethermind.Merge.Plugin
                 IBlockImprovementContextFactory improvementContextFactory;
                 if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
                 {
-                    improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
+                    improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
                 }
                 else
                 {
                     DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                     IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
                     improvementContextFactory = boostBlockImprovementContextFactory;
                 }
 
@@ -307,7 +299,7 @@ namespace Nethermind.Merge.Plugin
                     improvementContextFactory,
                     _api.TimerFactory,
                     _api.LogManager,
-                    TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
+                    TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
@@ -316,7 +308,7 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
-                        _api.Config<ISyncConfig>(),
+                        _syncConfig,
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
@@ -340,7 +332,8 @@ namespace Nethermind.Merge.Plugin
                         _api.SpecProvider,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
-                    new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
+                    new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
+                    new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                     new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                     _api.LogManager);
 

@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.Path.GetFullPath(path).Returns(path);
             fileSystem.Path.GetPathRoot(path).Returns(path);
-            fileSystem.DriveInfo.FromDriveName(path).AvailableFreeSpace.Returns(availableFreeSpace);
+            fileSystem.DriveInfo.New(path).AvailableFreeSpace.Returns(availableFreeSpace);
 
             bool triggered = false;
 

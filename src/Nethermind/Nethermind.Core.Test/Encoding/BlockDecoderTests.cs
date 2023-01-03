@@ -22,9 +22,23 @@ public class BlockDecoderTests
     public BlockDecoderTests()
     {
         var transactions = new Transaction[100];
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
-            transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(NetworkId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true).TestObject;
+            transactions[i] = Build.A.Transaction
+                .WithData(new byte[] { (byte)i })
+                .WithNonce((UInt256)i)
+                .WithValue((UInt256)i)
+                .Signed(new EthereumEcdsa(NetworkId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA, true)
+                .TestObject;
+        }
+
+        var uncles = new BlockHeader[16];
+
+        for (var i = 0; i < uncles.Length; i++)
+        {
+            uncles[i] = Build.A.BlockHeader
+                .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))
+                .TestObject;
         }
 
         _scenarios = new[]
@@ -39,7 +53,7 @@ public class BlockDecoderTests
             Build.A.Block
                 .WithNumber(1)
                 .WithTransactions(transactions)
-                .WithUncles(Build.A.BlockHeader.TestObject)
+                .WithUncles(uncles)
                 .WithWithdrawals(8)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .WithTimestamp(HeaderDecoder.WithdrawalTimestamp)

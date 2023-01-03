@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -63,7 +64,7 @@ public class InvalidBlockInterceptor : IBlockValidator
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            if (ShouldNotTrackInvalidation(block.Header))
+            if (ShouldNotTrackInvalidation(block))
             {
                 if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
                 return false;
@@ -81,7 +82,7 @@ public class InvalidBlockInterceptor : IBlockValidator
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            if (ShouldNotTrackInvalidation(block.Header))
+            if (ShouldNotTrackInvalidation(block))
             {
                 if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
                 return false;
@@ -119,5 +120,17 @@ public class InvalidBlockInterceptor : IBlockValidator
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
 
         return result;
+    }
+
+    private static bool ShouldNotTrackInvalidation(Block block)
+    {
+        if (ShouldNotTrackInvalidation(block.Header))
+            return true;
+
+        // Body does not match header, but it does not mean the hash that the header point to is invalid.
+        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _))
+            return true;
+
+        return !BlockValidator.ValidateUnclesHashMatches(block, out Keccak _);
     }
 }

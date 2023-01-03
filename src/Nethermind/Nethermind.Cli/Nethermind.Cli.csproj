@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <OutputType>Exe</OutputType>
         <PackageId>Nethermind CLI</PackageId>
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
-        <LangVersion>10.0</LangVersion>
+        <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
@@ -15,6 +15,7 @@
     <ItemGroup>
       <PackageReference Include="Colorful.Console" Version="1.2.15" />
       <PackageReference Include="Jint" Version="2.11.58" />
+      <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
       <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>
 

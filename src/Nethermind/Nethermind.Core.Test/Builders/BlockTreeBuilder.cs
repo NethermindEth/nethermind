@@ -124,8 +124,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block

@@ -63,6 +63,7 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsDebug) _logger.Debug($"Invalid transaction {txs[i].Hash} in block {block.ToString(Block.Format.FullHashAndNumber)}");
                 return false;
             }
+
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
@@ -71,8 +72,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        Keccak unclesHash = UnclesHash.Calculate(block);
-        if (block.Header.UnclesHash != unclesHash)
+        if (!ValidateUnclesHashMatches(block, out var unclesHash))
         {
             _logger.Debug($"Uncles hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
@@ -91,8 +91,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        Keccak txRoot = new TxTrie(block.Transactions).RootHash;
-        if (txRoot != block.Header.TxRoot)
+        if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
         {
             if (_logger.IsDebug) _logger.Debug($"Transaction root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.TxRoot}, got {txRoot}");
             return false;
@@ -191,5 +190,18 @@ public class BlockValidator : IBlockValidator
         error = null;
 
         return true;
+    }
+
+    public static bool ValidateTxRootMatchesTxs(Block block, out Keccak txRoot)
+    {
+        txRoot = new TxTrie(block.Transactions).RootHash;
+        return txRoot == block.Header.TxRoot;
+    }
+
+    public static bool ValidateUnclesHashMatches(Block block, out Keccak unclesHash)
+    {
+        unclesHash = UnclesHash.Calculate(block);
+
+        return block.Header.UnclesHash == unclesHash;
     }
 }

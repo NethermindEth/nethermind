@@ -173,7 +173,7 @@ public class JwtAuthentication : IRpcAuthentication
         SecurityToken securityToken,
         TokenValidationParameters validationParameters)
     {
-        if (expires == null) return true;
+        if (!expires.HasValue) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
     }

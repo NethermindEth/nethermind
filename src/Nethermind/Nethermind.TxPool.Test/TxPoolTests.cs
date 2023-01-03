@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -360,7 +361,11 @@ namespace Nethermind.TxPool.Test
         public void should_accept_tx_when_base_fee_is_high()
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { Eip1559TransitionBlock = 1 });
-            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(1.GWei(), specProvider), LimboLogs.Instance);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 1.GWei()
+            };
+            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig, specProvider), LimboLogs.Instance);
             _txPool = CreatePool(specProvider: specProvider, incomingTxFilter: incomingTxFilter);
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(Transaction.BaseTxGasCost)

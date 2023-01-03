@@ -28,11 +28,6 @@ public class ValidationWithdrawalProcessor : IWithdrawalProcessor
         if (!spec.WithdrawalsEnabled)
             return;
 
-        // This check is potentially redundant and must be removed
-        // in favor of the upcoming check in BlockValidator
-        if (block.Withdrawals is null)
-            return;
-
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
         if (block.Withdrawals != null)

@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -148,7 +149,7 @@ namespace Nethermind.Consensus.Producers
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
+                new BlockProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
                 logManager);
     }
 }

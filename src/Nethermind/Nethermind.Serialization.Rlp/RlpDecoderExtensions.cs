@@ -49,7 +49,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (items == null)
+            if (items is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
             int i = 0;
             foreach (T? item in items)
             {
-                rlpSequence[i++] = item == null ? Rlp.OfEmptySequence : decoder.Encode(item, behaviors);
+                rlpSequence[i++] = item is null ? Rlp.OfEmptySequence : decoder.Encode(item, behaviors);
             }
 
             return Rlp.Encode(rlpSequence);

@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -109,7 +110,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)),
+                new BlockProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
