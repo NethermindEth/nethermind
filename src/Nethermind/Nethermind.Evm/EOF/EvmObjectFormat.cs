@@ -426,7 +426,7 @@ public class EvmObjectFormat
                             return false;
                         }
 
-                        if (i + count * IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
+                        if (i + 1 + count * IMMEDIATE_16BIT_BYTE_COUNT > codeSectionSize)
                         {
                             if (_loggingEnabled)
                             {
