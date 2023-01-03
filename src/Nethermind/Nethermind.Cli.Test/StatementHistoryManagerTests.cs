@@ -62,7 +62,7 @@ public class StatementHistoryManagerTests
     {
         _file.Exists(Arg.Any<string>()).Returns(true);
 
-        List<string> fileContents = new(){ "ab", "cd", "efg" };
+        List<string> fileContents = new() { "ab", "cd", "efg" };
         _file.ReadLines(Arg.Any<string>()).Returns(fileContents);
 
         _historyManager.Init();
