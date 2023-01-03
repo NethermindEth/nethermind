@@ -231,7 +231,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [Test]
         public void Can_call()
         {
-            StateProvider stateProvider = CreateInitialState(null);
+            IWorldState stateProvider = CreateInitialState(null);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -256,7 +256,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [Test]
         public void Can_call_by_hash()
         {
-            StateProvider stateProvider = CreateInitialState(null);
+            IWorldState stateProvider = CreateInitialState(null);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -758,7 +758,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private CallResultWithProof TestCallWithCode(byte[] code, Address? from = null)
         {
-            StateProvider stateProvider = CreateInitialState(code);
+            IWorldState stateProvider = CreateInitialState(code);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -796,18 +796,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
         {
-            StateProvider stateProvider = CreateInitialState(code);
-            StorageProvider storageProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
+            IWorldState stateProvider = CreateInitialState(code);
 
             for (int i = 0; i < 10000; i++)
             {
-                storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
             }
 
-            storageProvider.Commit();
-            storageProvider.CommitTrees(0);
-
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
+            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
             Keccak root = stateProvider.StateRoot;
@@ -871,9 +868,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains("\"result\""));
         }
 
-        private StateProvider CreateInitialState(byte[] code)
+        private IWorldState CreateInitialState(byte[] code)
         {
-            StateProvider stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -892,13 +889,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             return stateProvider;
         }
 
-        private void AddAccount(StateProvider stateProvider, Address account, UInt256 initialBalance)
+        private void AddAccount(IWorldState stateProvider, Address account, UInt256 initialBalance)
         {
             stateProvider.CreateAccount(account, initialBalance);
             stateProvider.Commit(MuirGlacier.Instance, NullStateTracer.Instance);
         }
 
-        private void AddCode(StateProvider stateProvider, Address account, byte[] code)
+        private void AddCode(IWorldState stateProvider, Address account, byte[] code)
         {
             stateProvider.InsertCode(account, code, MuirGlacier.Instance);
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);

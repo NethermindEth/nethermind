@@ -124,13 +124,13 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
                 StorageProvider storageProvider = new(trieStore, stateProvider, nodeLogManager);
-                IWorldState worldState = new WorldState(stateProvider, storageProvider);
-                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                IWorldState worldState = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+                TransactionProcessor transactionProcessor = new(goerliSpecProvider, worldState, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(stateProvider, storageProvider)),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(trieStore, codeDb, LimboLogs.Instance)),
                     worldState,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
@@ -143,15 +143,15 @@ namespace Nethermind.Clique.Test
 
                 StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
-                WorldState minerWorldState = new WorldState(minerStateProvider, minerStorageProvider);
+                WorldState minerWorldState = new WorldState(minerTrieStore, codeDb, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerWorldState, minerVirtualMachine, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, minerStorageProvider, goerliSpecProvider, _logManager),
+                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerWorldState, goerliSpecProvider, _logManager),
                     minerWorldState,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,

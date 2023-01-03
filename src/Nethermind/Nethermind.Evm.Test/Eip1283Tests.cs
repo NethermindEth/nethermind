@@ -37,10 +37,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x600060005560016000556000600055", 10218, 19800, 1)]
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
-            TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            Storage.Commit();
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            WorldState.CreateAccount(Recipient, 0);
+            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            WorldState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));

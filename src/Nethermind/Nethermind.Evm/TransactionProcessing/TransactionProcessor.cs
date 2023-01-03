@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -54,14 +55,6 @@ namespace Nethermind.Evm.TransactionProcessing
             /// </summary>
             CommitAndRestore = Commit | Restore | NoValidation
         }
-
-        public TransactionProcessor(
-            ISpecProvider? specProvider,
-            IStateProvider? stateProvider,
-            IStorageProvider? storageProvider,
-            IVirtualMachine? virtualMachine,
-            ILogManager? logManager)
-            : this(specProvider, new WorldState(stateProvider, storageProvider), virtualMachine, logManager) { }
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
@@ -469,8 +462,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
-                _worldState.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
-                _worldState.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
+                _worldState.Commit(spec, txTracer.IsTracingState ? (IWorldStateTracer)txTracer : NullTxTracer.Instance);
             }
 
             if (!noValidation && notSystemTransaction)

@@ -48,9 +48,7 @@ namespace Nethermind.Consensus.Processing
             ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider? stateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
-            StorageProvider? storageProvider = new StorageProvider(readOnlyTrieStore, stateProvider, logManager);
-            WorldState = new WorldState(stateProvider, storageProvider);
+            WorldState = new WorldState(readOnlyTrieStore, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

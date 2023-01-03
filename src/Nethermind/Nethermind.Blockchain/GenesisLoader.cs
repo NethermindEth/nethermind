@@ -22,21 +22,18 @@ namespace Nethermind.Blockchain
     {
         private readonly ChainSpec _chainSpec;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
+        private readonly IWorldState _worldState;
         private readonly ITransactionProcessor _transactionProcessor;
 
         public GenesisLoader(
             ChainSpec chainSpec,
             ISpecProvider specProvider,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState worldState,
             ITransactionProcessor transactionProcessor)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
@@ -48,13 +45,12 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _storageProvider.Commit();
-            _stateProvider.Commit(_specProvider.GenesisSpec, true);
+            _worldState.Commit(_specProvider.GenesisSpec, true);
 
-            _storageProvider.CommitTrees(0);
-            _stateProvider.CommitTree(0);
+            _worldState.CommitTrees(0);
+            _worldState.CommitTree(0);
 
-            genesis.Header.StateRoot = _stateProvider.StateRoot;
+            genesis.Header.StateRoot = _worldState.StateRoot;
             genesis.Header.Hash = genesis.Header.CalculateHash();
 
             return genesis;
@@ -64,18 +60,18 @@ namespace Nethermind.Blockchain
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
-                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
+                _worldState.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
                 if (allocation.Code is not null)
                 {
-                    _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
+                    _worldState.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
                 }
 
                 if (allocation.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                     {
-                        _storageProvider.Set(new StorageCell(address, storage.Key),
+                        _worldState.Set(new StorageCell(address, storage.Key),
                             storage.Value.WithoutLeadingZeros().ToArray());
                     }
                 }

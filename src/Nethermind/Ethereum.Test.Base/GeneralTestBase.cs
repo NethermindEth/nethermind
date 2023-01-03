@@ -65,9 +65,8 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new(trieStore, codeDb, _logManager);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -76,11 +75,10 @@ namespace Ethereum.Test.Base
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
             BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
@@ -121,14 +119,13 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, StateProvider stateProvider,
-            IStorageProvider storageProvider, ISpecProvider specProvider)
+        private static void InitializeTestState(GeneralStateTest test, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
@@ -137,13 +134,12 @@ namespace Ethereum.Test.Base
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            storageProvider.Commit();
+            stateProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees(0);
+            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
