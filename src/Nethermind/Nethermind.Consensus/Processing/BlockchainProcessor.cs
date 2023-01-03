@@ -339,12 +339,36 @@ namespace Nethermind.Consensus.Processing
 
             if (!shouldProcess)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
 
-            ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-            PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+            Keccak stateRoot = null;
+
+            if (!suggestedBlock.IsGenesis)
+            {
+                var branchingPoint = _blockTree.FindParentHeader(suggestedBlock.Header,
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                branchingPoint ??= suggestedBlock.Header; // Case it was root
+                stateRoot = branchingPoint?.StateRoot;
+            }
+
+            ProcessingBranch processingBranch = new ProcessingBranch(stateRoot, new List<Block>(){});
+
+            //TODO: test unit tests for no PrepareProcessingBranch in case of ForceProcessing flag!
+            if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
+            {
+                processingBranch.Blocks.Clear();
+                processingBranch.BlocksToProcess.Add(suggestedBlock);
+                _recoveryStep.RecoverData(suggestedBlock);
+            }
+            else
+            {
+                processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+                PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+            }
 
             _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
@@ -497,9 +521,9 @@ namespace Nethermind.Consensus.Processing
             ProcessingBranch processingBranch)
         {
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
-            if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
+            if (options.ContainsFlag(ProcessingOptions.ForceProcessing)) 
             {
-                processingBranch.Blocks.Clear();
+                processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
                 blocksToProcess.Add(suggestedBlock);
             }
             else
@@ -537,9 +561,15 @@ namespace Nethermind.Consensus.Processing
             bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
             Block toBeProcessed = suggestedBlock;
+            long iterations = 0;
             do
             {
-                blocksToBeAddedToMain.Add(toBeProcessed);
+                iterations++;
+                if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
+                {
+                    blocksToBeAddedToMain.Add(toBeProcessed);
+                }
+
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -570,6 +600,8 @@ namespace Nethermind.Consensus.Processing
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
                 if (_logger.IsTrace)
                     _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+
+                //Tx to filter on trace here?
                 toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
                 if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
@@ -586,7 +618,7 @@ namespace Nethermind.Consensus.Processing
                     // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
                     // MultiSyncModeSelector switched to full sync when it shouldn't
                     // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                    if (blocksToBeAddedToMain.Count > MaxBlocksDuringFastSyncTransition)
+                    if (iterations > MaxBlocksDuringFastSyncTransition)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
@@ -615,6 +647,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+                
             } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
