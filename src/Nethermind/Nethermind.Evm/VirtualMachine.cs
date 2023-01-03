@@ -2397,7 +2397,7 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
-                            if (!CodeDepositHandler.IsInitCodeOrReturnCodeValid(env.CodeInfo, initCode, spec))
+                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
@@ -2501,7 +2501,7 @@ namespace Nethermind.Evm
 
                             // EIP-3540`
                             // Code container in the context of Create2? is Initcode
-                            if (vmState.ExecutionType.IsAnyCreate() && !CodeDepositHandler.IsInitCodeOrReturnCodeValid(env.CodeInfo, returnData, spec))
+                            if (vmState.ExecutionType.IsAnyCreate() && !CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, returnData, spec))
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
