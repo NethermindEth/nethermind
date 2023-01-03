@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 
 namespace Nethermind.Cli.Console
@@ -11,10 +11,10 @@ namespace Nethermind.Cli.Console
     internal class StatementHistoryManager
     {
         private readonly ICliConsole _cliConsole;
-        private const string HistoryFilePath = "cli.cmd.history";
-        private bool writeFailNotReported = true;
+        private readonly IFileSystem _fileSystem;
 
-        private List<string> _historyCloned = new List<string>();
+        private const string HistoryFilePath = "cli.cmd.history";
+        private bool _writeFailNotReported = true;
 
         private static IEnumerable<string> SecuredCommands
         {
@@ -25,20 +25,21 @@ namespace Nethermind.Cli.Console
             }
         }
 
-        private const string _removedString = "*removed*";
+        private const string RemovedString = "*removed*";
 
-        public StatementHistoryManager(ICliConsole cliConsole)
+        public StatementHistoryManager(ICliConsole cliConsole, IFileSystem fileSystem)
         {
             _cliConsole = cliConsole;
+            _fileSystem = fileSystem;
         }
 
         public void UpdateHistory(string statement)
         {
             try
             {
-                if (!File.Exists(HistoryFilePath))
+                if (!_fileSystem.File.Exists(HistoryFilePath))
                 {
-                    File.Create(HistoryFilePath).Dispose();
+                    _fileSystem.File.Create(HistoryFilePath).Dispose();
                 }
 
                 if (!SecuredCommands.Any(statement.Contains))
@@ -47,22 +48,19 @@ namespace Nethermind.Cli.Console
                     if (history.LastOrDefault() != statement)
                     {
                         ReadLine.AddHistory(statement);
-                        _historyCloned.Insert(0, statement);
+                        _fileSystem.File.AppendAllLines(HistoryFilePath, new[] { statement });
                     }
                 }
                 else
                 {
-                    ReadLine.AddHistory(_removedString);
-                    _historyCloned.Insert(0, statement);
+                    ReadLine.AddHistory(RemovedString);
                 }
-
-                File.WriteAllLines(HistoryFilePath, _historyCloned.Distinct().Reverse().ToArray());
             }
             catch (Exception e)
             {
-                if (writeFailNotReported)
+                if (_writeFailNotReported)
                 {
-                    writeFailNotReported = false;
+                    _writeFailNotReported = false;
                     _cliConsole.WriteErrorLine($"Could not write cmd history to {HistoryFilePath} {e.Message}");
                 }
             }
@@ -73,17 +71,13 @@ namespace Nethermind.Cli.Console
             try
             {
                 _cliConsole.WriteInteresting(
-                    $"Loading history file from {Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, HistoryFilePath)}" + Environment.NewLine);
+                    $"Loading history file from {_fileSystem.Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, HistoryFilePath)}" + Environment.NewLine);
 
-                if (File.Exists(HistoryFilePath))
+                if (_fileSystem.File.Exists(HistoryFilePath))
                 {
-                    foreach (string line in File.ReadLines(HistoryFilePath).Distinct().TakeLast(60))
+                    foreach (string line in _fileSystem.File.ReadLines(HistoryFilePath).TakeLast(60))
                     {
-                        if (line != _removedString)
-                        {
-                            ReadLine.AddHistory(line);
-                            _historyCloned.Insert(0, line);
-                        }
+                        ReadLine.AddHistory(line);
                     }
                 }
             }
