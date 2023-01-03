@@ -60,20 +60,14 @@ namespace Nethermind.Synchronization.StateSync
                 return;
             }
 
-            await task.ContinueWith(
-                (t, state) =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
-                    }
-
-                    StateSyncBatch batchLocal = (StateSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        batchLocal.Responses = t.Result;
-                    }
-                }, batch);
+            try
+            {
+                batch.Responses = await task;
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+            }
         }
 
         /// <summary>

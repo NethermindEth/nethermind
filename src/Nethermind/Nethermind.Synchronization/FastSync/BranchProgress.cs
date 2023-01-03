@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Logging;
 
@@ -14,7 +15,7 @@ namespace Nethermind.Synchronization.FastSync
     /// **********************+++++++++**++++++++**********+************
     /// ****************************************************************
     /// ++++++++++++++++++*+++++****************************************
-    /// **************************************************************** 
+    /// ****************************************************************
     /// </summary>
     internal class BranchProgress
     {
@@ -89,6 +90,7 @@ namespace Nethermind.Synchronization.FastSync
                 NodeProgressState.Requested);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
         {
             if (level > 2 || nodeDataType != NodeDataType.State)
