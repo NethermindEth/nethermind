@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
 using FluentAssertions;
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 _transactionPool,
                 _pooledTxsRequestor,
                 Policy.FullGossip,
-                _specProvider,
+                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
             _handler.Init();
         }
