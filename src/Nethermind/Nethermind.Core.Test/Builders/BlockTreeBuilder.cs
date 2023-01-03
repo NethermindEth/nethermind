@@ -27,18 +27,18 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly Block _genesisBlock;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
+        private ISpecProvider _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder(ISpecProvider? specProvider)
+        public BlockTreeBuilder(ISpecProvider specProvider)
             : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -119,6 +119,8 @@ namespace Nethermind.Core.Test.Builders
 
         private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
         {
+            if (_ecdsa is null) { throw new Exception("ECDSA not set"); }
+
             Block currentBlock;
             if (_receiptStorage is not null && blockIndex % 3 == 0)
             {

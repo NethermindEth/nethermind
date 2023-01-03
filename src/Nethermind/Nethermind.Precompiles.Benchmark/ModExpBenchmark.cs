@@ -15,6 +15,7 @@ namespace Nethermind.Precompiles.Benchmark
         protected override string InputsDirectory => "modexp";
 
         [Benchmark]
+        [Obsolete]
         public (ReadOnlyMemory<byte>, bool) BigInt()
         {
             return ModExpPrecompile.OldRun(Input.Bytes);

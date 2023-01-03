@@ -20,6 +20,8 @@ namespace Nethermind.Precompiles.Benchmark
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public abstract class PrecompileBenchmarkBase
     {
+        private static Core.Specs.IReleaseSpec ReleaseSpec = Shanghai.Instance;
+
         protected abstract IEnumerable<IPrecompile> Precompiles { get; }
 
         protected abstract string InputsDirectory { get; }
@@ -28,12 +30,13 @@ namespace Nethermind.Precompiles.Benchmark
         {
             public IPrecompile Precompile { get; }
 
-            public Param(IPrecompile precompile, string name, byte[] bytes, byte[]? expected)
+            public Param(IPrecompile precompile, string name, byte[] bytes, byte[]? expected, long gasCost)
             {
                 Precompile = precompile ?? throw new ArgumentNullException(nameof(precompile));
                 Bytes = bytes;
                 Name = name;
                 ExpectedResult = expected;
+                GasCost = gasCost;
             }
 
             public byte[] Bytes { get; }
@@ -41,6 +44,8 @@ namespace Nethermind.Precompiles.Benchmark
             public byte[]? ExpectedResult { get; }
 
             public string Name { get; }
+
+            public long GasCost { get; }
 
             public override string ToString()
             {
@@ -60,7 +65,7 @@ namespace Nethermind.Precompiles.Benchmark
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
                             .Select(LineToTestInput).Take(1).ToArray()
-                            .Select(i => new Param(precompile, file, i, null)));
+                            .Select(i => new Param(precompile, file, i, null, precompile.BaseGasCost(ReleaseSpec))));
                     }
 
                     foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.json", SearchOption.TopDirectoryOnly))
@@ -68,7 +73,7 @@ namespace Nethermind.Precompiles.Benchmark
                         EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
                         var jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
                         var parameters = jsonInputs.Select(i =>
-                            new Param(precompile, i.Name, i.Input, i.Expected));
+                            new Param(precompile, i.Name!, i.Input!, i.Expected, i.Gas));
                         inputs.AddRange(parameters);
                     }
 
@@ -91,7 +96,7 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark(Baseline = true)]
         public (ReadOnlyMemory<byte>, bool) Baseline()
         {
-            return Input.Precompile.Run(Input.Bytes, Berlin.Instance);
+            return Input.Precompile.Run(Input.Bytes, ReleaseSpec);
         }
     }
 }
