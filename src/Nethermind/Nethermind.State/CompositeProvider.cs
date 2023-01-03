@@ -12,10 +12,11 @@ using Nethermind.Logging;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State;
 
-public class WorldState : IWorldState
+public class CompositeProvider : IWorldState
 {
     private const int StartCapacity = Resettable.StartCapacity;
     private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
@@ -31,9 +32,9 @@ public class WorldState : IWorldState
 
     private readonly IStorageProvider _storageProvider;
 
-    public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+    public CompositeProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CompositeProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _tree = new StateTree(trieStore, logManager);
         _storageProvider = new StorageProvider(trieStore, this, logManager);
@@ -320,7 +321,7 @@ public class WorldState : IWorldState
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
-        return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot(newTransactionStart));
+        return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot());
     }
     Snapshot.Storage IStorageProvider.TakeSnapshot(bool newTransactionStart)
     {
@@ -346,7 +347,7 @@ public class WorldState : IWorldState
     {
         if (snapshot > _currentPosition)
         {
-            throw new InvalidOperationException($"{nameof(WorldState)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            throw new InvalidOperationException($"{nameof(CompositeProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
         }
 
         if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
@@ -417,14 +418,18 @@ public class WorldState : IWorldState
 
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
     {
-        _storageProvider.Commit();
         Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
     }
 
+    // public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+    // {
+    //     StateProvider.Commit(releaseSpec, stateTracer, isGenesis);
+    //     StorageProvider.Commit(stateTracer);
+    // }
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
     {
-        _storageProvider.Commit(stateTracer);
         Commit(releaseSpec, (IStateTracer)stateTracer, isGenesis);
+        _storageProvider.Commit(stateTracer);
     }
 
     private readonly struct ChangeTrace
@@ -456,12 +461,12 @@ public class WorldState : IWorldState
         if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
         if (_changes[_currentPosition] is null)
         {
-            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(CompositeProvider)}");
         }
 
         if (_changes[_currentPosition + 1] is not null)
         {
-            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(CompositeProvider)}");
         }
 
         bool isTracing = stateTracer.IsTracingState;
@@ -658,7 +663,7 @@ public class WorldState : IWorldState
 
     private Account? GetState(Address address)
     {
-        Db.Metrics.StateTreeReads++;
+        Metrics.StateTreeReads++;
         Account? account = _tree.Get(address);
         return account;
     }
@@ -666,7 +671,7 @@ public class WorldState : IWorldState
     private void SetState(Address address, Account? account)
     {
         _needsStateRootUpdate = true;
-        Db.Metrics.StateTreeWrites++;
+        Metrics.StateTreeWrites++;
         _tree.Set(address, account);
     }
 
@@ -755,6 +760,8 @@ public class WorldState : IWorldState
         }
     }
 
+
+
     public byte[] GetOriginal(in StorageCell storageCell)
     {
         return _storageProvider.GetOriginal(storageCell);
@@ -830,6 +837,8 @@ public class WorldState : IWorldState
         _storageProvider.Restore(snapshot);
     }
 
+
+
     private enum ChangeType
     {
         JustCache,
@@ -853,3 +862,5 @@ public class WorldState : IWorldState
         public Account? Account { get; }
     }
 }
+
+

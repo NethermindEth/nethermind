@@ -27,9 +27,9 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Load_self_destruct()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            WorldState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            WorldState.Commit(SpecProvider.GenesisSpec);
+            WorldState.CommitTree(0);
 
             byte[] initByteCode = Prepare.EvmCode
                 .ForInitOf(
@@ -86,9 +86,9 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            WorldState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            WorldState.Commit(SpecProvider.GenesisSpec);
+            WorldState.CommitTree(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -191,9 +191,9 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store_different_cells()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            WorldState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            WorldState.Commit(SpecProvider.GenesisSpec);
+            WorldState.CommitTree(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -352,18 +352,17 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            //TestState.Commit(SpecProvider.GenesisSpec);
-            //TestState.CommitTree(0);
+            WorldState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            //WorldState.Commit(SpecProvider.GenesisSpec);
+            //WorldState.CommitTree(0);
 
-            TestState.CreateAccount(deploymentAddress, UInt256.One);
-            TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
+            WorldState.CreateAccount(deploymentAddress, UInt256.One);
+            WorldState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
-            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
-            Storage.Commit();
-            Storage.CommitTrees(0);
-            TestState.Commit(MuirGlacier.Instance);
-            TestState.CommitTree(0);
+            WorldState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
+            WorldState.Commit(MuirGlacier.Instance);
+            WorldState.CommitTrees(0);
+            WorldState.CommitTree(0);
 
             long gasLimit = 1000000;
 

@@ -31,12 +31,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
-                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
-                if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
+                if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.StateProvider));
 
-                _api.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _api.StorageProvider.Commit();
-                _api.StateProvider.Commit(Homestead.Instance);
+                _api.WorldState.CreateAccount(Address.Zero, UInt256.Zero);
+                _api.WorldState.Commit(Homestead.Instance);
             }
         }
     }

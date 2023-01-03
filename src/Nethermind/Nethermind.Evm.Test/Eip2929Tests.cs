@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Case1()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000")
@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Case2()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x60006000600060ff3c60006000600060ff3c600060006000303c00")
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Case3()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x60015450601160015560116002556011600255600254600154")
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Case4()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50")

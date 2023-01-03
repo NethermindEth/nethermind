@@ -236,28 +236,26 @@ namespace Nethermind.Evm.Test.Tracing
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
             public TransactionProcessor _transactionProcessor;
-            public IStateProvider _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
 
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                MemDb stateDb = new();
+                MemDb stateDb = new MemDb();
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
-                _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
-                _stateProvider.Commit(_specProvider.GenesisSpec);
-                _stateProvider.CommitTree(0);
+                IWorldState worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+                worldState.CreateAccount(TestItem.AddressA, 1.Ether());
+                worldState.Commit(_specProvider.GenesisSpec);
+                worldState.CommitTree(0);
 
-                StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
                 VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-                _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+                _transactionProcessor = new TransactionProcessor(_specProvider, worldState, virtualMachine, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
 
                 tracer = new();
                 BlocksConfig blocksConfig = new();
-                estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+                estimator = new(_transactionProcessor, worldState, _specProvider, blocksConfig);
             }
         }
     }

@@ -202,8 +202,8 @@ namespace Nethermind.Mev.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, new WorldState(State, Storage)),
-                    WorldState,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                    State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);

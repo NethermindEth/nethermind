@@ -64,8 +64,7 @@ namespace Nethermind.Init.Steps
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                _api.StateProvider,
-                _api.StorageProvider,
+                _api.WorldState!,
                 _api.TransactionProcessor)
                 .Load();
 

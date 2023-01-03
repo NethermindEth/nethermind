@@ -45,7 +45,6 @@ namespace Nethermind.AuRa.Test.Contract
                     ChainSpec,
                     SpecProvider,
                     State,
-                    Storage,
                     TxProcessor)
                 .Load();
     }
