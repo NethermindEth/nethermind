@@ -53,6 +53,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private Channel<ZeroPacket> _incomingMessageQueue = Channel.CreateBounded<ZeroPacket>(_queueCapacity);
         private CancellationTokenSource _cancellationTokenSource = new();
 
+        // At the point of `Init` the ambient task scheduler is dotnetty's event executor task scheduler.
+        // So need to specify one. Putting it here for future higher level integration.
+        private TaskScheduler _workerTaskScheduler = TaskScheduler.Default;
+
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -83,7 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             for (int i = 0; i < _processingTasksCount; i++)
             {
-                Task.Factory.StartNew(StartReceiveLoop, TaskCreationOptions.LongRunning);
+                Task.Factory.StartNew(StartReceiveLoop, _cancellationTokenSource.Token, TaskCreationOptions.LongRunning, _workerTaskScheduler);
             }
             base.Init();
         }
