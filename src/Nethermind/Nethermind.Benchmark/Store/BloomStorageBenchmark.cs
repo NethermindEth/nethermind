@@ -25,7 +25,7 @@ public class BloomStorageBenchmark
 
     private static int Benchmark(IFileStoreFactory fileStorageFactory, string basePath)
     {
-        int maxBlock = ushort.MaxValue * 128 + 127;
+        int maxBlock = ushort.MaxValue * 8 + 7;
         BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
         try
         {
