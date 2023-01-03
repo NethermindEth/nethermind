@@ -379,6 +379,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             if (withdrawalsEnabled)
                 genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
+            bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+            if (isEip4844Enabled)
+                genesisHeader.ExcessDataGas ??= 0;
+
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
 
