@@ -226,19 +226,6 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            // we need to be able to parse header + all code sizes + all code section + data section
-            requiredSize = TERMINATOR_OFFSET
-                           + codeSizeLenght
-                           + codeSectionsSize // minimum type section body size
-                           + dataSection.Size; // minimum code section body size
-
-            // Body validation
-            // if (container.Length != requiredSize)
-            // {
-            //     if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is not required length");
-            //     return false;
-            // }
-
             header = new EofHeader
             {
                 Version = VERSION,
@@ -273,25 +260,6 @@ internal static class EvmObjectFormat
                 if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
                 return false;
             }
-
-            // if (contractBody[INPUTS_OFFSET] > INPUTS_MAX)
-            // {
-            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
-            //     return false;
-            // }
-            //
-            // if (contractBody[OUTPUTS_OFFSET] > OUTPUTS_MAX)
-            // {
-            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
-            //     return false;
-            // }
-            //
-            // ushort maxStackHeight = contractBody.Slice(MAX_STACK_HEIGHT_OFFSET, MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
-            // if (maxStackHeight > MAX_STACK_HEIGHT)
-            // {
-            //     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
-            //     return false;
-            // }
 
             return true;
         }
