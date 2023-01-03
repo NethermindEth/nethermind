@@ -52,14 +52,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             MemDb stateDb = new();
             MemDb codeDb = new();
             ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
-            WorldState worldState = new(stateProvider, storageProvider);
+            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState worldState = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, worldState, virtualMachine, LimboLogs.Instance);
 
             BlockProcessor blockProcessor = new(
                 specProvider,

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.State
 {
@@ -12,10 +13,7 @@ namespace Nethermind.State
     /// </summary>
     public interface IWorldState : IJournal<Snapshot>, IStateProvider, IStorageProvider
     {
-        IStorageProvider StorageProvider { get; }
-
-        IStateProvider StateProvider { get; }
-
+        void SetNonce(Address address, in UInt256 nonce);
         new Snapshot TakeSnapshot(bool newTransactionStart = false);
 
         Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();

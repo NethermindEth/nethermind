@@ -45,8 +45,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(instruction)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -93,15 +93,15 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(opcodeToTest)
                 .Done;
 
-            TestState.CreateAccount(externalContractAddress, 1.Ether());
-            TestState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
+            WorldState.CreateAccount(externalContractAddress, 1.Ether());
+            WorldState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
 
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, 70000)
                 .Done;
 
-            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
-            TestState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
+            WorldState.CreateAccount(paymasterContractAddress, 1.Ether());
+            WorldState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Op(paymasterValidation ? Instruction.NUMBER : Instruction.BASEFEE) // switch to paymaster validation with NUMBER
@@ -133,15 +133,15 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(selfdestruct ? Instruction.SELFDESTRUCT : Instruction.DUP1)
                 .Done;
 
-            TestState.CreateAccount(externalContractAddress, 1.Ether());
-            TestState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
+            WorldState.CreateAccount(externalContractAddress, 1.Ether());
+            WorldState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
 
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, 70000)
                 .Done;
 
-            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
-            TestState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
+            WorldState.CreateAccount(paymasterContractAddress, 1.Ether());
+            WorldState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Op(paymasterValidation ? Instruction.NUMBER : Instruction.BASEFEE) // switch to paymaster validation with NUMBER
@@ -149,15 +149,15 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.STOP)
                 .Done;
 
-            Keccak initialCodeHash = TestState.GetCodeHash(externalContractAddress);
+            Keccak initialCodeHash = WorldState.GetCodeHash(externalContractAddress);
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
             if (shouldMatch)
             {
-                TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);
+                WorldState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);
             }
             else
             {
-                TestState.GetCodeHash(externalContractAddress).Should().NotBe(initialCodeHash);
+                WorldState.GetCodeHash(externalContractAddress).Should().NotBe(initialCodeHash);
             }
         }
 
@@ -175,8 +175,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.LOG0)
                 .Done;
 
-            TestState.CreateAccount(externalContractAddress, 1.Ether());
-            TestState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
+            WorldState.CreateAccount(externalContractAddress, 1.Ether());
+            WorldState.InsertCode(externalContractAddress, externalContractCalledByPaymasterCode, Spec);
 
             byte[] paymasterCode = Prepare.EvmCode
                 .Call(externalContractAddress, gasLimit)
@@ -187,8 +187,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.RETURN)
                 .Done;
 
-            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
-            TestState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
+            WorldState.CreateAccount(paymasterContractAddress, 1.Ether());
+            WorldState.InsertCode(paymasterContractAddress, paymasterCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(paymasterContractAddress, 100000)
@@ -224,8 +224,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.STOP)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 70000)

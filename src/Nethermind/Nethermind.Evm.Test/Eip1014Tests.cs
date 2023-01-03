@@ -48,8 +48,8 @@ namespace Nethermind.Evm.Test
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -75,10 +75,10 @@ namespace Nethermind.Evm.Test
 
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
-            TestState.CreateAccount(expectedAddress, 1.Ether());
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.CreateAccount(expectedAddress, 1.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -86,8 +86,8 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.GetAccount(expectedAddress).Should().NotBeNull();
-            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
+            WorldState.GetAccount(expectedAddress).Should().NotBeNull();
+            WorldState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
             AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
@@ -105,19 +105,18 @@ namespace Nethermind.Evm.Test
 
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
-            TestState.CreateAccount(expectedAddress, 1.Ether());
-            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
-            Storage.Commit();
-            Storage.CommitTrees(0);
-            TestState.Commit(Spec);
-            TestState.CommitTree(0);
+            WorldState.CreateAccount(expectedAddress, 1.Ether());
+            WorldState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
+            WorldState.Commit(Spec);
+            WorldState.CommitTrees(0);
+            WorldState.CommitTree(0);
 
-            Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            Keccak storageRoot = WorldState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -125,9 +124,9 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.GetAccount(expectedAddress).Should().NotBeNull();
-            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
-            TestState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
+            WorldState.GetAccount(expectedAddress).Should().NotBeNull();
+            WorldState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
+            WorldState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
             AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
@@ -146,9 +145,9 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -156,7 +155,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.AccountExists(expectedAddress).Should().BeFalse();
+            WorldState.AccountExists(expectedAddress).Should().BeFalse();
         }
 
         /// <summary>
@@ -180,8 +179,8 @@ namespace Nethermind.Evm.Test
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)

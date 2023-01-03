@@ -27,11 +27,11 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.InsertCode(TestItem.AddressC, contractCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressC, contractCode, Spec);
 
-            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
+            WorldState.CreateAccount(TestItem.AddressD, 1.Ether());
+            WorldState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -44,8 +44,8 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
-            UInt256 balanceB = TestState.GetBalance(TestItem.AddressB);
-            UInt256 balanceC = TestState.GetBalance(TestItem.AddressC);
+            UInt256 balanceB = WorldState.GetBalance(TestItem.AddressB);
+            UInt256 balanceC = WorldState.GetBalance(TestItem.AddressC);
             AssertStorage(new StorageCell(TestItem.AddressB, UInt256.Zero), balanceB);
             AssertStorage(new StorageCell(TestItem.AddressB, UInt256.One), balanceB);
             AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), balanceC);
@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void after_istanbul_extcodehash_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void after_istanbul_balance_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void after_istanbul_sload_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void just_before_istanbul_extcodehash_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -111,7 +111,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void just_before_istanbul_balance_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void just_before_istanbul_sload_cost_is_increased()
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)

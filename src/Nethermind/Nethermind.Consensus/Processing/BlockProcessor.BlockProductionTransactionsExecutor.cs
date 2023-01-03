@@ -38,19 +38,6 @@ namespace Nethermind.Consensus.Processing
 
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
-                IStateProvider stateProvider,
-                IStorageProvider storageProvider,
-                ISpecProvider specProvider,
-                ILogManager logManager)
-            {
-                _transactionProcessor = new BuildUpTransactionProcessorAdapter(transactionProcessor);
-                _worldState = new WorldState(stateProvider: stateProvider, storageProvider: storageProvider);
-                _blockProductionTransactionPicker = new BlockProductionTransactionPicker(specProvider);
-                _logger = logManager.GetClassLogger();
-            }
-
-            public BlockProductionTransactionsExecutor(
-                ITransactionProcessor transactionProcessor,
                 IWorldState worldState,
                 ISpecProvider specProvider,
                 ILogManager logManager)
