@@ -28,7 +28,7 @@ namespace Nethermind.Evm
 
         public static bool CodeIsInvalid(ReadOnlySpan<byte> code, IReleaseSpec spec) => !CodeIsValid(code, spec);
 
-        public static bool IsInitCodeOrReturnCodeValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
+        public static bool CreateCodeIsValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
         {
             if (spec.IsEip3540Enabled)
             {
