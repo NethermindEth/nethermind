@@ -210,7 +210,7 @@ public class BlockValidator : IBlockValidator
 
         if (spec.IsEip4844Enabled && block.Transactions.Sum(tr => tr?.BlobVersionedHashes?.Length) > maxBlobsPerBlock)
         {
-            error = $"Block cannot contain more than {maxBlobsPerBlock}.";
+            error = $"A block cannot contain more than {maxBlobsPerBlock} blobs.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
