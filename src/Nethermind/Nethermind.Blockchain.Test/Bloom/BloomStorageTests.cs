@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Test.Bloom
                 using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
 
                 Parallel.For(0, maxBlock + 1,
-                    new ParallelOptions { MaxDegreeOfParallelism =  Environment.ProcessorCount * 16},
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
                     i =>
                     {
                         Core.Bloom bloom = new();
