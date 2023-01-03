@@ -358,7 +358,7 @@ public class EvmObjectFormat
                             header = null; return false;
                         }
 
-                        if (i + count * IMMEDIATE_16BIT_BYTE_COUNT > sectionSize)
+                        if (i + 1 + count * IMMEDIATE_16BIT_BYTE_COUNT > sectionSize)
                         {
                             if (_loggingEnabled)
                             {
