@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -40,6 +41,7 @@ namespace Nethermind.Merge.Plugin
         private ILogger _logger = null!;
         protected IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
+        protected IBlocksConfig _blocksConfig = null!;
         protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
@@ -69,6 +71,10 @@ namespace Nethermind.Merge.Plugin
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _syncConfig = nethermindApi.Config<ISyncConfig>();
+            _blocksConfig = nethermindApi.Config<IBlocksConfig>();
+
+            MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
+
             _logger = _api.LogManager.GetClassLogger();
 
             if (MergeEnabled)
@@ -113,15 +119,36 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
+        internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
+        {
+            ulong defaultValue = blocksConfig.GetDefaultValue<ulong>(nameof(IBlocksConfig.SecondsPerSlot));
+            if (blocksConfig.SecondsPerSlot != mergeConfig.SecondsPerSlot)
+            {
+                if (blocksConfig.SecondsPerSlot == defaultValue)
+                {
+                    blocksConfig.SecondsPerSlot = mergeConfig.SecondsPerSlot;
+                }
+                else if (mergeConfig.SecondsPerSlot == defaultValue)
+                {
+                    mergeConfig.SecondsPerSlot = blocksConfig.SecondsPerSlot;
+                }
+                else
+                {
+                    throw new InvalidConfigurationException($"Configuration mismatch at {nameof(IBlocksConfig.SecondsPerSlot)} " +
+                                                                $"with conflicting values {blocksConfig.SecondsPerSlot} and {mergeConfig.SecondsPerSlot}",
+                            ExitCodes.ConflictingConfigurations);
+                }
+            }
+        }
+
         private void EnsureReceiptAvailable()
         {
             if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
                 return;
 
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            if (syncConfig.FastSync)
+            if (_syncConfig.FastSync)
             {
-                if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
+                if (!_syncConfig.DownloadReceiptsInFastSync || !_syncConfig.DownloadBodiesInFastSync)
                 {
                     throw new InvalidConfigurationException(
                         "Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync",
@@ -212,7 +239,7 @@ namespace Nethermind.Merge.Plugin
                     _invalidChainTracker,
                     _api.LogManager);
                 _api.HealthHintService =
-                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _mergeConfig);
+                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
                 _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
                 _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
@@ -260,13 +287,13 @@ namespace Nethermind.Merge.Plugin
                 IBlockImprovementContextFactory improvementContextFactory;
                 if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
                 {
-                    improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
+                    improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
                 }
                 else
                 {
                     DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                     IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
                     improvementContextFactory = boostBlockImprovementContextFactory;
                 }
 
@@ -275,7 +302,7 @@ namespace Nethermind.Merge.Plugin
                     improvementContextFactory,
                     _api.TimerFactory,
                     _api.LogManager,
-                    TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
+                    TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
@@ -284,7 +311,7 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
-                        _api.Config<ISyncConfig>(),
+                        _syncConfig,
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,

@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Merge.Plugin;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Db;
-using Nethermind.Blockchain;
-using Nethermind.State;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Db;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa
 {

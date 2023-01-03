@@ -37,6 +37,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
 {
@@ -107,7 +108,7 @@ namespace Nethermind.Clique.Test
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
@@ -161,8 +162,11 @@ namespace Nethermind.Clique.Test
                 {
                     ProcessGenesis(privateKey);
                 }
-
-                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
+                BlocksConfig blocksConfig = new()
+                {
+                    MinGasPrice = 0
+                };
+                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
                 TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,

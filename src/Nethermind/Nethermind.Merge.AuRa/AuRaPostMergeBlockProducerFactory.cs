@@ -1,3 +1,4 @@
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;

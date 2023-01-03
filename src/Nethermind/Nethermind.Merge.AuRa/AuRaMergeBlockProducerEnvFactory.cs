@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;

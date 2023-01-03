@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -53,6 +54,13 @@ namespace Nethermind.Specs
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
         public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+
+        // used only in testing
+        public ReleaseSpec Clone()
+        {
+            return (ReleaseSpec)MemberwiseClone();
+        }
+
         public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
@@ -64,7 +72,6 @@ namespace Nethermind.Specs
         public Address Eip1559FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public bool IsEip1153Enabled { get; set; }
-        public bool IsEip3675Enabled { get; set; }
         public bool IsEip3651Enabled { get; set; }
         public bool IsEip3855Enabled { get; set; }
         public bool IsEip3860Enabled { get; set; }

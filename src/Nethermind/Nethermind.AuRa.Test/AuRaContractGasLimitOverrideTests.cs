@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;

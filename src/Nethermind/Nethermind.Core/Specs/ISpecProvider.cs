@@ -49,7 +49,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
-        ForkActivation[] TransitionBlocks { get; }
+        ForkActivation[] TransitionActivations { get; }
 
         /// <summary>
         /// Resolves a spec for the given block number.
@@ -57,7 +57,6 @@ namespace Nethermind.Core.Specs
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
         IReleaseSpec GetSpec(ForkActivation forkActivation);
-
         IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
         IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
     }
