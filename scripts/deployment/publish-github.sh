@@ -7,6 +7,7 @@ set -e
 echo "Publishing packages to GitHub"
 
 PACKAGE_PATH=$GITHUB_WORKSPACE/$PACKAGE_DIR
+IS_PRERELEASE=$(echo $GIT_TAG | grep -c "RC")
 
 BODY=$(printf \
   '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": false}' \

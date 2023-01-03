@@ -6,6 +6,9 @@ on:
       tag:
         description: 'Version tag'
         required: true
+      rc_number:
+        description: 'Release Candidate Number'
+        required: true
 
 permissions:
   deployments: write
@@ -111,7 +114,7 @@ jobs:
     - name: Publish
       env:
         GIT_COMMIT: ${{ needs.build.outputs.COMMIT_HASH }}
-        GIT_TAG: ${{ github.event.inputs.tag }}
+        GIT_TAG: ${{ github.event.inputs.tag }}RC${{github.event.inputs.rc_number}}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
       run: $SCRIPTS_PATH/publish-github.sh
@@ -137,15 +140,12 @@ jobs:
       if: success()
       run: |
         echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-    - name: Build and push image to Docker registry (major) / trigger DAppNode build
-      if: ${{ !contains(github.event.inputs.tag, '-') }}
+    - name: Build and push image to Docker registry (unstable release)
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
-        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
-    - name: Build and push image to Docker registry  (patch)
-      if: ${{ contains(github.event.inputs.tag, '-') }}
-      run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t \
+        "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}RC${{github.event.inputs.rc_number}}" \
+        -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} \
+        --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
       if: always()
       run: |
