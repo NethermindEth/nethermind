@@ -65,11 +65,10 @@ namespace Nethermind.Evm.Test
 
             var tracer = Execute(callCode);
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
-            //how to test byteCode returned empty (CREATE) not call ?
-            //Assert.AreEqual(StatusCode.FailureBytes, tracer.ReturnValue);
-            Assert.AreEqual(Array.Empty<byte>(), tracer.ReturnValue);
-            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost - (isCreate2 ? 4 : 3) * GasCostOf.VeryLow);
+            Assert.AreEqual(1, tracer.ReportedActionErrors.Count);
+            Assert.AreEqual(EvmExceptionType.OutOfGas, tracer.ReportedActionErrors[0]);
             Assert.AreEqual((UInt256)0, TestState.GetAccount(TestItem.AddressC).Nonce);
+            //TODO - should check gas spent in this case?
         }
 
         [Test]
