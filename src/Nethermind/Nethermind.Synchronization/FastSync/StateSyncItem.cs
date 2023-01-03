@@ -20,6 +20,16 @@ namespace Nethermind.Synchronization.FastSync
             Rightness = rightness;
         }
 
+        public StateSyncItem(StateSyncItem original, NodeDataType nodeDataType)
+        {
+            Hash = original.Hash;
+            AccountPathNibbles = original.AccountPathNibbles;
+            PathNibbles = original.PathNibbles;
+            NodeDataType = nodeDataType;
+            Level = original.Level;
+            Rightness = original.Rightness;
+        }
+
         public Keccak Hash { get; }
 
         /// <summary>

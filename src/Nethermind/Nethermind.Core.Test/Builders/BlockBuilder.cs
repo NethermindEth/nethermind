@@ -81,7 +81,8 @@ namespace Nethermind.Core.Test.Builders
             }
 
             long number = TestObjectInternal.Number;
-            ReceiptTrie receiptTrie = new(specProvider.GetSpec(number), receipts);
+            ulong timestamp = TestObjectInternal.Timestamp;
+            ReceiptTrie receiptTrie = new(specProvider.GetSpec(number, timestamp), receipts);
             receiptTrie.UpdateRootHash();
 
             BlockBuilder result = WithTransactions(txs);

@@ -22,7 +22,7 @@ namespace Nethermind.Evm.Benchmark;
 
 public class MultipleUnsignedOperations
 {
-    private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.IstanbulBlockNumber);
+    private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
     private readonly ITxTracer _txTracer = NullTxTracer.Instance;
     private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;

@@ -12,15 +12,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.ComponentModel.DataAnnotations;
-using Nethermind.Evm.EOF;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
@@ -93,7 +91,6 @@ namespace Nethermind.Evm
             _worldState = worldState;
 
             IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
-            ByteCodeValidator byteCodeValidator = new(spec, _logManager);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -201,7 +198,7 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && !byteCodeValidator.ValidateBytecode(callResult.Output, spec))
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
@@ -246,7 +243,7 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = !byteCodeValidator.ValidateBytecode(callResult.Output, spec);
+                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -598,7 +595,6 @@ namespace Nethermind.Evm
             bool traceOpcodes = _txTracer.IsTracingInstructions;
             ExecutionEnvironment env = vmState.Env;
             TxExecutionContext txCtx = env.TxExecutionContext;
-            ByteCodeValidator byteCodeValidator = new(spec, _logManager);
 
             if (!vmState.IsContinuation)
             {
@@ -626,8 +622,8 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
-            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection;
-            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection;
+            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -2401,18 +2397,11 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
-                            if (env.CodeInfo.IsEof)
+                            if (!CodeDepositHandler.IsInitCodeOrReturnCodeValid(env.CodeInfo, initCode, spec))
                             {
-                                bool initCodeHasEofPrefix = byteCodeValidator.HasEofPrefix(initCode);
-                                bool initCodeIsValid = byteCodeValidator.ValidateEofBytecode(initCode, out EofHeader? initcodeHeader);
-                                if (!initCodeHasEofPrefix
-                                    || !initCodeIsValid
-                                    || env.CodeInfo.Version != initcodeHeader?.Version)
-                                {
-                                    _returnDataBuffer = Array.Empty<byte>();
-                                    stack.PushZero();
-                                    break;
-                                }
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
                             }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
@@ -2512,18 +2501,11 @@ namespace Nethermind.Evm
 
                             // EIP-3540`
                             // Code container in the context of Create2? is Initcode
-                            if (env.CodeInfo.IsEof && vmState.ExecutionType.IsAnyCreate())
+                            if (vmState.ExecutionType.IsAnyCreate() && !CodeDepositHandler.IsInitCodeOrReturnCodeValid(env.CodeInfo, returnData, spec))
                             {
-                                bool returnCodeHasEofPrefix = byteCodeValidator.HasEofPrefix(returnData);
-                                bool returnCodeIsValid = byteCodeValidator.ValidateEofBytecode(returnData, out EofHeader? returnCodeHeader);
-                                if (!returnCodeHasEofPrefix
-                                    || !returnCodeIsValid
-                                    || env.CodeInfo.Version != returnCodeHeader?.Version)
-                                {
-                                    _returnDataBuffer = Array.Empty<byte>();
-                                    stack.PushZero();
-                                    break;
-                                }
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
                             }
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);

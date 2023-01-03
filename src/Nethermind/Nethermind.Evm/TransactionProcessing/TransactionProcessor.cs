@@ -22,7 +22,6 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
-        private readonly ILogManager _logManager;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
@@ -72,8 +71,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IVirtualMachine? virtualMachine,
             ILogManager? logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _stateProvider = worldState.StateProvider;
@@ -130,8 +128,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
-            ByteCodeValidator byteCodeValidator = new(spec, _logManager);
+            IReleaseSpec spec = _specProvider.GetSpec(block);
             bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -382,7 +379,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (!byteCodeValidator.ValidateBytecode(substate.Output.Span, spec))
+                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec))
                         {
                             throw new InvalidCodeException();
                         }

@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
@@ -181,11 +178,10 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            // Instruction.SELFDESTRUCT => true
             _ => false
         };
 
-        public static bool IsValid(this Instruction instruction, IReleaseSpec spec)
+        public static bool IsValid(this Instruction instruction, bool IsEofContext)
         {
             if (!FastEnum.IsDefined(instruction))
             {
@@ -194,20 +190,7 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !spec.IsEip3670Enabled,
-                Instruction.TLOAD or Instruction.TSTORE => spec.TransientStorageEnabled,
-                Instruction.REVERT => spec.RevertOpcodeEnabled,
-                Instruction.STATICCALL => spec.StaticCallEnabled,
-                Instruction.CREATE2 => spec.Create2OpcodeEnabled,
-                Instruction.DELEGATECALL => spec.DelegateCallEnabled,
-                Instruction.PUSH0 => spec.IncludePush0Instruction,
-                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => spec.SubroutinesEnabled,
-                Instruction.BASEFEE => spec.BaseFeeEnabled,
-                Instruction.SELFBALANCE => spec.SelfBalanceOpcodeEnabled,
-                Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
-                Instruction.EXTCODEHASH => spec.ExtCodeHashOpcodeEnabled,
-                Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => spec.ReturnDataOpcodesEnabled,
-                Instruction.SHL or Instruction.SHR or Instruction.SAR => spec.ShiftOpcodesEnabled,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 _ => true
             };
         }

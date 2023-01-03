@@ -17,7 +17,7 @@ namespace Nethermind.State.Proofs
         private readonly bool _allowProofs;
         private static readonly ReceiptMessageDecoder Decoder = new();
 
-        public ReceiptTrie(IReleaseSpec releaseSpec, TxReceipt?[] txReceipts, bool allowProofs = false)
+        public ReceiptTrie(IReceiptSpec receiptSpec, TxReceipt?[] txReceipts, bool allowProofs = false)
             : base(allowProofs ? (IDb)new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
@@ -33,7 +33,7 @@ namespace Nethermind.State.Proofs
             {
                 TxReceipt? currentReceipt = txReceipts[i];
                 byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
-                    (releaseSpec.IsEip658Enabled
+                    (receiptSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
                         : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping);
 

@@ -114,10 +114,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip3607Enabled { get; set; }
 
-        public bool IsEip158IgnoredAccount(Address address)
-        {
-            return _spec.IsEip158IgnoredAccount(address);
-        }
+        public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);
 
         private long? _overridenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
@@ -134,7 +131,6 @@ namespace Nethermind.Specs.Test
         }
 
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
-        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
         public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
@@ -142,14 +138,8 @@ namespace Nethermind.Specs.Test
         private bool? _overridenEip3540Status;
         public bool IsEip3540Enabled
         {
-            get
-            {
-                return _overridenEip3540Status ?? _spec.IsEip3540Enabled;
-            }
-            set
-            {
-                _overridenEip3540Status = value;
-            }
+            get => _overridenEip3540Status ?? _spec.IsEip3540Enabled;
+            set => _overridenEip3540Status = value;
         }
 
         private bool? _overridenEip3670Status;

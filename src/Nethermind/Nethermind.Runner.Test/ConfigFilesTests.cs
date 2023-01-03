@@ -260,7 +260,6 @@ namespace Nethermind.Runner.Test
         [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
         [TestCase("sokol.cfg", false)]
-        [TestCase("kiln.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);

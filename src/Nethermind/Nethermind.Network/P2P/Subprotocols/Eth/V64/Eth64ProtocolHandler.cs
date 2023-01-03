@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         {
             base.EnrichStatusMessage(statusMessage);
             statusMessage.ForkId =
-                ForkInfo.CalculateForkId(_specProvider, SyncServer.Head.Number, SyncServer.Genesis.Hash);
+                ForkInfo.CalculateForkId(_specProvider, SyncServer.Head.Number, SyncServer.Head.Timestamp, SyncServer.Genesis.Hash);
         }
     }
 }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -23,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -109,16 +95,14 @@ namespace Nethermind.Evm.Test
 
         public static EofTestsBase Instance(ISpecProvider provider)
         {
-            var instance = new EofTestsBase();
-            instance.SpecProvider = provider;
+            EofTestsBase instance = new() { SpecProvider = provider };
             instance.Setup();
             return instance;
         }
 
         public void EOF_contract_header_parsing_tests(TestCase testcase, IReleaseSpec spec)
         {
-            var _bytecodeValidator = new ByteCodeValidator(spec);
-            var result = _bytecodeValidator.ValidateEofBytecode(
+            var result = EvmObjectFormat.IsValidEof(
                 testcase.Bytecode, out EofHeader? header
             );
 
@@ -132,17 +116,16 @@ namespace Nethermind.Evm.Test
                 Assert.IsNotNull(header);
             }
         }
-        public TestAllTracerWithOutput EOF_contract_execution_tests(byte[] testcase)
-        {
-            return Execute(BlockNumber, Timestamp, testcase);
-        }
+        public TestAllTracerWithOutput EOF_contract_execution_tests(byte[] testcase) =>
+            Execute(BlockNumber, Timestamp, testcase);
+
         public void EOF_contract_deployment_tests(TestCase testcase, IReleaseSpec spec)
         {
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
             byte[] createContract = testcase.Bytecode;
 
             ILogManager logManager = GetLogManager();
-            var customSpecProvider = new TestSpecProvider(Frontier.Instance, spec);
+            TestSpecProvider customSpecProvider = new(Frontier.Instance, spec);
             Machine = new VirtualMachine(TestBlockhashProvider.Instance, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
@@ -213,10 +196,11 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenario.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.ToFullString()}"),
+                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.GetEnumMemberValue()}"),
                 };
             }
             public byte[] Bytecode => GenerateFormatScenarios(FormatScenario.None).Bytecode;
+
             public TestCase GenerateFormatScenarios(FormatScenario scenarios)
             {
                 int eofPrefixSize =
@@ -248,26 +232,30 @@ namespace Nethermind.Evm.Test
 
                 (byte[] bytecode, int headerSize) InjectHeader(byte[] container)
                 {
-                    Func<(byte[], int), (byte[], int)> InjectMagicPrefix = (containerState) =>
+                    (byte[], int) InjectMagicPrefix((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
+                        (byte[] container, int i) = (containerState);
+
                         if (scenarios.HasFlag(FormatScenario.InvalidMagic))
                         {
-                            container[i++] = 0xEF; container[i++] = 0xFF; // incorrect magic
+                            container[i++] = 0xEF;
+                            container[i++] = 0xFF; // incorrect magic
                         }
                         else
                         {
-                            container[i++] = 0xEF; container[i++] = 0x00; // correct magic
+                            container[i++] = 0xEF;
+                            container[i++] = 0x00; // correct magic
                         }
 
                         // set version
                         container[i++] = scenarios.HasFlag(FormatScenario.InvalidVersion) ? (byte)0x00 : (byte)0x01;
                         return (container, i);
-                    };
+                    }
 
-                    Func<(byte[], int), (byte[], int)> InjectHeaderSuffix = (containerState) =>
+                    (byte[], int) InjectHeaderSuffix((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
+                        (byte[] container, int i) = (containerState);
+
                         if (scenarios.HasFlag(FormatScenario.IncorrectSectionKind))
                         {
                             container[i++] = 0x09;
@@ -280,13 +268,14 @@ namespace Nethermind.Evm.Test
                         {
                             container[i++] = 0x00;
                         }
-                        return (container, i);
-                    };
 
-                    Func<(byte[], int), (byte[], int)> InjectTypeSectionHeader = (containerState) =>
+                        return (container, i);
+                    }
+
+                    (byte[], int) InjectTypeSectionHeader((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
-                        byte[] typeSectionSize = // set typesection size 
+                        (byte[] container, int i) = (containerState);
+                        byte[] typeSectionSize = // set typesection size
                             scenarios.HasFlag(FormatScenario.IncorrectTypeSectionHeader)
                                 ? 0.ToByteArray()
                                 : (Functions.Length * 4).ToByteArray();
@@ -297,49 +286,52 @@ namespace Nethermind.Evm.Test
                             container[i++] = typeSectionSize[^2];
                             container[i++] = typeSectionSize[^1];
                         }
-                        return (container, i);
-                    };
 
-                    Func<(byte[], int), (byte[], int)> InjectCodeSectionHeader = (containerState) =>
+                        return (container, i);
+                    }
+
+                    (byte[], int) InjectCodeSectionHeader((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
-                        var FunctionsCount =
-                            scenarios.HasFlag(FormatScenario.IncorrectCodeSectionsHeader)
-                                    ? 0.ToByteArray()
-                                    : Functions.Length.ToByteArray();
+                        (byte[] container, int i) = (containerState);
+                        byte[] functionsCount = scenarios.HasFlag(FormatScenario.IncorrectCodeSectionsHeader)
+                            ? 0.ToByteArray()
+                            : Functions.Length.ToByteArray();
 
                         container[i++] = 0x02;
                         if (!scenarios.HasFlag(FormatScenario.IncompleteCodeSectionsHeader))
                         {
-                            container[i++] = FunctionsCount[^2]; container[i++] = FunctionsCount[^1];
+                            container[i++] = functionsCount[^2];
+                            container[i++] = functionsCount[^1];
                             // set code sections sizes
                             for (int j = 0; j < Functions.Length; j++)
                             {
                                 var codeSectionCount = Functions[j].Body.Length.ToByteArray();
-                                container[i++] = codeSectionCount[^2]; container[i++] = codeSectionCount[^1];
+                                container[i++] = codeSectionCount[^2];
+                                container[i++] = codeSectionCount[^1];
                             }
                         }
-                        return (container, i);
-                    };
 
-                    Func<(byte[], int), (byte[], int)> InjectDataSectionHeader = (containerState) =>
+                        return (container, i);
+                    }
+
+                    (byte[], int) InjectDataSectionHeader((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
-                        var DataSectionCount =
-                            scenarios.HasFlag(FormatScenario.IncorrectDataSectionHeader)
-                                        ? (Data.Length - 1).ToByteArray()
-                                        : Data.Length.ToByteArray();
+                        (byte[] container, int i) = (containerState);
+                        byte[] dataSectionCount = scenarios.HasFlag(FormatScenario.IncorrectDataSectionHeader)
+                            ? (Data.Length - 1).ToByteArray()
+                            : Data.Length.ToByteArray();
 
                         container[i++] = 0x03;
                         if (!scenarios.HasFlag(FormatScenario.IncompleteDataSectionHeader))
                         {
-                            container[i++] = DataSectionCount[^2]; container[i++] = DataSectionCount[^1];
+                            container[i++] = dataSectionCount[^2];
+                            container[i++] = dataSectionCount[^1];
                         }
 
                         return (container, i);
-                    };
+                    }
 
-                    List<Func<(byte[], int), (byte[], int)>> HeaderInjectionSequence = new() {
+                    List<Func<(byte[], int), (byte[], int)>> headerInjectionSequence = new() {
                         InjectTypeSectionHeader,
                         InjectCodeSectionHeader,
                         InjectDataSectionHeader
@@ -347,53 +339,54 @@ namespace Nethermind.Evm.Test
 
                     if (scenarios.HasFlag(FormatScenario.MisplaceSectionHeaders))
                     {
-                        HeaderInjectionSequence.Reverse();
+                        headerInjectionSequence.Reverse();
                     }
                     else
                     {
                         // Note(Ayman) :  Add Multiple section cases, handle dynamic bytecode size
                         if (scenarios.HasFlag(FormatScenario.OmitTypeSectionHeader))
                         {
-                            HeaderInjectionSequence.RemoveAt(0);
+                            headerInjectionSequence.RemoveAt(0);
                         }
                         else if (scenarios.HasFlag(FormatScenario.MultipleTypeSectionHeaders))
                         {
-                            HeaderInjectionSequence.Insert(0, InjectTypeSectionHeader);
+                            headerInjectionSequence.Insert(0, InjectTypeSectionHeader);
                             Array.Resize(ref container, container.Length + typeSectionHeaderSize);
                         }
 
                         if (scenarios.HasFlag(FormatScenario.OmitCodeSectionsHeader))
                         {
-                            HeaderInjectionSequence.RemoveAt(1);
+                            headerInjectionSequence.RemoveAt(1);
                         }
                         else if (scenarios.HasFlag(FormatScenario.MultipleCodeSectionsHeaders))
                         {
-                            HeaderInjectionSequence.Insert(HeaderInjectionSequence.Count - 1, InjectCodeSectionHeader);
+                            headerInjectionSequence.Insert(headerInjectionSequence.Count - 1, InjectCodeSectionHeader);
                             Array.Resize(ref container, container.Length + codeSectionHeaderSize);
                         }
 
                         if (scenarios.HasFlag(FormatScenario.OmitDataSectionHeader))
                         {
-                            HeaderInjectionSequence.RemoveAt(HeaderInjectionSequence.Count - 1);
+                            headerInjectionSequence.RemoveAt(headerInjectionSequence.Count - 1);
                         }
                         else if (scenarios.HasFlag(FormatScenario.MultipleDataSectionHeaders))
                         {
-                            HeaderInjectionSequence.Insert(HeaderInjectionSequence.Count - 1, InjectDataSectionHeader);
+                            headerInjectionSequence.Insert(headerInjectionSequence.Count - 1, InjectDataSectionHeader);
                             Array.Resize(ref container, container.Length + dataSectionHeaderSize);
                         }
                     }
 
-                    var result = InjectMagicPrefix((container, 0));
-                    foreach (var transformation in HeaderInjectionSequence)
+                    (byte[], int) result = InjectMagicPrefix((container, 0));
+                    foreach (var transformation in headerInjectionSequence)
                     {
                         result = transformation(result);
                     }
+
                     return InjectHeaderSuffix(result);
                 }
 
                 byte[] InjectBody(byte[] container, int headerSize)
                 {
-                    Func<(byte[], int), (byte[], int)> InjectTypeSection = (containerState) =>
+                    (byte[], int) InjectTypeSection((byte[], int) containerState)
                     {
                         var (container, i) = (containerState);
                         foreach (var functionDef in Functions)
@@ -401,55 +394,60 @@ namespace Nethermind.Evm.Test
                             var MaxStackHeightBytes = functionDef.MaxStack.ToByteArray();
                             container[i++] = (byte)functionDef.InputCount;
                             container[i++] = (byte)functionDef.OutputCount;
-                            container[i++] = MaxStackHeightBytes[^2]; container[i++] = MaxStackHeightBytes[^1];
+                            container[i++] = MaxStackHeightBytes[^2];
+                            container[i++] = MaxStackHeightBytes[^1];
                         }
-                        return (container, i);
-                    };
 
-                    Func<(byte[], int), (byte[], int)> InjectCodeSections = (containerState) =>
+                        return (container, i);
+                    }
+
+                    (byte[], int) InjectCodeSections((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
+                        var (destinationArray, i) = (containerState);
                         foreach (var section in Functions)
                         {
-                            Array.Copy(section.Body, 0, container, i, section.Body.Length);
+                            Array.Copy(section.Body, 0, destinationArray, i, section.Body.Length);
                             i += section.Body.Length;
                         }
-                        return (container, i);
-                    };
 
-                    Func<(byte[], int), (byte[], int)> InjectDataSection = (containerState) =>
+                        return (destinationArray, i);
+                    }
+
+                    (byte[], int) InjectDataSection((byte[], int) containerState)
                     {
-                        var (container, i) = (containerState);
-                        Array.Copy(Data, 0, container, i, Data.Length);
+                        var (destinationArray, i) = (containerState);
+                        Array.Copy(Data, 0, destinationArray, i, Data.Length);
                         i += Data.Length;
-                        return (container, i);
-                    };
-                    var result = InjectTypeSection((container, headerSize));
+                        return (destinationArray, i);
+                    }
+
+                    (byte[], int) result = InjectTypeSection((container, headerSize));
                     if (!scenarios.HasFlag(FormatScenario.IncompleteBody))
                     {
                         result = InjectCodeSections(result);
                     }
-                    var (bytecode, end) = InjectDataSection(result);
+                    (byte[] bytecode, int end) = InjectDataSection(result);
                     return bytecode[..end];
                 }
 
-                var (bytecode, idx) = InjectHeader(bytes);
+                (byte[] bytecode, int idx) = InjectHeader(bytes);
                 bytecode = InjectBody(bytecode, idx);
                 if (scenarios.HasFlag(FormatScenario.TrailingBytes))
                 {
                     Array.Resize(ref bytecode, bytecode.Length + 1);
                 }
+
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.ToFullString()}"),
+                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.GetEnumMemberValue()}"),
                 };
             }
             public TestCase GenerateDeploymentScenarios(DeploymentScenario scenarios, DeploymentContext ctx)
             {
                 byte[] salt = { 4, 5, 6 };
 
-                byte[] corruptBytecode(bool isEof, byte[] arg)
+                byte[] CorruptBytecode(bool isEof, byte[] arg)
                 {
                     if (isEof)
                     {
@@ -468,7 +466,6 @@ namespace Nethermind.Evm.Test
                 }
 
                 byte[] EmitBytecode()
-
                 {
                     byte[] deployed;
 
@@ -487,15 +484,15 @@ namespace Nethermind.Evm.Test
                     // if initcode should be corrupt
                     if (scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
                     {
-                        deployed = corruptBytecode(hasEofCode, deployed);
+                        deployed = CorruptBytecode(hasEofCode, deployed);
                     }
 
-                    var initcode = Prepare.EvmCode
+                    byte[] initcode = Prepare.EvmCode
                         .StoreDataInMemory(0, deployed)
                         .RETURN(0, (UInt256)deployed.Length)
                         .Done;
 
-                    var hasEofInitCode = scenarios.HasFlag(DeploymentScenario.EofInitCode);
+                    bool hasEofInitCode = scenarios.HasFlag(DeploymentScenario.EofInitCode);
                     if (hasEofInitCode)
                     {
                         initcode = new ScenarioCase(
@@ -507,7 +504,7 @@ namespace Nethermind.Evm.Test
                     // if initcode should be corrupt
                     if (scenarios.HasFlag(DeploymentScenario.CorruptInitCode))
                     {
-                        initcode = corruptBytecode(hasEofInitCode, initcode);
+                        initcode = CorruptBytecode(hasEofInitCode, initcode);
                     }
 
                     if (scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch))
@@ -538,7 +535,7 @@ namespace Nethermind.Evm.Test
                     }
 
                     // if container should be EOF
-                    var hasEofContainer = scenarios.HasFlag(DeploymentScenario.EofContainer);
+                    bool hasEofContainer = scenarios.HasFlag(DeploymentScenario.EofContainer);
                     if (hasEofContainer)
                     {
                         result = new ScenarioCase(
@@ -550,7 +547,7 @@ namespace Nethermind.Evm.Test
                     // if container should be corrupt
                     if (scenarios.HasFlag(DeploymentScenario.CorruptContainer))
                     {
-                        result = corruptBytecode(hasEofContainer, result);
+                        result = CorruptBytecode(hasEofContainer, result);
                     }
 
                     if (scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch))
@@ -576,8 +573,8 @@ namespace Nethermind.Evm.Test
                             scenarios.HasFlag(DeploymentScenario.EofInitCode) ||
                             !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))));
 
-                var bytecode = EmitBytecode();
-                var message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.ToFullString()}, \nContext : {ctx.ToFullString()}";
+                byte[] bytecode = EmitBytecode();
+                string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.FastToString()}, \nContext : {ctx.FastToString()}";
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
