@@ -65,14 +65,14 @@ namespace Nethermind.Synchronization.SnapSync
                 return new AddAccountRangeResult(AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            syncedAcountBytes += StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            int stitchedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber, skipRoot: true);
             }
 
-            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, syncedAcountBytes);
+            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, syncedAcountBytes, stitchedBytes, tree.GetCommitSize(blockNumber));
         }
 
         public static AddStorageRangeResult
@@ -105,14 +105,14 @@ namespace Nethermind.Synchronization.SnapSync
                 return new(AddRangeResult.DifferentRootHash, true);
             }
 
-            syncedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            int stitchedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber);
             }
 
-            return new(AddRangeResult.OK, moreChildrenToRight, syncedBytes);
+            return new(AddRangeResult.OK, moreChildrenToRight, syncedBytes, stitchedBytes, tree.GetCommitSize(blockNumber));
         }
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak? startingHash, Keccak endHash, Keccak expectedRootHash, byte[][]? proofs = null)
@@ -288,7 +288,7 @@ namespace Nethermind.Synchronization.SnapSync
                         node.IsBoundaryProofNode = isBoundaryProofNode;
                     }
 
-                    if (!node.IsBoundaryProofNode)
+                    if (node.IsBoundaryProofNode)
                         stichesBytesSize += node.FullRlp?.Length ?? 0;
                 }
             }

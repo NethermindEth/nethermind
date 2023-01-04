@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core.Crypto;
@@ -34,7 +35,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.StateRangesFinished += OnStateRangesFinished;
 
             _store = new TrieStore(
-                _dbProvider.StateDb,
+                new DbDataTracker(_dbProvider.StateDb, (int data) => { _progressTracker.UpdateStateDbSavedBytes(data); }),
                 Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
                 logManager);
@@ -89,7 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
                 _progressTracker.MoreAccountsToRight = helperResult.MoreChildrenToRight;
-                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes);
+                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes, helperResult.StichedBytes, helperResult.CommitBytes);
             }
             else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -171,7 +172,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueStorageRange(range);
                 }
-                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes);
+                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes, helperResult.StichedBytes, helperResult.CommitBytes);
             }
             else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -269,7 +270,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
                     _dbProvider.CodeDb.Set(codeHash, code);
-                    _progressTracker.UpdateStateSyncedBytes(code.Length);
+                    _progressTracker.UpdateStateSyncedBytes(code.Length, 0, code.Length);
                 }
             }
 

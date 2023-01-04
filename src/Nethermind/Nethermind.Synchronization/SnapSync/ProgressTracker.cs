@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -32,6 +33,9 @@ namespace Nethermind.Synchronization.SnapSync
         private long _secondsInSync;
 
         internal long StateSyncedBytes;
+        internal long StateStichedBytes;
+        internal long StateCommitedBytes;
+        internal long StateDbSavedBytes;
 
         private readonly ILogger _logger;
         private readonly IDb _db;
@@ -274,9 +278,16 @@ namespace Nethermind.Synchronization.SnapSync
                 && _activeAccRefreshRequests == 0;
         }
 
-        public void UpdateStateSyncedBytes(long bytes)
+        public void UpdateStateSyncedBytes(long syncedData, long stitchedData, long committedData)
         {
-            Interlocked.Add(ref StateSyncedBytes, bytes);
+            Interlocked.Add(ref StateSyncedBytes, syncedData);
+            Interlocked.Add(ref StateStichedBytes, stitchedData);
+            Interlocked.Add(ref StateCommitedBytes, committedData);
+        }
+
+        public void UpdateStateDbSavedBytes(long dbData = 0)
+        {
+            Interlocked.Add(ref StateDbSavedBytes, dbData);
         }
 
         public void SetSyncStart()
@@ -319,7 +330,11 @@ namespace Nethermind.Synchronization.SnapSync
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
                 if (_logger.IsInfo)
-                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] | data:{(double)(StateSyncedBytes) / 1024 / 1024:F2} MB");
+                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] " +
+                        $"| Synced: {(double)(StateSyncedBytes / 1.MiB()):F2} MB " +
+                        $"| Stitched: {(double)(StateStichedBytes / 1.MiB()):F2} MB " +
+                        $"| Commited: {(double)(StateCommitedBytes / 1.MiB()):F2} MB " +
+                        $"| SavedToDb: {(double)(StateDbSavedBytes / 1.MiB()):F2} MB" );
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)
