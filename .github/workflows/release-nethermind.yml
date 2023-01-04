@@ -66,8 +66,8 @@ jobs:
     - name: Build Nethermind.Launcher
       run: $SCRIPTS_PATH/build-launcher.sh
     - name: Build Nethermind.Launcher for Linux arm64
+      working-directory: nethermind
       run: |
-        cd nethermind
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
@@ -198,7 +198,6 @@ jobs:
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
-        fetch-depth: 0
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
