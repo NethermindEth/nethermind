@@ -91,20 +91,21 @@ internal static class EvmObjectFormat
         private const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
         private const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
         private const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
+        private const byte HEADER_END_OFFSET = TERMINATOR_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // terminator length + all code size length
         private const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
 
         private const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
         private const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
 
-        private const ushort MINIMUM_SIZE = TERMINATOR_OFFSET
-                                           + TWO_BYTE_LENGTH // one code size
-                                           + MINIMUM_TYPESECTION_SIZE // minimum type section body size
-                                           + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
+        private const ushort MINIMUM_SIZE = HEADER_END_OFFSET
+                                            + TWO_BYTE_LENGTH // one code size
+                                            + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                                            + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHeaderSize(int codeSections) =>
-            TERMINATOR_OFFSET + ONE_BYTE_LENGTH + codeSections * TWO_BYTE_LENGTH;
+            HEADER_END_OFFSET + codeSections * TWO_BYTE_LENGTH;
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
