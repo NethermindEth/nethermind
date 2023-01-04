@@ -216,7 +216,7 @@ jobs:
     - name: Build and push image to Docker registry  (patch)
       if: needs.build.outputs.PRERELEASE == 'true'
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:unstable" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
       if: always()
       run: |
