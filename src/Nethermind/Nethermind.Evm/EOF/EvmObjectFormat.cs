@@ -186,14 +186,14 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            int codeSectionsSize = 0;
+            int codeSectionsSize = typeSection.EndOffset;
             SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
             for (ushort i = 0; i < numberOfCodeSections; i++)
             {
                 int currentCodeSizeOffset = CODESIZE_OFFSET + i * TWO_BYTE_LENGTH; // offset of i'th code size
                 SectionHeader codeSection = new()
                 {
-                    Start = typeSection.EndOffset,
+                    Start = codeSectionsSize,
                     Size = GetUInt16(container, currentCodeSizeOffset)
                 };
 
@@ -265,7 +265,7 @@ internal static class EvmObjectFormat
             for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
             {
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
-                (int codeSectionStartOffset, int codeSectionSize) = (sectionHeader.Start, sectionHeader.Size);
+                (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(code, header))
                 {
@@ -278,7 +278,8 @@ internal static class EvmObjectFormat
         }
         bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
         {
-            for (int pos = 0; pos < code.Length; pos++)
+            int pos;
+            for (pos = 0; pos < code.Length; pos++)
             {
                 Instruction opcode = (Instruction)code[pos];
 
@@ -298,16 +299,17 @@ internal static class EvmObjectFormat
                     int len = code[pos] - (int)Instruction.PUSH1 + 1;
                     pos += len;
                 }
-
-                if (pos >= code.Length)
-                {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                    }
-                    return false;
-                }
             }
+
+            if (pos >= code.Length)
+            {
+                if (Logger.IsTrace)
+                {
+                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                }
+                return false;
+            }
+
             return true;
         }
     }
