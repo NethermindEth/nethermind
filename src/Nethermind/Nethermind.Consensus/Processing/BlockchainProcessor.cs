@@ -344,31 +344,9 @@ namespace Nethermind.Consensus.Processing
                         $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
-
-            Keccak stateRoot = null;
-
-            //if (!suggestedBlock.IsGenesis)
-            //{
-            //    var branchingPoint = _blockTree.FindParentHeader(suggestedBlock.Header,
-            //        BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            //    branchingPoint ??= suggestedBlock.Header; // Case it was root
-            //    stateRoot = branchingPoint?.StateRoot;
-            //}
-
-            ProcessingBranch processingBranch = new ProcessingBranch(stateRoot, new List<Block>(){});
-
-            //TODO: test unit tests for no PrepareProcessingBranch in case of ForceProcessing flag!
-            //if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
-            //{
-            //    processingBranch.Blocks.Clear();
-            //   processingBranch.BlocksToProcess.Add(suggestedBlock);
-            //    _recoveryStep.RecoverData(suggestedBlock);
-            //}
-            //else
-            //{
-                processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-                PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-           // }
+            
+            ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+            PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
             _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
