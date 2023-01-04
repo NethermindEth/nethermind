@@ -499,7 +499,7 @@ namespace Nethermind.Consensus.Processing
             ProcessingBranch processingBranch)
         {
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
-            if (options.ContainsFlag(ProcessingOptions.ForceProcessing)) 
+            if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
                 processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
                 blocksToProcess.Add(suggestedBlock);
@@ -619,12 +619,12 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
                 bool notReachedTheReorgBoundary = (options & ProcessingOptions.Trace) == ProcessingOptions.Trace
-                && ( branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
+                && (branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
-                
+
             } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
