@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.SnapSync
                         $"| Synced: {(double)(StateSyncedBytes / 1.MiB()):F2} MB " +
                         $"| Stitched: {(double)(StateStichedBytes / 1.MiB()):F2} MB " +
                         $"| Commited: {(double)(StateCommitedBytes / 1.MiB()):F2} MB " +
-                        $"| SavedToDb: {(double)(StateDbSavedBytes / 1.MiB()):F2} MB" );
+                        $"| SavedToDb: {(double)(StateDbSavedBytes / 1.MiB()):F2} MB");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)

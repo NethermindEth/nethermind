@@ -133,7 +133,7 @@ namespace Nethermind.Trie
                 _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
                 _commitSizes = new Dictionary<long, long>();
-                _commitSizesLock= new object();
+                _commitSizesLock = new object();
             }
         }
 
