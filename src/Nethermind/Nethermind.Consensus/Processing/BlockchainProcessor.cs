@@ -344,7 +344,7 @@ namespace Nethermind.Consensus.Processing
                         $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
-            
+
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
@@ -578,8 +578,6 @@ namespace Nethermind.Consensus.Processing
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
                 if (_logger.IsTrace)
                     _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
-
-                //Tx to filter on trace here?
                 toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
                 if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
