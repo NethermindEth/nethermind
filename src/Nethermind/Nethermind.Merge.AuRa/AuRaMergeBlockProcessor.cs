@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -19,10 +19,7 @@ namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-
     public AuRaMergeBlockProcessor(
-        IPoSSwitcher poSSwitcher,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
@@ -49,12 +46,10 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             gasLimitOverride,
             contractRewriter
         )
-    {
-        _poSSwitcher = poSSwitcher;
-    }
+    { }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
-        _poSSwitcher.IsPostMerge(block.Header)
+        block.IsPostMerge
             ? PostMergeProcessBlock(block, blockTracer, options)
             : base.ProcessBlock(block, blockTracer, options);
 }
