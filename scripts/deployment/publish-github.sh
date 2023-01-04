@@ -16,6 +16,7 @@ echo "Drafting release $GIT_TAG"
 
 RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
   -X POST \
+  --fail-with-body \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -d "$BODY" | jq -r '.id')
@@ -30,6 +31,7 @@ do
 
   curl https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$FILE_NAME \
     -X POST \
+    --fail-with-body \
     -H "Accept: application/vnd.github+json" \
     -H "Authorization: Bearer $GITHUB_TOKEN" \
     -H "Content-Type: application/octet-stream" \
