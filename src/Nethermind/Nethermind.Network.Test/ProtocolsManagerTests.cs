@@ -431,7 +431,7 @@ namespace Nethermind.Network.Test
                 .VerifyInitialized()
                 .ReceiveHello()
                 .ReceiveStatusWrongChain((ulong)networkId)
-                .VerifyCompatibilityValidationType(CompatibilityValidationType.ChainId)
+                .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
                 .VerifyDisconnected();
         }
 

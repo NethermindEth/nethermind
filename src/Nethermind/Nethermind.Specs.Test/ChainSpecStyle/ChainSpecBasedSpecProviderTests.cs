@@ -185,8 +185,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
-            Assert.AreEqual(NetworkId.Sepolia, provider.ChainId);
-            Assert.AreEqual(NetworkId.Sepolia, provider.NetworkId);
+            Assert.AreEqual(BlockchainIds.Sepolia, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Sepolia, provider.NetworkId);
         }
 
         [Test]
@@ -245,8 +245,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(goerli, provider, forkActivationsToTest);
             Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-            Assert.AreEqual(NetworkId.Goerli, provider.ChainId);
-            Assert.AreEqual(NetworkId.Goerli, provider.NetworkId);
+            Assert.AreEqual(BlockchainIds.Goerli, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Goerli, provider.NetworkId);
         }
 
         [Test]
@@ -310,8 +310,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay);
             Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-            Assert.AreEqual(NetworkId.Mainnet, provider.ChainId);
-            Assert.AreEqual(NetworkId.Mainnet, provider.NetworkId);
+            Assert.AreEqual(BlockchainIds.Mainnet, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Mainnet, provider.NetworkId);
         }
 
         private static void CompareSpecProviders(

@@ -26,19 +26,19 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private readonly ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder(ISpecProvider? specProvider)
+        public BlockTreeBuilder(ISpecProvider specProvider)
             : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();

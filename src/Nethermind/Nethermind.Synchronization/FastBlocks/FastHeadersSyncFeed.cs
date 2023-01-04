@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
             // In order to support that we need to support another pivot
-            { NetworkId.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
+            { BlockchainIds.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
         };
 
         private readonly ILogger _logger;
