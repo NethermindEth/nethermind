@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
@@ -175,7 +174,7 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
             _ => false
