@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -283,8 +284,8 @@ internal static class EvmObjectFormat
         bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
         {
             int pos;
-            SortedSet<Range> immediates = new();
-            SortedSet<int> rjumpdests = new();
+            BitArray immediatesMask = new BitArray(code.Length);
+            BitArray rjumpdestsMask = new BitArray(code.Length);
 
             for (pos = 0; pos < code.Length; pos++)
             {
@@ -312,9 +313,11 @@ internal static class EvmObjectFormat
                     }
 
                     var offset = code.Slice(pos, TWO_BYTE_LENGTH).ReadEthInt16();
-                    immediates.Add(new Range(pos, pos + 1));
+                    immediatesMask.Set(pos, true);
+                    immediatesMask.Set(pos + 1, true);
                     var rjumpdest = offset + TWO_BYTE_LENGTH + pos;
-                    rjumpdests.Add(rjumpdest);
+                    rjumpdestsMask.Set(rjumpdest, true);
+
                     if (rjumpdest < 0 || rjumpdest >= code.Length)
                     {
                         if (Logger.IsTrace)
@@ -357,13 +360,17 @@ internal static class EvmObjectFormat
                     }
 
                     var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
-                    immediates.Add(new Range(pos, pos + immediateValueSize - 1));
+
+                    for (int j = pos; j <= pos + immediateValueSize - 1; j++)
+                    {
+                        immediatesMask.Set(j, true);
+                    }
+
                     for (int j = 0; j < count; j++)
                     {
                         var offset = code.Slice(pos + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
                         var rjumpdest = offset + immediateValueSize + pos;
-                        rjumpdests.Add(rjumpdest);
-
+                        rjumpdestsMask.Set(rjumpdest, true);
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
                             if (Logger.IsTrace)
@@ -379,7 +386,10 @@ internal static class EvmObjectFormat
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
                     int len = code[pos - 1] - (int)Instruction.PUSH1 + 1;
-                    immediates.Add(new Range(pos, pos + len - 1));
+                    for (int j = pos; j <= pos + len - 1; j++)
+                    {
+                        immediatesMask.Set(j, true);
+                    }
                     pos += len;
                 }
             }
@@ -402,21 +412,19 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            foreach (int rjumpdest in rjumpdests)
+
+            BitArray result = rjumpdestsMask.Or(immediatesMask);
+            for (int i = 0; i < result.Length; i++)
             {
-                foreach (var range in immediates)
+                if (result.Get(i))
                 {
-                    if (range.Includes(rjumpdest))
+                    if (Logger.IsTrace)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
-                        }
-                        return false;
+                        Logger.Trace($"EIP-4200 : Static Relative Jump with invalid destination");
                     }
+                    return false;
                 }
             }
-
             return true;
         }
     }
