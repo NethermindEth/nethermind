@@ -202,7 +202,6 @@ namespace Nethermind.Merge.Plugin.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    new WithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

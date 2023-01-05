@@ -56,8 +56,8 @@ namespace Nethermind.Consensus.AuRa
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                withdrawalProcessor,
-                logManager)
+                logManager,
+                withdrawalProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

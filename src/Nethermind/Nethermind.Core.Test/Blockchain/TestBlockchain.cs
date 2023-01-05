@@ -314,7 +314,6 @@ namespace Nethermind.Core.Test.Blockchain
                 Storage,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
-                new WithdrawalProcessor(State, LogManager),
                 LogManager);
 
         public async Task WaitForNewHead()

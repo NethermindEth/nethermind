@@ -358,7 +358,6 @@ namespace Nethermind.Init.Steps
                 _api.StorageProvider,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
-                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 _api.LogManager);
         }
 

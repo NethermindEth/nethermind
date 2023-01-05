@@ -208,7 +208,6 @@ namespace Nethermind.Mev.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    new WithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 _tracerFactory = new TracerFactory(
