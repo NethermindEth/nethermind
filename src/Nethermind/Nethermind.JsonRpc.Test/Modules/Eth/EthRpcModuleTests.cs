@@ -1084,7 +1084,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task eth_getBlockByNumber_should_return_as_expected()
+    public async Task eth_getBlockByNumber_should_return_withdrawals_correctly()
     {
         using Context ctx = await Context.Create();
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
