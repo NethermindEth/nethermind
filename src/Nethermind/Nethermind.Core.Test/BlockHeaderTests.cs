@@ -122,33 +122,9 @@ public class BlockHeaderTests
         Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
     }
 
-    [Test]
-    public void Should_have_empty_body_as_expected()
-    {
-        var header = new BlockHeader();
-        header.HasBody.Should().BeFalse();
-
-        header.TxRoot = Keccak.EmptyTreeHash;
-        header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
-        header.WithdrawalsRoot = Keccak.EmptyTreeHash;
-        header.HasBody.Should().BeFalse();
-
-        header.TxRoot = Keccak.Zero;
-        header.HasBody.Should().BeTrue();
-
-        header.TxRoot = null;
-        header.UnclesHash = Keccak.Zero;
-        header.HasBody.Should().BeTrue();
-
-        header.UnclesHash = null;
-        header.WithdrawalsRoot = Keccak.Zero;
-        header.HasBody.Should().BeTrue();
-
-        header.TxRoot =
-            header.UnclesHash =
-            header.WithdrawalsRoot = Keccak.Zero;
-        header.HasBody.Should().BeTrue();
-    }
+    [TestCaseSource(nameof(HasBodyTestSource))]
+    public void Should_have_empty_body_as_expected((BlockHeader Header, bool HasBody) fixture) =>
+        fixture.Header.HasBody.Should().Be(fixture.HasBody);
 
     public class BaseFeeTestCases
     {
@@ -158,7 +134,7 @@ public class BlockHeaderTests
         public int ExpectedBaseFee { get; set; }
     }
 
-    [TestCaseSource(nameof(TestCaseSource))]
+    [TestCaseSource(nameof(Eip1559BaseFeeTestSource))]
     public void Eip_1559_CalculateBaseFee_shared_test_cases((BaseFeeTestCases Info, string Description) testCase)
     {
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
@@ -173,7 +149,7 @@ public class BlockHeaderTests
         Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);
     }
 
-    public static IEnumerable<(BaseFeeTestCases, string)> TestCaseSource()
+    private static IEnumerable<(BaseFeeTestCases, string)> Eip1559BaseFeeTestSource()
     {
         string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
         BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
@@ -183,4 +159,39 @@ public class BlockHeaderTests
             yield return (deserializedTestCases[i], $"Test case number {i}");
         }
     }
+
+    private static IEnumerable<(BlockHeader, bool)> HasBodyTestSource() =>
+        new[]
+        {
+            (new BlockHeader(), false),
+
+            (new BlockHeader
+            {
+                TxRoot = Keccak.EmptyTreeHash,
+                UnclesHash = Keccak.OfAnEmptySequenceRlp,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
+            }, false),
+
+            (new BlockHeader
+            {
+                TxRoot = Keccak.Zero,
+                UnclesHash = Keccak.OfAnEmptySequenceRlp,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
+            }, true),
+
+            (new BlockHeader
+            {
+                UnclesHash = Keccak.Zero,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
+            }, true),
+
+            (new BlockHeader { WithdrawalsRoot = Keccak.Zero }, true),
+
+            (new BlockHeader
+            {
+                TxRoot = Keccak.Zero,
+                UnclesHash = Keccak.Zero,
+                WithdrawalsRoot = Keccak.Zero
+            }, true)
+        };
 }
