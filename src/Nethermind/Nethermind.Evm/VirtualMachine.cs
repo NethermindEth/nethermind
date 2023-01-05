@@ -2393,7 +2393,7 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                            ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
                             if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
                             {
@@ -2431,7 +2431,7 @@ namespace Nethermind.Evm
 
                             Address contractAddress = instruction == Instruction.CREATE
                                 ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                                : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+                                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
                             if (spec.UseHotAndColdStorage)
                             {
@@ -2495,7 +2495,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 length);
 
                             UpdateMemoryCost(in memoryPos, length);
-                            ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
+                            ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
 
                             // EIP-3540`
                             // Code container in the context of Create2? is Initcode
