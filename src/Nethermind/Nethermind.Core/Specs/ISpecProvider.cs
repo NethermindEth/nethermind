@@ -57,7 +57,6 @@ namespace Nethermind.Core.Specs
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
         IReleaseSpec GetSpec(ForkActivation forkActivation);
-
         IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
         IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
     }

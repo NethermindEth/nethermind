@@ -166,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             };
         }
 
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
@@ -267,7 +267,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return _blockProducerContext ??= Create();
         }
 
-        internal ITxSource CreateStandardTxSourceForProducer(
+        private ITxSource CreateStandardTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
