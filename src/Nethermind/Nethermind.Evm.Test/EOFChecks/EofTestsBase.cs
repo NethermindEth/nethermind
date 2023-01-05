@@ -184,8 +184,7 @@ namespace Nethermind.Evm.Test
                 {
                     if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
-                        prepare = prepare
-                            .CALLCODE();
+                        prepare = prepare.CALLCODE();
                         opcodeCount += 2;
 
                     }
@@ -215,7 +214,7 @@ namespace Nethermind.Evm.Test
 
                 byte[] bytecode = prepare.Done;
                 byte[] databytes = scenario.HasFlag(BodyScenario.WithDataSection) ? new byte[] { 0xde, 0xad, 0xbe, 0xef } : Array.Empty<byte>();
-                var resultCase = new ScenarioCase(new FunctionCase[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes);
+                var resultCase = new ScenarioCase(new[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes);
                 bytecode = resultCase.Bytecode;
                 bool validCase = scenario is BodyScenario.None || scenario is BodyScenario.WithDataSection;
                 return new TestCase(scenario.ToInt32())

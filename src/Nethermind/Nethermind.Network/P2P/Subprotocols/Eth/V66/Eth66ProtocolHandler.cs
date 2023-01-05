@@ -41,9 +41,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]>(Send);

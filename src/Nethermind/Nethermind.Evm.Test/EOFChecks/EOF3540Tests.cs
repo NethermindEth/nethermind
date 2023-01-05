@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,8 +9,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
-using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 using static Nethermind.Evm.Test.EofTestsBase;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
 namespace Nethermind.Evm.Test.EOFChecks
 {
@@ -33,6 +20,7 @@ namespace Nethermind.Evm.Test.EOFChecks
     public class EOF3540Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
@@ -44,7 +32,7 @@ namespace Nethermind.Evm.Test.EOFChecks
         {
             get
             {
-                ScenarioCase basecase = new(
+                ScenarioCase baseCase = new(
                     Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
@@ -67,7 +55,7 @@ namespace Nethermind.Evm.Test.EOFChecks
                 FormatScenario[] scenarios = Enum.GetValues<FormatScenario>();
                 foreach (FormatScenario scenario in scenarios)
                 {
-                    yield return basecase.GenerateFormatScenarios(scenario);
+                    yield return baseCase.GenerateFormatScenarios(scenario);
                 }
             }
         }
@@ -76,7 +64,7 @@ namespace Nethermind.Evm.Test.EOFChecks
         {
             get
             {
-                ScenarioCase basecase = new(
+                ScenarioCase baseCase = new(
                     Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
@@ -98,7 +86,7 @@ namespace Nethermind.Evm.Test.EOFChecks
                     for (int i = 2; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
-                        yield return basecase.GenerateDeploymentScenarios(scenario, context);
+                        yield return baseCase.GenerateDeploymentScenarios(scenario, context);
                     }
                 }
             }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
@@ -81,8 +81,8 @@ namespace Nethermind.Evm
         GAS = 0x5a,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
-        RJUMPV = 0x5e, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
         JUMPSUB = 0x5e, // SubroutinesEnabled
@@ -179,7 +179,7 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static bool IsTerminating(this Instruction instruction, IReleaseSpec spec = null) => instruction switch
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
             _ => false

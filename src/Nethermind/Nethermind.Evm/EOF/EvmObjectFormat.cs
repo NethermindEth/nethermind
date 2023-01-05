@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -71,43 +71,52 @@ internal static class EvmObjectFormat
             : container[VERSION_OFFSET];
     }
 
-    private class Eof1 : IEofVersionHandler
+    internal class Eof1 : IEofVersionHandler
     {
         public const byte VERSION = 0x01;
-        private const byte KIND_TYPE = 0x01;
-        private const byte KIND_CODE = 0x02;
-        private const byte KIND_DATA = 0x03;
-        private const byte TERMINATOR = 0x00;
+        internal const byte KIND_TYPE = 0x01;
+        internal const byte KIND_CODE = 0x02;
+        internal const byte KIND_DATA = 0x03;
+        internal const byte TERMINATOR = 0x00;
 
-        private const byte MINIMUM_TYPESECTION_SIZE = 4;
-        private const byte MINIMUM_CODESECTION_SIZE = 1;
+        internal const byte MINIMUM_TYPESECTION_SIZE = 4;
+        internal const byte MINIMUM_CODESECTION_SIZE = 1;
 
-        private const byte KIND_TYPE_OFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH; // version length
-        private const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + ONE_BYTE_LENGTH; // kind type length
-        private const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + TWO_BYTE_LENGTH; // type size length
-        private const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + ONE_BYTE_LENGTH; // kind code length
-        private const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + TWO_BYTE_LENGTH; // num code sections length
-        private const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
-        private const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
-        private const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
-        private const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
-        private const byte IMMEDIATE_16BIT_BYTE_COUNT = 2;// indicates the number of bytes to skip for immediates
-        private const byte JUMPV_COUNT_BYTE_COUNT = 1; // indicates the length of the count immediate of jumpv
-        private const byte MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
+        internal const byte KIND_TYPE_OFFSET = VERSION_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // version length
+        internal const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind type length
+        internal const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // type size length
+        internal const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind code length
+        internal const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // num code sections length
+        internal const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
+        internal const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
+        internal const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
+        internal const byte HEADER_END_OFFSET = TERMINATOR_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // terminator length + all code size length
+        internal const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
+        internal const byte TWO_BYTE_LENGTH = 2;// indicates the number of bytes to skip for immediates
+        internal const byte ONE_BYTE_LENGTH = 1; // indicates the length of the count immediate of jumpv
+        internal const byte MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
 
+
+        private const byte INPUTS_OFFSET = 0;
+        private const byte INPUTS_MAX = 0x7F;
+        private const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
+        private const byte OUTPUTS_MAX = 0x7F;
+        private const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
+        private const int MAX_STACK_HEIGHT_LENGTH = 2;
+        private const ushort MAX_STACK_HEIGHT = 0x3FF;
 
         private const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
         private const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
 
-        private const ushort MINIMUM_SIZE = TERMINATOR_OFFSET
-                                           + TWO_BYTE_LENGTH // one code size
-                                           + MINIMUM_TYPESECTION_SIZE // minimum type section body size
-                                           + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
+        private const ushort MINIMUM_SIZE = HEADER_END_OFFSET
+                                            + EvmObjectFormat.TWO_BYTE_LENGTH // one code size
+                                            + MINIMUM_TYPESECTION_SIZE // minimum type section body size
+                                            + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHeaderSize(int codeSections) =>
-            TERMINATOR_OFFSET + ONE_BYTE_LENGTH + codeSections * TWO_BYTE_LENGTH;
+            HEADER_END_OFFSET + codeSections * EvmObjectFormat.TWO_BYTE_LENGTH;
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
@@ -174,7 +183,7 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            int codeSizeLenght = numberOfCodeSections * TWO_BYTE_LENGTH;
+            int codeSizeLenght = numberOfCodeSections * EvmObjectFormat.TWO_BYTE_LENGTH;
             int dynamicOffset = codeSizeLenght;
 
             // we need to be able to parse header + all code sizes
@@ -189,14 +198,14 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            int codeSectionsSize = 0;
+            int codeSectionsSizeUpToNow = 0;
             SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
             for (ushort pos = 0; pos < numberOfCodeSections; pos++)
             {
-                int currentCodeSizeOffset = CODESIZE_OFFSET + pos * TWO_BYTE_LENGTH; // offset of pos'th code size
+                int currentCodeSizeOffset = CODESIZE_OFFSET + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
                 SectionHeader codeSection = new()
                 {
-                    Start = typeSection.EndOffset,
+                    Start = typeSection.EndOffset + codeSectionsSizeUpToNow,
                     Size = GetUInt16(container, currentCodeSizeOffset)
                 };
 
@@ -207,7 +216,7 @@ internal static class EvmObjectFormat
                 }
 
                 codeSections[pos] = codeSection;
-                codeSectionsSize += codeSection.Size;
+                codeSectionsSizeUpToNow += codeSection.Size;
             }
 
             if (container[KIND_DATA_OFFSET + dynamicOffset] != KIND_DATA)
@@ -235,20 +244,12 @@ internal static class EvmObjectFormat
                 Version = VERSION,
                 TypeSection = typeSection,
                 CodeSections = codeSections,
-                CodeSectionsSize = codeSectionsSize,
+                CodeSectionsSize = codeSectionsSizeUpToNow,
                 DataSection = dataSection
             };
 
             return true;
         }
-
-        private const byte INPUTS_OFFSET = 0;
-        private const byte INPUTS_MAX = 0x7F;
-        private const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
-        private const byte OUTPUTS_MAX = 0x7F;
-        private const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
-        private const int MAX_STACK_HEIGHT_LENGTH = 2;
-        private const ushort MAX_STACK_HEIGHT = 0x3FF;
 
         public bool ValidateBody(ReadOnlySpan<byte> container, in EofHeader header)
         {
@@ -268,7 +269,7 @@ internal static class EvmObjectFormat
             for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
             {
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
-                (int codeSectionStartOffset, int codeSectionSize) = (sectionHeader.Start, sectionHeader.Size);
+                (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(code, header))
                 {
@@ -281,9 +282,11 @@ internal static class EvmObjectFormat
         }
         bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
         {
-            HashSet<Range> immediates = new HashSet<Range>();
-            HashSet<Int32> rjumpdests = new HashSet<Int32>();
-            for (int pos = 0; pos < code.Length;)
+            int pos;
+            SortedSet<Range> immediates = new();
+            SortedSet<int> rjumpdests = new();
+
+            for (pos = 0; pos < code.Length; pos++)
             {
                 Instruction opcode = (Instruction)code[pos];
                 pos++;
@@ -299,18 +302,18 @@ internal static class EvmObjectFormat
 
                 if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                 {
-                    if (pos + IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    if (pos + TWO_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace)
                         {
-                            Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                            Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
                         }
                         return false;
                     }
 
-                    var offset = code.Slice(pos, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
+                    var offset = code.Slice(pos, TWO_BYTE_LENGTH).ReadEthInt16();
                     immediates.Add(new Range(pos, pos + 1));
-                    var rjumpdest = offset + IMMEDIATE_16BIT_BYTE_COUNT + pos;
+                    var rjumpdest = offset + TWO_BYTE_LENGTH + pos;
                     rjumpdests.Add(rjumpdest);
                     if (rjumpdest < 0 || rjumpdest >= code.Length)
                     {
@@ -320,12 +323,12 @@ internal static class EvmObjectFormat
                         }
                         return false;
                     }
-                    pos += IMMEDIATE_16BIT_BYTE_COUNT;
+                    pos += TWO_BYTE_LENGTH;
                 }
 
                 if (opcode is Instruction.RJUMPV)
                 {
-                    if (pos + IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    if (pos + TWO_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace)
                         {
@@ -344,7 +347,7 @@ internal static class EvmObjectFormat
                         return false;
                     }
 
-                    if (pos + JUMPV_COUNT_BYTE_COUNT + count * IMMEDIATE_16BIT_BYTE_COUNT > code.Length)
+                    if (pos + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace)
                         {
@@ -353,11 +356,11 @@ internal static class EvmObjectFormat
                         return false;
                     }
 
-                    var immediateValueSize = JUMPV_COUNT_BYTE_COUNT + count * IMMEDIATE_16BIT_BYTE_COUNT;
+                    var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
                     immediates.Add(new Range(pos, pos + immediateValueSize - 1));
                     for (int j = 0; j < count; j++)
                     {
-                        var offset = code.Slice(pos + JUMPV_COUNT_BYTE_COUNT + j * IMMEDIATE_16BIT_BYTE_COUNT, IMMEDIATE_16BIT_BYTE_COUNT).ReadEthInt16();
+                        var offset = code.Slice(pos + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
                         var rjumpdest = offset + immediateValueSize + pos;
                         rjumpdests.Add(rjumpdest);
 
@@ -379,15 +382,24 @@ internal static class EvmObjectFormat
                     immediates.Add(new Range(pos, pos + len - 1));
                     pos += len;
                 }
+            }
 
-                if (pos >= code.Length)
+            if (pos >= code.Length)
+            {
+                if (Logger.IsTrace)
                 {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                    }
-                    return false;
+                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                 }
+                return false;
+            }
+
+            if (pos >= code.Length)
+            {
+                if (Logger.IsTrace)
+                {
+                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                }
+                return false;
             }
 
             foreach (int rjumpdest in rjumpdests)
