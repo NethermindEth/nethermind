@@ -10,4 +10,5 @@ Package: nethermind
 Architecture: amd64
 Multi-Arch: foreign
 Depends: libsnappy-dev, libc6-dev, libc6, unzip, jq, curl, wget
-Description: An Ethereum client for Linux, Windows, and macOS — full and actively developed.
+Description: An Ethereum client built on .NET
+ A high-performance, highly configurable Ethereum execution client that offers very fast sync speeds and support for external plugins.
