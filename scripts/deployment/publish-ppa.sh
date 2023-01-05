@@ -4,28 +4,25 @@
 
 set -e
 
-for release in "bionic" "focal" "jammy" "kinetic"
-do
-  echo "Building package for $release"
+echo "Building package"
+
+changelog="nethermind ($VERSION) jammy; urgency=high\n"
+changelog+="  * Nethermind v$VERSION\n"
+changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
+
+cd $SCRIPTS_PATH
+echo -e "$changelog" > debian/changelog
+
+debuild -S -uc -us
+cd ..
+
+echo "Signing package"
+debsign -p "gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase-file $GITHUB_WORKSPACE/PASSPHRASE" \
+  -S -k$PPA_GPG_KEYID nethermind_${VERSION}_source.changes
+
+echo "Uploading package"
+dput -f ppa:nethermindeth/nethermind nethermind_${VERSION}_source.changes
   
-  changelog="nethermind ($VERSION) $release; urgency=high\n"
-  changelog+="  * Nethermind v$VERSION\n"
-  changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
-
-  cd $SCRIPTS_PATH
-  echo -e "$changelog" > debian/changelog
-
-  debuild -S -uc -us
-  cd ..
-
-  echo "Signing package"
-  debsign -p "gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase-file $GITHUB_WORKSPACE/PASSPHRASE" \
-    -S -k$PPA_GPG_KEYID nethermind_${VERSION}_source.changes
-
-  echo "Uploading package"
-  dput -f ppa:nethermindeth/nethermind nethermind_${VERSION}_source.changes
-  
-  rm nethermind_$VERSION*
-done
+rm nethermind_$VERSION*
 
 echo "Publishing completed"
