@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,

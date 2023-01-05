@@ -12,16 +12,6 @@ namespace Nethermind.Core;
 public class Withdrawal
 {
     /// <summary>
-    /// Gets or sets the withdrawal address.
-    /// </summary>
-    public Address Address { get; set; } = Address.Zero;
-
-    /// <summary>
-    /// Gets or sets the withdrawal amount in Wei.
-    /// </summary>
-    public UInt256 Amount { get; set; }
-
-    /// <summary>
     /// Gets or sets the withdrawal unique id.
     /// </summary>
     public ulong Index { get; set; }
@@ -30,6 +20,15 @@ public class Withdrawal
     /// Gets or sets the validator index on the consensus layer the withdrawal corresponds to.
     /// </summary>
     public ulong ValidatorIndex { get; set; }
+    /// <summary>
+    /// Gets or sets the withdrawal address.
+    /// </summary>
+    public Address Address { get; set; } = Address.Zero;
+
+    /// <summary>
+    /// Gets or sets the withdrawal amount in Wei.
+    /// </summary>
+    public UInt256 Amount { get; set; }
 
     public override string ToString() => ToString(string.Empty);
 

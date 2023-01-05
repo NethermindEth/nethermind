@@ -208,7 +208,7 @@ namespace Nethermind.Mev.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    new ValidationWithdrawalProcessor(State, LogManager),
+                    new WithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 _tracerFactory = new TracerFactory(

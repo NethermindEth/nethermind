@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Processing
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
                 blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
-            withdrawalProcessor ??= new ValidationWithdrawalProcessor(StateProvider, logManager);
+            withdrawalProcessor ??= new WithdrawalProcessor(StateProvider, logManager);
 
             BlockProcessor = new BlockProcessor(
                 specProvider,

@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Test
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
-                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 txFilter,
                 contractRewriter: contractRewriter);
 

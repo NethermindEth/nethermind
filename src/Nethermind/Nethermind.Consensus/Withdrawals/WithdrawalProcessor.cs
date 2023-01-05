@@ -10,12 +10,12 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Withdrawals;
 
-public class ValidationWithdrawalProcessor : IWithdrawalProcessor
+public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
     private readonly IStateProvider _stateProvider;
 
-    public ValidationWithdrawalProcessor(IStateProvider stateProvider, ILogManager logManager)
+    public WithdrawalProcessor(IStateProvider stateProvider, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 

@@ -82,7 +82,7 @@ namespace Nethermind.Merge.AuRa
                 logManager,
                 _blockTree,
                 new BlockProductionWithdrawalProcessor(
-                    new ValidationWithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager))
+                    new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager))
                 );
         }
 

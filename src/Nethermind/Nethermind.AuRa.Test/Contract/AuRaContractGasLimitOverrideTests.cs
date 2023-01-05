@@ -100,7 +100,7 @@ namespace Nethermind.AuRa.Test.Contract
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
-                    new ValidationWithdrawalProcessor(State, LogManager),
+                    new WithdrawalProcessor(State, LogManager),
                     null,
                     GasLimitCalculator as AuRaContractGasLimitOverride);
             }
