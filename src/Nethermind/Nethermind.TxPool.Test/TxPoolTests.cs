@@ -1395,7 +1395,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_include_transaction_after_removal()
+        public async Task should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
@@ -1433,6 +1433,9 @@ namespace Nethermind.TxPool.Test
             _blockTree.BlockAddedToMain +=
                 Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
                     new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+
+            // Wait four event processing
+            await Task.Delay(100);
 
             // Send txA again => should be Accepted
             _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
