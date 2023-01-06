@@ -101,8 +101,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                            ReactToHandlingResult(request, result, null);
+                            DoHandleResponse(null, request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
@@ -142,6 +141,18 @@ namespace Nethermind.Synchronization.ParallelSync
                     return;
                 }
 
+                DoHandleResponse(allocatedPeer, request);
+            }
+            finally
+            {
+                Free(allocation);
+            }
+        }
+
+        private void DoHandleResponse(PeerInfo? allocatedPeer, T request)
+        {
+            try
+            {
                 SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                 ReactToHandlingResult(request, result, allocatedPeer);
             }
@@ -154,10 +165,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 // possibly clear the response and handle empty response batch here (to avoid missing parts)
                 // this practically corrupts sync
                 if (Logger.IsError) Logger.Error("Error when handling response", e);
-            }
-            finally
-            {
-                Free(allocation);
             }
         }
 
