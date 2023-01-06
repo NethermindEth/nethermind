@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        protected readonly IWorldState _worldState;
+        protected readonly IWorldState _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
         private readonly IWithdrawalProcessor _withdrawalProcessor;
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Processing
             IBlockValidator? blockValidator,
             IRewardCalculator? rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-            IWorldState? worldState,
+            IWorldState? stateProvider,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
             ILogManager? logManager,
@@ -57,10 +57,10 @@ namespace Nethermind.Consensus.Processing
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-            _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(worldState, logManager);
+            _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
 
@@ -150,7 +150,7 @@ namespace Nethermind.Consensus.Processing
         {
             /* Please note that we do not reset the state if branch state root is null.
                That said, I do not remember in what cases we receive null here.*/
-            if (branchStateRoot is not null && _worldState.StateRoot != branchStateRoot)
+            if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
             {
                 /* Discarding the other branch data - chain reorganization.
                    We cannot use cached values any more because they may have been written
@@ -158,34 +158,31 @@ namespace Nethermind.Consensus.Processing
 
                 if (incrementReorgMetric)
                     Metrics.Reorganizations++;
-                _worldState.Reset();
-                _worldState.Reset();
-                _worldState.StateRoot = branchStateRoot;
+                _stateProvider.Reset();
+                _stateProvider.StateRoot = branchStateRoot;
             }
         }
 
         // TODO: move to branch processor
         private Keccak CreateCheckpoint()
         {
-            return _worldState.StateRoot;
+            return _stateProvider.StateRoot;
         }
 
         // TODO: move to block processing pipeline
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-            _worldState.CommitTrees(blockNumber);
-            _worldState.CommitTree(blockNumber);
+            _stateProvider.CommitTree(blockNumber);
         }
 
         // TODO: move to branch processor
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-            _worldState.Reset();
-            _worldState.Reset();
-            _worldState.StateRoot = branchingPointStateRoot;
-            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_worldState.StateRoot}");
+            _stateProvider.Reset();
+            _stateProvider.StateRoot = branchingPointStateRoot;
+            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
 
         // TODO: block processor pipeline
@@ -233,10 +230,10 @@ namespace Nethermind.Consensus.Processing
             _withdrawalProcessor.ProcessWithdrawals(block, spec);
             _receiptsTracer.EndBlockTrace();
 
-            _worldState.Commit(spec);
-            _worldState.RecalculateStateRoot();
+            _stateProvider.Commit(spec);
+            _stateProvider.RecalculateStateRoot();
 
-            block.Header.StateRoot = _worldState.StateRoot;
+            block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
 
             return receipts;
@@ -307,7 +304,7 @@ namespace Nethermind.Consensus.Processing
                     tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                     if (txTracer.IsTracingState)
                     {
-                        _worldState.Commit(spec, txTracer);
+                        _stateProvider.Commit(spec, txTracer);
                     }
                 }
             }
@@ -318,13 +315,13 @@ namespace Nethermind.Consensus.Processing
         {
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-            if (!_worldState.AccountExists(reward.Address))
+            if (!_stateProvider.AccountExists(reward.Address))
             {
-                _worldState.CreateAccount(reward.Address, reward.Value);
+                _stateProvider.CreateAccount(reward.Address, reward.Value);
             }
             else
             {
-                _worldState.AddToBalance(reward.Address, reward.Value, spec);
+                _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
             }
         }
 
@@ -335,16 +332,16 @@ namespace Nethermind.Consensus.Processing
             {
                 if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
                 Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-                if (!_worldState.AccountExists(withdrawAccount))
+                if (!_stateProvider.AccountExists(withdrawAccount))
                 {
-                    _worldState.CreateAccount(withdrawAccount, 0);
+                    _stateProvider.CreateAccount(withdrawAccount, 0);
                 }
 
                 foreach (Address daoAccount in DaoData.DaoAccounts)
                 {
-                    UInt256 balance = _worldState.GetBalance(daoAccount);
-                    _worldState.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                    _worldState.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                    UInt256 balance = _stateProvider.GetBalance(daoAccount);
+                    _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                    _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
                 }
             }
         }

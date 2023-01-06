@@ -1,474 +1,343 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldState : IWorldState
+public class WorldState : PartialStorageProviderBase, IWorldState
 {
-    private const int StartCapacity = Resettable.StartCapacity;
-    private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
-    private readonly ResettableHashSet<Address> _committedThisRound = new();
+    private readonly StateProvider _stateProvider;
+    private readonly TransientStorageProvider _transientStorageProvider;
 
-    private readonly List<Change> _keptInCache = new();
-    private readonly ILogger _logger;
-    private readonly IKeyValueStore _codeDb;
+    private readonly ITrieStore _trieStore;
+    private readonly ILogManager? _logManager;
+    private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+    /// <summary>
+    /// EIP-1283
+    /// </summary>
+    private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+    private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-    private int _capacity = StartCapacity;
-    private Change?[] _changes = new Change?[StartCapacity];
-    private int _currentPosition = Resettable.EmptyPosition;
-
-    private readonly IStorageProvider _storageProvider;
-
-    public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+    public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : base(logManager)
     {
-        _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
-        _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        _tree = new StateTree(trieStore, logManager);
-        _storageProvider = new StorageProvider(trieStore, this, logManager);
-    }
-
-    public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
-    {
-        if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-        if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
-
-        _tree.Accept(visitor, stateRoot, visitingOptions);
-    }
-
-    private bool _needsStateRootUpdate;
-
-    public void RecalculateStateRoot()
-    {
-        _tree.UpdateRootHash();
-        _needsStateRootUpdate = false;
+        _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+        _logManager = logManager;
+        _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+        _transientStorageProvider = new TransientStorageProvider(logManager);
     }
 
     public Keccak StateRoot
     {
-        get
-        {
-            if (_needsStateRootUpdate)
-            {
-                throw new InvalidOperationException();
-            }
-
-            return _tree.RootHash;
-        }
-        set => _tree.RootHash = value;
-    }
-
-    private readonly StateTree _tree;
-
-    public bool AccountExists(Address address)
-    {
-        if (_intraBlockCache.ContainsKey(address))
-        {
-            return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
-        }
-
-        return GetAndAddToCache(address) is not null;
-    }
-
-    public bool IsEmptyAccount(Address address)
-    {
-        Account account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when checking if empty");
-        }
-
-        return account.IsEmpty;
+        get => _stateProvider.StateRoot;
+        set => _stateProvider.StateRoot = value;
     }
 
     public Account GetAccount(Address address)
     {
-        return GetThroughCache(address) ?? Account.TotallyEmpty;
+        return _stateProvider.GetAccount(address);
     }
 
-    public bool IsDeadAccount(Address address)
+    public void RecalculateStateRoot()
     {
-        Account? account = GetThroughCache(address);
-        return account?.IsEmpty ?? true;
+        _stateProvider.RecalculateStateRoot();
     }
 
-    public UInt256 GetNonce(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return account?.Nonce ?? UInt256.Zero;
-    }
-
-    public Keccak GetStorageRoot(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when accessing storage root");
-        }
-
-        return account.StorageRoot;
-    }
-
-    public UInt256 GetBalance(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return account?.Balance ?? UInt256.Zero;
-    }
-
-    public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec releaseSpec, bool isGenesis = false)
-    {
-        _needsStateRootUpdate = true;
-        Keccak codeHash;
-        if (code.Length == 0)
-        {
-            codeHash = Keccak.OfAnEmptyString;
-        }
-        else
-        {
-            codeHash = Keccak.Compute(code.Span);
-            _codeDb[codeHash.Bytes] = code.ToArray();
-        }
-
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when updating code hash");
-        }
-
-        if (account.CodeHash != codeHash)
-        {
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
-            Account changedAccount = account.WithChangedCodeHash(codeHash);
-            PushUpdate(address, changedAccount);
-        }
-        else if (releaseSpec.IsEip158Enabled && !isGenesis)
-        {
-            if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
-            if (account.IsEmpty)
-            {
-                PushTouch(address, account, releaseSpec, account.Balance.IsZero);
-            }
-        }
-    }
-
-    private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
-    {
-        _needsStateRootUpdate = true;
-
-        Account GetThroughCacheCheckExists()
-        {
-            Account result = GetThroughCache(address);
-            if (result is null)
-            {
-                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                throw new InvalidOperationException("Updating balance of a non-existing account");
-            }
-
-            return result;
-        }
-
-        bool isZero = balanceChange.IsZero;
-        if (isZero)
-        {
-            if (releaseSpec.IsEip158Enabled)
-            {
-                Account touched = GetThroughCacheCheckExists();
-                if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                if (touched.IsEmpty)
-                {
-                    PushTouch(address, touched, releaseSpec, true);
-                }
-            }
-
-            return;
-        }
-
-        Account account = GetThroughCacheCheckExists();
-
-        if (isSubtracting && account.Balance < balanceChange)
-        {
-            throw new InsufficientBalanceException(address);
-        }
-
-        UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
-
-        Account changedAccount = account.WithChangedBalance(newBalance);
-        if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance} -> {newBalance} ({(isSubtracting ? "-" : "+")}{balanceChange})");
-        PushUpdate(address, changedAccount);
-    }
-
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
-    {
-        _needsStateRootUpdate = true;
-        SetNewBalance(address, balanceChange, releaseSpec, true);
-    }
-
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
-    {
-        _needsStateRootUpdate = true;
-        SetNewBalance(address, balanceChange, releaseSpec, false);
-    }
-
-    /// <summary>
-    /// This is a coupling point between storage provider and state provider.
-    /// This is pointing at the architectural change likely required where Storage and State Provider are represented by a single world state class.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="storageRoot"></param>
-    public void UpdateStorageRoot(Address address, Keccak storageRoot)
-    {
-        _needsStateRootUpdate = true;
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when updating storage hash");
-        }
-
-        if (account.StorageRoot != storageRoot)
-        {
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} S {account.StorageRoot} -> {storageRoot}");
-            Account changedAccount = account.WithChangedStorageRoot(storageRoot);
-            PushUpdate(address, changedAccount);
-        }
-    }
-
-    public void IncrementNonce(Address address)
-    {
-        _needsStateRootUpdate = true;
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-        }
-
-        Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
-        if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-        PushUpdate(address, changedAccount);
-    }
-
-    public void DecrementNonce(Address address)
-    {
-        _needsStateRootUpdate = true;
-        Account account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
-        }
-
-        Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
-        if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-        PushUpdate(address, changedAccount);
-    }
-
-    public void TouchCode(Keccak codeHash)
-    {
-        if (_codeDb is WitnessingStore witnessingStore)
-        {
-            witnessingStore.Touch(codeHash.Bytes);
-        }
-    }
-
-    public Keccak GetCodeHash(Address address)
-    {
-        Account account = GetThroughCache(address);
-        return account?.CodeHash ?? Keccak.OfAnEmptyString;
-    }
-
-    public byte[] GetCode(Keccak codeHash)
-    {
-        byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
-        if (code is null)
-        {
-            throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-        }
-
-        return code;
-    }
-
-    public byte[] GetCode(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            return Array.Empty<byte>();
-        }
-
-        return GetCode(account.CodeHash);
-    }
 
     public void DeleteAccount(Address address)
     {
-        _needsStateRootUpdate = true;
-        PushDelete(address);
-    }
-
-    public void Commit(IStorageTracer stateTracer)
-    {
-        _storageProvider.Commit(stateTracer);
-    }
-
-    public Snapshot TakeSnapshot(bool newTransactionStart = false)
-    {
-        return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot(newTransactionStart));
-    }
-    Snapshot.Storage IStorageProvider.TakeSnapshot(bool newTransactionStart)
-    {
-        return _storageProvider.TakeSnapshot(newTransactionStart);
-    }
-    public void ClearStorage(Address address)
-    {
-        _storageProvider.ClearStorage(address);
-    }
-    int IStateProvider.TakeSnapshot(bool newTransactionStart)
-    {
-        if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
-        return _currentPosition;
-    }
-
-    public void Restore(Snapshot snapshot)
-    {
-        Restore(snapshot.StateSnapshot);
-        Restore(snapshot.StorageSnapshot);
-    }
-
-    public void Restore(int snapshot)
-    {
-        if (snapshot > _currentPosition)
-        {
-            throw new InvalidOperationException($"{nameof(WorldState)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
-        }
-
-        if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
-        if (snapshot == _currentPosition)
-        {
-            return;
-        }
-
-        for (int i = 0; i < _currentPosition - snapshot; i++)
-        {
-            Change change = _changes[_currentPosition - i];
-            if (_intraBlockCache[change!.Address].Count == 1)
-            {
-                if (change.ChangeType == ChangeType.JustCache)
-                {
-                    int actualPosition = _intraBlockCache[change.Address].Pop();
-                    if (actualPosition != _currentPosition - i)
-                    {
-                        throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
-                    }
-
-                    _keptInCache.Add(change);
-                    _changes[actualPosition] = null;
-                    continue;
-                }
-            }
-
-            _changes[_currentPosition - i] = null; // TODO: temp, ???
-            int forChecking = _intraBlockCache[change.Address].Pop();
-            if (forChecking != _currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {_currentPosition} - {i}");
-            }
-
-            if (_intraBlockCache[change.Address].Count == 0)
-            {
-                _intraBlockCache.Remove(change.Address);
-            }
-        }
-
-        _currentPosition = snapshot;
-        foreach (Change kept in _keptInCache)
-        {
-            _currentPosition++;
-            _changes[_currentPosition] = kept;
-            _intraBlockCache[kept.Address].Push(_currentPosition);
-        }
-
-        _keptInCache.Clear();
+        _stateProvider.DeleteAccount(address);
     }
 
     public void CreateAccount(Address address, in UInt256 balance)
     {
-        _needsStateRootUpdate = true;
-        if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
-        Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
-        PushNew(address, account);
+        _stateProvider.CreateAccount(address, in balance);
     }
-
 
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
     {
-        _needsStateRootUpdate = true;
-        if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
-        Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-        PushNew(address, account);
+        _stateProvider.CreateAccount(address, in balance, in nonce);
+    }
+
+    public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec releaseSpec, bool isGenesis = false)
+    {
+        _stateProvider.InsertCode(address, code, releaseSpec, isGenesis);
+    }
+
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        _stateProvider.AddToBalance(address, in balanceChange, spec);
+    }
+
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        _stateProvider.SubtractFromBalance(address, in balanceChange, spec);
+    }
+
+    public void UpdateStorageRoot(Address address, Keccak storageRoot)
+    {
+        _stateProvider.UpdateStorageRoot(address, storageRoot);
+    }
+
+    public void IncrementNonce(Address address)
+    {
+        _stateProvider.IncrementNonce(address);
+    }
+
+    public void DecrementNonce(Address address)
+    {
+        _stateProvider.DecrementNonce(address);
+    }
+
+    public void TouchCode(Keccak codeHash)
+    {
+        _stateProvider.TouchCode(codeHash);
+    }
+
+    public UInt256 GetNonce(Address address)
+    {
+        return _stateProvider.GetNonce(address);
+    }
+
+    public UInt256 GetBalance(Address address)
+    {
+        return _stateProvider.GetBalance(address);
+    }
+
+    public Keccak GetStorageRoot(Address address)
+    {
+        return _stateProvider.GetStorageRoot(address);
+    }
+
+    public byte[] GetCode(Address address)
+    {
+        return _stateProvider.GetCode(address);
+    }
+
+    public byte[] GetCode(Keccak codeHash)
+    {
+        return _stateProvider.GetCode(codeHash);
+    }
+
+    public Keccak GetCodeHash(Address address)
+    {
+        return _stateProvider.GetCodeHash(address);
+    }
+
+    public void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null)
+    {
+        _stateProvider.Accept(visitor, stateRoot, visitingOptions);
+    }
+
+    public bool AccountExists(Address address)
+    {
+        return _stateProvider.AccountExists(address);
+    }
+
+    public bool IsDeadAccount(Address address)
+    {
+        return _stateProvider.IsDeadAccount(address);
+    }
+
+    public bool IsEmptyAccount(Address address)
+    {
+        return _stateProvider.IsEmptyAccount(address);
+    }
+
+    public void SetNonce(Address address, in UInt256 nonce)
+    {
+        _stateProvider.SetNonce(address, nonce);
+    }
+
+    public override void ClearStorage(Address address)
+    {
+        base.ClearStorage(address);
+
+        // here it is important to make sure that we will not reuse the same tree when the contract is revived
+        // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
+        // touched in this block, hence were not zeroed above
+        // TODO: how does it work with pruning?
+        _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+        _transientStorageProvider.ClearStorage(address);
     }
 
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
     {
-        _storageProvider.Commit();
-        Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
+        base.Commit((IStorageTracer)NullStateTracer.Instance);
+        _transientStorageProvider.Commit();
+        _stateProvider.Commit(releaseSpec, isGenesis);
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+    public void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false)
     {
-        _storageProvider.Commit(stateTracer);
-        Commit(releaseSpec, (IStateTracer)stateTracer, isGenesis);
+        _stateProvider.Commit(releaseSpec, stateTracer, isGenesis);
     }
 
-    private readonly struct ChangeTrace
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false)
     {
-        public ChangeTrace(Account? before, Account? after)
-        {
-            After = after;
-            Before = before;
-        }
-
-        public ChangeTrace(Account? after)
-        {
-            After = after;
-            Before = null;
-        }
-
-        public Account? Before { get; }
-        public Account? After { get; }
+        _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+        base.Commit(tracer ?? (IStorageTracer)NullStateTracer.Instance);
+        _transientStorageProvider.Commit(tracer ?? (IStorageTracer)NullStateTracer.Instance);
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+    /// <summary>
+    /// Commit persisent storage trees
+    /// </summary>
+    /// <param name="blockNumber">Current block number</param>
+    public void CommitTree(long blockNumber)
     {
-        if (_currentPosition == -1)
+        // _logger.Warn($"Storage block commit {blockNumber}");
+        foreach (KeyValuePair<Address, StorageTree> storage in _storages)
         {
-            if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
-            return;
+            storage.Value.Commit(blockNumber);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
+        // TODO: maybe I could update storage roots only now?
+
+        // only needed here as there is no control over cached storage size otherwise
+        _storages.Reset();
+
+        _stateProvider.CommitTree(blockNumber);
+    }
+
+    /// <summary>
+    /// Return the original persistent storage value from the storage cell
+    /// </summary>
+    /// <param name="storageCell"></param>
+    /// <returns></returns>
+    public byte[] GetOriginal(in StorageCell storageCell)
+    {
+        if (!_originalValues.ContainsKey(storageCell))
+        {
+            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+        }
+
+        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        {
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            {
+                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
+                {
+                    return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
+                }
+            }
+        }
+
+        return _originalValues[storageCell];
+    }
+
+    public byte[] GetTransientState(in StorageCell storageCell)
+    {
+        return _transientStorageProvider.Get(storageCell);
+    }
+
+    public override void Reset()
+    {
+        base.Reset();
+        _storages.Reset();
+        _originalValues.Clear();
+        _committedThisRound.Clear();
+        _transientStorageProvider.Reset();
+        _stateProvider.Reset();
+    }
+
+    public void Restore(Snapshot snapshot)
+    {
+        _stateProvider.Restore(snapshot.StateSnapshot);
+        base.Restore(snapshot.StorageSnapshot.PersistentStorageSnapshot);
+        _transientStorageProvider.Restore(snapshot.StorageSnapshot.TransientStorageSnapshot);
+    }
+
+    internal void RestoreState(int snapshot) => _stateProvider.Restore(snapshot);
+    internal void RestoreStorage(Snapshot.Storage snapshot)
+    {
+        base.Restore(snapshot.PersistentStorageSnapshot);
+        _transientStorageProvider.Restore(snapshot.TransientStorageSnapshot);
+    }
+    internal void RestoreStorage(int snapshot)
+    {
+        RestoreStorage(new Snapshot.Storage(snapshot, Snapshot.EmptyPosition));
+    }
+
+    public new void Restore(int snapshot)
+    {
+        _stateProvider.Restore(snapshot);
+        base.Restore(snapshot);
+        _transientStorageProvider.Restore(snapshot);
+    }
+
+    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    {
+        _transientStorageProvider.Set(storageCell, newValue);
+    }
+
+    protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+
+    private byte[] LoadFromTree(in StorageCell storageCell)
+    {
+        StorageTree tree = GetOrCreateStorage(storageCell.Address);
+
+        Db.Metrics.StorageTreeReads++;
+        byte[] value = tree.Get(storageCell.Index);
+        PushToRegistryOnly(storageCell, value);
+        return value;
+    }
+
+    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    {
+        SetupRegistry(cell);
+        IncrementChangePosition();
+        _intraBlockCache[cell].Push(_currentPosition);
+        _originalValues[cell] = value;
+        _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
+    }
+
+    public new Snapshot TakeSnapshot(bool newTransactionStart)
+    {
+        int persistentSnapshot = base.TakeSnapshot(newTransactionStart);
+        int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
+        Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
+        return new Snapshot(_stateProvider.TakeSnapshot(false), storageSnapshot);
+    }
+
+    /// <summary>
+    /// Called by Commit
+    /// Used for persistent storage specific logic
+    /// </summary>
+    /// <param name="tracer">Storage tracer</param>
+    protected override void CommitCore(IStorageTracer tracer)
+    {
+        if (_logger.IsTrace) _logger.Trace("Committing storage changes");
+
         if (_changes[_currentPosition] is null)
         {
-            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
         }
 
         if (_changes[_currentPosition + 1] is not null)
         {
-            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
         }
 
-        bool isTracing = stateTracer.IsTracingState;
-        Dictionary<Address, ChangeTrace> trace = null;
+        HashSet<Address> toUpdateRoots = new();
+
+        bool isTracing = tracer.IsTracingStorage;
+        Dictionary<StorageCell, ChangeTrace>? trace = null;
         if (isTracing)
         {
-            trace = new Dictionary<Address, ChangeTrace>();
+            trace = new Dictionary<StorageCell, ChangeTrace>();
         }
 
         for (int i = 0; i <= _currentPosition; i++)
@@ -479,377 +348,113 @@ public class WorldState : IWorldState
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.Address))
+            if (_committedThisRound.Contains(change!.StorageCell))
             {
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
+                    trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
                 }
 
                 continue;
             }
 
-            // because it was not committed yet it means that the just cache is the only state (so it was read only)
             if (isTracing && change.ChangeType == ChangeType.JustCache)
             {
-                _readsForTracing.Add(change.Address);
+                tracer!.ReportStorageRead(change.StorageCell);
+            }
+
+            _committedThisRound.Add(change.StorageCell);
+
+            if (change.ChangeType == ChangeType.Destroy)
+            {
                 continue;
             }
 
-            int forAssertion = _intraBlockCache[change.Address].Pop();
+            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
             if (forAssertion != _currentPosition - i)
             {
                 throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
             }
 
-            _committedThisRound.Add(change.Address);
-
             switch (change.ChangeType)
             {
+                case ChangeType.Destroy:
+                    break;
                 case ChangeType.JustCache:
-                    {
-                        break;
-                    }
-                case ChangeType.Touch:
+                    break;
                 case ChangeType.Update:
+                    if (_logger.IsTrace)
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, null);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(null);
-                            }
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(change.Account);
-                            }
-                        }
-
-                        break;
+                        _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                     }
-                case ChangeType.New:
+
+                    StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                    Db.Metrics.StorageTreeWrites++;
+                    toUpdateRoots.Add(change.StorageCell.Address);
+                    tree.Set(change.StorageCell.Index, change.Value);
+                    if (isTracing)
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(change.Account);
-                            }
-                        }
-
-                        break;
+                        trace![change.StorageCell] = new ChangeTrace(change.Value);
                     }
-                case ChangeType.Delete:
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
-                        bool wasItCreatedNow = false;
-                        while (_intraBlockCache[change.Address].Count > 0)
-                        {
-                            int previousOne = _intraBlockCache[change.Address].Pop();
-                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                            if (wasItCreatedNow)
-                            {
-                                break;
-                            }
-                        }
 
-                        if (!wasItCreatedNow)
-                        {
-                            SetState(change.Address, null);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(null);
-                            }
-                        }
-
-                        break;
-                    }
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
 
+        // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
+        foreach (Address address in toUpdateRoots)
+        {
+            // since the accounts could be empty accounts that are removing (EIP-158)
+            if (_stateProvider.AccountExists(address))
+            {
+                Keccak root = RecalculateRootHash(address);
+
+                // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
+                _stateProvider.UpdateStorageRoot(address, root);
+            }
+        }
+
+        base.CommitCore(tracer);
+        _originalValues.Reset();
+        _committedThisRound.Reset();
+
         if (isTracing)
         {
-            foreach (Address nullRead in _readsForTracing)
+            ReportChanges(tracer!, trace!);
+        }
+    }
+
+    private Keccak RecalculateRootHash(Address address)
+    {
+        StorageTree storageTree = GetOrCreateStorage(address);
+        storageTree.UpdateRootHash();
+        return storageTree.RootHash;
+    }
+
+    private StorageTree GetOrCreateStorage(Address address)
+    {
+        if (!_storages.ContainsKey(address))
+        {
+            StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
+            return _storages[address] = storageTree;
+        }
+
+        return _storages[address];
+    }
+
+    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
+    {
+        foreach ((StorageCell address, ChangeTrace change) in trace)
+        {
+            byte[] before = change.Before;
+            byte[] after = change.After;
+
+            if (!Bytes.AreEqual(before, after))
             {
-                // // this may be enough, let us write tests
-                stateTracer.ReportAccountRead(nullRead);
+                tracer.ReportStorageChange(address, before, after);
             }
         }
-
-        Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
-        _committedThisRound.Reset();
-        _readsForTracing.Clear();
-        _intraBlockCache.Reset();
-
-        if (isTracing)
-        {
-            ReportChanges(stateTracer, trace);
-        }
-    }
-
-    private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
-    {
-        foreach ((Address address, ChangeTrace change) in trace)
-        {
-            bool someChangeReported = false;
-
-            Account? before = change.Before;
-            Account? after = change.After;
-
-            UInt256? beforeBalance = before?.Balance;
-            UInt256? afterBalance = after?.Balance;
-
-            UInt256? beforeNonce = before?.Nonce;
-            UInt256? afterNonce = after?.Nonce;
-
-            Keccak? beforeCodeHash = before?.CodeHash;
-            Keccak? afterCodeHash = after?.CodeHash;
-
-            if (beforeCodeHash != afterCodeHash)
-            {
-                byte[]? beforeCode = beforeCodeHash is null
-                    ? null
-                    : beforeCodeHash == Keccak.OfAnEmptyString
-                        ? Array.Empty<byte>()
-                        : _codeDb[beforeCodeHash.Bytes];
-                byte[]? afterCode = afterCodeHash is null
-                    ? null
-                    : afterCodeHash == Keccak.OfAnEmptyString
-                        ? Array.Empty<byte>()
-                        : _codeDb[afterCodeHash.Bytes];
-
-                if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
-                {
-                    stateTracer.ReportCodeChange(address, beforeCode, afterCode);
-                }
-
-                someChangeReported = true;
-            }
-
-            if (afterBalance != beforeBalance)
-            {
-                stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
-                someChangeReported = true;
-            }
-
-            if (afterNonce != beforeNonce)
-            {
-                stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
-                someChangeReported = true;
-            }
-
-            if (!someChangeReported)
-            {
-                stateTracer.ReportAccountRead(address);
-            }
-        }
-    }
-
-    private Account? GetState(Address address)
-    {
-        Db.Metrics.StateTreeReads++;
-        Account? account = _tree.Get(address);
-        return account;
-    }
-
-    private void SetState(Address address, Account? account)
-    {
-        _needsStateRootUpdate = true;
-        Db.Metrics.StateTreeWrites++;
-        _tree.Set(address, account);
-    }
-
-    private readonly HashSet<Address> _readsForTracing = new();
-
-    private Account? GetAndAddToCache(Address address)
-    {
-        Account? account = GetState(address);
-        if (account is not null)
-        {
-            PushJustCache(address, account);
-        }
-        else
-        {
-            // just for tracing - potential perf hit, maybe a better solution?
-            _readsForTracing.Add(address);
-        }
-
-        return account;
-    }
-
-    private Account? GetThroughCache(Address address)
-    {
-        if (_intraBlockCache.ContainsKey(address))
-        {
-            return _changes[_intraBlockCache[address].Peek()]!.Account;
-        }
-
-        Account account = GetAndAddToCache(address);
-        return account;
-    }
-
-    private void PushJustCache(Address address, Account account)
-    {
-        Push(ChangeType.JustCache, address, account);
-    }
-
-    private void PushUpdate(Address address, Account account)
-    {
-        Push(ChangeType.Update, address, account);
-    }
-
-    private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
-    {
-        if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
-        Push(ChangeType.Touch, address, account);
-    }
-
-    private void PushDelete(Address address)
-    {
-        Push(ChangeType.Delete, address, null);
-    }
-
-    private void Push(ChangeType changeType, Address address, Account? touchedAccount)
-    {
-        SetupCache(address);
-        if (changeType == ChangeType.Touch
-            && _changes[_intraBlockCache[address].Peek()]!.ChangeType == ChangeType.Touch)
-        {
-            return;
-        }
-
-        IncrementChangePosition();
-        _intraBlockCache[address].Push(_currentPosition);
-        _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
-    }
-
-    private void PushNew(Address address, Account account)
-    {
-        SetupCache(address);
-        IncrementChangePosition();
-        _intraBlockCache[address].Push(_currentPosition);
-        _changes[_currentPosition] = new Change(ChangeType.New, address, account);
-    }
-
-    private void IncrementChangePosition()
-    {
-        Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
-    }
-
-    private void SetupCache(Address address)
-    {
-        if (!_intraBlockCache.ContainsKey(address))
-        {
-            _intraBlockCache[address] = new Stack<int>();
-        }
-    }
-
-    public byte[] GetOriginal(in StorageCell storageCell)
-    {
-        return _storageProvider.GetOriginal(storageCell);
-    }
-    public byte[] Get(in StorageCell storageCell)
-    {
-        return _storageProvider.Get(storageCell);
-    }
-    public void Set(in StorageCell storageCell, byte[] newValue)
-    {
-        _storageProvider.Set(storageCell, newValue);
-    }
-    public byte[] GetTransientState(in StorageCell storageCell)
-    {
-        return _storageProvider.GetTransientState(storageCell);
-    }
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-    {
-        _storageProvider.SetTransientState(storageCell, newValue);
-    }
-    public void Reset()
-    {
-        if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-        _intraBlockCache.Reset();
-        _committedThisRound.Reset();
-        _readsForTracing.Clear();
-        _currentPosition = Resettable.EmptyPosition;
-        Array.Clear(_changes, 0, _changes.Length);
-        _needsStateRootUpdate = false;
-
-        _storageProvider.Reset();
-    }
-    public void CommitTrees(long blockNumber)
-    {
-        _storageProvider.CommitTrees(blockNumber);
-    }
-    public void Commit()
-    {
-        _storageProvider.Commit();
-    }
-
-    public void CommitTree(long blockNumber)
-    {
-        if (_needsStateRootUpdate)
-        {
-            RecalculateStateRoot();
-        }
-
-        _tree.Commit(blockNumber);
-    }
-
-    public void CommitBranch()
-    {
-        // placeholder for the three level Commit->CommitBlock->CommitBranch
-    }
-
-    // used in EthereumTests
-    public void SetNonce(Address address, in UInt256 nonce)
-    {
-        _needsStateRootUpdate = true;
-        Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-        }
-
-        Account changedAccount = account.WithChangedNonce(nonce);
-        if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-        PushUpdate(address, changedAccount);
-    }
-    public void Restore(Snapshot.Storage snapshot)
-    {
-        _storageProvider.Restore(snapshot);
-    }
-
-    private enum ChangeType
-    {
-        JustCache,
-        Touch,
-        Update,
-        New,
-        Delete
-    }
-
-    private class Change
-    {
-        public Change(ChangeType type, Address address, Account? account)
-        {
-            ChangeType = type;
-            Address = address;
-            Account = account;
-        }
-
-        public ChangeType ChangeType { get; }
-        public Address Address { get; }
-        public Account? Account { get; }
     }
 }

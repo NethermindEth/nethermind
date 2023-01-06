@@ -149,11 +149,7 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
-            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
+            IWorldState worldState = setApi.WorldState = new WorldState(trieStore, codeDb, getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
@@ -163,7 +159,7 @@ namespace Nethermind.Init.Steps
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
@@ -173,11 +169,12 @@ namespace Nethermind.Init.Steps
                     {
                         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                         TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                        IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
+                        IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                         {
                             StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
                         };
                         TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+
                         _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                     }
                     catch (Exception ex)
@@ -190,7 +187,7 @@ namespace Nethermind.Init.Steps
             // Init state if we need system calls before actual processing starts
             if (getApi.BlockTree!.Head?.StateRoot is not null)
             {
-                stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
+                worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
             TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
@@ -204,12 +201,6 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                trieStore,
-                stateProvider,
-                getApi.LogManager);
-
-            IWorldState worldState = setApi.WorldState = new WorldState(trieStore, codeDb, getApi.LogManager);
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
@@ -362,7 +353,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, new WorldState(_api.TrieStore, _api.DbProvider!.CodeDb, _api.LogManager)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
                 _api.WorldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,

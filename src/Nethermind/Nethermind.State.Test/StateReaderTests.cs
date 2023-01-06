@@ -90,7 +90,6 @@ namespace Nethermind.Store.Test
             void CommitEverything()
             {
                 provider.Commit(spec);
-                provider.CommitTrees(0);
                 provider.CommitTree(0);
             }
 
@@ -141,7 +140,6 @@ namespace Nethermind.Store.Test
             void CommitEverything()
             {
                 provider.Commit(spec);
-                provider.CommitTrees(0);
                 provider.CommitTree(0);
             }
 
@@ -205,7 +203,6 @@ namespace Nethermind.Store.Test
             byte[] initialValue = new byte[] { 1, 2, 3 };
             state.Set(storageCell, initialValue);
             state.Commit(MuirGlacier.Instance);
-            state.CommitTrees(2);
             state.CommitTree(2);
 
             StateReader reader = new(
@@ -229,7 +226,6 @@ namespace Nethermind.Store.Test
             processorStateProvider.StateRoot = state.StateRoot;
             processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitTrees(3);
             processorStateProvider.CommitTree(3);
 
             /* At this stage the DB should have the storage value updated to 5.

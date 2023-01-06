@@ -34,8 +34,8 @@ namespace Nethermind.Evm.Test
                 .FromCode(createCode)
                 .Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, byteCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, byteCode, Spec);
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
@@ -56,8 +56,8 @@ namespace Nethermind.Evm.Test
                 ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done
                 : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, evmCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
 
             const int contractCreationGasLimit = 50000;
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
             Assert.AreEqual(1, tracer.ReportedActionErrors.Count);
             Assert.AreEqual(EvmExceptionType.OutOfGas, tracer.ReportedActionErrors[0]);
-            Assert.AreEqual((UInt256)0, WorldState.GetAccount(TestItem.AddressC).Nonce);
+            Assert.AreEqual((UInt256)0, TestState.GetAccount(TestItem.AddressC).Nonce);
             Assert.AreEqual(_transactionCallCost + contractCreationGasLimit, tracer.GasSpent);
         }
 
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Test
 
             byte[] createCode = Prepare.EvmCode.Create(byteCode, 0).Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 500000, createCode, timestamp: timestamp);
 

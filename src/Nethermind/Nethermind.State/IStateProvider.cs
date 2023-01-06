@@ -37,8 +37,6 @@ namespace Nethermind.State
 
         void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
 
-        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false);
-
         void Reset();
 
         void CommitTree(long blockNumber);
@@ -52,5 +50,7 @@ namespace Nethermind.State
         int TakeSnapshot(bool newTransactionStart = false);
 
         int IJournal<int>.TakeSnapshot() => TakeSnapshot();
+
+        void SetNonce(Address address, in UInt256 nonce);
     }
 }

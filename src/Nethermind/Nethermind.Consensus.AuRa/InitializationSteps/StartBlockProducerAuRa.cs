@@ -158,7 +158,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
-                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
+                new WithdrawalProcessor(_api.WorldState!, _api.LogManager),
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
                 contractRewriter)

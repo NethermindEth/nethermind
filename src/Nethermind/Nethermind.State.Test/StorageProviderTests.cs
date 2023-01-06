@@ -413,14 +413,14 @@ namespace Nethermind.Store.Test
 
         private class Context
         {
-            public IStateProvider StateProvider { get; }
+            public IWorldState StateProvider { get; }
 
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
 
             public Context()
             {
-                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

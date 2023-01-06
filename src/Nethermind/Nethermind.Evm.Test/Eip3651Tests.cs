@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Access_beneficiary_address_before_eip_3651()
         {
-            WorldState.CreateAccount(TestItem.AddressF, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 100.Ether());
             byte[] code = Prepare.EvmCode
                 .PushData(MinerKey.Address)
                 .Op(Instruction.BALANCE)

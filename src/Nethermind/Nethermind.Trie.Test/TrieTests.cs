@@ -1049,7 +1049,6 @@ namespace Nethermind.Trie.Test
                     $"Commit block {blockNumber} | empty: {isEmptyBlock}");
 
                 stateProvider.Commit(MuirGlacier.Instance);
-                stateProvider.CommitTrees(blockNumber);
                 stateProvider.CommitTree(blockNumber);
                 rootQueue.Enqueue(stateProvider.StateRoot);
             }

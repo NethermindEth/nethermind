@@ -48,5 +48,6 @@ namespace Nethermind.Trie.Pruning
         public void Dispose() { }
 
         public byte[]? this[byte[] key] => _trieStore[key];
+        public bool IsFullySynced(Keccak stateRoot) => _trieStore.IsFullySynced(stateRoot);
     }
 }

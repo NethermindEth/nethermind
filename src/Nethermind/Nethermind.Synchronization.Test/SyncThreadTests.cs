@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Test
             public IBlockchainProcessor? BlockchainProcessor { get; set; }
             public ISynchronizer? Synchronizer { get; set; }
             public IBlockTree Tree { get; set; } = null!;
-            public IStateProvider StateProvider { get; set; } = null!;
+            public IWorldState StateProvider { get; set; } = null!;
 
             public DevBlockProducer? BlockProducer { get; set; }
             public ConsoleAsyncLogger? Logger { get; set; }
@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.Test
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
+                tree, receiptStorage, NullTrieStore.Instance, progressTracker, syncConfig, logManager);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);

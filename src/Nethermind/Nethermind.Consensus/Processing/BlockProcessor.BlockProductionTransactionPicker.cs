@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState worldState)
+            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -55,24 +55,23 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-
                 if (currentTx.IsAboveInitCode(spec))
                 {
                     return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
                 }
 
-                if (worldState.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                UInt256 expectedNonce = worldState.GetNonce(currentTx.SenderAddress);
+                UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                 if (expectedNonce != currentTx.Nonce)
                 {
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
-                UInt256 balance = worldState.GetBalance(currentTx.SenderAddress);
+                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
                 if (!HasEnoughFounds(currentTx, balance, args, block, spec))
                 {
                     return args;

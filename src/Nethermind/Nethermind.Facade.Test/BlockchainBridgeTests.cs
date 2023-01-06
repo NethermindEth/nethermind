@@ -64,9 +64,8 @@ namespace Nethermind.Facade.Test
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
-                LimboLogs.Instance);
-
-            processingEnv.TransactionProcessor = _transactionProcessor;
+                LimboLogs.Instance)
+            { TransactionProcessor = _transactionProcessor };
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,

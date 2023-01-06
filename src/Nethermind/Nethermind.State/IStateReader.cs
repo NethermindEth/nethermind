@@ -17,5 +17,7 @@ namespace Nethermind.State
         byte[]? GetCode(Keccak codeHash);
 
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
+
+        byte[]? GetStorage(Address address, in UInt256 index);
     }
 }

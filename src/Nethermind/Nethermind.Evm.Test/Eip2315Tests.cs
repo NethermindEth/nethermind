@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Simple_routine()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x60045e005c5d")
@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Two_levels_of_subroutines()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x6800000000000000000c5e005c60115e5d5c5d")
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Invalid_jump()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x6801000000000000000c5e005c60115e5d5c5d")
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Shallow_return_stack()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x5d5858")
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Subroutine_at_end_of_code()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x6005565c5d5b60035e")
@@ -91,7 +91,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Error_on_walk_into_the_subroutine()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
                 .FromCode("0x5c5d00")

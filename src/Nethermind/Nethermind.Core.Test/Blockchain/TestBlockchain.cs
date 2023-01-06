@@ -187,35 +187,35 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-            Block? genesis = GetGenesisBlock();
-            BlockTree.SuggestBlock(genesis);
+        Block? genesis = GetGenesisBlock();
+        BlockTree.SuggestBlock(genesis);
 
-            await WaitAsync(_resetEvent, "Failed to process genesis in time.");
-            await AddBlocksOnStart();
-            return this;
-        }
+        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        await AddBlocksOnStart();
+        return this;
+    }
 
-        private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+    private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+    {
+        return specProvider is TestSpecProvider { AllowTestChainOverride: false }
+            ? specProvider
+            : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+    }
+
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        _resetEvent.Release(1);
+    }
+
+    protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
+
+    private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
+    {
+        if (!await semaphore.WaitAsync(timeout))
         {
-            return specProvider is TestSpecProvider { AllowTestChainOverride: false }
-                ? specProvider
-                : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+            throw new InvalidOperationException(error);
         }
-
-        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-        {
-            _resetEvent.Release(1);
-        }
-
-        protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
-
-        private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
-        {
-            if (!await semaphore.WaitAsync(timeout))
-            {
-                throw new InvalidOperationException(error);
-            }
-        }
+    }
 
     private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = DefaultTimeout)
     {

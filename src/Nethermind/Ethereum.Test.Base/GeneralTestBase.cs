@@ -134,16 +134,14 @@ namespace Ethereum.Test.Base
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            stateProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)

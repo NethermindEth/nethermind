@@ -80,8 +80,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Can_trace_touch_only_preexisting_accounts()
         {
-            WorldState.CreateAccount(TestItem.AddressC, 100);
-            WorldState.Commit(Spec);
+            TestState.CreateAccount(TestItem.AddressC, 100);
+            TestState.Commit(Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1)

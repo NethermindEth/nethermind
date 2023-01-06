@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State
 {
-    public class NullStateTracer : IStateTracer
+    public class NullStateTracer : IWorldStateTracer
     {
         private NullStateTracer() { }
 
@@ -26,6 +26,15 @@ namespace Nethermind.State
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportAccountRead(Address address)
+            => throw new InvalidOperationException(ErrorMessage);
+        public bool IsTracingStorage => false;
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportStorageRead(in StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
     }
 }

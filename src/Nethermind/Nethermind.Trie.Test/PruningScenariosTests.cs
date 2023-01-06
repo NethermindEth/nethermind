@@ -177,7 +177,6 @@ namespace Nethermind.Trie.Test
             public PruningContext Commit()
             {
                 _stateProvider.Commit(MuirGlacier.Instance);
-                _stateProvider.CommitTrees(_blockNumber);
                 _stateProvider.CommitTree(_blockNumber);
                 _blockNumber++;
 
