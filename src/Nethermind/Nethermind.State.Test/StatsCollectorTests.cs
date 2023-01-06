@@ -42,9 +42,7 @@ namespace Nethermind.Store.Test
 
             stateProvider.Commit(Istanbul.Instance);
 
-            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-            stateProvider.CommitTrees(1);
             stateProvider.CommitTree(1);
 
             memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code

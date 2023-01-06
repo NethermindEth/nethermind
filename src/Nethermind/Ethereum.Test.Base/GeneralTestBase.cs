@@ -134,10 +134,8 @@ namespace Ethereum.Test.Base
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            stateProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
             stateProvider.Reset();

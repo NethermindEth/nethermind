@@ -46,8 +46,6 @@ namespace Nethermind.Blockchain
             _chainSpec.Allocations = null;
 
             _worldState.Commit(_specProvider.GenesisSpec, true);
-
-            _worldState.CommitTrees(0);
             _worldState.CommitTree(0);
 
             genesis.Header.StateRoot = _worldState.StateRoot;

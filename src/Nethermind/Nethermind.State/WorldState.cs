@@ -313,19 +313,6 @@ public class WorldState : IWorldState
         PushDelete(address);
     }
 
-    public void Commit(IStorageTracer stateTracer)
-    {
-        _storageProvider.Commit(stateTracer);
-    }
-
-    public Snapshot TakeSnapshot(bool newTransactionStart = false)
-    {
-        return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot(newTransactionStart));
-    }
-    Snapshot.Storage IStorageProvider.TakeSnapshot(bool newTransactionStart)
-    {
-        return _storageProvider.TakeSnapshot(newTransactionStart);
-    }
     public void ClearStorage(Address address)
     {
         _storageProvider.ClearStorage(address);
@@ -339,7 +326,7 @@ public class WorldState : IWorldState
     public void Restore(Snapshot snapshot)
     {
         Restore(snapshot.StateSnapshot);
-        Restore(snapshot.StorageSnapshot);
+        _storageProvider.Restore(snapshot.StorageSnapshot);
     }
 
     public void Restore(int snapshot)
@@ -415,17 +402,7 @@ public class WorldState : IWorldState
         PushNew(address, account);
     }
 
-    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
-    {
-        _storageProvider.Commit();
-        Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
-    }
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
-    {
-        _storageProvider.Commit(stateTracer);
-        Commit(releaseSpec, (IStateTracer)stateTracer, isGenesis);
-    }
 
     private readonly struct ChangeTrace
     {
@@ -445,158 +422,7 @@ public class WorldState : IWorldState
         public Account? After { get; }
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
-    {
-        if (_currentPosition == -1)
-        {
-            if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
-            return;
-        }
 
-        if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
-        if (_changes[_currentPosition] is null)
-        {
-            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(WorldState)}");
-        }
-
-        if (_changes[_currentPosition + 1] is not null)
-        {
-            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(WorldState)}");
-        }
-
-        bool isTracing = stateTracer.IsTracingState;
-        Dictionary<Address, ChangeTrace> trace = null;
-        if (isTracing)
-        {
-            trace = new Dictionary<Address, ChangeTrace>();
-        }
-
-        for (int i = 0; i <= _currentPosition; i++)
-        {
-            Change change = _changes[_currentPosition - i];
-            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
-            {
-                continue;
-            }
-
-            if (_committedThisRound.Contains(change!.Address))
-            {
-                if (isTracing && change.ChangeType == ChangeType.JustCache)
-                {
-                    trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
-                }
-
-                continue;
-            }
-
-            // because it was not committed yet it means that the just cache is the only state (so it was read only)
-            if (isTracing && change.ChangeType == ChangeType.JustCache)
-            {
-                _readsForTracing.Add(change.Address);
-                continue;
-            }
-
-            int forAssertion = _intraBlockCache[change.Address].Pop();
-            if (forAssertion != _currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
-            }
-
-            _committedThisRound.Add(change.Address);
-
-            switch (change.ChangeType)
-            {
-                case ChangeType.JustCache:
-                    {
-                        break;
-                    }
-                case ChangeType.Touch:
-                case ChangeType.Update:
-                    {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, null);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(null);
-                            }
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(change.Account);
-                            }
-                        }
-
-                        break;
-                    }
-                case ChangeType.New:
-                    {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, change.Account);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(change.Account);
-                            }
-                        }
-
-                        break;
-                    }
-                case ChangeType.Delete:
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
-                        bool wasItCreatedNow = false;
-                        while (_intraBlockCache[change.Address].Count > 0)
-                        {
-                            int previousOne = _intraBlockCache[change.Address].Pop();
-                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                            if (wasItCreatedNow)
-                            {
-                                break;
-                            }
-                        }
-
-                        if (!wasItCreatedNow)
-                        {
-                            SetState(change.Address, null);
-                            if (isTracing)
-                            {
-                                trace[change.Address] = new ChangeTrace(null);
-                            }
-                        }
-
-                        break;
-                    }
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-
-        if (isTracing)
-        {
-            foreach (Address nullRead in _readsForTracing)
-            {
-                // // this may be enough, let us write tests
-                stateTracer.ReportAccountRead(nullRead);
-            }
-        }
-
-        Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
-        _committedThisRound.Reset();
-        _readsForTracing.Clear();
-        _intraBlockCache.Reset();
-
-        if (isTracing)
-        {
-            ReportChanges(stateTracer, trace);
-        }
-    }
 
     private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
     {
@@ -787,17 +613,10 @@ public class WorldState : IWorldState
 
         _storageProvider.Reset();
     }
-    public void CommitTrees(long blockNumber)
-    {
-        _storageProvider.CommitTrees(blockNumber);
-    }
-    public void Commit()
-    {
-        _storageProvider.Commit();
-    }
 
     public void CommitTree(long blockNumber)
     {
+        _storageProvider.CommitTrees(blockNumber);
         if (_needsStateRootUpdate)
         {
             RecalculateStateRoot();
@@ -806,10 +625,6 @@ public class WorldState : IWorldState
         _tree.Commit(blockNumber);
     }
 
-    public void CommitBranch()
-    {
-        // placeholder for the three level Commit->CommitBlock->CommitBranch
-    }
 
     // used in EthereumTests
     public void SetNonce(Address address, in UInt256 nonce)
@@ -825,11 +640,6 @@ public class WorldState : IWorldState
         if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
         PushUpdate(address, changedAccount);
     }
-    public void Restore(Snapshot.Storage snapshot)
-    {
-        _storageProvider.Restore(snapshot);
-    }
-
     private enum ChangeType
     {
         JustCache,
@@ -851,5 +661,175 @@ public class WorldState : IWorldState
         public ChangeType ChangeType { get; }
         public Address Address { get; }
         public Account? Account { get; }
+    }
+
+    public Snapshot TakeSnapshot(bool newTransactionStart = false)
+    {
+        return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot(newTransactionStart));
+    }
+
+    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+    {
+        _storageProvider.Commit();
+        Commit(releaseSpec, (IStateTracer)NullStateTracer.Instance, isGenesis);
+    }
+
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+    {
+        _storageProvider.Commit(stateTracer);
+        Commit(releaseSpec, (IStateTracer)stateTracer, isGenesis);
+    }
+
+    public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+    {
+        if (_currentPosition == -1)
+        {
+            if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
+            return;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
+        if (_changes[_currentPosition] is null)
+        {
+            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(WorldState)}");
+        }
+
+        if (_changes[_currentPosition + 1] is not null)
+        {
+            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(WorldState)}");
+        }
+
+        bool isTracing = stateTracer.IsTracingState;
+        Dictionary<Address, ChangeTrace> trace = null;
+        if (isTracing)
+        {
+            trace = new Dictionary<Address, ChangeTrace>();
+        }
+
+        for (int i = 0; i <= _currentPosition; i++)
+        {
+            Change change = _changes[_currentPosition - i];
+            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+            {
+                continue;
+            }
+
+            if (_committedThisRound.Contains(change!.Address))
+            {
+                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
+                }
+
+                continue;
+            }
+
+            // because it was not committed yet it means that the just cache is the only state (so it was read only)
+            if (isTracing && change.ChangeType == ChangeType.JustCache)
+            {
+                _readsForTracing.Add(change.Address);
+                continue;
+            }
+
+            int forAssertion = _intraBlockCache[change.Address].Pop();
+            if (forAssertion != _currentPosition - i)
+            {
+                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+            }
+
+            _committedThisRound.Add(change.Address);
+
+            switch (change.ChangeType)
+            {
+                case ChangeType.JustCache:
+                    {
+                        break;
+                    }
+                case ChangeType.Touch:
+                case ChangeType.Update:
+                    {
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            SetState(change.Address, null);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(null);
+                            }
+                        }
+                        else
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
+                            SetState(change.Address, change.Account);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(change.Account);
+                            }
+                        }
+
+                        break;
+                    }
+                case ChangeType.New:
+                    {
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            SetState(change.Address, change.Account);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(change.Account);
+                            }
+                        }
+
+                        break;
+                    }
+                case ChangeType.Delete:
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
+                        bool wasItCreatedNow = false;
+                        while (_intraBlockCache[change.Address].Count > 0)
+                        {
+                            int previousOne = _intraBlockCache[change.Address].Pop();
+                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                            if (wasItCreatedNow)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (!wasItCreatedNow)
+                        {
+                            SetState(change.Address, null);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(null);
+                            }
+                        }
+
+                        break;
+                    }
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        if (isTracing)
+        {
+            foreach (Address nullRead in _readsForTracing)
+            {
+                // // this may be enough, let us write tests
+                stateTracer.ReportAccountRead(nullRead);
+            }
+        }
+
+        Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
+        _committedThisRound.Reset();
+        _readsForTracing.Clear();
+        _intraBlockCache.Reset();
+
+        if (isTracing)
+        {
+            ReportChanges(stateTracer, trace);
+        }
     }
 }
