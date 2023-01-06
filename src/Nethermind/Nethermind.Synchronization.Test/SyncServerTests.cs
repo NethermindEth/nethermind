@@ -489,10 +489,49 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
             await Task.Delay(100); // notifications fire on separate task
             await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
             remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
             remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
+        }
+
+        [Test]
+        public async Task Skip_known_block()
+        {
+            Context ctx = new();
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                blockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock1 = new(blockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+            PeerInfo peer1 = new(syncPeerMock1);
+            ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock2 = new(blockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2);
+            PeerInfo peer2 = new(syncPeerMock2);
+            PeerInfo[] peers = { peer1, peer2 };
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            Block head = blockTree.Head!;
+            ctx.SyncServer.AddNewBlock(head, peer1.SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
+            remoteServer1.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            remoteServer2.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            blockTree.FindLevel(head.Number)!.BlockInfos.Length.Should().Be(1);
         }
 
         [Test]

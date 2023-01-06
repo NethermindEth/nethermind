@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -18,6 +17,7 @@ namespace Nethermind.Merge.Plugin
 
         public long? TerminalBlockNumber { get; set; }
 
+        [Obsolete("Use BlocksConfig.SecondsPerSlot")]
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public string? BuilderRelayUrl { get; set; }

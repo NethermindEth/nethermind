@@ -9,7 +9,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -17,6 +16,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
+using Nethermind.Config;
 
 namespace Nethermind.Consensus.AuRa
 {

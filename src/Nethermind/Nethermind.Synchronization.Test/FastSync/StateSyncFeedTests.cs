@@ -2,46 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
-    [TestFixture]
+    [TestFixture(1, 0)]
+    [TestFixture(1, 100)]
+    [TestFixture(4, 0)]
+    [TestFixture(4, 100)]
     [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {
+        // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
+        private const int TestRepeatCount = 1;
+
+        public StateSyncFeedTests(int peerCount, int maxNodeLatency) : base(peerCount, maxNodeLatency)
+        {
+        }
+
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -51,12 +44,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
-
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext, (mock) =>
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k => new Keccak(k)).ToArray()));
+
             await ActivateAndWait(ctx, dbContext, 1024);
 
             dbContext.CompareTrees("AFTER FIRST SYNC", true);
@@ -93,7 +85,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Feed.FallAsleep();
 
             ctx.Pool.WakeUpAll();
-            mock.SetFilter(null);
+            for (int index = 0; index < ctx.SyncPeerMocks.Length; index++)
+            {
+                SyncPeerMock mock = ctx.SyncPeerMocks[index];
+                mock.SetFilter(null);
+            }
+
             await ActivateAndWait(ctx, dbContext, 1024);
 
 
@@ -103,7 +100,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        // [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -112,41 +109,43 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
             dbContext.CompareTrees("END");
         }
 
         [Test]
+        [Repeat(TestRepeatCount)]
         public async Task Can_download_an_empty_tree()
         {
             DbContext dbContext = new(_logger, _logManager);
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1000);
             dbContext.CompareTrees("END");
         }
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(new[] { dbContext.RemoteStateTree.RootHash });
-
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext, (mock) =>
+                mock.SetFilter(new[] { dbContext.RemoteStateTree.RootHash }));
             await ActivateAndWait(ctx, dbContext, 1024, 1000);
 
 
             ctx.Pool.WakeUpAll();
-            mock.SetFilter(null);
+            for (int index = 0; index < ctx.SyncPeerMocks.Length; index++)
+            {
+                SyncPeerMock mock = ctx.SyncPeerMocks[index];
+                mock.SetFilter(null);
+            }
+
             ctx.Feed.FallAsleep();
             await ActivateAndWait(ctx, dbContext, 1024);
 
@@ -156,7 +155,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        // [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -165,10 +164,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.MaxResponseLength = 1;
-
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext, (mock) => mock.MaxResponseLength = 1);
             await ActivateAndWait(ctx, dbContext, 1024);
 
 
@@ -176,7 +172,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task When_saving_root_goes_asleep()
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -186,9 +182,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
             dbContext.CompareTrees("END");
@@ -198,19 +192,16 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
-
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
-
             dbContext.CompareTrees("BEFORE FIRST SYNC");
 
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext, (mock) =>
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => new Keccak(k)).ToArray()));
             await ActivateAndWait(ctx, dbContext, 1024, 1000);
 
 
@@ -233,7 +224,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Pool.WakeUpAll();
 
             ctx.Feed.FallAsleep();
-            mock.SetFilter(null);
+
+            for (int index = 0; index < ctx.SyncPeerMocks.Length; index++)
+            {
+                SyncPeerMock mock = ctx.SyncPeerMocks[index];
+                mock.SetFilter(null);
+            }
+
             await ActivateAndWait(ctx, dbContext, 1024, 2000);
 
 
@@ -243,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -266,8 +263,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
 
@@ -276,7 +272,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -291,8 +287,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
 
@@ -301,7 +296,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -319,8 +314,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
 
@@ -329,7 +323,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
-        [Retry(3)]
+        [Repeat(TestRepeatCount)]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
@@ -346,8 +340,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            SafeContext ctx = PrepareDownloader(dbContext, mock);
+            SafeContext ctx = PrepareDownloader(dbContext);
             await ActivateAndWait(ctx, dbContext, 1024);
 
 

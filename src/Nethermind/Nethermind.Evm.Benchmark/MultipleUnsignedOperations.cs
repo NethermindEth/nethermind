@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -22,7 +22,7 @@ namespace Nethermind.Evm.Benchmark;
 
 public class MultipleUnsignedOperations
 {
-    private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.IstanbulBlockNumber);
+    private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
     private readonly ITxTracer _txTracer = NullTxTracer.Instance;
     private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;

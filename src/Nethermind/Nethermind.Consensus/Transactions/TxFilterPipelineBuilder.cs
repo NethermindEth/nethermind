@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -15,12 +16,12 @@ namespace Nethermind.Consensus.Transactions
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
             ISpecProvider? specProvider,
-            IBlocksConfig? miningConfig = null)
+            IBlocksConfig blocksConfig)
         {
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)
+                .WithMinGasPriceFilter(blocksConfig, specProvider)
                 .WithBaseFeeFilter(specProvider)
                 .Build;
         }
@@ -30,9 +31,9 @@ namespace Nethermind.Consensus.Transactions
             _filterPipeline = new TxFilterPipeline(logManager);
         }
 
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(in UInt256 minGasPrice, ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(minGasPrice, specProvider));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig, specProvider));
             return this;
         }
 

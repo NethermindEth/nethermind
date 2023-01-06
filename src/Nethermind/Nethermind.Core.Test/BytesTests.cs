@@ -41,7 +41,9 @@ namespace Nethermind.Core.Test
         [TestCase("0123", 1)]
         public void FromHexString(string hexString, byte expectedResult)
         {
+#pragma warning disable CS0612 // Type or member is obsolete
             byte[] bytesOld = Bytes.FromHexStringOld(hexString);
+#pragma warning restore CS0612 // Type or member is obsolete
             Assert.AreEqual(bytesOld[0], expectedResult, "old");
 
             byte[] bytes = Bytes.FromHexString(hexString);
@@ -52,14 +54,50 @@ namespace Nethermind.Core.Test
         [TestCase("0x07", "7", false, true)]
         [TestCase("0x07", "0x07", true, false)]
         [TestCase("0x07", "07", false, false)]
+        [TestCase("0x77", "0x77", true, true)]
+        [TestCase("0x77", "77", false, true)]
+        [TestCase("0x77", "0x77", true, false)]
+        [TestCase("0x77", "77", false, false)]
         [TestCase("0x0007", "0x7", true, true)]
         [TestCase("0x0007", "7", false, true)]
         [TestCase("0x0007", "0x0007", true, false)]
         [TestCase("0x0007", "0007", false, false)]
+        [TestCase("0x0077", "0x77", true, true)]
+        [TestCase("0x0077", "77", false, true)]
+        [TestCase("0x0077", "0x0077", true, false)]
+        [TestCase("0x0077", "0077", false, false)]
+        [TestCase("0x0f", "0xF", true, true)]
+        [TestCase("0x0F", "F", false, true)]
+        [TestCase("0xFf", "0xFf", true, true)]
+        [TestCase("0xff", "Ff", false, true)]
+        [TestCase("0xfff", "0xFFF", true, true)]
+        [TestCase("0xFFF", "FFF", false, true)]
+        [TestCase("0xf7f", "0xf7F", true, true)]
+        [TestCase("0xf7F", "f7F", false, true)]
+        [TestCase("0xffffffaf9f", "0xfFFffFaF9F", true, true)]
+        [TestCase("0xfFFffFaF9F", "fFFffFaF9F", false, true)]
+        [TestCase("0xcfffffaff9f", "0xcFfFFFafF9F", true, true)]
+        [TestCase("0xcFfFFFafF9F", "cFfFFFafF9F", false, true)]
         public void ToHexString(string input, string expectedResult, bool with0x, bool noLeadingZeros)
         {
             byte[] bytes = Bytes.FromHexString(input);
-            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros));
+            if (!noLeadingZeros)
+            {
+                Assert.AreEqual(expectedResult.ToLower(), Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x));
+            }
+            Assert.AreEqual(expectedResult.ToLower(), bytes.ToHexString(with0x, noLeadingZeros));
+            Assert.AreEqual(expectedResult.ToLower(), bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false));
+#pragma warning disable CS0612 // Type or member is obsolete
+            Assert.AreEqual(bytes.ToHexStringOld(with0x, noLeadingZeros), bytes.ToHexString(with0x, noLeadingZeros));
+#pragma warning restore CS0612 // Type or member is obsolete
+
+            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
+#pragma warning disable CS0612 // Type or member is obsolete
+            Assert.AreEqual(bytes.ToHexStringOld(with0x, noLeadingZeros, withEip55Checksum: true),
+                bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
+#pragma warning restore CS0612 // Type or member is obsolete
+            Assert.AreEqual(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true),
+                bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
         }
 
         [TestCase("0x", "0x", true)]
