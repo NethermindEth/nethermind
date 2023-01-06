@@ -108,7 +108,6 @@ namespace Nethermind.Evm.Test
             WorldState.CreateAccount(expectedAddress, 1.Ether());
             WorldState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
             WorldState.Commit(Spec);
-            WorldState.CommitTrees(0);
             WorldState.CommitTree(0);
 
             Keccak storageRoot = WorldState.GetAccount(expectedAddress).StorageRoot;

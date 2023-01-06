@@ -361,7 +361,6 @@ namespace Nethermind.Evm.Test
 
             WorldState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
             WorldState.Commit(MuirGlacier.Instance);
-            WorldState.CommitTrees(0);
             WorldState.CommitTree(0);
 
             long gasLimit = 1000000;

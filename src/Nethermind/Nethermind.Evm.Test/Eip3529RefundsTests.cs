@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
-            WorldState.CreateAccount(Recipient, 0);
+            WorldState.CreateAccount(Recipient, 1.Ether());
             WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             WorldState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new TransactionProcessor(SpecProvider, WorldState, Machine, LimboLogs.Instance);

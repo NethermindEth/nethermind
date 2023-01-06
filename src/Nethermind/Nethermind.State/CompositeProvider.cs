@@ -323,10 +323,6 @@ public class CompositeProvider : IWorldState
     {
         return new Snapshot(((IStateProvider)this).TakeSnapshot(newTransactionStart), _storageProvider.TakeSnapshot());
     }
-    Snapshot.Storage IStorageProvider.TakeSnapshot(bool newTransactionStart)
-    {
-        return _storageProvider.TakeSnapshot(newTransactionStart);
-    }
     public void ClearStorage(Address address)
     {
         _storageProvider.ClearStorage(address);
@@ -793,10 +789,6 @@ public class CompositeProvider : IWorldState
         _needsStateRootUpdate = false;
 
         _storageProvider.Reset();
-    }
-    public void CommitTrees(long blockNumber)
-    {
-        _storageProvider.CommitTrees(blockNumber);
     }
     public void Commit()
     {

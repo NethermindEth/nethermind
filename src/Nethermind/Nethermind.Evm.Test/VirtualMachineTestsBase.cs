@@ -62,8 +62,7 @@ namespace Nethermind.Evm.Test
 
             IDb codeDb = new MemDb();
             _stateDb = new MemDb();
-            ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-            WorldState = new WorldState(trieStore, codeDb, logManager);
+            WorldState = new WorldState(new TrieStore(_stateDb, logManager), codeDb, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
@@ -126,8 +125,15 @@ namespace Nethermind.Evm.Test
             ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            WorldState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
-            WorldState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            if(!WorldState.AccountExists(senderRecipientAndMiner.Sender))
+                WorldState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            else
+                WorldState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether(), SpecProvider.GenesisSpec);
+
+            if(!WorldState.AccountExists(senderRecipientAndMiner.Recipient))
+                WorldState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            else
+                WorldState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
             WorldState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
 
             GetLogManager().GetClassLogger().Debug("Committing initial state");
@@ -141,6 +147,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithValue(value)
+                .WithNonce(WorldState.GetNonce(senderRecipientAndMiner.Sender))
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;

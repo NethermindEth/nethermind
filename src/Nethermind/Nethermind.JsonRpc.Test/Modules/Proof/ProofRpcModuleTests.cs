@@ -804,7 +804,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
-            stateProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
             Keccak root = stateProvider.StateRoot;
