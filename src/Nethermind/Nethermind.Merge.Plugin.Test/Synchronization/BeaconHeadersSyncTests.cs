@@ -313,7 +313,7 @@ public class BeaconHeadersSyncTests
             ctx.BlockTree, ctx.BlockCacheService, LimboLogs.Instance);
         ctx.InvalidChainTracker = invalidChainTracker;
 
-        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100, splitVariant: (int) BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100, splitVariant: (int)BlockHeaderBuilder.DefaultDifficulty).TestObject;
         ctx.BeaconPivot = PreparePivot(99, new SyncConfig(), ctx.BlockTree,
             syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None));
         ctx.Feed.InitializeFeed();

@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
-            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()}, syncReport, LimboLogs.Instance);
+            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() }, syncReport, LimboLogs.Instance);
             feed.InitializeFeed();
 
             void FulfillBatch(HeadersSyncBatch batch)
@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             measuredProgress.HasEnded.Should().BeTrue();
         }
 
-        private class ResettableHeaderSyncFeed: HeadersSyncFeed
+        private class ResettableHeaderSyncFeed : HeadersSyncFeed
         {
             public ResettableHeaderSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree? blockTree, ISyncPeerPool? syncPeerPool, ISyncConfig? syncConfig, ISyncReport? syncReport, ILogManager? logManager, bool alwaysStartHeaderSync = false) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
             {
