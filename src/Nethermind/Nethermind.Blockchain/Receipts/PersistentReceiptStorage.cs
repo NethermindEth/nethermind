@@ -172,7 +172,9 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            _blocksDb.Set(block.Hash!, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
+            RlpStream stream = new RlpStream(StorageDecoder.GetLength(txReceipts, behaviors));
+            StorageDecoder.Encode(stream, txReceipts, behaviors);
+            _blocksDb.Set(block.Hash!, stream.Data);
 
             if (blockNumber < MigratedBlockNumber)
             {

@@ -48,6 +48,10 @@ namespace Nethermind.Blockchain.Receipts
             {
 #pragma warning disable 618
                 iterator = new ReceiptsIterator(ReceiptStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes, new MemDb());
+                ReceiptStorageDecoder decoder = ReceiptStorageDecoder.Instance;
+                RlpStream stream = new(decoder.GetLength(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts));
+                decoder.Encode(stream, receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+                iterator = new ReceiptsIterator(stream.Data, new MemDb());
 #pragma warning restore 618
                 return true;
             }

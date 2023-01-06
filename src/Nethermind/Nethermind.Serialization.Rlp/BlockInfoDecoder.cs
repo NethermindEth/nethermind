@@ -51,35 +51,56 @@ namespace Nethermind.Serialization.Rlp
             return blockInfo;
         }
 
-        public void Encode(RlpStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            stream.StartSequence(contentLength);
+            stream.Encode(item.BlockHash);
+            stream.Encode(item.WasProcessed);
+            stream.Encode(item.TotalDifficulty);
+            if (hasMetadata)
+            {
+                stream.Encode((int)item.Metadata);
+            }
         }
 
         public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item is null)
+            throw new NotImplementedException();
+        }
+
+        private int GetContentLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item == null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptySequence.Length;
             }
 
             bool hasMetadata = item.Metadata != BlockMetadata.None;
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.BlockHash);
+            contentLength += Rlp.LengthOf(item.WasProcessed);
+            contentLength += Rlp.LengthOf(item.TotalDifficulty);
 
-            Rlp[] elements = new Rlp[hasMetadata ? 4 : 3];
-            elements[0] = Rlp.Encode(item.BlockHash);
-            elements[1] = Rlp.Encode(item.WasProcessed);
-            elements[2] = Rlp.Encode(item.TotalDifficulty);
             if (hasMetadata)
             {
-                elements[3] = Rlp.Encode((int)item.Metadata);
+                contentLength += Rlp.LengthOf((int)item.Metadata);
             }
 
-            return Rlp.Encode(elements);
+            return contentLength;
         }
 
-        public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
         public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
