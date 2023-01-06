@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -16,7 +15,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
-using Nethermind.Stats;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -63,16 +61,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
-            RestartableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()}, syncReport, LimboLogs.Instance);
+            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()}, syncReport, LimboLogs.Instance);
             feed.InitializeFeed();
 
             void FulfillBatch(HeadersSyncBatch batch)
             {
-                batch.Response = new BlockHeader[batch.RequestSize];
-                for (long i = batch.StartNumber; i <= batch.EndNumber; i++)
-                {
-                    batch.Response[i - batch.StartNumber] = remoteBlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
-                }
+                batch.Response = remoteBlockTree.FindHeaders(
+                    remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                    false);
             }
 
             await feed.PrepareRequest();
@@ -87,19 +83,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             feed.HandleResponse(batch2);
             feed.HandleResponse(batch1);
-        }
-
-        internal class RestartableHeaderSyncFeed: HeadersSyncFeed
-        {
-            public RestartableHeaderSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree? blockTree, ISyncPeerPool? syncPeerPool, ISyncConfig? syncConfig, ISyncReport? syncReport, ILogManager? logManager, bool alwaysStartHeaderSync = false) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
-            {
-            }
-
-            public void Reset()
-            {
-                base.PostFinishCleanUp();
-                InitializeFeed();
-            }
         }
 
         [Test]
@@ -134,5 +117,19 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.CurrentState.Should().Be(SyncFeedState.Finished);
             measuredProgress.HasEnded.Should().BeTrue();
         }
+
+        private class ResettableHeaderSyncFeed: HeadersSyncFeed
+        {
+            public ResettableHeaderSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree? blockTree, ISyncPeerPool? syncPeerPool, ISyncConfig? syncConfig, ISyncReport? syncReport, ILogManager? logManager, bool alwaysStartHeaderSync = false) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
+            {
+            }
+
+            public void Reset()
+            {
+                base.PostFinishCleanUp();
+                InitializeFeed();
+            }
+        }
+
     }
 }
