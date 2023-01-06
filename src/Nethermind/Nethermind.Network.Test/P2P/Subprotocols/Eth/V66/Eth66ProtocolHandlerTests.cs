@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -82,7 +83,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 _pooledTxsRequestor,
                 _gossipPolicy,
-                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!, Substitute.For<IBlockTree>()),
                 LimboLogs.Instance);
             _handler.Init();
         }

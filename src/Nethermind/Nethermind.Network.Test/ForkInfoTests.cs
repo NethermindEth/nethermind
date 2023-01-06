@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
@@ -199,6 +205,81 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
+        // Local is mainnet Petersburg, remote announces the same. No future fork is announced.
+        [TestCase(7987396, 0ul, "0x668db0af", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Petersburg, remote announces the same. Remote also announces a next fork
+        // at block 0xffffffff, but that is uncertain.
+        [TestCase(7987396, 0ul, "0x668db0af", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet currently in Byzantium only (so it's aware of Petersburg), remote announces
+        // also Byzantium, but it's not yet aware of Petersburg (e.g. non updated node before the fork).
+        // In this case we don't know if Petersburg passed yet or not.
+        [TestCase(7279999, 0ul, "0xa00bc324", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet currently in Byzantium only (so it's aware of Petersburg), remote announces
+        // also Byzantium, and it's also aware of Petersburg (e.g. updated node before the fork). We
+        // don't know if Petersburg passed yet (will pass) or not.
+        [TestCase(7279999, 0ul, "0xa00bc324", 7280000ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet currently in Byzantium only (so it's aware of Petersburg), remote announces
+        // also Byzantium, and it's also aware of some random fork (e.g. misconfigured Petersburg). As
+        // neither forks passed at neither nodes, they may mismatch, but we still connect for now.
+        [TestCase(7279999, 0ul, "0xa00bc324", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet exactly on Petersburg, remote announces Byzantium + knowledge about Petersburg. Remote
+        // is simply out of sync, accept.
+        [TestCase(7280000, 0ul, "0xa00bc324", 7280000ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Petersburg, remote announces Byzantium + knowledge about Petersburg. Remote
+        // is simply out of sync, accept.
+        [TestCase(7987396, 0ul, "0xa00bc324", 7280000ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Petersburg, remote announces Spurious + knowledge about Byzantium. Remote
+        // is definitely out of sync. It may or may not need the Petersburg update, we don't know yet.
+        [TestCase(7987396, 0ul, "0x3edd5b10", 4370000ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Byzantium, remote announces Petersburg. Local is out of sync, accept.
+        [TestCase(7279999, 0ul, "0x668db0af", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Spurious, remote announces Byzantium, but is not aware of Petersburg. Local
+        // out of sync. Local also knows about a future fork, but that is uncertain yet.
+        [TestCase(4369999, 0ul, "0xa00bc324", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Petersburg. remote announces Byzantium but is not aware of further forks.
+        // Remote needs software update.
+        [TestCase(7987396, 0ul, "0xa00bc324", 0ul, IForkInfo.ValidationResult.RemoteStale)]
+
+        // Local is mainnet Petersburg, and isn't aware of more forks. Remote announces Petersburg +
+        // 0xffffffff. Local needs software update, reject.
+        [TestCase(7987396, 0ul, "0x5cddc0e1", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Byzantium, and is aware of Petersburg. Remote announces Petersburg +
+        // 0xffffffff. Local needs software update, reject.
+        [TestCase(7279999, 0ul, "0x5cddc0e1", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Petersburg, remote is Rinkeby Petersburg.
+        [TestCase(7987396, 0ul, "0xafec6b27", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
+        // at some future block 88888888, for itself, but past block for local. Local is incompatible.
+        //
+        // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
+        [TestCase(88888888, 0ul, "0xf0afd0e3", 88888888ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
+        // fork) at block 7279999, before Petersburg. Local is incompatible.
+        [TestCase(7279999, 0ul, "0xa00bc324", 7279999ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+        public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, IForkInfo.ValidationResult result)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block head = Build.A.Block.WithNumber(headNumber).WithTimestamp(headTimestamp).TestObject;
+            blockTree.Head.Returns(head);
+            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, KnownHashes.MainnetGenesis, blockTree);
+
+            forkInfo.ValidateForkId(new ForkId(Bytes.FromHexString(hash), next)).Should().Be(result);
+        }
+
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
         {
             Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);
@@ -217,7 +298,7 @@ namespace Nethermind.Network.Test
         {
             byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
 
-            ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
+            ForkId forkId = new ForkInfo(specProvider, genesisHash, Substitute.For<IBlockTree>()).GetForkId(head, headTimestamp);
             byte[] forkHash = forkId.ForkHash;
             forkHash.Should().BeEquivalentTo(expectedForkHash, description);
 

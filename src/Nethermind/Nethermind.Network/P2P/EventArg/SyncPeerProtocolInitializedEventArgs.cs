@@ -15,6 +15,7 @@ namespace Nethermind.Network.P2P.EventArg
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
+        public ForkId? ForkId { get; set; }
 
         public SyncPeerProtocolInitializedEventArgs(SyncPeerProtocolHandlerBase protocolHandler) : base(protocolHandler)
         {

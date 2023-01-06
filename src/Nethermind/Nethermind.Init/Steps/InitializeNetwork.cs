@@ -504,10 +504,11 @@ public class InitializeNetwork : IStep
                 _api.LogManager);
 
         NetworkStorage peerStorage = new(peersDb, _api.LogManager);
-
-        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
         ISyncServer syncServer = _api.SyncServer!;
+        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!, _api.BlockTree);
+
+        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, forkInfo, _api.LogManager);
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -519,7 +520,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
+            forkInfo,
             _api.GossipPolicy,
             _api.LogManager);
 

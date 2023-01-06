@@ -18,6 +18,8 @@ public enum InitiateDisconnectReason : byte
     InvalidCapability,
     InvalidChainId,
     InvalidGenesis,
+    MissingForkId,
+    InvalidForkId,
     ProtocolInitTimeout,
     TxFlooding,
     NoCapabilityMatched,
@@ -67,6 +69,8 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.InvalidChainId:
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.InvalidGenesis:
+            case InitiateDisconnectReason.MissingForkId:
+            case InitiateDisconnectReason.InvalidForkId:
                 return DisconnectReason.BreachOfProtocol;
             case InitiateDisconnectReason.ProtocolInitTimeout:
                 return DisconnectReason.ReceiveMessageTimeout;

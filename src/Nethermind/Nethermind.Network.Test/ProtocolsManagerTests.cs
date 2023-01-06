@@ -92,7 +92,8 @@ namespace Nethermind.Network.Test
                 _blockTree = Substitute.For<IBlockTree>();
                 _blockTree.ChainId.Returns(1ul);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
+                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!, _blockTree);
+                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
                 _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -107,7 +108,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!),
+                    forkInfo,
                     _gossipPolicy,
                     LimboLogs.Instance);
 

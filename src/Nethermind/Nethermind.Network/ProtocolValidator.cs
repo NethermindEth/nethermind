@@ -20,13 +20,15 @@ namespace Nethermind.Network
     {
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IBlockTree _blockTree;
+        private readonly ForkInfo _forkInfo;
         private ILogger _logger;
 
-        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ILogManager? logManager)
+        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ForkInfo forkInfo, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<ProtocolValidator>() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
         }
 
         public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
@@ -34,48 +36,105 @@ namespace Nethermind.Network
             switch (protocol)
             {
                 case Protocol.P2P:
-                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
-                    if (!ValidateP2PVersion(args.P2PVersion))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
-                        Disconnect(session, InitiateDisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}");
-                        return false;
-                    }
-
-                    if (!ValidateCapabilities(args.Capabilities))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
-                        Disconnect(session, InitiateDisconnectReason.InvalidCapability, "capabilities");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)");
-                        return false;
-                    }
+                    if (!ValidateP2PProtocol(session, eventArgs)) return false;
 
                     break;
                 case Protocol.Eth:
                 case Protocol.Les:
-                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
-                    if (!ValidateChainId(syncPeerArgs.ChainId))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
-                        Disconnect(session, InitiateDisconnectReason.InvalidChainId, $"invalid chain id - {syncPeerArgs.ChainId}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})");
-                        return false;
-                    }
-
-                    if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
-                        Disconnect(session, InitiateDisconnectReason.InvalidGenesis, "invalid genesis");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)");
-                        return false;
-                    }
+                    if (!ValidateEthProtocol(session, eventArgs)) return false;
 
                     break;
+            }
+
+            return true;
+        }
+
+        private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
+        {
+            P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
+            if (!ValidateP2PVersion(args.P2PVersion))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
+                Disconnect(session, InitiateDisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}");
+                return false;
+            }
+
+            if (!ValidateCapabilities(args.Capabilities))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
+                Disconnect(session, InitiateDisconnectReason.InvalidCapability, "capabilities");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)");
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
+        {
+            SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
+            if (!ValidateChainId(syncPeerArgs.ChainId))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
+                Disconnect(session, InitiateDisconnectReason.InvalidChainId, $"invalid chain id - {syncPeerArgs.ChainId}");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.InvalidChainId} (invalid chain id - {syncPeerArgs.ChainId})");
+                return false;
+            }
+
+            if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
+                Disconnect(session, InitiateDisconnectReason.InvalidGenesis, "invalid genesis");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.InvalidGenesis} (invalid genesis)");
+                return false;
+            }
+
+            if (syncPeerArgs.ForkId == null)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, missing fork id");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.MissingForkId);
+                Disconnect(session, InitiateDisconnectReason.MissingForkId, "invalid missing fork id");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.MissingForkId} (invalid genesis)");
+                return false;
+            }
+
+            if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value) != IForkInfo.ValidationResult.Valid)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, invalid fork id");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.InvalidForkId);
+                Disconnect(session, InitiateDisconnectReason.InvalidForkId, "invalid missing fork id");
+                if (session.Node.IsStatic && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.InvalidForkId} (invalid genesis)");
+
+                return false;
             }
 
             return true;
