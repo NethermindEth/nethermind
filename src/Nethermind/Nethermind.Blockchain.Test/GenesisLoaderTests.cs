@@ -43,7 +43,6 @@ public class GenesisLoaderTests
     [Test]
     public void Can_load_withdrawals_with_empty_root()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
         Block block = GetGenesisBlock("Specs/shanghai_from_genesis.json");
         Assert.AreEqual("0x3c8aeea1d582ff43787ac297e08a25c58ee9609ab49139e64e0f7a8a56ba3a46", block.Hash!.ToString());
     }
