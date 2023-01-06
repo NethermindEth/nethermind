@@ -289,116 +289,90 @@ internal static class EvmObjectFormat
             for (pos = 0; pos < code.Length; pos++)
             {
                 Instruction opcode = (Instruction)code[pos];
-                pos++;
+                int postInstructionByte = pos + 1;
 
                 if (!opcode.IsValid(IsEofContext: true))
                 {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
-                    }
+                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                     return false;
                 }
 
                 if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                 {
-                    if (pos + TWO_BYTE_LENGTH > code.Length)
+                    if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
                         return false;
                     }
 
-                    var offset = code.Slice(pos, TWO_BYTE_LENGTH).ReadEthInt16();
-                    immediates.Add(new Range(pos, pos + 1));
-                    var rjumpdest = offset + TWO_BYTE_LENGTH + pos;
+                    var offset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthInt16();
+                    immediates.Add(new Range(postInstructionByte, postInstructionByte + 1));
+                    var rjumpdest = offset + TWO_BYTE_LENGTH + postInstructionByte;
                     rjumpdests.Add(rjumpdest);
                     if (rjumpdest < 0 || rjumpdest >= code.Length)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
                         return false;
                     }
-                    pos += TWO_BYTE_LENGTH;
+                    postInstructionByte += TWO_BYTE_LENGTH;
                 }
 
                 if (opcode is Instruction.RJUMPV)
                 {
-                    if (pos + TWO_BYTE_LENGTH > code.Length)
+                    if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                         return false;
                     }
 
-                    byte count = code[pos];
+                    byte count = code[postInstructionByte];
                     if (count < MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
                         return false;
                     }
 
-                    if (pos + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
+                    if (postInstructionByte + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
                         return false;
                     }
 
                     var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
-                    immediates.Add(new Range(pos, pos + immediateValueSize - 1));
+                    immediates.Add(new Range(postInstructionByte, postInstructionByte + immediateValueSize - 1));
                     for (int j = 0; j < count; j++)
                     {
-                        var offset = code.Slice(pos + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
-                        var rjumpdest = offset + immediateValueSize + pos;
+                        var offset = code.Slice(postInstructionByte + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
+                        var rjumpdest = offset + immediateValueSize + postInstructionByte;
                         rjumpdests.Add(rjumpdest);
 
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
-                            if (Logger.IsTrace)
-                            {
-                                Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
-                            }
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
                             return false;
                         }
                     }
-                    pos += immediateValueSize;
+                    postInstructionByte += immediateValueSize;
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
-                    int len = code[pos - 1] - (int)Instruction.PUSH1 + 1;
-                    immediates.Add(new Range(pos, pos + len - 1));
-                    pos += len;
+                    int len = opcode - Instruction.PUSH1 + 1;
+                    immediates.Add(new Range(postInstructionByte, postInstructionByte + len - 1));
+                    postInstructionByte += len;
                 }
+                pos = postInstructionByte;
             }
 
             if (pos >= code.Length)
             {
-                if (Logger.IsTrace)
-                {
-                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                }
+                if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                 return false;
             }
 
             if (pos >= code.Length)
             {
-                if (Logger.IsTrace)
-                {
-                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                }
+                if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                 return false;
             }
 
@@ -408,10 +382,7 @@ internal static class EvmObjectFormat
                 {
                     if (range.Includes(rjumpdest))
                     {
-                        if (Logger.IsTrace)
-                        {
-                            Logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
-                        }
+                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
                         return false;
                     }
                 }
