@@ -10,19 +10,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        public byte[] Serialize(BlockBodiesMessage message) =>
-            Rlp.Encode(message.Bodies.Select(b => b is null
-                ? Rlp.OfEmptySequence
-                : b.Withdrawals != null
-                    ? Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles), Rlp.Encode(b.Withdrawals))
-                    : Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles))
-                ).ToArray()).Bytes;
+        private readonly TxDecoder _txDecoder = new();
+        private readonly HeaderDecoder _headerDecoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
-            byte[] oldWay = Serialize(message);
-            byteBuffer.EnsureWritable(oldWay.Length, true);
-            byteBuffer.WriteBytes(oldWay);
+
+            int totalLength = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            NettyRlpStream stream = new(byteBuffer);
+            stream.StartSequence(contentLength);
+            foreach (BlockBody? body in message.Bodies)
+            {
+                if (body == null)
+                {
+                    stream.Encode(Rlp.OfEmptySequence);
+                }
+                else
+                {
+                    SerializeBody(stream, body);
+                }
+            }
+        }
+
+        private void SerializeBody(NettyRlpStream stream, BlockBody body)
+        {
+            stream.StartSequence(GetBodyLength(body));
+            stream.StartSequence(GetTxLength(body.Transactions));
+            foreach (Transaction? txn in body.Transactions)
+            {
+                stream.Encode(txn);
+            }
+
+            stream.StartSequence(GetUnclesLength(body.Uncles));
+            foreach (var uncle in body.Uncles)
+            {
+                stream.Encode(uncle);
+            }
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
@@ -33,9 +57,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            byte[] oldWay = Serialize(message);
-            contentLength = oldWay.Length;
-            return contentLength;
+            contentLength = message.Bodies.Select(b => b == null
+                ? Rlp.OfEmptySequence.Length
+                : Rlp.LengthOfSequence(
+                    GetBodyLength(b)
+                    )
+            ).Sum();
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        private int GetBodyLength(BlockBody b)
+        {
+            return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
+        }
+
+        private int GetTxLength(Transaction[] transactions)
+        {
+            int txLength = 0;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                txLength += _txDecoder.GetLength(transactions[i], RlpBehaviors.None);
+            }
+
+            return txLength;
+        }
+
+        private int GetUnclesLength(BlockHeader[] headers)
+        {
+            int unclesLength = 0;
+            for (int i = 0; i < headers.Length; i++)
+            {
+                unclesLength += _headerDecoder.GetLength(headers[i], RlpBehaviors.None);
+            }
+
+            return unclesLength;
         }
 
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)

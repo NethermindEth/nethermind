@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -37,11 +39,6 @@ namespace Nethermind.Network.Test.P2P
         private INodeStatsManager _nodeStatsManager;
 
         private Packet CreatePacket<T>(T message) where T : P2PMessage
-        {
-            return new(message.Protocol, message.PacketType, _serializer.Serialize(message));
-        }
-
-        private Packet CreateZeroPacket<T>(T message) where T : P2PMessage
         {
             return new(new ZeroPacket(_serializer.ZeroSerialize(message))
             {
@@ -110,7 +107,7 @@ namespace Nethermind.Network.Test.P2P
         public void Pongs_to_ping()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.HandleMessage(CreateZeroPacket(PingMessage.Instance));
+            p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
             _session.Received(1).DeliverMessage(Arg.Any<PongMessage>());
         }
 
