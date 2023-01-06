@@ -24,7 +24,7 @@ namespace Nethermind.Merge.Plugin.EngineApi.Paris.Handlers
     /// If there were no prior engine_preparePayload call with the corresponding payload_id or the process of building a payload has been cancelled due to the timeout then execution client must respond with error message.
     /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
     /// </remarks>
-    public abstract class GetPayloadV1AbstractHandler<T> : IAsyncHandler<byte[], T?> where T : IGetPayloadResult, new()
+    public abstract class GetPayloadV1AbstractHandler<TGetPayloadResult> : IAsyncHandler<byte[], TGetPayloadResult?> where TGetPayloadResult : IGetPayloadResult, new()
     {
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin.EngineApi.Paris.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<T?>> HandleAsync(byte[] payloadId)
+        public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
             IBlockProductionContext? blockContext = await _payloadPreparationService.GetPayload(payloadStr);
@@ -45,7 +45,7 @@ namespace Nethermind.Merge.Plugin.EngineApi.Paris.Handlers
             {
                 // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
                 if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");
-                return ResultWrapper<T?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
+                return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
             }
 
             if (_logger.IsInfo) _logger.Info($"GetPayloadV1 result: {block.Header.ToString(BlockHeader.Format.Full)}.");
@@ -55,8 +55,8 @@ namespace Nethermind.Merge.Plugin.EngineApi.Paris.Handlers
             return ConstructResult(blockContext!);
         }
 
-        protected virtual ResultWrapper<T?> ConstructResult(IBlockProductionContext blockContext) =>
-            ResultWrapper<T?>.Success(new T { Block = blockContext });
+        protected virtual ResultWrapper<TGetPayloadResult?> ConstructResult(IBlockProductionContext blockContext) =>
+            ResultWrapper<TGetPayloadResult?>.Success(new TGetPayloadResult { Block = blockContext });
     }
 
     public sealed class GetPayloadV1Handler : GetPayloadV1AbstractHandler<ExecutionPayloadV1>

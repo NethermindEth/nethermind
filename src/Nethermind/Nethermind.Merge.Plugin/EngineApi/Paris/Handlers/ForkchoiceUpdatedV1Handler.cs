@@ -27,11 +27,11 @@ namespace Nethermind.Merge.Plugin.EngineApi.Paris.Handlers;
 /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
 /// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">engine_forkchoiceupdatedv2</see>.
 /// </summary>
-public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayloadAttributes, TResult>
-    : IAsyncHandler<ForkchoiceUpdated<TForkChoiceState, TPayloadAttributes>, TResult>
+public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayloadAttributes, TForkchoiceUpdatedResult>
+    : IAsyncHandler<ForkchoiceUpdated<TForkChoiceState, TPayloadAttributes>, TForkchoiceUpdatedResult>
     where TForkChoiceState : ForkchoiceStateV1
     where TPayloadAttributes : PayloadAttributesV1
-    where TResult : ForkchoiceUpdatedV1Result, IForkchoiceUpdatedResult<TResult>
+    where TForkchoiceUpdatedResult : ForkchoiceUpdatedV1Result, IForkchoiceUpdatedResult<TForkchoiceUpdatedResult>
 {
     private readonly IBlockTree _blockTree;
     private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
@@ -74,7 +74,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<TResult>> HandleAsync(ForkchoiceUpdated<TForkChoiceState, TPayloadAttributes> request)
+    public Task<ResultWrapper<TForkchoiceUpdatedResult>> HandleAsync(ForkchoiceUpdated<TForkChoiceState, TPayloadAttributes> request)
     {
         TForkChoiceState forkchoiceState = request.ForkchoiceState;
         TPayloadAttributes? payloadAttributes = request.PayloadAttributes;
@@ -85,7 +85,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
         {
             if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
-            return TResult.Invalid(lastValidHash);
+            return TForkchoiceUpdatedResult.Invalid(lastValidHash);
         }
 
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
@@ -100,14 +100,14 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
                 _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
             }
 
-            return TResult.Syncing;
+            return TForkchoiceUpdatedResult.Syncing;
         }
 
         BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
         if (blockInfo is null)
         {
             if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
-            return TResult.Syncing;
+            return TForkchoiceUpdatedResult.Syncing;
         }
         if (!blockInfo.WasProcessed)
         {
@@ -119,7 +119,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
 
                 StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
 
-                return TResult.Syncing;
+                return TForkchoiceUpdatedResult.Syncing;
             }
 
             if (_beaconPivot.ShouldForceStartNewSync)
@@ -129,7 +129,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
 
                 StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
 
-                return TResult.Syncing;
+                return TForkchoiceUpdatedResult.Syncing;
             }
 
             if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
@@ -150,7 +150,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
             }
 
             _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
-            return TResult.Syncing;
+            return TForkchoiceUpdatedResult.Syncing;
         }
 
         if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
@@ -159,14 +159,14 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         if (finalizationErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}.");
-            return TResult.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            return TForkchoiceUpdatedResult.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         if (safeBlockErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
-            return TResult.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            return TForkchoiceUpdatedResult.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         if ((newHeadBlock.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header)))
@@ -175,20 +175,20 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
 
             // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return TResult.Invalid(Keccak.Zero);
+            return TForkchoiceUpdatedResult.Invalid(Keccak.Zero);
         }
 
         Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
         if (setHeadErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
-            return TResult.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
+            return TForkchoiceUpdatedResult.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-            return TResult.Valid(null, forkchoiceState.HeadBlockHash);
+            return TForkchoiceUpdatedResult.Valid(null, forkchoiceState.HeadBlockHash);
         }
 
         EnsureTerminalBlock(forkchoiceState, blocks);
@@ -204,14 +204,14 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         {
             string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return TResult.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            return TForkchoiceUpdatedResult.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         if (IsInconsistent(forkchoiceState.SafeBlockHash))
         {
             string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return TResult.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            return TForkchoiceUpdatedResult.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
@@ -230,7 +230,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         string? payloadId = null;
         if (payloadAttributes is not null)
         {
-            if (!ValidatePayload(newHeadBlock, payloadAttributes, out ResultWrapper<TResult>? errorResult))
+            if (!ValidatePayload(newHeadBlock, payloadAttributes, out ResultWrapper<TForkchoiceUpdatedResult>? errorResult))
             {
                 return errorResult;
             }
@@ -242,13 +242,13 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
         if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
-        return TResult.Valid(payloadId, forkchoiceState.HeadBlockHash);
+        return TForkchoiceUpdatedResult.Valid(payloadId, forkchoiceState.HeadBlockHash);
     }
 
     protected virtual bool ValidatePayload(
         Block newHeadBlock,
         TPayloadAttributes payloadAttributes,
-        [NotNullWhen(false)] out ResultWrapper<TResult>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<TForkchoiceUpdatedResult>? errorResult)
     {
         if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
         {
@@ -257,7 +257,7 @@ public abstract class ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayl
             if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {error}");
 
             {
-                errorResult = TResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                errorResult = TForkchoiceUpdatedResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                 return false;
             }
         }

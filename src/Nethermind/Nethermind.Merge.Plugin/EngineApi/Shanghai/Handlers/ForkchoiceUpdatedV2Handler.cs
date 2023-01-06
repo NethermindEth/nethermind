@@ -22,11 +22,11 @@ namespace Nethermind.Merge.Plugin.EngineApi.Shanghai.Handlers;
 /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
 /// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">engine_forkchoiceupdatedv2</see>.
 /// </summary>
-public abstract class ForkchoiceUpdatedV2AbstractHandler<TForkChoiceState, TPayloadAttributes, TResult>
-    : ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayloadAttributes, TResult>
+public abstract class ForkchoiceUpdatedV2AbstractHandler<TForkChoiceState, TPayloadAttributes, TForkchoiceUpdatedResult>
+    : ForkchoiceUpdatedV1AbstractHandler<TForkChoiceState, TPayloadAttributes, TForkchoiceUpdatedResult>
     where TForkChoiceState : ForkchoiceStateV1
     where TPayloadAttributes : PayloadAttributesV2
-    where TResult : ForkchoiceUpdatedV1Result, IForkchoiceUpdatedResult<TResult>
+    where TForkchoiceUpdatedResult : ForkchoiceUpdatedV1Result, IForkchoiceUpdatedResult<TForkchoiceUpdatedResult>
 {
     protected ForkchoiceUpdatedV2AbstractHandler(
         IBlockTree blockTree,
@@ -60,7 +60,7 @@ public abstract class ForkchoiceUpdatedV2AbstractHandler<TForkChoiceState, TPayl
     protected override bool ValidatePayload(
         Block newHeadBlock,
         TPayloadAttributes payloadAttributes,
-        [NotNullWhen(false)] out ResultWrapper<TResult>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<TForkchoiceUpdatedResult>? errorResult)
     {
         if (base.ValidatePayload(newHeadBlock, payloadAttributes, out errorResult))
         {
@@ -73,7 +73,7 @@ public abstract class ForkchoiceUpdatedV2AbstractHandler<TForkChoiceState, TPayl
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
                 {
-                    errorResult = TResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                    errorResult = TForkchoiceUpdatedResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                     return false;
                 }
             }
@@ -85,7 +85,7 @@ public abstract class ForkchoiceUpdatedV2AbstractHandler<TForkChoiceState, TPayl
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
                 {
-                    errorResult = TResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                    errorResult = TForkchoiceUpdatedResult.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
                     return false;
                 }
             }

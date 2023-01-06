@@ -24,9 +24,9 @@ namespace Nethermind.Merge.Plugin.EngineApi.Shanghai.Handlers;
 /// <see href="https://eips.ethereum.org/EIPS/eip-3675">EIP-3675</see>.
 /// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">engine_newpayloadv2</see>.
 /// </summary>
-public abstract class NewPayloadV2AbstractHandler<TRequest, TResponse> : NewPayloadV1AbstractHandler<TRequest, TResponse>
-    where TRequest : ExecutionPayloadV2
-    where TResponse : PayloadStatusV1, IPayloadStatus<TResponse>, new()
+public abstract class NewPayloadV2AbstractHandler<TExecutionPayload, TPayloadStatus> : NewPayloadV1AbstractHandler<TExecutionPayload, TPayloadStatus>
+    where TExecutionPayload : ExecutionPayloadV2
+    where TPayloadStatus : PayloadStatusV1, IPayloadStatus<TPayloadStatus>, new()
 {
     protected NewPayloadV2AbstractHandler(
         IBlockValidator blockValidator,
