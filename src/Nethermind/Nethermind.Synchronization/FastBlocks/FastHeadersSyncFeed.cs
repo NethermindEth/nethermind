@@ -178,20 +178,25 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
+            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+        }
+
+        public override void InitializeFeed()
+        {
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
             bool useSyncPivot = _blockTree.LowestInsertedHeader is null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
             long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
             Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
-            UInt256? startTotalDifficulty = useSyncPivot ? syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
+            UInt256? startTotalDifficulty = useSyncPivot ? _syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
 
             _nextHeaderHash = startHeaderHash;
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
 
-            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+            base.InitializeFeed();
         }
 
         protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
@@ -342,6 +347,12 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                 return SyncResponseHandlingResult.InternalError;
+            }
+
+            if (!_sent.ContainsKey(batch))
+            {
+                if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
+                return SyncResponseHandlingResult.Ignored;
             }
 
             if ((batch.Response?.Length ?? 0) == 0)
