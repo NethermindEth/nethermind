@@ -232,17 +232,17 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithWithdrawals(int count)
+        public BlockBuilder WithWithdrawals<T>(int count) where T : IWithdrawal, new()
         {
-            var withdrawals = new Withdrawal[count];
+            var withdrawals = new IWithdrawal[count];
 
             for (var i = 0; i < count; i++)
-                withdrawals[i] = new();
+                withdrawals[i] = new T();
 
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
+        public BlockBuilder WithWithdrawals(IWithdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));

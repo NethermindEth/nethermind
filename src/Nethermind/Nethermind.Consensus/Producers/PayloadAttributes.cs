@@ -8,15 +8,27 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Producers;
 
-public class PayloadAttributes
+public interface IPayloadAttributes
 {
-    public ulong Timestamp { get; set; }
+    /// <summary>
+    /// V1
+    /// </summary>
+    public ulong Timestamp { get; }
 
-    public Keccak PrevRandao { get; set; }
+    /// <summary>
+    /// V1
+    /// </summary>
+    public Keccak PrevRandao { get; }
 
-    public Address SuggestedFeeRecipient { get; set; }
+    /// <summary>
+    /// V1
+    /// </summary>
+    public Address SuggestedFeeRecipient { get; }
 
-    public IList<Withdrawal>? Withdrawals { get; set; }
+    /// <summary>
+    /// V2
+    /// </summary>
+    public IReadOnlyList<IWithdrawal>? Withdrawals => null;
 
     /// <summary>
     /// GasLimit
@@ -24,24 +36,5 @@ public class PayloadAttributes
     /// <remarks>
     /// Only used for MEV-Boost
     /// </remarks>
-    public long? GasLimit { get; set; }
-
-    public override string ToString() => ToString(string.Empty);
-
-    public string ToString(string indentation)
-    {
-        var sb = new StringBuilder($"{indentation}{nameof(PayloadAttributes)} {{")
-            .Append($"{nameof(Timestamp)}: {Timestamp}, ")
-            .Append($"{nameof(PrevRandao)}: {PrevRandao}, ")
-            .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}");
-
-        if (Withdrawals is not null)
-        {
-            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
-        }
-
-        sb.Append('}');
-
-        return sb.ToString();
-    }
+    public long? GasLimit { get; }
 }

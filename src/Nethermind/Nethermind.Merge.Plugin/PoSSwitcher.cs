@@ -12,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin

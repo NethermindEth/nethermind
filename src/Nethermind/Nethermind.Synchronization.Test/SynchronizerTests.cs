@@ -28,7 +28,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;

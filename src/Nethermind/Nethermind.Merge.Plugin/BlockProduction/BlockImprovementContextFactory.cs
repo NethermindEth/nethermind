@@ -22,7 +22,7 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
+        IPayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime) =>
         new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes, startDateTime);
 }

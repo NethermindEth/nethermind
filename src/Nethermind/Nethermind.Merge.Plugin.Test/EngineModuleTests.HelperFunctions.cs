@@ -12,10 +12,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Merge.Plugin.EngineApi.Paris;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Data;
+using Nethermind.Merge.Plugin.EngineApi.Shanghai.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -28,7 +30,7 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
+        private void AssertExecutionStatusChanged(IEngineV1RpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
@@ -37,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
         }
 
-        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
+        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayloadV1 executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
             Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
@@ -67,11 +69,11 @@ namespace Nethermind.Merge.Plugin.Test
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        private ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
+        private ExecutionPayloadV1 CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
             if (head is null) throw new NotSupportedException();
-            return new ExecutionPayload()
+            return new ExecutionPayloadV1()
             {
                 BlockNumber = head.Number,
                 BlockHash = head.Hash!,
@@ -82,9 +84,9 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null)
+        private static ExecutionPayloadV1 CreateBlockRequest(ExecutionPayloadV1 parent, Address miner, WithdrawalV1[]? withdrawals = null)
         {
-            ExecutionPayload blockRequest = new()
+            ExecutionPayloadV1 blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
                 FeeRecipient = miner,
@@ -104,10 +106,10 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(ExecutionPayload parent, Address miner, int count)
+        private static ExecutionPayloadV1[] CreateBlockRequestBranch(ExecutionPayloadV1 parent, Address miner, int count)
         {
-            ExecutionPayload currentBlock = parent;
-            ExecutionPayload[] blockRequests = new ExecutionPayload[count];
+            ExecutionPayloadV1 currentBlock = parent;
+            ExecutionPayloadV1[] blockRequests = new ExecutionPayloadV1[count];
             for (int i = 0; i < count; i++)
             {
                 currentBlock = CreateBlockRequest(currentBlock, miner);
@@ -131,18 +133,18 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private static TestCaseData GetNewBlockRequestBadDataTestCase<T>(
-            Expression<Func<ExecutionPayload, T>> propertyAccess, T wrongValue)
+            Expression<Func<ExecutionPayloadV1, T>> propertyAccess, T wrongValue)
         {
-            Action<ExecutionPayload, T> setter = propertyAccess.GetSetter();
+            Action<ExecutionPayloadV1, T> setter = propertyAccess.GetSetter();
             // ReSharper disable once ConvertToLocalFunction
-            Action<ExecutionPayload> wrongValueSetter = r => setter(r, wrongValue);
+            Action<ExecutionPayloadV1> wrongValueSetter = r => setter(r, wrongValue);
             return new TestCaseData(wrongValueSetter)
             {
                 TestName = $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
             };
         }
 
-        private static bool TryCalculateHash(ExecutionPayload request, out Keccak hash)
+        private static bool TryCalculateHash(ExecutionPayloadV1 request, out Keccak hash)
         {
             if (request.TryGetBlock(out Block? block) && block is not null)
             {

@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Data;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
@@ -25,7 +25,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
+        IPayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
         DateTimeOffset startDateTime)
@@ -41,7 +41,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private async Task<Block?> StartImprovingBlock(
         IManualBlockProductionTrigger blockProductionTrigger,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
+        IPayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
     {
 
@@ -53,7 +53,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
             UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
+            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayloadV1(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
         }
 
         return CurrentBestBlock;

@@ -9,7 +9,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;

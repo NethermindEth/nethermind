@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Producers
             BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
-            IEnumerable<Withdrawal>? withdrawals = null)
+            IEnumerable<IWithdrawal>? withdrawals = null)
             : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
         {
             Transactions = transactions;

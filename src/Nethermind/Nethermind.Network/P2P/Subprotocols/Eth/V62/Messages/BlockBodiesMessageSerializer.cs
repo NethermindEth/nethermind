@@ -54,10 +54,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
-                Withdrawal[]? withdrawals = null;
+                IWithdrawal?[]? withdrawals = null;
                 if (rlpStream.ReadNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
-                    withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<Withdrawal>(ctx));
+                    withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<IWithdrawal?>(ctx));
                 }
 
                 return new BlockBody(transactions, uncles, withdrawals);

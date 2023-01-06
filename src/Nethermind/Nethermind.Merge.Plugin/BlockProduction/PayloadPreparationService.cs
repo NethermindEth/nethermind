@@ -14,15 +14,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Handlers;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
     /// <summary>
-    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedHandler"/>.
-    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>
+    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedV1Handler"/>.
+    /// <seealso href="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>
     /// Each payload is assigned a payloadId which can be used by the consensus client to retrieve payload later by calling a <see cref="GetPayloadV1Handler"/>.
-    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
+    /// <seealso href="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
     /// </summary>
     public class PayloadPreparationService : IPayloadPreparationService
     {
@@ -77,7 +77,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             _logger = logManager.GetClassLogger();
         }
 
-        public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        public string StartPreparingPayload(BlockHeader parentHeader, IPayloadAttributes payloadAttributes)
         {
             string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             if (!_payloadStorage.ContainsKey(payloadId))
@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return payloadId;
         }
 
-        private Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, IPayloadAttributes payloadAttributes)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
@@ -98,7 +98,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return emptyBlock;
         }
 
-        private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+        private void ImproveBlock(string payloadId, BlockHeader parentHeader, IPayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
             _payloadStorage.AddOrUpdate(payloadId,
                 id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
                 (id, currentContext) =>
@@ -116,7 +116,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 });
 
 
-        private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, IPayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
@@ -222,7 +222,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public event EventHandler<BlockEventArgs>? BlockImproved;
 
-        private string ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private string ComputeNextPayloadId(BlockHeader parentHeader, IPayloadAttributes payloadAttributes)
         {
             Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));

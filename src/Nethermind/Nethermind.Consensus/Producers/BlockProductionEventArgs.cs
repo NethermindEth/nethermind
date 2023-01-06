@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Producers
         public BlockHeader? ParentHeader { get; }
         public IBlockTracer? BlockTracer { get; }
 
-        public PayloadAttributes? PayloadAttributes { get; }
+        public IPayloadAttributes? PayloadAttributes { get; }
         public CancellationToken CancellationToken { get; }
         public Task<Block?> BlockProductionTask { get; set; } = Task.FromResult<Block?>(null);
 
@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Producers
             BlockHeader? parentHeader = null,
             CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null)
+            IPayloadAttributes? payloadAttributes = null)
         {
             ParentHeader = parentHeader;
             BlockTracer = blockTracer;

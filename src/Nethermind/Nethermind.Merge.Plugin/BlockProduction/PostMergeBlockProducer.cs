@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
         }
 
-        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        public virtual Block PrepareEmptyBlock(BlockHeader parent, IPayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
@@ -58,14 +58,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block PrepareBlock(BlockHeader parent, IPayloadAttributes? payloadAttributes = null)
         {
             Block block = base.PrepareBlock(parent, payloadAttributes);
             AmendHeader(block.Header);
             return block;
         }
 
-        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, IPayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
             AmendHeader(blockHeader);

@@ -16,7 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;

@@ -10,7 +10,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 {
     public interface IPayloadPreparationService
     {
-        string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
+        string? StartPreparingPayload(BlockHeader parentHeader, IPayloadAttributes payloadAttributes);
 
         ValueTask<IBlockProductionContext?> GetPayload(string payloadId);
 

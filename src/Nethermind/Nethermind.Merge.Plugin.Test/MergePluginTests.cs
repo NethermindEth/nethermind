@@ -18,13 +18,13 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 using System.Collections.Generic;
+using Nethermind.Merge.Plugin.EngineApi.Paris;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -116,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitBlockProducer(_consensusPlugin);
             Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
-            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
+            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineV1RpcModule>>(m => m is SingletonModulePool<IEngineV1RpcModule>));
             await _plugin.DisposeAsync();
         }
 

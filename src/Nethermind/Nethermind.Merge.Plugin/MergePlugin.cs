@@ -22,9 +22,14 @@ using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Blockchain;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
+using Nethermind.Merge.Plugin.EngineApi.Paris;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Handlers;
+using Nethermind.Merge.Plugin.EngineApi.Shanghai;
+using Nethermind.Merge.Plugin.EngineApi.Shanghai.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -301,10 +306,11 @@ namespace Nethermind.Merge.Plugin
                     _api.LogManager,
                     TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
-                IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
+                Locker locker = new();
+
+                IEngineV2RpcModule engineV2RpcModule = new EngineV2RpcModule(
                     new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
-                    new NewPayloadHandler(
+                    new NewPayloadV2Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
@@ -318,7 +324,39 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _api.SpecProvider,
                         _api.LogManager),
-                    new ForkchoiceUpdatedHandler(
+                    new ForkchoiceUpdatedV2Handler(
+                        _api.BlockTree,
+                        _blockFinalizationManager,
+                        _poSSwitcher,
+                        payloadPreparationService,
+                        _api.BlockProcessingQueue,
+                        _blockCacheService,
+                        _invalidChainTracker,
+                        _beaconSync,
+                        _beaconPivot,
+                        _peerRefresher,
+                        _api.SpecProvider,
+                        _api.LogManager),
+                    locker,
+                    _api.LogManager);
+
+                IEngineV1RpcModule engineV1RpcModule = new EngineV1RpcModule(
+                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
+                    new NewPayloadV1Handler(
+                        _api.BlockValidator,
+                        _api.BlockTree,
+                        _api.Config<IInitConfig>(),
+                        _syncConfig,
+                        _poSSwitcher,
+                        _beaconSync,
+                        _beaconPivot,
+                        _blockCacheService,
+                        _api.BlockProcessingQueue,
+                        _invalidChainTracker,
+                        _beaconSync,
+                        _api.SpecProvider,
+                        _api.LogManager),
+                    new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
@@ -335,9 +373,10 @@ namespace Nethermind.Merge.Plugin
                     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                     new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                     new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
+                    locker,
                     _api.LogManager);
 
-                _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
+                _api.RpcModuleProvider.RegisterSingle(engineV1RpcModule);
                 if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
             }
 

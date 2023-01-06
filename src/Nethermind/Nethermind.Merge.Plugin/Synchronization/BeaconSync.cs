@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 

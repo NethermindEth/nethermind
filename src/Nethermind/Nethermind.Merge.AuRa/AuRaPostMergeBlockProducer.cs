@@ -44,7 +44,7 @@ namespace Nethermind.Merge.AuRa
         {
         }
 
-        public override Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        public override Block PrepareEmptyBlock(BlockHeader parent, IPayloadAttributes? payloadAttributes = null)
         {
             var block = base.PrepareEmptyBlock(parent, payloadAttributes);
 

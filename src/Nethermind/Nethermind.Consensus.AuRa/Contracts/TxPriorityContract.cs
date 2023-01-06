@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     /// <summary>
     /// Permission contract for <see cref="ITxPool"/> transaction ordering
-    /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/> 
+    /// <seealso href="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/>
     /// </summary>
     public partial class TxPriorityContract : Contract
     {

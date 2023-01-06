@@ -21,7 +21,7 @@ public static class BlockExtensions
     /// <param name="specProvider"></param>
     /// <returns></returns>
     /// <remarks>
-    /// <seealso cref="https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification"/>
+    /// <seealso href="https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification"/>
     /// </remarks>
     public static bool IsTerminalBlock(this BlockHeader header, ISpecProvider specProvider)
     {
@@ -43,7 +43,7 @@ public static class BlockExtensions
     /// <param name="specProvider"></param>
     /// <returns></returns>
     /// <remarks>
-    /// <seealso cref="https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification"/>
+    /// <seealso href="https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification"/>
     /// </remarks>
     public static bool IsTerminalBlock(this Block block, ISpecProvider specProvider) => block.Header.IsTerminalBlock(specProvider);
 }

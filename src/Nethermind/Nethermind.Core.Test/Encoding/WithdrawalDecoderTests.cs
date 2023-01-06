@@ -54,7 +54,7 @@ public class WithdrawalDecoderTests
             Amount = UInt256.UInt128MaxValue
         };
         var stream = new RlpStream(1024);
-        var codec = new WithdrawalDecoder();
+        var codec = new WithdrawalV1Decoder();
 
         codec.Encode(stream, withdrawal);
 
@@ -74,7 +74,7 @@ public class WithdrawalDecoderTests
             Address = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
             Amount = UInt256.UInt128MaxValue
         };
-        var rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
+        var rlp1 = new WithdrawalV1Decoder().Encode(withdrawal).Bytes;
         var rlp2 = Rlp.Encode(withdrawal).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);

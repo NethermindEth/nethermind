@@ -26,8 +26,12 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Blockchain;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.EngineApi;
+using Nethermind.Merge.Plugin.EngineApi.Paris;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Handlers;
+using Nethermind.Merge.Plugin.EngineApi.Shanghai.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -50,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Test
         protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider)
             => await CreateBaseBlockChain(null, null).Build(specProvider);
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+        private IEngineV1RpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
 
@@ -63,14 +67,14 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.LogManager);
             invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
-            return new EngineRpcModule(
+            return new EngineV1RpcModule(
                 new GetPayloadV1Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
                 new GetPayloadV2Handler(
                     chain.PayloadPreparationService!,
                     chain.LogManager),
-                new NewPayloadHandler(
+                new NewPayloadV1Handler(
                     chain.BlockValidator,
                     chain.BlockTree,
                     new InitConfig(),
@@ -86,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.LogManager,
                     newPayloadTimeout,
                     newPayloadCacheSize),
-                new ForkchoiceUpdatedHandler(
+                new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
                     chain.BlockFinalizationManager,
                     chain.PoSSwitcher,

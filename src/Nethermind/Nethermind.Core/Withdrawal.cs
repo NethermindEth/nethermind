@@ -9,33 +9,27 @@ namespace Nethermind.Core;
 /// <summary>
 /// Represents a withdrawal that has been validated at the consensus layer.
 /// </summary>
-public class Withdrawal
+public interface IWithdrawal
 {
     /// <summary>
-    /// Gets or sets the withdrawal unique id.
+    /// Gets the withdrawal unique id.
     /// </summary>
-    public ulong Index { get; set; }
+    public ulong Index { get; }
 
     /// <summary>
-    /// Gets or sets the validator index on the consensus layer the withdrawal corresponds to.
+    /// Gets the validator index on the consensus layer the withdrawal corresponds to.
     /// </summary>
-    public ulong ValidatorIndex { get; set; }
-    /// <summary>
-    /// Gets or sets the withdrawal address.
-    /// </summary>
-    public Address Address { get; set; } = Address.Zero;
+    public ulong ValidatorIndex { get; }
 
     /// <summary>
-    /// Gets or sets the withdrawal amount in Wei.
+    /// Gets the withdrawal address.
     /// </summary>
-    public UInt256 Amount { get; set; }
+    public Address Address { get; }
 
-    public override string ToString() => ToString(string.Empty);
+    /// <summary>
+    /// Gets the withdrawal amount in Wei.
+    /// </summary>
+    public UInt256 Amount { get; }
 
-    public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(Withdrawal)} {{")
-        .Append($"{nameof(Index)}: {Index}, ")
-        .Append($"{nameof(ValidatorIndex)}: {ValidatorIndex}, ")
-        .Append($"{nameof(Address)}: {Address}, ")
-        .Append($"{nameof(Amount)}: {Amount}}}")
-        .ToString();
+    string ToString(string indentation);
 }

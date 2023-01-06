@@ -21,7 +21,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         IManualBlockProductionTrigger blockProductionTrigger,
         TimeSpan timeout,
         BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes,
+        IPayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
@@ -39,13 +39,10 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
-        if (task.IsCompletedSuccessfully)
+        if (task is { IsCompletedSuccessfully: true, Result: { } })
         {
-            if (task.Result is not null)
-            {
-                CurrentBestBlock = task.Result;
-                BlockFees = _feesTracer.Fees;
-            }
+            CurrentBestBlock = task.Result;
+            BlockFees = _feesTracer.Fees;
         }
 
         return task.Result;

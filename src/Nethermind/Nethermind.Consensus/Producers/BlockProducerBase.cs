@@ -116,7 +116,7 @@ namespace Nethermind.Consensus.Producers
             return IsRunning() && (maxProducingInterval is null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, IPayloadAttributes? payloadAttributes = null)
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, IPayloadAttributes? payloadAttributes = null)
         {
             if (parentHeader is null)
             {
@@ -174,7 +174,7 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, IPayloadAttributes? payloadAttributes = null)
         {
             if (TrySetState(parent.StateRoot))
             {
@@ -271,7 +271,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
-            PayloadAttributes? payloadAttributes = null)
+            IPayloadAttributes? payloadAttributes = null)
         {
             ulong timestamp = payloadAttributes?.Timestamp ?? Math.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
@@ -298,7 +298,7 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual Block PrepareBlock(BlockHeader parent, IPayloadAttributes? payloadAttributes = null)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 

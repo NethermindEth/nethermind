@@ -18,7 +18,8 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.EngineApi.Paris;
+using Nethermind.Merge.Plugin.EngineApi.Paris.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,7 +55,7 @@ public partial class EngineModuleTests
             chain.LogManager,
             timePerSlot);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineV1RpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
@@ -73,9 +74,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayload executionPayloadV1 = response.Data!;
+        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
@@ -118,7 +119,7 @@ public partial class EngineModuleTests
 
         var expected = new BoostExecutionPayloadV1
         {
-            Block = new ExecutionPayload
+            Block = new ExecutionPayloadV1
             {
                 ParentHash = new(expected_parentHash),
                 FeeRecipient = new(expected_feeRecipient),
@@ -153,7 +154,7 @@ public partial class EngineModuleTests
             chain.LogManager,
             timePerSlot);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineV1RpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
 
         ManualResetEvent wait = new(false);
@@ -165,9 +166,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayload executionPayloadV1 = response.Data!;
+        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
 
@@ -201,7 +202,7 @@ public partial class EngineModuleTests
             chain.LogManager,
             timePerSlot);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineV1RpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
@@ -211,9 +212,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
             .PayloadId!;
 
-        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayload executionPayloadV1 = response.Data!;
+        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
         executionPayloadV1.GasLimit.Should().Be(4_000_000L);
     }
 }

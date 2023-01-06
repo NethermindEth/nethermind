@@ -39,7 +39,7 @@ public class BlockBodiesMessageSerializerTests
         yield return new BlockBody[]
         {
             // body with emtpy withdrawals
-            new(new[] { tx }, new[] { header }, Array.Empty<Withdrawal>()),
+            new(new[] { tx }, new[] { header }, Array.Empty<IWithdrawal>()),
             // body with a single withdrawals
             new(new[] { tx }, Array.Empty<BlockHeader>(),
                 new[]

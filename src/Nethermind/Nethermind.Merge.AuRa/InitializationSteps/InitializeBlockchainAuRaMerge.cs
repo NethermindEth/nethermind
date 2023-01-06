@@ -12,6 +12,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Merge.Plugin.Blockchain;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {
@@ -50,7 +51,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             if (_api.PoSSwitcher is null) throw new StepDependencyException(nameof(_api.PoSSwitcher));
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            _api.SealValidator = new Plugin.MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
+            _api.SealValidator = new MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
         }
     }
 }

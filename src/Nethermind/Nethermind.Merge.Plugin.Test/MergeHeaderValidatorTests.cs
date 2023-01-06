@@ -8,6 +8,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Blockchain;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;

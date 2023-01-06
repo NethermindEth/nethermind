@@ -19,8 +19,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Blockchain;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
 using NSubstitute;
@@ -54,7 +54,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override async Task newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals,
+        IEnumerable<IWithdrawal>? Withdrawals,
         string BlockHash
         ) input)
     {

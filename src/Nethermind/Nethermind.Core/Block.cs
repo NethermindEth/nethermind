@@ -24,7 +24,7 @@ public class Block
         BlockHeader blockHeader,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<IWithdrawal>? withdrawals = null)
     {
         Header = blockHeader;
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
@@ -32,7 +32,7 @@ public class Block
 
     public Block(BlockHeader blockHeader) : this(
         blockHeader,
-        new(null, null, blockHeader.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+        new(null, null, blockHeader.WithdrawalsRoot is null ? null : Array.Empty<IWithdrawal>())
     )
     { }
 
@@ -56,7 +56,7 @@ public class Block
 
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
-    public Withdrawal[]? Withdrawals => Body.Withdrawals;
+    public IWithdrawal[]? Withdrawals => Body.Withdrawals;
 
     public Keccak? Hash => Header.Hash; // do not add setter here
 
@@ -140,7 +140,7 @@ public class Block
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (var w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+        foreach (var w in Body?.Withdrawals ?? Array.Empty<IWithdrawal>())
         {
             builder.Append(w.ToString("    "));
         }
