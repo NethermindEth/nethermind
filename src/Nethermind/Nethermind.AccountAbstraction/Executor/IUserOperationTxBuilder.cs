@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
@@ -16,7 +16,7 @@ namespace Nethermind.AccountAbstraction.Executor
             byte[] callData,
             Address sender,
             BlockHeader parent,
-            IReleaseSpec spec,
+            IEip1559Spec specFor1559,
             UInt256 nonce,
             bool systemTransaction);
 
@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Executor
             BlockHeader parent,
             long gasLimit,
             UInt256 nonce,
-            IReleaseSpec spec);
+            IEip1559Spec specFor1559);
 
         FailedOp? DecodeEntryPointOutputError(byte[] output);
     }

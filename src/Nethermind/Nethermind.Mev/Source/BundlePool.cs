@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -230,11 +230,11 @@ namespace Nethermind.Mev.Source
             {
                 if (_logger.IsDebug)
                     _logger.Debug(
-                        $"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
+                        $"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MinTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber, currentTimestamp);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];

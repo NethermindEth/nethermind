@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -19,18 +20,18 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
-        private readonly IDbProvider _dbProvider;
-        private readonly IBlockTree _blockTree;
-        private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockValidator _blockValidator;
-        private readonly IRewardCalculatorSource _rewardCalculatorSource;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IBlockPreprocessorStep _blockPreprocessorStep;
-        private readonly ITxPool _txPool;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly IBlocksConfig _blocksConfig;
-        private readonly ILogManager _logManager;
+        protected readonly IDbProvider _dbProvider;
+        protected readonly IBlockTree _blockTree;
+        protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
+        protected readonly ISpecProvider _specProvider;
+        protected readonly IBlockValidator _blockValidator;
+        protected readonly IRewardCalculatorSource _rewardCalculatorSource;
+        protected readonly IReceiptStorage _receiptStorage;
+        protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
+        protected readonly ITxPool _txPool;
+        protected readonly ITransactionComparerProvider _transactionComparerProvider;
+        protected readonly IBlocksConfig _blocksConfig;
+        protected readonly ILogManager _logManager;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 

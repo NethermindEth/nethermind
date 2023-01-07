@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.AuRa
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Number));
+            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 if (tx.Signature is not null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Number);
+                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)

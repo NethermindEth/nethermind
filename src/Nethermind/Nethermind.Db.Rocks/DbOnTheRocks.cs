@@ -737,6 +737,11 @@ public class DbOnTheRocks : IDbWithSpan
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
 
+    /// <summary>
+    /// Returns RocksDB version.
+    /// </summary>
+    /// <remarks>Since NuGet package version matches the underlying RocksDB native library version,
+    /// this method returns the package version.</remarks>
     public static string? GetRocksDbVersion()
     {
         Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));

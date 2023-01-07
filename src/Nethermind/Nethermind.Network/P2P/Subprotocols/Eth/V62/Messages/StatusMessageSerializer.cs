@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 rlpStream.ReadSequenceLength();
                 byte[] forkHash = rlpStream.DecodeByteArray();
-                long next = (long)rlpStream.DecodeUlong();
+                ulong next = rlpStream.DecodeUlong();
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;
             }

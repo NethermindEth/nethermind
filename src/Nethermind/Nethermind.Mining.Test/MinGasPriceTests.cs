@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,7 +30,11 @@ namespace Nethermind.Mining.Test
             {
                 IsEip1559Enabled = false
             });
-            MinGasPriceTxFilter _filter = new((UInt256)minimum, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = (UInt256)minimum
+            };
+            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
             _filter.IsAllowed(tx, null).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
         }
@@ -46,11 +51,14 @@ namespace Nethermind.Mining.Test
         public void Test1559(long minimum, long maxFeePerGas, long maxPriorityFeePerGas, bool expectedResult)
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec()
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
+            BlocksConfig blocksConfig = new()
             {
-                IsEip1559Enabled = true
-            });
-            MinGasPriceTxFilter _filter = new((UInt256)minimum, specProvider);
+                MinGasPrice = (UInt256)minimum
+            };
+            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(0)
                 .WithMaxFeePerGas((UInt256)maxFeePerGas)
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)

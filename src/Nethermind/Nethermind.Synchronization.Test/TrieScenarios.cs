@@ -91,6 +91,32 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit(0);
                 }),
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_storage_root", (tree, stateDb, codeDb) =>
+                {
+                    var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
+                    Keccak codeHash = Keccak.Compute(code);
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
+                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Commit(0);
+                    remoteStorageTree.UpdateRootHash();
+                    codeDb[codeHash.Bytes] = code;
+                    tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+                    tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Commit(0);
+                }),
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_code", (tree, stateDb, codeDb) =>
+                {
+                    var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
+                    Keccak codeHash = Keccak.Compute(code);
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
+                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Commit(0);
+                    remoteStorageTree.UpdateRootHash();
+                    codeDb[codeHash.Bytes] = code;
+                    tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedCodeHash(codeHash));
+                    tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Commit(0);
+                }),
                 ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
