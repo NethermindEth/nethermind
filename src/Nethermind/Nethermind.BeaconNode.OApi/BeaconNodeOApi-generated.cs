@@ -21,7 +21,7 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Request successful</returns>
         System.Threading.Tasks.Task<string> VersionAsync();
     
-        /// <summary>Poll to see if the the beacon node is syncing.</summary>
+        /// <summary>Poll to see if the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         System.Threading.Tasks.Task<Response> SyncingAsync();
     
@@ -82,7 +82,7 @@ namespace Nethermind.BeaconNode.OApi
             return _implementation.VersionAsync();
         }
     
-        /// <summary>Poll to see if the the beacon node is syncing.</summary>
+        /// <summary>Poll to see if the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("node/syncing")]
         public System.Threading.Tasks.Task<Response> Syncing()
@@ -297,7 +297,6 @@ namespace Nethermind.BeaconNode.OApi
     public partial class BeaconBlock : BeaconBlockCommon
     {
         [Newtonsoft.Json.JsonProperty("body", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public BeaconBlockBody Body { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     
