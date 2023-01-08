@@ -95,7 +95,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             state.Validators[mockActivations - 2].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
             //# the one at churn_limit - 1 did not make it, it was out-prioritized
             state.Validators[churnLimit - 1].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
-            //# but the the one in front of the above did
+            //# but the one in front of the above did
             state.Validators[churnLimit - 2].ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
         }
 
