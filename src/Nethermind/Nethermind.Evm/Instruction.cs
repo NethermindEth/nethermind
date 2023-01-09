@@ -180,11 +180,11 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static int GetImmediateCount(this Instruction instruction, byte jumpvCount = 0)
+        public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
             => instruction switch
             {
-                Instruction.RJUMP or Instruction.RJUMPI => EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
-                Instruction.RJUMPV => jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH,
+                Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
                 _ => 0
             };

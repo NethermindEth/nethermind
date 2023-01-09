@@ -19,12 +19,13 @@ public static class BitmapHelper
     /// Collects data locations in code.
     /// An unset bit means the byte is an opcode, a set bit means it's data.
     /// </summary>
-    public static byte[] CreateCodeBitmap(ReadOnlySpan<byte> code)
+    public static byte[] CreateCodeBitmap(ReadOnlySpan<byte> code, bool isEof = false)
     {
         // The bitmap is 4 bytes longer than necessary, in case the code
         // ends with a PUSH32, the algorithm will push zeroes onto the
         // bitvector outside the bounds of the actual code.
         byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
+        Span<byte> bitvecSpan = bitvec.AsSpan();
 
         for (int pc = 0; pc < code.Length;)
         {
@@ -33,18 +34,18 @@ public static class BitmapHelper
 
             int numbits = op switch
             {
-                Instruction.RJUMPV => op.GetImmediateCount(code[pc]),
-                _ => op.GetImmediateCount(),
+                Instruction.RJUMPV => isEof ? op.GetImmediateCount(isEof, code[pc]) : 0,
+                _ => op.GetImmediateCount(isEof),
             };
 
             if (numbits == 0) continue;
 
-            HandleNumbits(numbits, ref bitvec, ref pc);
+            HandleNumbits(numbits, ref bitvecSpan, ref pc);
         }
         return bitvec;
     }
 
-    public static void HandleNumbits(int numbits, ref byte[] bitvec, ref int pc)
+    public static void HandleNumbits(int numbits, scoped ref Span<byte> bitvec, scoped ref int pc)
     {
         if (numbits >= 8)
         {
@@ -96,17 +97,22 @@ public static class BitmapHelper
     /// <summary>
     /// Checks if the position is in a code segment.
     /// </summary>
+    public static bool IsCodeSegment(ref Span<byte> bitvec, int pos)
+    {
+        return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
+    }
+
     public static bool IsCodeSegment(byte[] bitvec, int pos)
     {
         return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
     }
 
-    private static void Set1(this byte[] bitvec, int pos)
+    private static void Set1(this ref Span<byte> bitvec, int pos)
     {
         bitvec[pos / 8] |= _lookup[pos % 8];
     }
 
-    private static void SetN(this byte[] bitvec, int pos, UInt16 flag)
+    private static void SetN(this ref Span<byte> bitvec, int pos, UInt16 flag)
     {
         ushort a = (ushort)(flag >> (pos % 8));
         bitvec[pos / 8] |= (byte)(a >> 8);
@@ -119,14 +125,14 @@ public static class BitmapHelper
         }
     }
 
-    private static void Set8(this byte[] bitvec, int pos)
+    private static void Set8(this ref Span<byte> bitvec, int pos)
     {
         byte a = (byte)(0xFF >> (pos % 8));
         bitvec[pos / 8] |= a;
         bitvec[pos / 8 + 1] = (byte)~a;
     }
 
-    private static void Set16(this byte[] bitvec, int pos)
+    private static void Set16(this ref Span<byte> bitvec, int pos)
     {
         byte a = (byte)(0xFF >> (pos % 8));
         bitvec[pos / 8] |= a;

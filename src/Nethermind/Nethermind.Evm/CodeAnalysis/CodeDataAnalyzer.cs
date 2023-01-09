@@ -7,7 +7,7 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
-        private byte[]? _codeBitmap;
+        private byte[] _codeBitmap;
         private ReadOnlyMemory<byte> MachineCode { get; }
 
         public CodeDataAnalyzer(ReadOnlyMemory<byte> code)

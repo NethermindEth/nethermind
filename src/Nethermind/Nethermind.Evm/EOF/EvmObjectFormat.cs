@@ -1,7 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
+
 namespace Nethermind.Evm.EOF;
+
 
 internal static class EvmObjectFormat
 {
@@ -276,10 +284,10 @@ internal static class EvmObjectFormat
         bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
         {
             int pos;
-            byte[] codeBitmap = new byte[(code.Length / 8) + 1 + 4];
+            Span<byte> codeBitmap = stackalloc byte[(code.Length / 8) + 1 + 4];
             SortedSet<int> jumpdests = new();
 
-            for (pos = 0; pos < code.Length; pos++)
+            for (pos = 0; pos < code.Length;)
             {
                 Instruction opcode = (Instruction)code[pos];
                 int postInstructionByte = pos + 1;
@@ -298,11 +306,11 @@ internal static class EvmObjectFormat
                         return false;
                     }
 
-                    var offset = code.Slice(pos, TWO_BYTE_LENGTH).ReadEthInt16();
-                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
-                    var rjumpdest = offset + TWO_BYTE_LENGTH + pos;
+                    var offset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthInt16();
+                    var rjumpdest = offset + TWO_BYTE_LENGTH + postInstructionByte;
                     jumpdests.Add(rjumpdest);
 
+                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
                     if (rjumpdest < 0 || rjumpdest >= code.Length)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
@@ -332,12 +340,10 @@ internal static class EvmObjectFormat
                     }
 
                     var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
-                    BitmapHelper.HandleNumbits(immediateValueSize, ref codeBitmap, ref postInstructionByte);
-
                     for (int j = 0; j < count; j++)
                     {
-                        var offset = code.Slice(pos + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
-                        var rjumpdest = offset + immediateValueSize + pos;
+                        var offset = code.Slice(postInstructionByte + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
+                        var rjumpdest = offset + immediateValueSize + postInstructionByte;
                         jumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
@@ -345,11 +351,17 @@ internal static class EvmObjectFormat
                             return false;
                         }
                     }
+                    BitmapHelper.HandleNumbits(immediateValueSize, ref codeBitmap, ref postInstructionByte);
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
-                    int len = code[pos - 1] - (int)Instruction.PUSH1 + 1;
+                    int len = opcode - Instruction.PUSH1 + 1;
+                    if (postInstructionByte + len > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                        return false;
+                    }
                     BitmapHelper.HandleNumbits(len, ref codeBitmap, ref postInstructionByte);
                 }
                 pos = postInstructionByte;
@@ -363,7 +375,7 @@ internal static class EvmObjectFormat
 
             foreach (int jumpdest in jumpdests)
             {
-                if (BitmapHelper.IsCodeSegment(codeBitmap, jumpdest))
+                if (!BitmapHelper.IsCodeSegment(ref codeBitmap, jumpdest))
                 {
                     if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
                     return false;

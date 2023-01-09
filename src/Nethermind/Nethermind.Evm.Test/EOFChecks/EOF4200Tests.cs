@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -377,6 +377,14 @@ namespace Nethermind.Evm.Test
             var targetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
 
             Instance.EOF_contract_header_parsing_tests(testcase, targetReleaseSpec);
+        }
+
+        [Test]
+        public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip4200TxTestCases))] TestCase testcase)
+        {
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
     }
 }
