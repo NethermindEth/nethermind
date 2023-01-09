@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using DotNetty.Common.Utilities;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -220,7 +219,7 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenario.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.GetEnumMemberValue()}"),
+                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.FastToString()}"),
                 };
             }
             public byte[] Bytecode => GenerateFormatScenarios(FormatScenario.None).Bytecode;
@@ -464,7 +463,7 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.GetEnumMemberValue()}"),
+                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.FastToString()}"),
                 };
             }
             public TestCase GenerateDeploymentScenarios(DeploymentScenario scenarios, DeploymentContext ctx)

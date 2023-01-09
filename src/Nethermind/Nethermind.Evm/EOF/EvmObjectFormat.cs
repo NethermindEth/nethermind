@@ -10,6 +10,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
 
+
 internal static class EvmObjectFormat
 {
     private interface IEofVersionHandler
@@ -283,10 +284,10 @@ internal static class EvmObjectFormat
         bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
         {
             int pos;
-            SortedSet<Range> immediates = new();
-            SortedSet<int> rjumpdests = new();
+            Span<byte> codeBitmap = stackalloc byte[(code.Length / 8) + 1 + 4];
+            SortedSet<int> jumpdests = new();
 
-            for (pos = 0; pos < code.Length; pos++)
+            for (pos = 0; pos < code.Length;)
             {
                 Instruction opcode = (Instruction)code[pos];
                 int postInstructionByte = pos + 1;
@@ -306,15 +307,15 @@ internal static class EvmObjectFormat
                     }
 
                     var offset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthInt16();
-                    immediates.Add(new Range(postInstructionByte, postInstructionByte + 1));
                     var rjumpdest = offset + TWO_BYTE_LENGTH + postInstructionByte;
-                    rjumpdests.Add(rjumpdest);
+                    jumpdests.Add(rjumpdest);
+
+                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
                     if (rjumpdest < 0 || rjumpdest >= code.Length)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
                         return false;
                     }
-                    postInstructionByte += TWO_BYTE_LENGTH;
                 }
 
                 if (opcode is Instruction.RJUMPV)
@@ -339,55 +340,47 @@ internal static class EvmObjectFormat
                     }
 
                     var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
-                    immediates.Add(new Range(postInstructionByte, postInstructionByte + immediateValueSize - 1));
                     for (int j = 0; j < count; j++)
                     {
                         var offset = code.Slice(postInstructionByte + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
                         var rjumpdest = offset + immediateValueSize + postInstructionByte;
-                        rjumpdests.Add(rjumpdest);
-
+                        jumpdests.Add(rjumpdest);
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
                             return false;
                         }
                     }
-                    postInstructionByte += immediateValueSize;
+                    BitmapHelper.HandleNumbits(immediateValueSize, ref codeBitmap, ref postInstructionByte);
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
                     int len = opcode - Instruction.PUSH1 + 1;
-                    immediates.Add(new Range(postInstructionByte, postInstructionByte + len - 1));
-                    postInstructionByte += len;
+                    if (postInstructionByte + len > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                        return false;
+                    }
+                    BitmapHelper.HandleNumbits(len, ref codeBitmap, ref postInstructionByte);
                 }
                 pos = postInstructionByte;
             }
 
-            if (pos >= code.Length)
+            if (pos > code.Length)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                 return false;
             }
 
-            if (pos >= code.Length)
+            foreach (int jumpdest in jumpdests)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                return false;
-            }
-
-            foreach (int rjumpdest in rjumpdests)
-            {
-                foreach (var range in immediates)
+                if (!BitmapHelper.IsCodeSegment(ref codeBitmap, jumpdest))
                 {
-                    if (range.Includes(rjumpdest))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump destination {rjumpdest} is an Invalid, falls within {range}");
-                        return false;
-                    }
+                    if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
+                    return false;
                 }
             }
-
             return true;
         }
     }
