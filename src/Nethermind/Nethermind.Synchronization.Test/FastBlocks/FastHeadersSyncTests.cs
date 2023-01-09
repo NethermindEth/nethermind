@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -48,6 +49,43 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         }
 
         [Test]
+        public async Task Can_prepare_several_request_and_ignore_request_from_previous_sequence()
+        {
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
+
+            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            ISyncReport syncReport = Substitute.For<ISyncReport>();
+            syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
+            syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+
+            BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
+            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() }, syncReport, LimboLogs.Instance);
+            feed.InitializeFeed();
+
+            void FulfillBatch(HeadersSyncBatch batch)
+            {
+                batch.Response = remoteBlockTree.FindHeaders(
+                    remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                    false);
+            }
+
+            await feed.PrepareRequest();
+            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
+            FulfillBatch(batch1);
+
+            feed.Reset();
+
+            await feed.PrepareRequest();
+            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
+            FulfillBatch(batch2);
+
+            feed.HandleResponse(batch2);
+            feed.HandleResponse(batch1);
+        }
+
+        [Test]
         public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
@@ -79,5 +117,38 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.CurrentState.Should().Be(SyncFeedState.Finished);
             measuredProgress.HasEnded.Should().BeTrue();
         }
+
+        [Test]
+        public async Task Can_resume_downloading_from_parent_of_lowest_inserted_header()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader
+                .WithNumber(500)
+                .WithTotalDifficulty(10_000_000)
+                .TestObject);
+
+            ISyncReport report = Substitute.For<ISyncReport>();
+            report.HeadersInQueue.Returns(new MeasuredProgress());
+            report.FastBlocksHeaders.Returns(new MeasuredProgress());
+
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            feed.InitializeFeed();
+            var result = await feed.PrepareRequest();
+            result.EndNumber.Should().Be(499);
+        }
+
+        private class ResettableHeaderSyncFeed : HeadersSyncFeed
+        {
+            public ResettableHeaderSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree? blockTree, ISyncPeerPool? syncPeerPool, ISyncConfig? syncConfig, ISyncReport? syncReport, ILogManager? logManager, bool alwaysStartHeaderSync = false) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
+            {
+            }
+
+            public void Reset()
+            {
+                base.PostFinishCleanUp();
+                InitializeFeed();
+            }
+        }
+
     }
 }
