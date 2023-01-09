@@ -313,15 +313,17 @@ public class BeaconHeadersSyncTests
             ctx.BlockTree, ctx.BlockCacheService, LimboLogs.Instance);
         ctx.InvalidChainTracker = invalidChainTracker;
 
-        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100).TestObject;
-        HeadersSyncBatch batch = new HeadersSyncBatch();
-        batch.RequestSize = 100;
-        batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.GenesisHash, 100, 0, false);
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100, splitVariant: (int)BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        ctx.BeaconPivot = PreparePivot(99, new SyncConfig(), ctx.BlockTree,
+            syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None));
+        ctx.Feed.InitializeFeed();
+        HeadersSyncBatch batch = ctx.Feed.PrepareRequest().Result;
+        batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
         ctx.Feed.HandleResponse(batch);
 
-        Keccak lastHeader = syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None).Hash;
-        Keccak headerToInvalidate = syncedBlockTree.FindHeader(10, BlockTreeLookupOptions.None).Hash;
-        Keccak lastValidHeader = syncedBlockTree.FindHeader(9, BlockTreeLookupOptions.None).Hash;
+        Keccak lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None).Hash;
+        Keccak headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None).Hash;
+        Keccak lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None).Hash;
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
         invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Keccak storedLastValidHash).Should().BeTrue();
         storedLastValidHash.Should().Be(lastValidHeader);
