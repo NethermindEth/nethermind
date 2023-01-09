@@ -167,8 +167,8 @@ namespace Nethermind.Network.Rlpx
 
             if (_role == HandshakeRole.Recipient)
             {
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(LengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
@@ -193,8 +193,8 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
             context.Channel.Pipeline.Remove(this);
-            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
-            context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
+            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(OneTimeLengthFieldBasedFrameDecoder)}");
+            context.Channel.Pipeline.Remove<OneTimeLengthFieldBasedFrameDecoder>();
         }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
