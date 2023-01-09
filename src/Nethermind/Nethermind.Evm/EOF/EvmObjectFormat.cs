@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Extensions;
-using Nethermind.Logging;
-
 namespace Nethermind.Evm.EOF;
 
 internal static class EvmObjectFormat

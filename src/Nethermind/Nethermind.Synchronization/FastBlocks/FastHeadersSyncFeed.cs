@@ -178,20 +178,27 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
+            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+        }
+
+        public override void InitializeFeed()
+        {
+            _logger.Info("Feed reinitialized");
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            bool useSyncPivot = _blockTree.LowestInsertedHeader is null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
+            _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
+            _nextHeaderHash = _syncConfig.PivotHashParsed;
+            _nextHeaderDiff = _syncConfig.PivotTotalDifficultyParsed;
+
+            // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
-            Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
-            UInt256? startTotalDifficulty = useSyncPivot ? syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
+            if (lowestInserted != null && lowestInserted!.Number < _pivotNumber)
+            {
+                SetExpectedNextHeaderToParent(lowestInserted);
+                _lowestRequestedHeaderNumber = lowestInserted.Number;
+            }
 
-            _nextHeaderHash = startHeaderHash;
-            _nextHeaderDiff = startTotalDifficulty;
-
-            _lowestRequestedHeaderNumber = startNumber + 1;
-
-            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+            base.InitializeFeed();
         }
 
         protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
@@ -342,6 +349,12 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                 return SyncResponseHandlingResult.InternalError;
+            }
+
+            if (!_sent.ContainsKey(batch))
+            {
+                if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
+                return SyncResponseHandlingResult.Ignored;
             }
 
             if ((batch.Response?.Length ?? 0) == 0)
@@ -641,19 +654,24 @@ namespace Nethermind.Synchronization.FastBlocks
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
-                ulong nextHeaderDiff = 0;
-                _nextHeaderHash = header.ParentHash!;
-                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
-                {
-                    _nextHeaderDiff = nextHeaderDiff;
-                }
-                else
-                {
-                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-                }
+                SetExpectedNextHeaderToParent(header);
             }
 
             return insertOutcome;
+        }
+
+        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        {
+            ulong nextHeaderDiff = 0;
+            _nextHeaderHash = header.ParentHash!;
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            {
+                _nextHeaderDiff = nextHeaderDiff;
+            }
+            else
+            {
+                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+            }
         }
     }
 }
