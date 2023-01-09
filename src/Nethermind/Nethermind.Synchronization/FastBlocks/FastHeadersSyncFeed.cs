@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -64,6 +65,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
         // Stop gap method to reduce allocations from non-struct enumerator
         // https://github.com/dotnet/runtime/pull/38296
+
+        /// <summary>
+        /// Its a lock to block every processing if needed in order to reset the whole state.
+        /// </summary>
+        private readonly ReaderWriterLockSlim _resetLock = new();
+
         private IEnumerator<KeyValuePair<long, HeadersSyncBatch>>? _enumerator;
         private ulong _memoryEstimate;
         private long _headersEstimate;
@@ -183,9 +190,23 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            _logger.Info("Feed reinitialized");
-            _pivotNumber = _syncConfig.PivotNumberParsed;
+            _resetLock.EnterWriteLock();
+            try
+            {
+                PostFinishCleanUp();
+                ResetPivot();
+            }
+            finally
+            {
+                _resetLock.ExitWriteLock();
+            }
 
+            base.InitializeFeed();
+        }
+
+        protected virtual void ResetPivot()
+        {
+            _pivotNumber = _syncConfig.PivotNumberParsed;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
             _nextHeaderHash = _syncConfig.PivotHashParsed;
             _nextHeaderDiff = _syncConfig.PivotTotalDifficultyParsed;
@@ -197,11 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 SetExpectedNextHeaderToParent(lowestInserted);
                 _lowestRequestedHeaderNumber = lowestInserted.Number;
             }
-
-            base.InitializeFeed();
         }
-
-        protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
 
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastHeaders & ~SyncMode.FastBlocks;
@@ -268,36 +285,45 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
-            HandleDependentBatches(cancellationToken);
+            _resetLock.EnterReadLock();
+            try
+            {
+                HandleDependentBatches(cancellationToken);
 
-            if (_pending.TryDequeue(out HeadersSyncBatch? batch))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
-                batch!.MarkRetry();
-            }
-            else if (ShouldBuildANewBatch())
-            {
-                batch = BuildNewBatch();
-                if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
-            }
-
-            if (batch is not null)
-            {
-                _sent.TryAdd(batch, _dummyObject);
-                if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
+                if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
-                    batch.Prioritized = true;
+                    if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
+                    batch!.MarkRetry();
+                }
+                else if (ShouldBuildANewBatch())
+                {
+                    batch = BuildNewBatch();
+                    if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
-                LogStateOnPrepare();
-            }
+                if (batch is not null)
+                {
+                    _sent.TryAdd(batch, _dummyObject);
+                    if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
+                    {
+                        batch.Prioritized = true;
+                    }
 
-            return Task.FromResult(batch);
+                    LogStateOnPrepare();
+                }
+
+                return Task.FromResult(batch);
+            }
+            finally
+            {
+                _resetLock.ExitReadLock();
+            }
         }
 
-        protected virtual HeadersSyncBatch BuildNewBatch()
+        private HeadersSyncBatch BuildNewBatch()
         {
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
@@ -343,6 +369,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
         {
             if (batch is null)
@@ -351,39 +378,47 @@ namespace Nethermind.Synchronization.FastBlocks
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            if (!_sent.ContainsKey(batch))
-            {
-                if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
-                return SyncResponseHandlingResult.Ignored;
-            }
-
-            if ((batch.Response?.Length ?? 0) == 0)
-            {
-                batch.MarkHandlingStart();
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Enqueue(batch);
-                batch.MarkHandlingEnd();
-                return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
-            }
-
+            _resetLock.EnterReadLock();
             try
             {
-                if (batch.RequestSize == 0)
+                if (!_sent.ContainsKey(batch))
                 {
-                    return SyncResponseHandlingResult.OK; // 1
+                    if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
+                    return SyncResponseHandlingResult.Ignored;
                 }
 
-                lock (_handlerLock)
+                if ((batch.Response?.Length ?? 0) == 0)
                 {
                     batch.MarkHandlingStart();
-                    int added = InsertHeaders(batch);
-                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                    _pending.Enqueue(batch);
+                    batch.MarkHandlingEnd();
+                    return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                }
+
+                try
+                {
+                    if (batch.RequestSize == 0)
+                    {
+                        return SyncResponseHandlingResult.OK; // 1
+                    }
+
+                    lock (_handlerLock)
+                    {
+                        batch.MarkHandlingStart();
+                        int added = InsertHeaders(batch);
+                        return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    }
+                }
+                finally
+                {
+                    batch.MarkHandlingEnd();
+                    _sent.TryRemove(batch, out _);
                 }
             }
             finally
             {
-                batch.MarkHandlingEnd();
-                _sent.TryRemove(batch, out _);
+                _resetLock.ExitReadLock();
             }
         }
 
