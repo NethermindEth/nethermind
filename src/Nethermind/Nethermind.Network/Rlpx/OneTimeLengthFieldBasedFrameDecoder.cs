@@ -9,7 +9,7 @@ using DotNetty.Transport.Channels;
 
 namespace Nethermind.Network.Rlpx;
 
-public class OneTimeLengthFieldBasedFrameDecoder: LengthFieldBasedFrameDecoder
+public class OneTimeLengthFieldBasedFrameDecoder : LengthFieldBasedFrameDecoder
 {
     private bool _decoded;
 
