@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Jint.Native;
@@ -38,7 +39,7 @@ namespace Nethermind.Cli
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 
-                var historyManager = new StatementHistoryManager(cliConsole);
+                var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
                 ILogManager logManager = new OneLoggerLogManager(new CliLogger(cliConsole));
                 ICliEngine engine = new CliEngine(cliConsole);
                 INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);

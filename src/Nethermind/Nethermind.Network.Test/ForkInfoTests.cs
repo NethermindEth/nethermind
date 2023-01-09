@@ -217,7 +217,7 @@ namespace Nethermind.Network.Test
         {
             byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
 
-            ForkId forkId = ForkInfo.CalculateForkId(specProvider, head, headTimestamp, genesisHash);
+            ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
             byte[] forkHash = forkId.ForkHash;
             forkHash.Should().BeEquivalentTo(expectedForkHash, description);
 
