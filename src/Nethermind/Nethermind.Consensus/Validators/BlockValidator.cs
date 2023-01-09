@@ -212,7 +212,7 @@ public class BlockValidator : IBlockValidator
 
         return block.Header.WithdrawalsRoot == withdrawalsRoot;
     }
-    
+
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
 }
