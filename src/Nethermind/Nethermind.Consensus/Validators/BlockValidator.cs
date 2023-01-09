@@ -60,39 +60,39 @@ public class BlockValidator : IBlockValidator
         {
             if (!_txValidator.IsWellFormed(txs[i], spec))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid transaction {txs[i].Hash} in block {block.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
                 return false;
             }
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
-            _logger.Debug($"Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount} in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
             return false;
         }
 
         if (!ValidateUnclesHashMatches(block, out var unclesHash))
         {
-            _logger.Debug($"Uncles hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.UnclesHash}, got {unclesHash}");
+            _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
         }
 
         if (!_unclesValidator.Validate(block.Header, block.Uncles))
         {
-            _logger.Debug($"Invalid uncles in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            _logger.Debug($"{Invalid(block)} Invalid uncles");
             return false;
         }
 
         bool blockHeaderValid = _headerValidator.Validate(block.Header);
         if (!blockHeaderValid)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid header of block {block.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
             return false;
         }
 
         if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
         {
-            if (_logger.IsDebug) _logger.Debug($"Transaction root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.TxRoot}, got {txRoot}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
             return false;
         }
 
@@ -212,4 +212,7 @@ public class BlockValidator : IBlockValidator
 
         return block.Header.WithdrawalsRoot == withdrawalsRoot;
     }
+    
+    private static string Invalid(Block block) =>
+        $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
 }
