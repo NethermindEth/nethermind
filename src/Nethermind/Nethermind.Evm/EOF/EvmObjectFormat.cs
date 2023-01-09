@@ -190,14 +190,14 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            int codeSectionsSize = typeSection.EndOffset;
+            int codeSectionsSizeUpToNow = 0;
             SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
             for (ushort i = 0; i < numberOfCodeSections; i++)
             {
                 int currentCodeSizeOffset = CODESIZE_OFFSET + i * TWO_BYTE_LENGTH; // offset of i'th code size
                 SectionHeader codeSection = new()
                 {
-                    Start = codeSectionsSize,
+                    Start = typeSection.EndOffset + codeSectionsSizeUpToNow,
                     Size = GetUInt16(container, currentCodeSizeOffset)
                 };
 
@@ -208,7 +208,7 @@ internal static class EvmObjectFormat
                 }
 
                 codeSections[i] = codeSection;
-                codeSectionsSize += codeSection.Size;
+                codeSectionsSizeUpToNow += codeSection.Size;
             }
 
             if (container[KIND_DATA_OFFSET + dynamicOffset] != KIND_DATA)
@@ -236,7 +236,7 @@ internal static class EvmObjectFormat
                 Version = VERSION,
                 TypeSection = typeSection,
                 CodeSections = codeSections,
-                CodeSectionsSize = codeSectionsSize,
+                CodeSectionsSize = codeSectionsSizeUpToNow,
                 DataSection = dataSection
             };
 

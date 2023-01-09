@@ -22,10 +22,10 @@ do
 
   curl https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE \
     -X POST \
+    --fail-with-body \
     -# \
     -F "files=@$PWD/$FILE_NAME" \
-    -F "files=@$PWD/$FILE_NAME.asc" \
-    --fail
+    -F "files=@$PWD/$FILE_NAME.asc"
 done
 
 echo "Publishing completed"

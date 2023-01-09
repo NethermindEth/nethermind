@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -14,28 +16,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Bloom
 {
+    [Parallelizable(ParallelScope.All)]
     public class BloomStorageTests
     {
-        private IBloomConfig _config = null!;
-        private MemDb _bloomDb = null!;
-        private InMemoryDictionaryFileStoreFactory _fileStoreFactory = null!;
-
-
-        [SetUp]
-        public void SetUp()
-        {
-            _config = new BloomConfig();
-            _bloomDb = new MemDb();
-            _fileStoreFactory = new InMemoryDictionaryFileStoreFactory();
-        }
-
         [TestCase(0, 0)]
         [TestCase(1, 1)]
         [TestCase(0, 10)]
         [TestCase(10, 12)]
         public void Empty_storage_does_not_contain_blocks(long from, long to)
         {
-            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
+            BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             storage.ContainsRange(from, to).Should().BeFalse();
         }
 
@@ -46,10 +36,10 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Initialized_storage_contain_blocks_as_db(long from, long to)
         {
-            var memColumnsDb = _bloomDb;
+            MemDb memColumnsDb = new();
             memColumnsDb.Set(BloomStorage.MinBlockNumberKey, 1L.ToBigEndianByteArrayWithoutLeadingZeros());
             memColumnsDb.Set(BloomStorage.MaxBlockNumberKey, 11L.ToBigEndianByteArrayWithoutLeadingZeros());
-            var storage = new BloomStorage(_config, memColumnsDb, _fileStoreFactory);
+            BloomStorage storage = new(new BloomConfig(), memColumnsDb, new InMemoryDictionaryFileStoreFactory());
             return storage.ContainsRange(from, to);
         }
 
@@ -60,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Contain_blocks_after_store(long from, long to)
         {
-            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
+            BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
             for (long i = 1; i < 11; i++)
             {
@@ -75,11 +65,11 @@ namespace Nethermind.Blockchain.Test.Bloom
             get
             {
                 IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(i => (long)i);
-                var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
+                int searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
 
-                var bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
-                var count = bucketItems * Buckets;
-                var maxIndex = count - 1;
+                int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
+                int count = bucketItems * Buckets;
+                int maxIndex = count - 1;
                 yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
                 yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
                 yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
@@ -92,10 +82,10 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCaseSource(nameof(GetBloomsTestCases))]
         public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<long> expectedBlocks, long expectedBloomsChecked)
         {
-            var storage = CreateBloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } });
+            BloomStorage storage = CreateBloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } });
             long bloomsChecked = 0;
 
-            var bloomEnumeration = storage.GetBlooms(from, to);
+            IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
             IList<long> ranges = new List<long>();
             foreach (Core.Bloom unused in bloomEnumeration)
             {
@@ -154,8 +144,8 @@ namespace Nethermind.Blockchain.Test.Bloom
 
         private static BloomStorage CreateBloomStorage(BloomConfig? bloomConfig = null)
         {
-            var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-            var bucketItems = storage.MaxBucketSize * Buckets;
+            BloomStorage storage = new(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            int bucketItems = storage.MaxBucketSize * Buckets;
 
             for (long i = 0; i < bucketItems; i++)
             {
@@ -165,26 +155,63 @@ namespace Nethermind.Blockchain.Test.Bloom
             return storage;
         }
 
-        [Test]
-        public void Can_safely_insert_concurrently()
+        [TestCase(byte.MaxValue)]
+        [TestCase(ushort.MaxValue / 4)]
+        [TestCase(ushort.MaxValue, Explicit = true)]
+        [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
+        [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
+        public void Can_safely_insert_concurrently(int maxBlock)
         {
-            _config.IndexLevelBucketSizes = new[] { byte.MaxValue + 1 };
-            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
-            Core.Bloom expectedBloom = new();
-            for (int i = 0; i <= byte.MaxValue; i++)
+            BloomConfig config = new() { IndexLevelBucketSizes = new[] { 16, 16, 16 } };
+            string basePath = Path.Combine(Path.GetTempPath(), DbNames.Bloom, maxBlock.ToString());
+            try
             {
-                expectedBloom.Set(i);
+                FixedSizeFileStoreFactory fileStorageFactory = new(basePath, DbNames.Bloom, Core.Bloom.ByteLength);
+                using BloomStorage storage = new(config, new MemDb(), fileStorageFactory);
+
+                Parallel.For(0, maxBlock + 1,
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
+                    i =>
+                    {
+                        Core.Bloom bloom = new();
+                        bloom.Set(i % Core.Bloom.BitLength);
+                        storage.Store(i, bloom);
+                    });
+
+                IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
+                int j = 0;
+                foreach (Core.Bloom bloom in blooms)
+                {
+                    j++;
+                    (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
+                    int fromBlock = (int)(currentIndices.FromBlock % Core.Bloom.BitLength);
+                    int toBlock = (int)(Math.Min(currentIndices.ToBlock, maxBlock) % Core.Bloom.BitLength);
+                    Core.Bloom expectedBloom = new();
+                    for (int i = fromBlock; i <= toBlock; i++)
+                    {
+                        expectedBloom.Set(i);
+                    }
+
+                    bloom.Should().Be(expectedBloom, $"blocks <{currentIndices.FromBlock}, {currentIndices.ToBlock}>");
+                    blooms.TryGetBlockNumber(out _);
+                }
+
+                TestContext.WriteLine($"Checked {j} blooms");
             }
-
-            Parallel.For(0, byte.MaxValue * byte.MaxValue * 2, i =>
+            finally
             {
-                var bloom = new Core.Bloom();
-                bloom.Set(i % Core.Bloom.BitLength);
-                storage.Store(i, bloom);
-            });
+                Directory.Delete(basePath, true);
+            }
+        }
 
-            var first = storage.GetBlooms(0, byte.MaxValue * 3).First();
-            first.Should().Be(expectedBloom);
+        private IEnumerable<(Core.Bloom Bloom, (long FromBlock, long ToBlock) CurrentIndices)> Unwind(IBloomEnumeration blooms)
+        {
+            foreach (Core.Bloom bloom in blooms)
+            {
+                (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
+                yield return (bloom, currentIndices);
+                blooms.TryGetBlockNumber(out _);
+            }
         }
     }
 }
