@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public void Finish()
         {
             ChangeState(SyncFeedState.Finished);
-            GC.Collect(2, GCCollectionMode.Aggressive);
+            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
         }
         public Task FeedTask => _taskCompletionSource.Task;
 
