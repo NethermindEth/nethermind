@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
@@ -179,6 +180,14 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
+        public static int GetImmediateCount(this Instruction instruction, byte jumpvCount = 0)
+            => instruction switch
+            {
+                Instruction.RJUMP or Instruction.RJUMPI => EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
+                Instruction.RJUMPV => jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH,
+                >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                _ => 0
+            };
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
