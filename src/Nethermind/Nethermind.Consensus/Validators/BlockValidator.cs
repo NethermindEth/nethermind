@@ -63,7 +63,6 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsDebug) _logger.Debug($"Invalid transaction {txs[i].Hash} in block {block.ToString(Block.Format.FullHashAndNumber)}");
                 return false;
             }
-
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
@@ -176,9 +175,7 @@ public class BlockValidator : IBlockValidator
 
         if (block.Withdrawals is not null)
         {
-            Keccak? withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
-
-            if (withdrawalsRoot != block.Header.WithdrawalsRoot)
+            if (ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
             {
                 error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -203,5 +200,16 @@ public class BlockValidator : IBlockValidator
         unclesHash = UnclesHash.Calculate(block);
 
         return block.Header.UnclesHash == unclesHash;
+    }
+
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Keccak? withdrawalsRoot)
+    {
+        withdrawalsRoot = null;
+        if (block.Withdrawals == null)
+            return block.Header.WithdrawalsRoot == null;
+
+        withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
+
+        return block.Header.WithdrawalsRoot == withdrawalsRoot;
     }
 }
