@@ -183,18 +183,20 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
+            _logger.Info("Feed reinitialized");
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            bool useSyncPivot = _blockTree.LowestInsertedHeader is null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
+            _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
+            _nextHeaderHash = _syncConfig.PivotHashParsed;
+            _nextHeaderDiff = _syncConfig.PivotTotalDifficultyParsed;
+
+            // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
-            Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
-            UInt256? startTotalDifficulty = useSyncPivot ? _syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
-
-            _nextHeaderHash = startHeaderHash;
-            _nextHeaderDiff = startTotalDifficulty;
-
-            _lowestRequestedHeaderNumber = startNumber + 1;
+            if (lowestInserted != null && lowestInserted!.Number < _pivotNumber)
+            {
+                SetExpectedNextHeaderToParent(lowestInserted);
+                _lowestRequestedHeaderNumber = lowestInserted.Number;
+            }
 
             base.InitializeFeed();
         }
@@ -652,19 +654,24 @@ namespace Nethermind.Synchronization.FastBlocks
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
-                ulong nextHeaderDiff = 0;
-                _nextHeaderHash = header.ParentHash!;
-                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
-                {
-                    _nextHeaderDiff = nextHeaderDiff;
-                }
-                else
-                {
-                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-                }
+                SetExpectedNextHeaderToParent(header);
             }
 
             return insertOutcome;
+        }
+
+        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        {
+            ulong nextHeaderDiff = 0;
+            _nextHeaderHash = header.ParentHash!;
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            {
+                _nextHeaderDiff = nextHeaderDiff;
+            }
+            else
+            {
+                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+            }
         }
     }
 }
