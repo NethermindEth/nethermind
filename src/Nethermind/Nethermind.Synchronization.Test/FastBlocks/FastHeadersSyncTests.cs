@@ -118,6 +118,25 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             measuredProgress.HasEnded.Should().BeTrue();
         }
 
+        [Test]
+        public async Task Can_resume_downloading_from_parent_of_lowest_inserted_header()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader
+                .WithNumber(500)
+                .WithTotalDifficulty(10_000_000)
+                .TestObject);
+
+            ISyncReport report = Substitute.For<ISyncReport>();
+            report.HeadersInQueue.Returns(new MeasuredProgress());
+            report.FastBlocksHeaders.Returns(new MeasuredProgress());
+
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            feed.InitializeFeed();
+            var result = await feed.PrepareRequest();
+            result.EndNumber.Should().Be(499);
+        }
+
         private class ResettableHeaderSyncFeed : HeadersSyncFeed
         {
             public ResettableHeaderSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree? blockTree, ISyncPeerPool? syncPeerPool, ISyncConfig? syncConfig, ISyncReport? syncReport, ILogManager? logManager, bool alwaysStartHeaderSync = false) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
