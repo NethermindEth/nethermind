@@ -175,7 +175,7 @@ public class BlockValidator : IBlockValidator
 
         if (block.Withdrawals is not null)
         {
-            if (ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
+            if (!ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
             {
                 error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
