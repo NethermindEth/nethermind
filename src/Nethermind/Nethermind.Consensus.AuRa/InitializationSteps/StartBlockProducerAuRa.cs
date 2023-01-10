@@ -9,6 +9,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -165,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             };
         }
 
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
@@ -266,7 +267,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return _blockProducerContext ??= Create();
         }
 
-        internal ITxSource CreateStandardTxSourceForProducer(
+        private ITxSource CreateStandardTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);

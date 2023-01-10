@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -12,12 +13,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 {
     public class PostMergeBlockProducerFactory
     {
-        private readonly ISpecProvider _specProvider;
-        private readonly ISealEngine _sealEngine;
-        private readonly ITimestamper _timestamper;
-        private readonly IBlocksConfig _blocksConfig;
-        private readonly ILogManager _logManager;
-        private readonly IGasLimitCalculator? _gasLimitCalculator;
+        protected readonly ISpecProvider _specProvider;
+        protected readonly ISealEngine _sealEngine;
+        protected readonly ITimestamper _timestamper;
+        protected readonly IBlocksConfig _blocksConfig;
+        protected readonly ILogManager _logManager;
+        protected readonly IGasLimitCalculator? _gasLimitCalculator;
 
         public PostMergeBlockProducerFactory(
             ISpecProvider specProvider,
@@ -35,7 +36,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             _gasLimitCalculator = gasLimitCalculator;
         }
 
-        public PostMergeBlockProducer Create(
+        public virtual PostMergeBlockProducer Create(
             BlockProducerEnv producerEnv,
             IBlockProductionTrigger blockProductionTrigger,
             ITxSource? txSource = null)

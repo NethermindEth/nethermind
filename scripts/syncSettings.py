@@ -80,11 +80,6 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
-    "xdai_mev": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     # aa section
     "mainnet_aa": {
         "url": "api.etherscan.io",
