@@ -132,14 +132,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         return base.PrepareRequest(cancellationToken);
     }
 
-    protected override int InsertHeaders(HeadersSyncBatch batch, bool onlyCache = false)
+    protected override int InsertHeaders(HeadersSyncBatch batch)
     {
         if (batch.Response is not null)
         {
             ConnectHeaderChainInInvalidChainTracker(batch.Response);
         }
 
-        return base.InsertHeaders(batch, onlyCache);
+        return base.InsertHeaders(batch);
     }
 
     private void ConnectHeaderChainInInvalidChainTracker(IReadOnlyList<BlockHeader?> batchResponse)

@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, CancellationToken cancellationToken, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
         {
             FallAsleep();
             return SyncResponseHandlingResult.OK;

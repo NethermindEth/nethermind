@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.Blocks
         // ReSharper disable once RedundantTypeArgumentsOfMethod
         public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => Task.FromResult<BlocksRequest?>(_blocksRequest);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, CancellationToken cancellationToken, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {
             FallAsleep();
             return SyncResponseHandlingResult.OK;

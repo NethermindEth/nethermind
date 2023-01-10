@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, CancellationToken cancellationToken, PeerInfo peer)
+        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
         {
             if (batch is null)
             {

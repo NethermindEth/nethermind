@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            DoHandleResponse(request, cancellationToken);
+                            DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     return;
                 }
 
-                DoHandleResponse(request, cancellationToken, allocatedPeer);
+                DoHandleResponse(request, allocatedPeer);
             }
             finally
             {
@@ -149,11 +149,11 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private void DoHandleResponse(T request, CancellationToken cancellationToken, PeerInfo? allocatedPeer = null)
+        private void DoHandleResponse(T request, PeerInfo? allocatedPeer = null)
         {
             try
             {
-                SyncResponseHandlingResult result = Feed.HandleResponse(request, cancellationToken, allocatedPeer);
+                SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                 ReactToHandlingResult(request, result, allocatedPeer);
             }
             catch (ObjectDisposedException)

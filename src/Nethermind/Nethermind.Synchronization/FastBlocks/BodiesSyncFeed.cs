@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, CancellationToken cancellationToken, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
         {
             batch?.MarkHandlingStart();
             try

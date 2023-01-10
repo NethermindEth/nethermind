@@ -319,7 +319,7 @@ public class BeaconHeadersSyncTests
         ctx.Feed.InitializeFeed();
         HeadersSyncBatch batch = ctx.Feed.PrepareRequest().Result;
         batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
-        ctx.Feed.HandleResponse(batch, CancellationToken.None);
+        ctx.Feed.HandleResponse(batch);
 
         Keccak lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None).Hash;
         Keccak headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None).Hash;
@@ -361,7 +361,7 @@ public class BeaconHeadersSyncTests
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToArray();
 
-        ctx.Feed.HandleResponse(request, CancellationToken.None);
+        ctx.Feed.HandleResponse(request);
 
         // Ensure pivot happens which reset lowest inserted beacon header further ahead.
         ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber + 10));
@@ -375,7 +375,7 @@ public class BeaconHeadersSyncTests
         request.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToArray();
-        ctx.Feed.HandleResponse(request, CancellationToken.None);
+        ctx.Feed.HandleResponse(request);
 
         // It should complete successfully
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
@@ -424,14 +424,14 @@ public class BeaconHeadersSyncTests
             HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
             batch.Should().NotBeNull();
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
-            ctx.Feed.HandleResponse(batch, CancellationToken.None);
+            ctx.Feed.HandleResponse(batch);
             lowestHeaderNumber = lowestHeaderNumber - batch.RequestSize < endLowestBeaconHeader
                 ? endLowestBeaconHeader
                 : lowestHeaderNumber - batch.RequestSize;
-        }
 
-        BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
-        Assert.That(() => blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader.Number).After(1000, 100));
+            BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
+            blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
+        }
     }
 
     private void BuildHeadersSyncBatchResponse(HeadersSyncBatch batch, IBlockTree blockTree)
