@@ -385,7 +385,7 @@ public partial class EngineModuleTests
             {
                 LatestValidHash = startingHead,
                 Status = PayloadStatus.Invalid,
-                ValidationError = string.Format(input.ErrorMessage, $"in block {blockHash} ")
+                ValidationError = string.Format(input.ErrorMessage, $"in block 1 ({blockHash}) ")
             }
         }));
     }
