@@ -42,13 +42,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             if (byteBuffer.ReadableBytes == 0)
             {
-                return new ReceiptsMessage(null);
+                return ReceiptsMessage.Empty;
             }
 
             if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
             {
                 byteBuffer.ReadByte();
-                return new ReceiptsMessage(null);
+                return ReceiptsMessage.Empty;
             }
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
