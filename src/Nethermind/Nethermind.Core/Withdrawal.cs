@@ -38,4 +38,9 @@ public class Withdrawal
         .Append($"{nameof(Address)}: {Address}, ")
         .Append($"{nameof(Amount)}: {Amount}}}")
         .ToString();
+
+    public Withdrawal Clone()
+    {
+        return (Withdrawal)MemberwiseClone();
+    }
 }

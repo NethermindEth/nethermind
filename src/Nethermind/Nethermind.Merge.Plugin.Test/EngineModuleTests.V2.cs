@@ -538,15 +538,15 @@ public partial class EngineModuleTests
     {
         yield return (new[] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
         yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth } }, new[] { (TestItem.AddressA, 1.Ether()), (TestItem.AddressB, 2.Ether()) });
-        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) });
-        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth } }, new[] { (TestItem.AddressA, 3.Ether()), (TestItem.AddressB, 0.Ether()) });
+        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth.Clone().WithIndex(2) } }, new[] { (TestItem.AddressA, 2.Ether()), (TestItem.AddressB, 0.Ether()) });
+        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth.Clone().WithIndex(2) }, new[] { TestItem.WithdrawalA_1Eth } }, new[] { (TestItem.AddressA, 3.Ether()), (TestItem.AddressB, 0.Ether()) });
         yield return (new[]
         {
-            new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
-            new[] { TestItem.WithdrawalA_1Eth }, // 2nd payload
+            new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth.Clone().WithIndex(2) }, // 1st payload
+            new[] { TestItem.WithdrawalA_1Eth.Clone().WithIndex(3) }, // 2nd payload
             Array.Empty<Withdrawal>(), // 3rd payload
-            new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
-            new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
+            new[] { TestItem.WithdrawalA_1Eth.Clone().WithIndex(4), TestItem.WithdrawalC_3Eth.Clone().WithIndex(5) }, // 4th payload
+            new[] { TestItem.WithdrawalB_2Eth.Clone().WithIndex(6), TestItem.WithdrawalF_6Eth.Clone().WithIndex(7) }, // 5th payload
         }, new[] { (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()), (TestItem.AddressF, 6.Ether()) });
     }
 }

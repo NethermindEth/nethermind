@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -155,37 +156,47 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
     {
+        static bool Fail(ILogger logger, string error)
+        {
+            if (logger.IsWarn) logger.Warn(error);
+            return false;
+        }
+
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            error = $"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.";
-
-            if (_logger.IsWarn) _logger.Warn(error);
-
-            return false;
+            return Fail(_logger, error = $"Withdrawals cannot be null in block {block.ToString(Block.Format.FullHashAndNumber)} when EIP-4895 activated.");
         }
 
         if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
         {
-            error = $"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.";
-
-            if (_logger.IsWarn) _logger.Warn(error);
-
-            return false;
+            return Fail(_logger, error = $"Withdrawals must be null in block {block.ToString(Block.Format.FullHashAndNumber)} when EIP-4895 not activated.");
         }
 
         if (block.Withdrawals is not null)
         {
             if (!ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
             {
-                error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+                return Fail(_logger, error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+            }
 
-                return false;
+            // We should initialize it from parent?
+            ulong expectedIndex = block.Withdrawals.FirstOrDefault()?.Index ?? 0;
+            for (int i = 0; i < block.Withdrawals.Length; i++)
+            {
+                Withdrawal withdrawal = block.Withdrawals[i];
+                if (withdrawal.Amount.IsZero)
+                {
+                    return Fail(_logger, error = $"Withdrawal {i} has amount 0 in block {block.ToString(Block.Format.FullHashAndNumber)}");
+                }
+
+                if (withdrawal.Index != expectedIndex++)
+                {
+                    return Fail(_logger, error = $"Withdrawal {i} has unexpected index in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {expectedIndex}, got {withdrawal.Index}");
+                }
             }
         }
 
         error = null;
-
         return true;
     }
 
