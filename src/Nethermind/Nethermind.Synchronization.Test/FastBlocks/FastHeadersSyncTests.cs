@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -81,8 +82,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             HeadersSyncBatch? batch2 = await feed.PrepareRequest();
             FulfillBatch(batch2);
 
-            feed.HandleResponse(batch2);
-            feed.HandleResponse(batch1);
+            feed.HandleResponse(batch2, CancellationToken.None);
+            feed.HandleResponse(batch1, CancellationToken.None);
         }
 
         [Test]

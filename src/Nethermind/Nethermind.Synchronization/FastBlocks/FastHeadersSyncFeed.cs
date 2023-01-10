@@ -39,7 +39,6 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
 
         private readonly object _dummyObject = new();
-        private readonly object _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         protected long _lowestRequestedHeaderNumber;
@@ -338,39 +337,36 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_logger.IsDebug) _logger.Debug($"FastHeader LogStateOnPrepare: LOWEST_INSERTED {LowestInsertedBlockHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
             if (_logger.IsTrace)
             {
-                lock (_handlerLock)
+                ConcurrentDictionary<long, string> all = new();
+                StringBuilder builder = new();
+                builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
+                foreach (var headerDependency in _dependencies)
                 {
-                    ConcurrentDictionary<long, string> all = new();
-                    StringBuilder builder = new();
-                    builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
-                    foreach (var headerDependency in _dependencies)
-                    {
-                        all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
-                    }
-
-                    foreach (var pendingBatch in _pending)
-                    {
-                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
-                    }
-
-                    foreach (var sentBatch in _sent)
-                    {
-                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
-                    }
-
-                    foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
-                    {
-                        builder.AppendLine(keyValuePair.Value);
-                    }
-
-                    _logger.Trace($"{builder}");
+                    all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
                 }
+
+                foreach (var pendingBatch in _pending)
+                {
+                    all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                }
+
+                foreach (var sentBatch in _sent)
+                {
+                    all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                }
+
+                foreach (KeyValuePair<long, string> keyValuePair in all
+                    .OrderByDescending(kvp => kvp.Key))
+                {
+                    builder.AppendLine(keyValuePair.Value);
+                }
+
+                _logger.Trace($"{builder}");
             }
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, CancellationToken cancellationToken, PeerInfo peer = null)
         {
             if (batch is null)
             {
@@ -403,12 +399,16 @@ namespace Nethermind.Synchronization.FastBlocks
                         return SyncResponseHandlingResult.OK; // 1
                     }
 
-                    lock (_handlerLock)
-                    {
-                        batch.MarkHandlingStart();
-                        int added = InsertHeaders(batch);
-                        return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
-                    }
+                    batch.MarkHandlingStart();
+
+                    // Cache only here as inserting is a bit slow and we are within a lock. HandleDependentBatches should insert them later.
+                    int added = InsertHeaders(batch, onlyCache: true);
+
+                    // HandleDependentBatches check and remove from dependencies dictionary which is thread safe, so we
+                    // can get away without a lock.
+                    HandleDependentBatches(cancellationToken);
+
+                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
                 }
                 finally
                 {
@@ -453,7 +453,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return dependentBatch;
         }
 
-        protected virtual int InsertHeaders(HeadersSyncBatch batch)
+        protected virtual int InsertHeaders(HeadersSyncBatch batch, bool onlyCache = false)
         {
             if (batch.Response is null)
             {
@@ -519,66 +519,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         break;
                     }
-
-                    // response needs to be cached until predecessors arrive
-                    if (header.Hash != _nextHeaderHash)
-                    {
-                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
-                            if (batch.ResponseSourcePeer is not null)
-                            {
-                                _syncPeerPool.ReportBreachOfProtocol(
-                                    batch.ResponseSourcePeer,
-                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
-                                    "headers - different branch");
-                            }
-
-                            break;
-                        }
-
-                        if (header.Number == LowestInsertedBlockHeader?.Number)
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                            if (batch.ResponseSourcePeer is not null)
-                            {
-                                _syncPeerPool.ReportBreachOfProtocol(
-                                    batch.ResponseSourcePeer,
-                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
-                                    "headers - different branch");
-                            }
-
-                            break;
-                        }
-
-                        if (_dependencies.ContainsKey(header.Number))
-                        {
-                            _pending.Enqueue(batch);
-                            throw new InvalidOperationException($"Only one header dependency expected ({batch})");
-                        }
-
-                        for (int j = 0; j < batch.Response.Length; j++)
-                        {
-                            BlockHeader? current = batch.Response[j];
-                            if (current is not null)
-                            {
-                                addedEarliest = Math.Min(addedEarliest, current.Number);
-                                addedLast = Math.Max(addedLast, current.Number);
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-
-                        HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                        _dependencies[header.Number] = dependentBatch;
-                        MarkDirty();
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
-
-                        // but we cannot do anything with it yet
-                        break;
-                    }
                 }
                 else
                 {
@@ -592,6 +532,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         break;
                     }
+                }
+
+                // response needs to be cached until predecessors arrive
+                if ((isFirst && header.Hash != _nextHeaderHash) || onlyCache)
+                {
+                    CacheResponse(batch, header, ref addedEarliest, ref addedLast);
+
+                    // but we cannot do anything with it yet
+                    break;
                 }
 
                 header.TotalDifficulty = _nextHeaderDiff;
@@ -664,6 +613,48 @@ namespace Nethermind.Synchronization.FastBlocks
 
             HeadersSyncQueueReport.Update(HeadersInQueue);
             return added;
+        }
+
+        private void CacheResponse(HeadersSyncBatch batch, BlockHeader? header, ref long addedEarliest, ref long addedLast)
+        {
+            if (header.Number == LowestInsertedBlockHeader?.Number)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
+                if (batch.ResponseSourcePeer is not null)
+                {
+                    _syncPeerPool.ReportBreachOfProtocol(
+                        batch.ResponseSourcePeer,
+                        InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
+                        "headers - different branch");
+                }
+
+                return;
+            }
+
+            if (_dependencies.ContainsKey(header.Number))
+            {
+                _pending.Enqueue(batch);
+                throw new InvalidOperationException($"Only one header dependency expected ({batch})");
+            }
+
+            for (int j = 0; j < batch.Response.Length; j++)
+            {
+                BlockHeader? current = batch.Response[j];
+                if (current is not null)
+                {
+                    addedEarliest = Math.Min(addedEarliest, current.Number);
+                    addedLast = Math.Max(addedLast, current.Number);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+            _dependencies[header.Number] = dependentBatch;
+            MarkDirty();
+            if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
         }
 
         private void MarkDirty()

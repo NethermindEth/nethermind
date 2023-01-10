@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -203,7 +204,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_256BodiesWithOneTxEach);
             ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
-            _feed.HandleResponse(request);
+            _feed.HandleResponse(request, CancellationToken.None);
             ReceiptsSyncBatch request2 = _feed.PrepareRequest().Result;
             request2!.MinNumber.Should().Be(request!.MinNumber);
         }
@@ -323,7 +324,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
 
-            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch, CancellationToken.None);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
             _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
@@ -345,7 +346,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
 
             FillBatchResponses(batch);
-            _feed.HandleResponse(batch);
+            _feed.HandleResponse(batch, CancellationToken.None);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
             _feed.PrepareRequest().Result.Should().Be(null);
 

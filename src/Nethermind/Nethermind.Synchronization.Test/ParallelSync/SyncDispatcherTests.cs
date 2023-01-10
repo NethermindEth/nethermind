@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private ConcurrentQueue<TestBatch> _returned = new();
 
-            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo peer = null)
+            public override SyncResponseHandlingResult HandleResponse(TestBatch response, CancellationToken cancellationToken, PeerInfo peer = null)
             {
                 if (response.Result is null)
                 {
