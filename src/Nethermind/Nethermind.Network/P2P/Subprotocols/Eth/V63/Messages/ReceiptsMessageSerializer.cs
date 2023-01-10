@@ -40,7 +40,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            if (byteBuffer.ReadableBytes == 0 || byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
+            if (byteBuffer.ReadableBytes == 0)
+            {
+                return new ReceiptsMessage(null);
+            }
+
+            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
+            {
+                byteBuffer.ReadByte();
+                return new ReceiptsMessage(null);
+            }
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
