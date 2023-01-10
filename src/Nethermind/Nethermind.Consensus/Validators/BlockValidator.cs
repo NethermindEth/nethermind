@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateSuggestedBlock(Block block)
         {
             Transaction[] txs = block.Transactions;
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
             for (int i = 0; i < txs.Length; i++)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (block.Header.UnclesHash != UnclesHash.Calculate(block))
+            if (!ValidateUnclesHashMatches(block))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
@@ -88,8 +88,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            Keccak txRoot = new TxTrie(block.Transactions).RootHash;
-            if (txRoot != block.Header.TxRoot)
+            if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");
                 return false;
@@ -144,6 +143,17 @@ namespace Nethermind.Consensus.Validators
             }
 
             return isValid;
+        }
+
+        public static bool ValidateTxRootMatchesTxs(Block block, out Keccak txRoot)
+        {
+            txRoot = new TxTrie(block.Transactions).RootHash;
+            return txRoot == block.Header.TxRoot;
+        }
+
+        public static bool ValidateUnclesHashMatches(Block block)
+        {
+            return block.Header.UnclesHash == UnclesHash.Calculate(block);
         }
     }
 }

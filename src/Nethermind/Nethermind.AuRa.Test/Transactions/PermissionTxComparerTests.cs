@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -262,7 +262,9 @@ namespace Nethermind.AuRa.Test.Transactions
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec() { IsEip1559Enabled = false });
+            var spec = new ReleaseSpec() { IsEip1559Enabled = false };
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)

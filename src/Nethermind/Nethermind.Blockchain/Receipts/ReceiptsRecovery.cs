@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Receipts
                 var needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
-                    var releaseSpec = _specProvider.GetSpec(block.Number);
+                    var releaseSpec = _specProvider.GetSpec(block.Header);
                     long gasUsedBefore = 0;
                     for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
                     {

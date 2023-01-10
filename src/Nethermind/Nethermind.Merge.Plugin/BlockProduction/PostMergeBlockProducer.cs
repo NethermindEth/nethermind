@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -47,22 +48,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
         }
 
-        public Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
 
-            Block block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
-
-            // processing is only done here to apply block rewards in AuRa
-            if (TrySetState(parent.StateRoot))
-            {
-                block = ProcessPreparedBlock(block, null) ?? block;
-            }
-
-            return block;
+            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)

@@ -80,11 +80,9 @@ namespace Nethermind.Core.Test.Builders
                 receipts[i] = Build.A.Receipt.TestObject;
             }
 
-            long number = TestObjectInternal.Number;
-            ReceiptTrie receiptTrie = new(specProvider.GetSpec(number), receipts);
-            receiptTrie.UpdateRootHash();
-
             BlockBuilder result = WithTransactions(txs);
+            ReceiptTrie receiptTrie = new(specProvider.GetSpec(TestObjectInternal.Header), receipts);
+            receiptTrie.UpdateRootHash();
             TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
             return result;
         }

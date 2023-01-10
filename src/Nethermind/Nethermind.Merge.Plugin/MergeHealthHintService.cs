@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Api;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
 using Nethermind.Consensus;
 
 namespace Nethermind.Merge.Plugin
@@ -11,20 +13,20 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IHealthHintService _healthHintService;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IMergeConfig _mergeConfig;
+        private readonly IBlocksConfig _blocksConfig;
 
-        public MergeHealthHintService(IHealthHintService? healthHintService, IPoSSwitcher? poSSwitcher, IMergeConfig? mergeConfig)
+        public MergeHealthHintService(IHealthHintService? healthHintService, IPoSSwitcher? poSSwitcher, IBlocksConfig blocksConfig)
         {
             _healthHintService = healthHintService ?? throw new ArgumentNullException(nameof(healthHintService));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             if (_poSSwitcher.HasEverReachedTerminalBlock())
             {
-                return _mergeConfig.SecondsPerSlot * 6;
+                return _blocksConfig.SecondsPerSlot * 6;
             }
 
             return _healthHintService.MaxSecondsIntervalForProcessingBlocksHint();

@@ -37,6 +37,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Config;
 
 namespace Nethermind.Core.Test.Blockchain
 {
@@ -259,7 +260,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(
                 EthereumEcdsa,
-                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
                 new TxValidator(SpecProvider.ChainId),
                 LogManager,
@@ -267,8 +268,12 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider, blocksConfig);
             return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 

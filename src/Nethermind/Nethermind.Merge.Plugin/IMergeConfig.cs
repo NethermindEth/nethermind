@@ -33,7 +33,8 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Terminal PoW block number used for transition process.")]
         public long? TerminalBlockNumber { get; set; }
 
-        [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
+        [ConfigItem(Description = "Deprecated since v1.14.7. Please use BlocksConfig.SecondsPerSlot. " +
+            "Seconds per slot.", DefaultValue = "12")]
         public ulong SecondsPerSlot { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]

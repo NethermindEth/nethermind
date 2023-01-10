@@ -1,17 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Merge.Plugin;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Db;
-using Nethermind.Blockchain;
-using Nethermind.State;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Db;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -45,27 +49,35 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
+        public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
+            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
+                (AuRaNethermindApi)_api,
+                _api.Config<IAuraConfig>(),
+                _api.DisposeStack,
+                _api.DbProvider!,
+                _api.BlockTree!,
+                _api.ReadOnlyTrieStore!,
+                _api.SpecProvider!,
+                _api.BlockValidator!,
+                _api.RewardCalculatorSource!,
+                _api.ReceiptStorage!,
+                _api.BlockPreprocessor!,
+                _api.TxPool!,
+                _api.TransactionComparerProvider!,
+                _api.Config<IBlocksConfig>(),
+                _api.LogManager);
 
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
-
-            return new StartBlockProducerAuRa(_auraApi!)
-                .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
+            return base.InitBlockProducer(consensusPlugin);
         }
+
+        protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
+            => new AuRaPostMergeBlockProducerFactory(
+                _api.SpecProvider!,
+                _api.SealEngine,
+                _manualTimestamper!,
+                _blocksConfig,
+                _api.LogManager);
 
         private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
 

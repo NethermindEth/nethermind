@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -168,7 +169,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec(1));
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec((ForkActivation)1));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.SenderIsContract);
         }
@@ -181,7 +182,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -221,6 +222,7 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
             return specProvider;
         }
 
@@ -359,7 +361,11 @@ namespace Nethermind.TxPool.Test
         public void should_accept_tx_when_base_fee_is_high()
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) { Eip1559TransitionBlock = 1 });
-            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(1.GWei(), specProvider), LimboLogs.Instance);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 1.GWei()
+            };
+            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig, specProvider), LimboLogs.Instance);
             _txPool = CreatePool(specProvider: specProvider, incomingTxFilter: incomingTxFilter);
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(Transaction.BaseTxGasCost)

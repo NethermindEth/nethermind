@@ -26,7 +26,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void WithoutInheritance()
         {
-            var spec = _provider.GetSpec(0L);
+            var spec = _provider.GetSpec((ForkActivation)0L);
             _ = spec.UseTxAccessLists;
         }
 
