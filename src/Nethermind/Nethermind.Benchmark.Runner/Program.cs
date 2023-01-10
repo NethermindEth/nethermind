@@ -122,11 +122,22 @@ namespace Nethermind.Benchmark.Runner
                         firstLine = false;
                     }
 
-                    var jsonS = Newtonsoft.Json.JsonConvert.SerializeObject(report.BenchmarkCase.Parameters.Items[0].Value);
-                    dynamic des = Newtonsoft.Json.JsonConvert.DeserializeObject(jsonS);
+                    var parameterJson = Newtonsoft.Json.JsonConvert.SerializeObject(report.BenchmarkCase.Parameters.Items[0].Value);
+                    dynamic parameter = Newtonsoft.Json.JsonConvert.DeserializeObject(parameterJson);
+
+                    long gasCost = parameter.GasCost;
+                    string testName = parameter.Name;
+
+                    // if gas is missing try to extract from the file name
+                    if (gasCost == 0 && testName.EndsWith(".csv"))
+                    {
+                        var gasCostString = testName.Substring(0, testName.Length - 4).Split('_').Last();
+                        long.TryParse(gasCostString, out gasCost);
+                    }
 
                     var memAllocPerOp = report.GcStats.GetBytesAllocatedPerOperation(report.BenchmarkCase);
-                    Console.WriteLine($"{bType.Name},{des.Name},{des.GasCost},{report.ResultStatistics.N},{report.ResultStatistics.Mean},{report.GcStats.TotalOperations},{memAllocPerOp}");
+
+                    Console.WriteLine($"{bType.Name},{parameter.Name},{gasCost},{report.ResultStatistics.N},{report.ResultStatistics.Mean},{report.GcStats.TotalOperations},{memAllocPerOp}");
                 }
             }
         }

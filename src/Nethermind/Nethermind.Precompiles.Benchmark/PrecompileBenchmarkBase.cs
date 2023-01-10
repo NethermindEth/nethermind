@@ -62,10 +62,12 @@ namespace Nethermind.Precompiles.Benchmark
                     List<Param> inputs = new List<Param>();
                     foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
                     {
+                        var fi = new FileInfo(file);
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
                             .Select(LineToTestInput).Take(1).ToArray()
-                            .Select(i => new Param(precompile, file, i, null, precompile.BaseGasCost(ReleaseSpec))));
+                            .Select(i => 
+                            new Param(precompile, fi.Name, i, null, precompile.BaseGasCost(ReleaseSpec) + precompile.DataGasCost(i, ReleaseSpec))));
                     }
 
                     foreach (string file in Directory.GetFiles($"{InputsDirectory}/current", "*.json", SearchOption.TopDirectoryOnly))
