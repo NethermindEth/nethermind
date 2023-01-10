@@ -285,7 +285,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
             _resetLock.EnterReadLock();
@@ -369,7 +368,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
         {
             if (batch is null)
