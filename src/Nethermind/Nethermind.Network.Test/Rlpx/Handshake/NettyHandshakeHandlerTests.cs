@@ -131,6 +131,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             NettyHandshakeHandler handler = CreateHandler(HandshakeRole.Initiator);
             bool received = false;
+            _channelHandlerContext.Allocator.Returns(UnpooledByteBufferAllocator.Default);
             _channelHandlerContext.When(x => x.WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8))))
                 .Do(c => received = true);
             handler.ChannelActive(_channelHandlerContext);
@@ -203,6 +204,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             bool received = false;
             NettyHandshakeHandler handler = CreateHandler();
+            _channelHandlerContext.Allocator.Returns(UnpooledByteBufferAllocator.Default);
             _channelHandlerContext.When(x => x.WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8))))
                 .Do(_ => received = true);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
