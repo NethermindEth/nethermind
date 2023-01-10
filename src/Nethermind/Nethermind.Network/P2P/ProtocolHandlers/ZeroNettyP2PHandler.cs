@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
 
 
-                IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(uncompressedLength);
+                IByteBuffer output = ctx.Allocator.Buffer(uncompressedLength);
 
                 try
                 {
