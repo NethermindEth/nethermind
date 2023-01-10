@@ -279,9 +279,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Spec) transition) =>
             activation.CompareTo(transition.Activation);
 
-        private static int CompareTransitionOnTimestamp(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Spec) transition) =>
-            activation.Timestamp!.Value.CompareTo(transition.Activation.Timestamp);
-
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public ulong ChainId => _chainSpec.ChainId;

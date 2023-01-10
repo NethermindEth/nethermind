@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
@@ -82,8 +83,8 @@ namespace Nethermind.Evm
         NOP = 0x5b,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
-        RJUMPV = 0x5e, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
         JUMPSUB = 0x5e, // SubroutinesEnabled
@@ -182,6 +183,14 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
+        public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
+            => instruction switch
+            {
+                Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
+                >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                _ => 0
+            };
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,

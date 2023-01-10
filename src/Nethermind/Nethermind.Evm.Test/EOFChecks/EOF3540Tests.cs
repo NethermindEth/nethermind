@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,7 +12,7 @@ using NUnit.Framework;
 using static Nethermind.Evm.Test.EofTestsBase;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
-namespace Nethermind.Evm.Test.EOFChecks
+namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
@@ -20,6 +20,7 @@ namespace Nethermind.Evm.Test.EOFChecks
     public class EOF3540Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
@@ -32,7 +33,7 @@ namespace Nethermind.Evm.Test.EOFChecks
         {
             get
             {
-                ScenarioCase basecase = new(
+                ScenarioCase baseCase = new(
                     Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
@@ -55,7 +56,7 @@ namespace Nethermind.Evm.Test.EOFChecks
                 FormatScenario[] scenarios = Enum.GetValues<FormatScenario>();
                 foreach (FormatScenario scenario in scenarios)
                 {
-                    yield return basecase.GenerateFormatScenarios(scenario);
+                    yield return baseCase.GenerateFormatScenarios(scenario);
                 }
             }
         }
@@ -64,7 +65,7 @@ namespace Nethermind.Evm.Test.EOFChecks
         {
             get
             {
-                ScenarioCase basecase = new(
+                ScenarioCase baseCase = new(
                     Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
@@ -86,7 +87,7 @@ namespace Nethermind.Evm.Test.EOFChecks
                     for (int i = 2; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
-                        yield return basecase.GenerateDeploymentScenarios(scenario, context);
+                        yield return baseCase.GenerateDeploymentScenarios(scenario, context);
                     }
                 }
             }

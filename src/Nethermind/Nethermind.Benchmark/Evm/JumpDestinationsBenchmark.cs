@@ -1,13 +1,5 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
-using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -33,7 +25,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public bool Current()
         {
-            return _codeInfo.ValidateJump(0, false, Shanghai.Instance);
+            return _codeInfo.ValidateJump(0, false);
         }
     }
 }

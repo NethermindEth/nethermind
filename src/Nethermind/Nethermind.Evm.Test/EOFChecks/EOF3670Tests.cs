@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -20,6 +20,7 @@ namespace Nethermind.Evm.Test
     public class EOF3670Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
@@ -31,7 +32,7 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-                var scenarios = Enum.GetValues<BodyScenario>();
+                BodyScenario[] scenarios = Enum.GetValues<BodyScenario>();
                 for (int i = 0; i < 1 << (scenarios.Length - 1); i++)
                 {
                     BodyScenario scenario = (BodyScenario)i;
@@ -44,8 +45,8 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-                var basecase = new ScenarioCase(
-                    Functions: new FunctionCase[] {
+                ScenarioCase baseCase = new(
+                    Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
                             OutputCount : 0,
@@ -59,14 +60,14 @@ namespace Nethermind.Evm.Test
                 );
 
 
-                var scenarios = Enum.GetValues<DeploymentScenario>();
-                var contexts = Enum.GetValues<DeploymentContext>();
-                foreach (var context in contexts)
+                DeploymentScenario[] scenarios = Enum.GetValues<DeploymentScenario>();
+                DeploymentContext[] contexts = Enum.GetValues<DeploymentContext>();
+                foreach (DeploymentContext context in contexts)
                 {
                     for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
-                        yield return basecase.GenerateDeploymentScenarios(scenario, context);
+                        yield return baseCase.GenerateDeploymentScenarios(scenario, context);
                     }
                 }
             }
@@ -75,15 +76,13 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_Opcode_Deprecation_checks()
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
-
-            Instruction[] StaticRelativeJumpsOpcode =
+            Instruction[] staticRelativeJumpsOpcode =
             {
                 Instruction.CALLCODE,
                 Instruction.SELFDESTRUCT,
             };
 
-            foreach (Instruction opcode in StaticRelativeJumpsOpcode)
+            foreach (Instruction opcode in staticRelativeJumpsOpcode)
             {
                 Assert.False(opcode.IsValid(true));
             }

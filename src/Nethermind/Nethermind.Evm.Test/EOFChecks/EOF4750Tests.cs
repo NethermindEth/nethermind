@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 2,
                                     Prepare.EvmCode
                                         .MUL(3, 23)
                                         .STOP()
@@ -49,7 +49,24 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    1, 1, 1024,
+                                    0, 0, 1024,
+                                    Prepare.EvmCode
+                                        .MUL(3, 23)
+                                        .STOP()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "Typesection Max Stack height must be < 1024"),
+                };
+
+                yield return new TestCase(1)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    1, 1, 2,
                                     Prepare.EvmCode
                                         .MUL(3, 23)
                                         .STOP()
@@ -66,7 +83,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 2,
                                     Prepare.EvmCode
                                         .PushData(23)
                                         .PushData(3)
@@ -75,7 +92,7 @@ namespace Nethermind.Evm.Test
                                         .Done
                                 ),
                                 new FunctionCase(
-                                    2, 1, 1024,
+                                    2, 1, 2,
                                     Prepare.EvmCode
                                         .MUL()
                                         .ADD(54)
@@ -104,7 +121,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 2,
                                     Prepare.EvmCode
                                         .PushData(23)
                                         .PushData(3)
@@ -115,7 +132,7 @@ namespace Nethermind.Evm.Test
                                         .Done
                                 ),
                                 new FunctionCase(
-                                    2, 1, 1024,
+                                    2, 2, 2,
                                     Prepare.EvmCode
                                         .MUL()
                                         .PushData(23)
@@ -124,7 +141,7 @@ namespace Nethermind.Evm.Test
                                         .Done
                                 ),
                                 new FunctionCase(
-                                    2, 2, 1024,
+                                    2, 2, 2,
                                     Prepare.EvmCode
                                         .ADD()
                                         .PushData(69)
@@ -142,7 +159,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 2,
                                     Prepare.EvmCode
                                         .PushData(23)
                                         .PushData(3)
@@ -151,7 +168,7 @@ namespace Nethermind.Evm.Test
                                         .Done
                                 ),
                                 new FunctionCase(
-                                    2, 0, 1024,
+                                    2, 0, 2,
                                     Prepare.EvmCode
                                         .MUL()
                                         .ADD(54)
@@ -170,7 +187,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 0,
                                     Prepare.EvmCode
                                         .PushData(23)
                                         .PushData(3)
@@ -179,7 +196,7 @@ namespace Nethermind.Evm.Test
                                         .Done
                                 ),
                                 new FunctionCase(
-                                    2, 0, 1024,
+                                    2, 0, 2,
                                     Prepare.EvmCode
                                         .MUL()
                                         .ADD(54)
@@ -197,7 +214,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: Enumerable.Range(0, 1024)
                                 .Select(_ => new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 0,
                                     Prepare.EvmCode
                                         .STOP()
                                         .Done
@@ -213,7 +230,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: Enumerable.Range(0, 1025)
                                 .Select(_ => new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 0,
                                     Prepare.EvmCode
                                         .STOP()
                                         .Done
@@ -229,7 +246,7 @@ namespace Nethermind.Evm.Test
                     Bytecode = new ScenarioCase(
                             Functions: new[] {
                                 new FunctionCase(
-                                    0, 0, 1024,
+                                    0, 0, 0,
                                     Prepare.EvmCode.Done
                                 )
                             },
