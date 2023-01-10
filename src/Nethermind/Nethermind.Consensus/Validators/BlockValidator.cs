@@ -215,12 +215,7 @@ public class BlockValidator : IBlockValidator
 
     public static bool ValidateWithdrawalsHashMatches(Block block, out Keccak? withdrawalsRoot)
     {
-        withdrawalsRoot = null;
-        if (block.Withdrawals == null)
-            return block.Header.WithdrawalsRoot == null;
-
-        withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
-
+        withdrawalsRoot = block.Withdrawals is null ? null : new WithdrawalTrie(block.Withdrawals).RootHash;
         return block.Header.WithdrawalsRoot == withdrawalsRoot;
     }
 
