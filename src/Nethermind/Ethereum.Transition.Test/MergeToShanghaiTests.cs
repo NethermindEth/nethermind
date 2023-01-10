@@ -16,8 +16,8 @@ public class MergeToShanghaiTests : BlockchainTestBase
     public Task Test(BlockchainTest test)
     {
         // ToDo Starting from the Shanghai the transition tests are not longer working on blockNumber, but timestamp, so this test needs to be fixed
+        // await RunTest(test);
         return Task.CompletedTask;
-       // await RunTest(test);
     }
 
     public static IEnumerable<BlockchainTest> LoadTests()
