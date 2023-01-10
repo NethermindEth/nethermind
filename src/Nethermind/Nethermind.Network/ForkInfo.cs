@@ -50,7 +50,18 @@ namespace Nethermind.Network
             if (nextIndex < transitionActivations.Length)
             {
                 ForkActivation nextForkActivation = transitionActivations[nextIndex];
-                nextActivation = nextForkActivation.Timestamp ?? (ulong)nextForkActivation.BlockNumber;
+                if (nextForkActivation.Timestamp is null)
+                {
+                    nextActivation = nextForkActivation.BlockNumber < long.MaxValue - 4
+                    ? (ulong)nextForkActivation.BlockNumber
+                    : 0;
+                }
+                else
+                {
+                    nextActivation = nextForkActivation.Timestamp < ulong.MaxValue - 4
+                    ? nextForkActivation.Timestamp.Value
+                    : 0;
+                }
             }
             else
             {

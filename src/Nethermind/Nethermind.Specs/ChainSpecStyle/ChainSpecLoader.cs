@@ -205,15 +205,15 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
                 : null;
-            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
-            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
             chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
                 : null;
             chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
                 : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (ulong.MaxValue - 1);
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
