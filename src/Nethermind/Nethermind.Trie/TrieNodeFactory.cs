@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Xml.XPath;
 
@@ -11,6 +12,13 @@ namespace Nethermind.Trie
         public static TrieNode CreateBranch()
         {
             TrieNode node = new(NodeType.Branch);
+            return node;
+        }
+
+        public static TrieNode CreateBranch(Span<byte> fullPath)
+        {
+            TrieNode node = new(NodeType.Branch);
+            node.FullPath = fullPath.ToArray();
             return node;
         }
 
@@ -26,10 +34,24 @@ namespace Nethermind.Trie
             return node;
         }
 
+        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value, Span<byte> fullPath)
+        {
+            Debug.Assert(
+                key.IsLeaf,
+                $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
+
+            TrieNode node = new(NodeType.Leaf);
+            node.Key = key;
+            node.Value = value;
+            node.FullPath = fullPath.ToArray();
+            return node;
+        }
+
         public static TrieNode CreateExtension(HexPrefix key)
         {
             TrieNode node = new(NodeType.Extension);
             node.Key = key;
+            node.FullPath = key.Path;
             return node;
         }
 

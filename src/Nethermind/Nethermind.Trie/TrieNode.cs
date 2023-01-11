@@ -66,6 +66,7 @@ namespace Nethermind.Trie
         public long? LastSeen { get; set; }
 
         public byte[]? Path => Key?.Path;
+        public byte[]? FullPath { get; internal set; }
 
         internal HexPrefix? Key
         {
@@ -182,6 +183,16 @@ namespace Nethermind.Trie
             }
         }
 
+        public TrieNode(NodeType nodeType, byte[] path)
+        {
+            FullPath = path ?? throw new ArgumentNullException(nameof(path));
+            NodeType = nodeType;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
         public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
         {
             NodeType = nodeType;
@@ -195,6 +206,16 @@ namespace Nethermind.Trie
             : this(nodeType, rlp)
         {
             Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, byte[] path, byte[] rlp)
+            : this(nodeType, rlp)
+        {
+            FullPath = path;
             if (nodeType == NodeType.Unknown)
             {
                 IsPersisted = true;
@@ -225,10 +246,15 @@ namespace Nethermind.Trie
             IsDirty = false;
         }
 
+        public void ResolveNode(ITrieNodeResolver tree)
+        {
+            ResolveNode(tree, Array.Empty<byte>());
+        }
+
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree)
+        public void ResolveNode(ITrieNodeResolver tree, Span<byte> path)
         {
             try
             {
@@ -236,12 +262,13 @@ namespace Nethermind.Trie
                 {
                     if (FullRlp is null)
                     {
-                        if (Keccak is null)
-                        {
-                            throw new TrieException("Unable to resolve node without Keccak");
-                        }
+                        //if (Keccak is null)
+                        //{
+                        //    throw new TrieException("Unable to resolve node without Keccak");
+                        //}
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        //FullRlp = tree.LoadRlp(Keccak);
+                        FullRlp = tree.LoadRlp(path.IsEmpty ? new byte[33] : path);
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -476,6 +503,14 @@ namespace Nethermind.Trie
             return child;
         }
 
+        public TrieNode? GetChild(ITrieNodeResolver tree, Span<byte> childPath)
+        {
+            TrieNode? child;
+            child = tree.FindCachedOrUnknown(childPath);
+
+            return child;
+        }
+
         public void ReplaceChildRef(int i, TrieNode child)
         {
             if (child is null)
@@ -585,7 +620,6 @@ namespace Nethermind.Trie
                 trieNode.FullRlp = FullRlp;
                 trieNode._rlpStream = FullRlp.AsRlpStream();
             }
-
             return trieNode;
         }
 
@@ -601,6 +635,15 @@ namespace Nethermind.Trie
             TrieNode trieNode = Clone();
             trieNode.Key = key;
             trieNode.Value = changedValue;
+            return trieNode;
+        }
+
+        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue, byte[] changedFullPath)
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Key = key;
+            trieNode.Value = changedValue;
+            trieNode.FullPath = changedFullPath;
             return trieNode;
         }
 
@@ -869,5 +912,20 @@ namespace Nethermind.Trie
         }
 
         #endregion
+
+        private byte[] GetChildNodePath(int index)
+        {
+            if (FullPath == null)
+            {
+                return new byte[1] { (byte)index };
+            }
+            else
+            {
+                var newArray = new byte[FullPath.Length + 1];
+                Buffer.BlockCopy(FullPath, 0, newArray, 0, FullPath.Length);
+                newArray[FullPath.Length] = (byte)index;
+                return newArray;
+            }
+        }
     }
 }

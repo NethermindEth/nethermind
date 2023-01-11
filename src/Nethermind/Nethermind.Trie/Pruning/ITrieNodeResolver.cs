@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -17,11 +18,14 @@ namespace Nethermind.Trie.Pruning
         /// <returns></returns>
         TrieNode FindCachedOrUnknown(Keccak hash);
 
+        TrieNode FindCachedOrUnknown(Span<byte> nodePath);
+
         /// <summary>
         /// Loads RLP of the node.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[]? LoadRlp(Keccak hash);
+        byte[]? LoadRlp(Span<byte> nodePath);
     }
 }

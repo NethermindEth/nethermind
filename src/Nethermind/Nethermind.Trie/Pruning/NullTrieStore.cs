@@ -44,6 +44,16 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath)
+        {
+            return new(NodeType.Unknown, nodePath.ToArray());
+        }
+
+        public byte[]? LoadRlp(Span<byte> nodePath)
+        {
+            return Array.Empty<byte>();
+        }
+
         public byte[]? this[byte[] key] => null;
     }
 }

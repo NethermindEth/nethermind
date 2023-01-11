@@ -11,19 +11,19 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Safe to be reused for the same wrapped store.
     /// </summary>
-    public class ReadOnlyTrieStore : IReadOnlyTrieStore
+    public class ReadOnlyTrieStoreByPath : IReadOnlyTrieStore
     {
-        private readonly TrieStore _trieStore;
+        private readonly TrieStoreByPath _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
 
-        public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
+        public ReadOnlyTrieStoreByPath(TrieStoreByPath trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
         }
 
         public TrieNode FindCachedOrUnknown(Keccak hash) =>
-            _trieStore.FindCachedOrUnknown(hash, true);
+            _trieStore.FindCachedOrUnknown(hash);
 
         public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
 
@@ -31,7 +31,7 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
-            return new ReadOnlyTrieStore(_trieStore, keyValueStore);
+            return new ReadOnlyTrieStoreByPath(_trieStore, keyValueStore);
         }
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
@@ -49,12 +49,12 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Span<byte> nodePath)
         {
-            throw new NotImplementedException();
+            return _trieStore.FindCachedOrUnknown(nodePath);
         }
 
         public byte[]? LoadRlp(Span<byte> nodePath)
         {
-            throw new NotImplementedException();
+            return _trieStore.LoadRlp(nodePath);
         }
 
         public byte[]? this[byte[] key] => _trieStore[key];
