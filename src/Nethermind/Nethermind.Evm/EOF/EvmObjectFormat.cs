@@ -41,7 +41,7 @@ internal static class EvmObjectFormat
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
-        if (container.Length >= VERSION_OFFSET
+        if (container.Length > VERSION_OFFSET
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
         {
