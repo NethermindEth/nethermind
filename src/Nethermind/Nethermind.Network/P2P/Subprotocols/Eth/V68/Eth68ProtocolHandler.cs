@@ -95,7 +95,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new byte[] {(byte)tx.Type}, new int[] {tx.GetLength(_txDecoder)}, new Keccak[] {tx.Hash});
+            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength(_txDecoder) }, new Keccak[] { tx.Hash });
         }
     }
 
