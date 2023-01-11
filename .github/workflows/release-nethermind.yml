@@ -225,7 +225,7 @@ jobs:
   publish-ppa:
     name: Publish to PPA
     runs-on: ubuntu-latest
-    needs: [approval, build]
+    needs: [approval, build, publish-github]
     if: needs.build.outputs.PRERELEASE == 'false'
     env:
       PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
