@@ -171,7 +171,7 @@ namespace Nethermind.TxPool
             {
                 if (numberOfPersistentTxsToBroadcast > 0)
                 {
-                    if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                    if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee && tx.Type != TxType.Blob)
                     {
                         numberOfPersistentTxsToBroadcast--;
                         persistentTxsToSend.Add(tx);
