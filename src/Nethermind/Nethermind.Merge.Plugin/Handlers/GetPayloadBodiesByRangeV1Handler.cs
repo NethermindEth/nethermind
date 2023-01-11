@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1;
+namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handler
 {

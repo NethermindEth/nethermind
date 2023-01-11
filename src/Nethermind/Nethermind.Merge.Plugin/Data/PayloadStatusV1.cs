@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Data
 {
     /// <summary>
     /// Result of engine_newPayloadV1 call.

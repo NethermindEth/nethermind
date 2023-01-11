@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -160,6 +161,7 @@ namespace Nethermind.AuRa.Test
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 txFilter,
                 contractRewriter: contractRewriter);
 

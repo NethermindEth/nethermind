@@ -220,7 +220,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -251,12 +251,21 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
+        /// validator withdrawals are enabled.
+        /// </summary>
+        bool IsEip4895Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
 
-        // STATE related 
+        public ulong WithdrawalTimestamp { get; }
+
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -322,5 +331,7 @@ namespace Nethermind.Core.Specs
         public bool IncludePush0Instruction => IsEip3855Enabled;
 
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool WithdrawalsEnabled => IsEip4895Enabled;
     }
 }

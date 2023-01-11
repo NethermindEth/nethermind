@@ -19,7 +19,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
-    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 
+    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
     /// </summary>
     public class ChainSpecLoader : IChainSpecLoader
     {
@@ -137,6 +137,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
                 Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
+                Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -352,7 +353,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                     : UInt256.Zero;
 
-
             BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -372,12 +372,17 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
             genesisHeader.BaseFeePerGas = baseFee;
+            bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
+            if (withdrawalsEnabled)
+                genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
 
-
-            chainSpec.Genesis = new Block(genesisHeader);
+            if (withdrawalsEnabled)
+                chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+            else
+                chainSpec.Genesis = new Block(genesisHeader);
         }
 
         private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
