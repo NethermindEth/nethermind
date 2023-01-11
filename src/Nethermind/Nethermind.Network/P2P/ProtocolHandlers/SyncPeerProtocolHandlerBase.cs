@@ -198,7 +198,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     txsToSend.Clear();
                 }
 
-                if (tx.Hash is not null)
+                if (tx.Hash is not null && tx.Type != TxType.Blob) //protect from sending full blob-type txs
                 {
                     txsToSend.Add(tx);
                     TxPool.Metrics.PendingTransactionsSent++;
